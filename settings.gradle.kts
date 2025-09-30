@@ -17,6 +17,7 @@ dependencyResolutionManagement {
     }
 }
 
+include(":kotlin-acp-model")
 include(":kotlin-acp")
 
 // Include sample projects

@@ -1,0 +1,104 @@
+public final class io/agentclientprotocol/LibVersionKt {
+	public static final field LIB_VERSION Ljava/lang/String;
+}
+
+public abstract interface class io/agentclientprotocol/agent/Agent {
+	public abstract fun authenticate (Lio/agentclientprotocol/model/AuthenticateRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun initialize (Lio/agentclientprotocol/model/InitializeRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sessionCancel (Lio/agentclientprotocol/model/CancelNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sessionLoad (Lio/agentclientprotocol/model/LoadSessionRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sessionNew (Lio/agentclientprotocol/model/NewSessionRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sessionPrompt (Lio/agentclientprotocol/model/PromptRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sessionSetMode (Lio/agentclientprotocol/model/SetSessionModeRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class io/agentclientprotocol/agent/AgentSideConnection : io/agentclientprotocol/client/Client {
+	public fun <init> (Lkotlinx/coroutines/CoroutineScope;Lio/agentclientprotocol/agent/Agent;Lio/agentclientprotocol/transport/Transport;Lio/agentclientprotocol/protocol/ProtocolOptions;)V
+	public synthetic fun <init> (Lkotlinx/coroutines/CoroutineScope;Lio/agentclientprotocol/agent/Agent;Lio/agentclientprotocol/transport/Transport;Lio/agentclientprotocol/protocol/ProtocolOptions;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun fsReadTextFile (Lio/agentclientprotocol/model/ReadTextFileRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun fsWriteTextFile (Lio/agentclientprotocol/model/WriteTextFileRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun sessionRequestPermission (Lio/agentclientprotocol/model/RequestPermissionRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun sessionUpdate (Lio/agentclientprotocol/model/SessionNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun start ()V
+	public fun terminalCreate (Lio/agentclientprotocol/model/CreateTerminalRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun terminalKill (Lio/agentclientprotocol/model/KillTerminalCommandRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun terminalOutput (Lio/agentclientprotocol/model/TerminalOutputRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun terminalRelease (Lio/agentclientprotocol/model/ReleaseTerminalRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun terminalWaitForExit (Lio/agentclientprotocol/model/WaitForTerminalExitRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class io/agentclientprotocol/client/Client {
+	public abstract fun fsReadTextFile (Lio/agentclientprotocol/model/ReadTextFileRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun fsWriteTextFile (Lio/agentclientprotocol/model/WriteTextFileRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sessionRequestPermission (Lio/agentclientprotocol/model/RequestPermissionRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sessionUpdate (Lio/agentclientprotocol/model/SessionNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun terminalCreate (Lio/agentclientprotocol/model/CreateTerminalRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun terminalKill (Lio/agentclientprotocol/model/KillTerminalCommandRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun terminalOutput (Lio/agentclientprotocol/model/TerminalOutputRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun terminalRelease (Lio/agentclientprotocol/model/ReleaseTerminalRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun terminalWaitForExit (Lio/agentclientprotocol/model/WaitForTerminalExitRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class io/agentclientprotocol/client/ClientSideConnection : io/agentclientprotocol/agent/Agent {
+	public fun <init> (Lkotlinx/coroutines/CoroutineScope;Lio/agentclientprotocol/transport/Transport;Lio/agentclientprotocol/client/Client;Lio/agentclientprotocol/protocol/ProtocolOptions;)V
+	public synthetic fun <init> (Lkotlinx/coroutines/CoroutineScope;Lio/agentclientprotocol/transport/Transport;Lio/agentclientprotocol/client/Client;Lio/agentclientprotocol/protocol/ProtocolOptions;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun authenticate (Lio/agentclientprotocol/model/AuthenticateRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun initialize (Lio/agentclientprotocol/model/InitializeRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun sessionCancel (Lio/agentclientprotocol/model/CancelNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun sessionLoad (Lio/agentclientprotocol/model/LoadSessionRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun sessionNew (Lio/agentclientprotocol/model/NewSessionRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun sessionPrompt (Lio/agentclientprotocol/model/PromptRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun sessionSetMode (Lio/agentclientprotocol/model/SetSessionModeRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun start ()V
+}
+
+public final class io/agentclientprotocol/protocol/JsonRpcException : java/lang/Exception {
+	public fun <init> (ILjava/lang/String;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (ILjava/lang/String;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getCode ()I
+	public final fun getData ()Lkotlinx/serialization/json/JsonElement;
+}
+
+public final class io/agentclientprotocol/protocol/Protocol {
+	public fun <init> (Lkotlinx/coroutines/CoroutineScope;Lio/agentclientprotocol/transport/Transport;Lio/agentclientprotocol/protocol/ProtocolOptions;)V
+	public synthetic fun <init> (Lkotlinx/coroutines/CoroutineScope;Lio/agentclientprotocol/transport/Transport;Lio/agentclientprotocol/protocol/ProtocolOptions;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun close ()V
+	public final fun sendNotification (Lio/agentclientprotocol/model/AcpMethod;Lkotlinx/serialization/json/JsonElement;)V
+	public static synthetic fun sendNotification$default (Lio/agentclientprotocol/protocol/Protocol;Lio/agentclientprotocol/model/AcpMethod;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)V
+	public final fun sendRequest-exY8QGI (Lio/agentclientprotocol/model/AcpMethod;Lkotlinx/serialization/json/JsonElement;JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun sendRequest-exY8QGI$default (Lio/agentclientprotocol/protocol/Protocol;Lio/agentclientprotocol/model/AcpMethod;Lkotlinx/serialization/json/JsonElement;JLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun setNotificationHandler (Lio/agentclientprotocol/model/AcpMethod;Lkotlin/jvm/functions/Function2;)V
+	public final fun setRequestHandler (Lio/agentclientprotocol/model/AcpMethod;Lkotlin/jvm/functions/Function2;)V
+	public final fun start ()V
+}
+
+public class io/agentclientprotocol/protocol/ProtocolOptions {
+	public synthetic fun <init> (JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (JLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getRequestTimeout-UwyO8pc ()J
+}
+
+public final class io/agentclientprotocol/protocol/RequestTimeoutException : java/lang/Exception {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class io/agentclientprotocol/transport/StdioTransport : io/agentclientprotocol/transport/Transport {
+	public fun <init> (Lkotlinx/coroutines/CoroutineScope;Lkotlinx/io/Source;Lkotlinx/io/Sink;)V
+	public fun close ()V
+	public fun getMessages ()Lkotlinx/coroutines/channels/ReceiveChannel;
+	public fun isConnected ()Z
+	public fun send (Lio/agentclientprotocol/rpc/JsonRpcMessage;)V
+	public fun start ()V
+}
+
+public abstract interface class io/agentclientprotocol/transport/Transport : java/lang/AutoCloseable {
+	public abstract fun getMessages ()Lkotlinx/coroutines/channels/ReceiveChannel;
+	public abstract fun isConnected ()Z
+	public abstract fun send (Lio/agentclientprotocol/rpc/JsonRpcMessage;)V
+	public abstract fun start ()V
+}
+
+public final class io/agentclientprotocol/util/Dispatcher_jvmKt {
+	public static final fun getDispatcherIO ()Lkotlinx/coroutines/CoroutineDispatcher;
+}
+

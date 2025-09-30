@@ -232,11 +232,12 @@ public class Protocol(
             currentRequests.remove(response.id)
         }
         if (deferred != null) {
-            if (response.error != null) {
+            val responseError = response.error
+            if (responseError != null) {
                 val exception = JsonRpcException(
-                    code = response.error.code,
-                    message = response.error.message,
-                    data = response.error.data
+                    code = responseError.code,
+                    message = responseError.message,
+                    data = responseError.data
                 )
                 deferred.completeExceptionally(exception)
             } else {
