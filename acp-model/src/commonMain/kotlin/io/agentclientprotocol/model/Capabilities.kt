@@ -1,7 +1,7 @@
 @file:Suppress("unused")
 @file:OptIn(ExperimentalSerializationApi::class)
 
-package io.agentclientprotocol.model
+package com.agentclientprotocol.model
 
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi

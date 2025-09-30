@@ -1,7 +1,7 @@
-package io.agentclientprotocol.samples.client
+package com.agentclientprotocol.samples.client
 
-import io.agentclientprotocol.transport.StdioTransport
-import io.agentclientprotocol.transport.Transport
+import com.agentclientprotocol.transport.StdioTransport
+import com.agentclientprotocol.transport.Transport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.io.asSink
 import kotlinx.io.asSource

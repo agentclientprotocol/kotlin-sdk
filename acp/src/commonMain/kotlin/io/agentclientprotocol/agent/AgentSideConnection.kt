@@ -1,13 +1,13 @@
 @file:Suppress("unused")
 
-package io.agentclientprotocol.agent
+package com.agentclientprotocol.agent
 
-import io.agentclientprotocol.client.Client
-import io.agentclientprotocol.model.*
-import io.agentclientprotocol.protocol.Protocol
-import io.agentclientprotocol.protocol.ProtocolOptions
-import io.agentclientprotocol.rpc.ACPJson
-import io.agentclientprotocol.transport.Transport
+import com.agentclientprotocol.client.Client
+import com.agentclientprotocol.model.*
+import com.agentclientprotocol.protocol.Protocol
+import com.agentclientprotocol.protocol.ProtocolOptions
+import com.agentclientprotocol.rpc.ACPJson
+import com.agentclientprotocol.transport.Transport
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.serialization.json.decodeFromJsonElement

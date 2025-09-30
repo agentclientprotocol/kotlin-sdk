@@ -1,4 +1,4 @@
-package io.agentclientprotocol.util
+package com.agentclientprotocol.util
 
 import kotlinx.coroutines.Dispatchers
 

@@ -1,18 +1,18 @@
-package io.agentclientprotocol.agent
+package com.agentclientprotocol.agent
 
-import io.agentclientprotocol.model.AuthenticateRequest
-import io.agentclientprotocol.model.AuthenticateResponse
-import io.agentclientprotocol.model.CancelNotification
-import io.agentclientprotocol.model.InitializeRequest
-import io.agentclientprotocol.model.InitializeResponse
-import io.agentclientprotocol.model.LoadSessionRequest
-import io.agentclientprotocol.model.LoadSessionResponse
-import io.agentclientprotocol.model.NewSessionRequest
-import io.agentclientprotocol.model.NewSessionResponse
-import io.agentclientprotocol.model.PromptRequest
-import io.agentclientprotocol.model.PromptResponse
-import io.agentclientprotocol.model.SetSessionModeRequest
-import io.agentclientprotocol.model.SetSessionModeResponse
+import com.agentclientprotocol.model.AuthenticateRequest
+import com.agentclientprotocol.model.AuthenticateResponse
+import com.agentclientprotocol.model.CancelNotification
+import com.agentclientprotocol.model.InitializeRequest
+import com.agentclientprotocol.model.InitializeResponse
+import com.agentclientprotocol.model.LoadSessionRequest
+import com.agentclientprotocol.model.LoadSessionResponse
+import com.agentclientprotocol.model.NewSessionRequest
+import com.agentclientprotocol.model.NewSessionResponse
+import com.agentclientprotocol.model.PromptRequest
+import com.agentclientprotocol.model.PromptResponse
+import com.agentclientprotocol.model.SetSessionModeRequest
+import com.agentclientprotocol.model.SetSessionModeResponse
 
 /**
  * Interface that agents must implement to handle client requests.

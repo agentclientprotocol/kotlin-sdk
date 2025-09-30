@@ -1,4 +1,4 @@
-package io.agentclientprotocol.model
+package com.agentclientprotocol.model
 
 public interface AcpWithMeta {
 }

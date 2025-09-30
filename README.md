@@ -41,7 +41,7 @@ Add the dependency:
 
 ```kotlin
 dependencies {
-    implementation("io.agentclientprotocol:acp:0.1.0-SNAPSHOT")
+    implementation("com.agentclientprotocol:acp:0.1.0-SNAPSHOT")
 }
 ```
 
@@ -50,9 +50,9 @@ dependencies {
 ### Creating an Agent
 
 ```kotlin
-import io.agentclientprotocol.agent.*
-import io.agentclientprotocol.model.*
-import io.agentclientprotocol.transport.StdioTransport
+import com.agentclientprotocol.agent.*
+import com.agentclientprotocol.model.*
+import com.agentclientprotocol.transport.StdioTransport
 import kotlinx.coroutines.coroutineScope
 import kotlinx.io.*
 
@@ -108,9 +108,9 @@ suspend fun main() = coroutineScope {
 ### Creating a Client
 
 ```kotlin
-import io.agentclientprotocol.client.*
-import io.agentclientprotocol.model.*
-import io.agentclientprotocol.transport.StdioTransport
+import com.agentclientprotocol.client.*
+import com.agentclientprotocol.model.*
+import com.agentclientprotocol.transport.StdioTransport
 import kotlinx.coroutines.coroutineScope
 import kotlinx.io.*
 import java.io.File
@@ -211,7 +211,7 @@ Run the samples:
 ./gradlew :samples:kotlin-acp-client-sample:run
 
 # Run the Gemini interactive chat client
-./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=io.agentclientprotocol.samples.client.GeminiClientAppKt
+./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=com.agentclientprotocol.samples.client.GeminiClientAppKt
 ```
 
 ## Features

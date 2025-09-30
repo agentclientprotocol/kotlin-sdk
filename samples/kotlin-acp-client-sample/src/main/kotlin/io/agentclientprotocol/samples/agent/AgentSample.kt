@@ -1,7 +1,7 @@
-package io.agentclientprotocol.samples.agent
+package com.agentclientprotocol.samples.agent
 
-import io.agentclientprotocol.agent.AgentSideConnection
-import io.agentclientprotocol.transport.StdioTransport
+import com.agentclientprotocol.agent.AgentSideConnection
+import com.agentclientprotocol.transport.StdioTransport
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay

@@ -1,6 +1,6 @@
 @file:Suppress("unused")
 
-package io.agentclientprotocol.model
+package com.agentclientprotocol.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable

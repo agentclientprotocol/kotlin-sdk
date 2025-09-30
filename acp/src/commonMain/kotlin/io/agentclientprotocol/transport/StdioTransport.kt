@@ -1,9 +1,9 @@
-package io.agentclientprotocol.transport
+package com.agentclientprotocol.transport
 
-import io.agentclientprotocol.rpc.ACPJson
-import io.agentclientprotocol.rpc.JsonRpcMessage
-import io.agentclientprotocol.rpc.decodeJsonRpcMessage
-import io.agentclientprotocol.util.DispatcherIO
+import com.agentclientprotocol.rpc.ACPJson
+import com.agentclientprotocol.rpc.JsonRpcMessage
+import com.agentclientprotocol.rpc.decodeJsonRpcMessage
+import com.agentclientprotocol.util.DispatcherIO
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.*

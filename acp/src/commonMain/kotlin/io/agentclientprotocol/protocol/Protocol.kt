@@ -1,10 +1,10 @@
 @file:Suppress("unused")
 
-package io.agentclientprotocol.protocol
+package com.agentclientprotocol.protocol
 
-import io.agentclientprotocol.model.AcpMethod
-import io.agentclientprotocol.rpc.*
-import io.agentclientprotocol.transport.Transport
+import com.agentclientprotocol.model.AcpMethod
+import com.agentclientprotocol.rpc.*
+import com.agentclientprotocol.transport.Transport
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.AtomicLong
 import kotlinx.atomicfu.AtomicRef

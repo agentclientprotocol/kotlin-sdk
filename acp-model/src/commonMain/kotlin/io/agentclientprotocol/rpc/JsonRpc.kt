@@ -1,6 +1,6 @@
 @file:Suppress("unused")
 
-package io.agentclientprotocol.rpc
+package com.agentclientprotocol.rpc
 
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable

@@ -1,9 +1,9 @@
-package io.agentclientprotocol.transport
+package com.agentclientprotocol.transport
 
-import io.agentclientprotocol.rpc.JsonRpcNotification
-import io.agentclientprotocol.rpc.JsonRpcRequest
-import io.agentclientprotocol.rpc.JsonRpcResponse
-import io.agentclientprotocol.rpc.RequestId
+import com.agentclientprotocol.rpc.JsonRpcNotification
+import com.agentclientprotocol.rpc.JsonRpcRequest
+import com.agentclientprotocol.rpc.JsonRpcResponse
+import com.agentclientprotocol.rpc.RequestId
 import kotlinx.coroutines.*
 import kotlinx.io.*
 import kotlinx.serialization.json.JsonPrimitive

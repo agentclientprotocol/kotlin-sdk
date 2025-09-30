@@ -50,7 +50,7 @@ This sample demonstrates how to create both ACP agents and clients in Kotlin.
 
 #### Run the Agent Sample
 ```bash
-./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=io.agentclientprotocol.samples.agent.AgentSampleKt
+./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=com.agentclientprotocol.samples.agent.AgentSampleKt
 ```
 
 #### Run the Client Sample (Default)
@@ -59,12 +59,12 @@ This sample demonstrates how to create both ACP agents and clients in Kotlin.
 ```
 or explicitly:
 ```bash
-./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=io.agentclientprotocol.samples.client.ClientSampleKt
+./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=com.agentclientprotocol.samples.client.ClientSampleKt
 ```
 
 #### Run the Gemini Interactive Chat Client
 ```bash
-./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=io.agentclientprotocol.samples.client.GeminiClientAppKt
+./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=com.agentclientprotocol.samples.client.GeminiClientAppKt
 ```
 
 ### Chat Commands

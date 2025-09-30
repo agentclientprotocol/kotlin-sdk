@@ -13,7 +13,7 @@ dependencies {
 }
 
 application {
-    mainClass.set("io.agentclientprotocol.samples.client.ClientSampleKt")
+    mainClass.set("com.agentclientprotocol.samples.client.ClientSampleKt")
 }
 
 kotlin {

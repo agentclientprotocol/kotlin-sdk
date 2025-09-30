@@ -1,22 +1,22 @@
-package io.agentclientprotocol.client
+package com.agentclientprotocol.client
 
-import io.agentclientprotocol.model.CreateTerminalRequest
-import io.agentclientprotocol.model.CreateTerminalResponse
-import io.agentclientprotocol.model.KillTerminalCommandRequest
-import io.agentclientprotocol.model.KillTerminalCommandResponse
-import io.agentclientprotocol.model.ReadTextFileRequest
-import io.agentclientprotocol.model.ReadTextFileResponse
-import io.agentclientprotocol.model.ReleaseTerminalRequest
-import io.agentclientprotocol.model.ReleaseTerminalResponse
-import io.agentclientprotocol.model.RequestPermissionRequest
-import io.agentclientprotocol.model.RequestPermissionResponse
-import io.agentclientprotocol.model.SessionNotification
-import io.agentclientprotocol.model.TerminalOutputRequest
-import io.agentclientprotocol.model.TerminalOutputResponse
-import io.agentclientprotocol.model.WaitForTerminalExitRequest
-import io.agentclientprotocol.model.WaitForTerminalExitResponse
-import io.agentclientprotocol.model.WriteTextFileRequest
-import io.agentclientprotocol.model.WriteTextFileResponse
+import com.agentclientprotocol.model.CreateTerminalRequest
+import com.agentclientprotocol.model.CreateTerminalResponse
+import com.agentclientprotocol.model.KillTerminalCommandRequest
+import com.agentclientprotocol.model.KillTerminalCommandResponse
+import com.agentclientprotocol.model.ReadTextFileRequest
+import com.agentclientprotocol.model.ReadTextFileResponse
+import com.agentclientprotocol.model.ReleaseTerminalRequest
+import com.agentclientprotocol.model.ReleaseTerminalResponse
+import com.agentclientprotocol.model.RequestPermissionRequest
+import com.agentclientprotocol.model.RequestPermissionResponse
+import com.agentclientprotocol.model.SessionNotification
+import com.agentclientprotocol.model.TerminalOutputRequest
+import com.agentclientprotocol.model.TerminalOutputResponse
+import com.agentclientprotocol.model.WaitForTerminalExitRequest
+import com.agentclientprotocol.model.WaitForTerminalExitResponse
+import com.agentclientprotocol.model.WriteTextFileRequest
+import com.agentclientprotocol.model.WriteTextFileResponse
 
 /**
  * Interface that clients must implement to handle agent requests.

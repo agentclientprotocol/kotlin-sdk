@@ -1,8 +1,8 @@
 @file:Suppress("unused")
 
-package io.agentclientprotocol.transport
+package com.agentclientprotocol.transport
 
-import io.agentclientprotocol.rpc.JsonRpcMessage
+import com.agentclientprotocol.rpc.JsonRpcMessage
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.flow.Flow
 

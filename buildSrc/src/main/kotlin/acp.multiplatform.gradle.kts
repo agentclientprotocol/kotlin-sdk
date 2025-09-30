@@ -16,7 +16,7 @@ val generateLibVersion by tasks.registering {
         sourceFile.parentFile.mkdirs()
         sourceFile.writeText(
             """
-            package io.agentclientprotocol
+            package com.agentclientprotocol
 
             public const val LIB_VERSION: String = "${project.version}"
             

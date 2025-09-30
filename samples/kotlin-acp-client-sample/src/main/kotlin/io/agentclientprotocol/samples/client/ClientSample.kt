@@ -1,14 +1,14 @@
-package io.agentclientprotocol.samples.client
+package com.agentclientprotocol.samples.client
 
-import io.agentclientprotocol.model.ClientCapabilities
-import io.agentclientprotocol.model.ContentBlock
-import io.agentclientprotocol.model.FileSystemCapability
-import io.agentclientprotocol.model.InitializeRequest
-import io.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
-import io.agentclientprotocol.model.NewSessionRequest
-import io.agentclientprotocol.model.PromptRequest
-import io.agentclientprotocol.client.ClientSideConnection
-import io.agentclientprotocol.transport.StdioTransport
+import com.agentclientprotocol.model.ClientCapabilities
+import com.agentclientprotocol.model.ContentBlock
+import com.agentclientprotocol.model.FileSystemCapability
+import com.agentclientprotocol.model.InitializeRequest
+import com.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
+import com.agentclientprotocol.model.NewSessionRequest
+import com.agentclientprotocol.model.PromptRequest
+import com.agentclientprotocol.client.ClientSideConnection
+import com.agentclientprotocol.transport.StdioTransport
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.asSource
