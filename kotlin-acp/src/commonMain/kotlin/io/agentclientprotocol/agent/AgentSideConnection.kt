@@ -37,8 +37,9 @@ public class AgentSideConnection(
 
         // Set up request handlers for incoming client requests
         protocol.setRequestHandler(AcpMethod.AgentMethods.Initialize) { request ->
-            val params = if (request.params != null) {
-                ACPJson.decodeFromJsonElement<InitializeRequest>(request.params)
+            val requestParams = request.params
+            val params = if (requestParams != null) {
+                ACPJson.decodeFromJsonElement<InitializeRequest>(requestParams)
             } else {
                 InitializeRequest(LATEST_PROTOCOL_VERSION)
             }
@@ -47,8 +48,9 @@ public class AgentSideConnection(
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.Authenticate) { request ->
-            val params = if (request.params != null) {
-                ACPJson.decodeFromJsonElement<AuthenticateRequest>(request.params)
+            val requestParams = request.params
+            val params = if (requestParams != null) {
+                ACPJson.decodeFromJsonElement<AuthenticateRequest>(requestParams)
             } else {
                 throw IllegalArgumentException("authenticate requires parameters")
             }
@@ -57,8 +59,9 @@ public class AgentSideConnection(
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionNew) { request ->
-            val params = if (request.params != null) {
-                ACPJson.decodeFromJsonElement<NewSessionRequest>(request.params)
+            val requestParams = request.params
+            val params = if (requestParams != null) {
+                ACPJson.decodeFromJsonElement<NewSessionRequest>(requestParams)
             } else {
                 throw IllegalArgumentException("session/new requires parameters")
             }
@@ -67,8 +70,9 @@ public class AgentSideConnection(
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionLoad) { request ->
-            val params = if (request.params != null) {
-                ACPJson.decodeFromJsonElement<LoadSessionRequest>(request.params)
+            val requestParams = request.params
+            val params = if (requestParams != null) {
+                ACPJson.decodeFromJsonElement<LoadSessionRequest>(requestParams)
             } else {
                 throw IllegalArgumentException("session/load requires parameters")
             }
@@ -77,8 +81,9 @@ public class AgentSideConnection(
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionSetMode) { request ->
-            val params = if (request.params != null) {
-                ACPJson.decodeFromJsonElement<SetSessionModeRequest>(request.params)
+            val requestParams = request.params
+            val params = if (requestParams != null) {
+                ACPJson.decodeFromJsonElement<SetSessionModeRequest>(requestParams)
             } else {
                 throw IllegalArgumentException("session/set_mode requires parameters")
             }
@@ -87,8 +92,9 @@ public class AgentSideConnection(
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionPrompt) { request ->
-            val params = if (request.params != null) {
-                ACPJson.decodeFromJsonElement<PromptRequest>(request.params)
+            val requestParams = request.params
+            val params = if (requestParams != null) {
+                ACPJson.decodeFromJsonElement<PromptRequest>(requestParams)
             } else {
                 throw IllegalArgumentException("session/sessionPrompt requires parameters")
             }
@@ -97,8 +103,9 @@ public class AgentSideConnection(
         }
 
         protocol.setNotificationHandler(AcpMethod.AgentMethods.SessionCancel) { notification ->
-            val params = if (notification.params != null) {
-                ACPJson.decodeFromJsonElement<CancelNotification>(notification.params)
+            val notificationParams = notification.params
+            val params = if (notificationParams != null) {
+                ACPJson.decodeFromJsonElement<CancelNotification>(notificationParams)
             } else {
                 throw IllegalArgumentException("session/sessionCancel requires parameters")
             }
