@@ -53,7 +53,7 @@ dependencies {
 import io.agentclientprotocol.agent.*
 import io.agentclientprotocol.model.*
 import io.agentclientprotocol.transport.StdioTransport
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.coroutineScope
 import kotlinx.io.*
 
 class MyAgent : Agent {
@@ -68,28 +68,40 @@ class MyAgent : Agent {
             )
         )
     }
-    
-    override suspend fun newSession(request: NewSessionRequest): NewSessionResponse {
+
+    override suspend fun sessionNew(request: NewSessionRequest): NewSessionResponse {
         val sessionId = SessionId("session-${System.currentTimeMillis()}")
         return NewSessionResponse(sessionId)
     }
-    
-    override suspend fun prompt(request: PromptRequest): PromptResponse {
+
+    override suspend fun sessionPrompt(request: PromptRequest): PromptResponse {
         // Process the user's prompt and send updates via client connection
         return PromptResponse(StopReason.END_TURN)
     }
-    
+
     // Implement other required methods...
 }
 
 // Set up agent with STDIO transport
-fun main() = runBlocking {
+suspend fun main() = coroutineScope {
     val agent = MyAgent()
-    val transport = StdioTransport(System.`in`.asSource(), System.out.asSink())
-    val connection = AgentSideConnection(agent)
-    
-    connection.connect(transport)
-    transport.start()
+
+    // Create transport with parent scope
+    val transport = StdioTransport(
+        parentScope = this,
+        input = System.`in`.asSource().buffered(),
+        output = System.out.asSink().buffered()
+    )
+
+    // Create connection with parent scope and transport
+    val connection = AgentSideConnection(
+        parentScope = this,
+        agent = agent,
+        transport = transport
+    )
+
+    // Start the connection
+    connection.start()
 }
 ```
 
@@ -99,69 +111,86 @@ fun main() = runBlocking {
 import io.agentclientprotocol.client.*
 import io.agentclientprotocol.model.*
 import io.agentclientprotocol.transport.StdioTransport
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.coroutineScope
 import kotlinx.io.*
 import java.io.File
 
 class MyClient : Client {
-    override suspend fun readTextFile(request: ReadTextFileRequest): ReadTextFileResponse {
+    override suspend fun fsReadTextFile(request: ReadTextFileRequest): ReadTextFileResponse {
         val content = File(request.path).readText()
         return ReadTextFileResponse(content)
     }
-    
-    override suspend fun writeTextFile(request: WriteTextFileRequest) {
+
+    override suspend fun fsWriteTextFile(request: WriteTextFileRequest): WriteTextFileResponse {
         File(request.path).writeText(request.content)
+        return WriteTextFileResponse()
     }
-    
-    override suspend fun requestPermission(request: RequestPermissionRequest): RequestPermissionResponse {
+
+    override suspend fun sessionRequestPermission(request: RequestPermissionRequest): RequestPermissionResponse {
         // Present options to user and return their choice
         val selectedOption = request.options.first()
         return RequestPermissionResponse(
             RequestPermissionOutcome.Selected(selectedOption.optionId)
         )
     }
-    
+
     override suspend fun sessionUpdate(notification: SessionNotification) {
         // Handle real-time updates from agent
         println("Agent update: ${notification.update}")
     }
+
+    // Implement other required methods...
 }
 
 // Set up client
-fun main() = runBlocking {
+suspend fun main() = coroutineScope {
     val client = MyClient()
+
     // Create transport from external process (agent)
     val agentProcess = ProcessBuilder("gemini", "--experimental-acp").start()
     val transport = StdioTransport(
-        agentProcess.inputStream.asSource(),
-        agentProcess.outputStream.asSink()
+        parentScope = this,
+        input = agentProcess.inputStream.asSource().buffered(),
+        output = agentProcess.outputStream.asSink().buffered()
     )
-    val connection = ClientSideConnection(client)
-    
-    connection.connect(transport)
-    transport.start()
-    
+
+    // Create connection with parent scope
+    val connection = ClientSideConnection(
+        parentScope = this,
+        transport = transport,
+        client = client
+    )
+
+    // Start the connection
+    connection.start()
+
     // Initialize agent
-    val initResponse = connection.initialize(InitializeRequest(
-        protocolVersion = LATEST_PROTOCOL_VERSION,
-        clientCapabilities = ClientCapabilities(
-            fs = FileSystemCapability(
-                readTextFile = true,
-                writeTextFile = true
+    val initResponse = connection.initialize(
+        InitializeRequest(
+            protocolVersion = LATEST_PROTOCOL_VERSION,
+            clientCapabilities = ClientCapabilities(
+                fs = FileSystemCapability(
+                    readTextFile = true,
+                    writeTextFile = true
+                )
             )
         )
-    ))
-    
+    )
+
     // Create session and send prompts
-    val sessionResponse = connection.newSession(NewSessionRequest(
-        cwd = "/path/to/working/directory",
-        mcpServers = emptyList()
-    ))
-    
-    val promptResponse = connection.prompt(PromptRequest(
-        sessionId = sessionResponse.sessionId,
-        prompt = listOf(ContentBlock.Text("Hello, agent!"))
-    ))
+    val sessionResponse = connection.sessionNew(
+        NewSessionRequest(
+            cwd = "/path/to/working/directory",
+            mcpServers = emptyList()
+        )
+    )
+
+    val promptResponse = connection.sessionPrompt(
+        PromptRequest(
+            sessionId = sessionResponse.sessionId,
+            prompt = listOf(ContentBlock.Text("Hello, agent!"))
+        )
+    )
 }
 ```
 
@@ -191,6 +220,8 @@ Run the samples:
 - ✅ Full ACP v1 protocol implementation
 - ✅ JSON-RPC message handling with request/response correlation
 - ✅ Support for all ACP message types (requests, responses, notifications)
+- ✅ Type-safe method enums (`AcpMethod.AgentMethods` and `AcpMethod.ClientMethods`)
+- ✅ Structured request/response interfaces (`AcpRequest`, `AcpResponse`, `AcpWithMeta`)
 
 ### Agent Features
 - ✅ Agent initialization and capability negotiation
@@ -235,6 +266,6 @@ The SDK follows a clean architecture with clear separation of concerns:
 ```
 
 - **Transport Layer**: Handles raw message transmission via STDIO
-- **Protocol Layer**: Manages JSON-RPC framing, request correlation, and error handling
-- **Connection Layer**: Provides type-safe ACP method calls and handles serialization
+- **Protocol Layer**: Manages JSON-RPC framing, request correlation, error handling, and type-safe method dispatch using `AcpMethod` enums
+- **Connection Layer**: Provides type-safe ACP method calls and handles serialization with structured `AcpRequest`/`AcpResponse` interfaces
 - **Application Layer**: Your agent or client implementation
