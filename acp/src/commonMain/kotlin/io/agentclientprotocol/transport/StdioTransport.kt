@@ -9,6 +9,7 @@ import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.io.IOException
 import kotlinx.io.Sink
 import kotlinx.io.Source
 import kotlinx.io.readLine
@@ -49,6 +50,9 @@ public class StdioTransport(
                         input.readLine()
                     } catch (e: IllegalStateException) {
                         logger.trace(e) { "Input stream closed" }
+                        break
+                    } catch (e: IOException) {
+                        logger.trace(e) { "Input stream likely closed" }
                         break
                     }
                     if (line == null) {
