@@ -1,4 +1,4 @@
-rootProject.name = "kotlin-acp-sdk"
+rootProject.name = "acp-kotlin-sdk"
 
 pluginManagement {
     repositories {
@@ -17,8 +17,8 @@ dependencyResolutionManagement {
     }
 }
 
-include(":kotlin-acp-model")
-include(":kotlin-acp")
+include(":acp-model")
+include(":acp")
 
 // Include sample projects
 include(":samples:kotlin-acp-client-sample")

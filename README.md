@@ -18,13 +18,13 @@ The Agent Client Protocol allows applications to provide a standardized interfac
 
 ## Project Structure
 
-- **kotlin-acp**: Single module containing all ACP functionality
+- **acp**: Core ACP functionality module
   - `agent/`: Agent-side implementation (`Agent.kt`, `AgentSideConnection.kt`)
   - `client/`: Client-side implementation (`Client.kt`, `ClientSideConnection.kt`)
-  - `model/`: Protocol data models and types
   - `protocol/`: Core protocol handling
   - `rpc/`: JSON-RPC implementation
   - `transport/`: Transport layer implementation (STDIO)
+- **acp-model**: Protocol data models and types
 - **samples/**: Example implementations demonstrating usage
 
 ## Installation
@@ -41,7 +41,7 @@ Add the dependency:
 
 ```kotlin
 dependencies {
-    implementation("io.agentclientprotocol:kotlin-acp:0.1.0-SNAPSHOT")
+    implementation("io.agentclientprotocol:acp:0.1.0-SNAPSHOT")
 }
 ```
 
