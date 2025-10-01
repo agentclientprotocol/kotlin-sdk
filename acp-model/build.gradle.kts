@@ -13,3 +13,15 @@ kotlin {
         }
     }
 }
+
+val artefactName = "acp-model"
+publishing {
+    publications {
+        withType<MavenPublication> {
+            artifactId = when (name) {
+                "kotlinMultiplatform" -> artefactName
+                else -> "$artefactName-$name"
+            }
+        }
+    }
+}

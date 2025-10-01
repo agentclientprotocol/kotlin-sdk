@@ -94,3 +94,4 @@ kotlin-js-store
 build
 out
 /.kotlin/
+/.env

@@ -1,42 +1,52 @@
+import java.util.Properties
+
 plugins {
     `maven-publish`
     signing
 }
 
+
+// Load .env file from project root
+val envFile = rootProject.file(".env")
+val envProps = Properties()
+if (envFile.exists()) {
+    envFile.inputStream().use { envProps.load(it) }
+}
+
+fun getEnvProperty(name: String): String {
+    return envProps.getProperty(name)
+        ?: project.findProperty(name) as String?
+        ?: System.getenv(name)
+        ?: ""
+}
+
+val spaceUsername: String = getEnvProperty("SPACE_USERNAME")
+val spacePassword: String = getEnvProperty("SPACE_PASSWORD")
+
 publishing {
-    publications {
-        withType<MavenPublication> {
-            pom {
-                name.set("ACP Kotlin SDK")
-                description.set("Kotlin implementation of the Agent Client Protocol (ACP)")
-                url.set("https://github.com/agentclientprotocol/agent-client-protocol")
-                
-                licenses {
-                    license {
-                        name.set("MIT")
-                        url.set("https://opensource.org/licenses/MIT")
-                    }
-                }
-                
-                developers {
-                    developer {
-                        id.set("acp")
-                        name.set("Agent Client Protocol Team")
-                        email.set("team@agentclientprotocol.com")
-                    }
-                }
-                
-                scm {
-                    connection.set("scm:git:git://github.com/agentclientprotocol/agent-client-protocol.git")
-                    developerConnection.set("scm:git:ssh://github.com/agentclientprotocol/agent-client-protocol.git")
-                    url.set("https://github.com/agentclientprotocol/agent-client-protocol")
-                }
+    repositories {
+        maven {
+            name = "Space"
+            url = uri("https://packages.jetbrains.team/maven/p/ij/intellij-private-dependencies")
+            credentials {
+                username = spaceUsername
+                password = spacePassword
             }
         }
     }
+
+    publications.withType<MavenPublication> {
+        groupId = project.group.toString()
+        version = project.version.toString()
+    }
 }
 
-signing {
-    useGpgCmd()
-    sign(publishing.publications)
+tasks.withType<GenerateModuleMetadata> {
+    enabled = false
 }
+
+//signing {
+//    isRequired = false
+//    useGpgCmd()
+//    sign(publishing.publications)
+//}

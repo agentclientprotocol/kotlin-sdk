@@ -32,3 +32,16 @@ kotlin {
         }
     }
 }
+
+val artifactName = "acp"
+
+publishing {
+    publications {
+        withType<MavenPublication> {
+            artifactId = when (name) {
+                "kotlinMultiplatform" -> artifactName
+                else -> "$artifactName-$name"
+            }
+        }
+    }
+}
