@@ -4,7 +4,9 @@ plugins {
     id("org.jetbrains.kotlinx.binary-compatibility-validator") version "0.16.3" apply false
 }
 
+val buildNumber: String? = System.getenv("GITHUB_RUN_NUMBER")
+
 allprojects {
     group = "com.agentclientprotocol"
-    version = "0.1.15"
+    version = "1.1.${buildNumber ?: "EAP"}"
 }

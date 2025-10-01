@@ -1,0 +1,30 @@
+name: Publish Library
+
+on:
+  push:
+    branches:
+      - master  # only publish when master gets new commits
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/gradle-build-action@v2
+
+      - name: Publish to Maven
+        run: ./gradlew publish
+        env:
+          SPACE_USERNAME: ${{ secrets.SPACE_USERNAME }}
+          SPACE_PASSWORD: ${{ secrets.SPACE_PASSWORD }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
