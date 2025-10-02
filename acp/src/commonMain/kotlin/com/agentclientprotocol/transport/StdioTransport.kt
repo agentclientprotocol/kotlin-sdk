@@ -3,11 +3,12 @@ package com.agentclientprotocol.transport
 import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.decodeJsonRpcMessage
+import com.agentclientprotocol.transport.Transport.State
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.flow.getAndUpdate
+import kotlinx.coroutines.flow.update
 import kotlinx.io.*
 import kotlinx.serialization.encodeToString
 
@@ -30,12 +31,8 @@ public class StdioTransport(
     private val receiveChannel = Channel<JsonRpcMessage>(Channel.UNLIMITED)
     private val sendChannel = Channel<JsonRpcMessage>(Channel.UNLIMITED)
     
-    private val _isConnected = atomic(false)
-    override val isConnected: Boolean get() = _isConnected.value
-
     override fun start() {
-        // TODO handle state properly
-        _isConnected.value = true
+        if (_state.getAndUpdate { State.STARTING } != State.CREATED) error("Transport is not in ${State.CREATED.name} state")
         // Start reading messages from input
         childScope.launch(CoroutineName("${::StdioTransport.name}.join-jobs")) {
             val readJob = launch(ioDispatcher + CoroutineName("${::StdioTransport.name}.read-from-input")) {
@@ -76,10 +73,7 @@ public class StdioTransport(
                     fireError(e)
                 } finally {
                     withContext(NonCancellable) {
-                        logger.trace { "Closing channels..." }
-                        closeChannels()
-                        logger.trace { "Closing input..." }
-                        input.close()
+                        close()
                     }
                 }
                 logger.trace { "Exiting read job..." }
@@ -105,16 +99,14 @@ public class StdioTransport(
                     fireError(e)
                 } finally {
                     withContext(NonCancellable) {
-                        logger.trace { "Closing channels..." }
-                        closeChannels()
-                        logger.trace { "Closing output..." }
-                        output.close()
+                        close()
                     }
                 }
                 logger.trace { "Exiting write job..." }
             }
             try {
                 logger.trace { "Joining read/write jobs..." }
+                if (_state.getAndUpdate { State.STARTED } != State.STARTING) logger.error { "Transport is not in ${State.STARTING.name} state" }
                 joinAll(readJob, writeJob)
             }
             catch (ce: CancellationException) {
@@ -126,7 +118,7 @@ public class StdioTransport(
                 fireError(e)
             }
             finally {
-                _isConnected.value = false
+                if (_state.getAndUpdate { State.CLOSED } != State.CLOSING) logger.error { "Transport is not in ${State.CLOSING.name} state" }
                 fireClose()
                 logger.trace { "Transport closed" }
             }
@@ -140,23 +132,20 @@ public class StdioTransport(
     }
 
     override fun close() {
-        if (!_isConnected.getAndSet(false)) {
-            logger.trace { "Transport is already closed" }
+        val old = _state.value
+        if (old == State.CLOSED || old == State.CLOSING) {
+            logger.trace { "Transport is already closed or closing" }
+            return
+        }
+        if (!_state.compareAndSet(old, State.CLOSING)) {
+            logger.debug { "State changed concurrently. Do nothing" }
             return
         }
 
-        closeChannels()
+        if (sendChannel.close()) logger.trace { "Send channel closed" }
+        if (receiveChannel.close()) logger.trace { "Receive channel closed" }
 
-        try {
-            input.close()
-            output.close()
-        } catch (e: Throwable) {
-            logger.trace(e) { "Exception when closing input/output streams" }
-        }
-    }
-
-    private fun closeChannels(t: Throwable? = null) {
-        if (sendChannel.close(t)) logger.trace(t) { "Send channel closed" }
-        if (receiveChannel.close(t)) logger.trace(t) { "Receive channel closed" }
+        runCatching { input.close() }.onFailure { logger.warn(it) { "Exception when closing input stream" } }
+        runCatching { output.close() }.onFailure { logger.warn(it) { "Exception when closing output stream" } }
     }
 }

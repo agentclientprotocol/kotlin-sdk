@@ -2,6 +2,7 @@ package com.agentclientprotocol.samples.agent
 
 import com.agentclientprotocol.agent.AgentSideConnection
 import com.agentclientprotocol.transport.StdioTransport
+import com.agentclientprotocol.transport.Transport
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -53,7 +54,7 @@ suspend fun main() = coroutineScope {
         
         // Keep the agent running
         // In a real implementation, you might want to handle shutdown signals
-        while (transport.isConnected) {
+        while (transport.state.value == Transport.State.STARTED) {
             delay(1000)
         }
         

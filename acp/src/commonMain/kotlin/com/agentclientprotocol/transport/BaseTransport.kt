@@ -4,10 +4,14 @@ import com.agentclientprotocol.rpc.JsonRpcMessage
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 private val logger = KotlinLogging.logger {}
 
 public abstract class BaseTransport : Transport {
+    protected val _state: MutableStateFlow<Transport.State> = MutableStateFlow(Transport.State.CREATED)
     private val messageHandlers = atomic<MessageListener>({})
     private val errorHandlers = atomic<ErrorListener>({})
     private val closeHandlers = atomic<CloseListener>({})
@@ -20,6 +24,9 @@ public abstract class BaseTransport : Transport {
             }
         }
     }
+
+    override val state: StateFlow<Transport.State>
+        get() = _state.asStateFlow()
 
     protected fun fireMessage(message: JsonRpcMessage) {
         messageHandlers.value(message)

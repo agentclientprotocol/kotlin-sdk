@@ -6,17 +6,17 @@ import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.rpc.JsonRpcResponse
 import com.agentclientprotocol.rpc.RequestId
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
 import kotlinx.io.*
 import kotlinx.serialization.json.JsonPrimitive
-import java.nio.channels.Channel
-import java.nio.channels.Channels
 import java.nio.channels.Channels.newInputStream
 import java.nio.channels.Channels.newOutputStream
 import java.nio.channels.Pipe
 import kotlin.test.*
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 class StdioTransportTest {
     private lateinit var pipe: Pipe
@@ -25,6 +25,20 @@ class StdioTransportTest {
     private lateinit var scope: CoroutineScope
     private lateinit var transport: StdioTransport
     private lateinit var messages: kotlinx.coroutines.channels.Channel<JsonRpcMessage>
+
+    suspend fun expectState(state: Transport.State, timeout: Duration = 1.seconds, message: String? = null) {
+        val observed = mutableListOf<Transport.State>()
+        try {
+            withTimeout(timeout) {
+                transport.state
+                    .onEach { observed.add(it) }
+                    .first { it == state }
+            }
+        }
+        catch (_: TimeoutCancellationException) {
+            fail("Timed out waiting for state $state after $timeout, observed states: ${observed.joinToString { it.name }}, ${message?.let { ": $it" } ?: ""}")
+        }
+    }
 
     @BeforeTest
     fun setUp() {
@@ -113,23 +127,15 @@ class StdioTransportTest {
     }
 
     @Test
-    fun `should report connected state correctly`(): Unit = runBlocking {
-        assertTrue(transport.isConnected)
-
-        transport.close()
-        assertFalse(transport.isConnected)
-    }
-
-    @Test
     fun `should handle closing transport gracefully`(): Unit = runBlocking {
-        assertTrue(transport.isConnected)
+        expectState(Transport.State.STARTED)
 
         transport.close()
-        assertFalse(transport.isConnected)
+        expectState(Transport.State.CLOSED, message = "After 1 close")
 
         // Closing again should not throw
         transport.close()
-        assertFalse(transport.isConnected)
+         expectState(Transport.State.CLOSED, message = "After 2 close")
     }
 
 

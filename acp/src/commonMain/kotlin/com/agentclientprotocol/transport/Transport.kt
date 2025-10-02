@@ -4,6 +4,7 @@ package com.agentclientprotocol.transport
 
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.StateFlow
 
 public typealias MessageListener = (JsonRpcMessage) -> Unit
 public typealias ErrorListener = (Throwable) -> Unit
@@ -16,6 +17,9 @@ public typealias CloseListener = () -> Unit
  * supporting various protocols like STDIO, WebSocket, and SSE.
  */
 public interface Transport : AutoCloseable {
+    public enum class State { CREATED, STARTING, STARTED, CLOSING, CLOSED }
+    public val state: StateFlow<State>
+
     /**
      * Start the transport and begin listening for messages.
      */
@@ -27,11 +31,6 @@ public interface Transport : AutoCloseable {
      * @param message The JSON-encoded message to send
      */
     public fun send(message: JsonRpcMessage)
-
-    /**
-     * Whether the transport is currently connected.
-     */
-    public val isConnected: Boolean
 
     public fun onMessage(handler: MessageListener)
 
