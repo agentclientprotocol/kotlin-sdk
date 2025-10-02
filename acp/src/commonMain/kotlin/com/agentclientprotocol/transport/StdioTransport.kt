@@ -89,6 +89,9 @@ public class StdioTransport(
                         } catch (e: IllegalStateException) {
                             logger.trace(e) { "Output stream closed" }
                             break
+                        } catch (e: IOException) {
+                            logger.trace(e) { "Output stream likely closed" }
+                            break
                         }
                     }
                 } catch (ce: CancellationException) {
@@ -106,7 +109,7 @@ public class StdioTransport(
             }
             try {
                 logger.trace { "Joining read/write jobs..." }
-                if (_state.getAndUpdate { State.STARTED } != State.STARTING) logger.error { "Transport is not in ${State.STARTING.name} state" }
+                if (_state.getAndUpdate { State.STARTED } != State.STARTING) logger.warn { "Transport is not in ${State.STARTING.name} state" }
                 joinAll(readJob, writeJob)
             }
             catch (ce: CancellationException) {
@@ -118,7 +121,7 @@ public class StdioTransport(
                 fireError(e)
             }
             finally {
-                if (_state.getAndUpdate { State.CLOSED } != State.CLOSING) logger.error { "Transport is not in ${State.CLOSING.name} state" }
+                if (_state.getAndUpdate { State.CLOSED } != State.CLOSING) logger.warn { "Transport is not in ${State.CLOSING.name} state" }
                 fireClose()
                 logger.trace { "Transport closed" }
             }

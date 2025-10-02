@@ -19,10 +19,13 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 class StdioTransportTest {
+    class TestAccumulatedException(message: String) : Exception(message)
+
     private lateinit var pipe: Pipe
     private lateinit var source: Source
     private lateinit var sink: Sink
     private lateinit var scope: CoroutineScope
+    private lateinit var errors: MutableList<Throwable>
     private lateinit var transport: StdioTransport
     private lateinit var messages: kotlinx.coroutines.channels.Channel<JsonRpcMessage>
 
@@ -40,13 +43,29 @@ class StdioTransportTest {
         }
     }
 
+    private fun throwTransportExceptions() {
+        if (errors.isNotEmpty()) {
+            val exception = TestAccumulatedException("Accumulated transport errors")
+            errors.forEach { exception.addSuppressed(it) }
+            throw exception
+        }
+        errors.clear()
+    }
+
+    suspend fun expectMessage(message: JsonRpcMessage, timeout: Duration = 1.seconds) {
+
+    }
+
     @BeforeTest
     fun setUp() {
         pipe = Pipe.open()
         source = newInputStream(pipe.source()).asSource().buffered()
         sink = newOutputStream(pipe.sink()).asSink().buffered()
         scope = CoroutineScope(SupervisorJob())
-        transport = StdioTransport(scope, Dispatchers.IO, source, sink)
+        errors = mutableListOf()
+        transport = StdioTransport(scope, Dispatchers.IO, input = source, output = sink).apply {
+            onError { errors.add(it) }
+        }
         messages = transport.asMessageChannel()
         transport.start()
     }
@@ -55,7 +74,15 @@ class StdioTransportTest {
     fun tearDown() {
         transport.close()
         scope.cancel()
+        if (errors.isNotEmpty()) {
+            val exception = IOException("Accumulated transport errors")
+            errors.forEach { exception.addSuppressed(it) }
+            throw exception
+        }
+        throwTransportExceptions()
     }
+
+
     @Test
     fun `should read JSON-RPC request from input`(): Unit = runBlocking {
         transport.send(JsonRpcRequest(RequestId("1"), "test.method", JsonPrimitive("value")))
@@ -136,6 +163,51 @@ class StdioTransportTest {
         // Closing again should not throw
         transport.close()
          expectState(Transport.State.CLOSED, message = "After 2 close")
+    }
+
+    @Test
+    fun `should handle close of sink gracefully`(): Unit = runBlocking {
+        testWhileBackgroundSend {
+            pipe.sink().close()
+            expectState(Transport.State.CLOSED, message = "After close")
+        }
+    }
+
+    @Test
+    fun `should handle close of source gracefully`(): Unit = runBlocking {
+        testWhileBackgroundSend {
+            pipe.source().close()
+            expectState(Transport.State.CLOSED, message = "After close")
+        }
+    }
+
+    @Test
+    fun `should handle close of transport gracefully`(): Unit = runBlocking {
+        testWhileBackgroundSend {
+            transport.close()
+            expectState(Transport.State.CLOSED, message = "After close")
+        }
+    }
+
+    @Test
+    fun `should cancel scope gracefully`(): Unit = runBlocking {
+        testWhileBackgroundSend {
+            scope.cancel()
+            expectState(Transport.State.CLOSED, message = "After close")
+        }
+    }
+
+    private suspend fun CoroutineScope.testWhileBackgroundSend(block: suspend () -> Unit) {
+        expectState(Transport.State.STARTED)
+        launch {
+            var i = 0
+            while (transport.state.value != Transport.State.CLOSED) {
+                transport.send(JsonRpcRequest(RequestId("${i++}"), "test"))
+                delay(10.milliseconds)
+            }
+        }
+        delay(100.milliseconds)
+        block()
     }
 
 
