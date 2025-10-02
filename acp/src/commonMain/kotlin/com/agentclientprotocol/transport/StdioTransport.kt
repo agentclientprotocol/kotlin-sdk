@@ -5,7 +5,6 @@ import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.decodeJsonRpcMessage
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
-import kotlinx.atomicfu.update
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
@@ -25,37 +24,8 @@ public class StdioTransport(
     private val ioDispatcher: CoroutineDispatcher,
     private val input: Source,
     private val output: Sink,
-) : Transport {
+) : BaseTransport() {
     private val childScope = CoroutineScope(parentScope.coroutineContext + CoroutineName(::StdioTransport.name) + SupervisorJob(parentScope.coroutineContext[Job]))
-    private val errorHandlers = atomic<ErrorListener>({})
-    private val closeHandlers = atomic<CloseListener>({})
-
-    override fun onClose(handler: CloseListener) {
-        closeHandlers.update { old ->
-            {
-                // old runCatching is made in the previous subscription
-                old()
-                runCatching { handler() }.onFailure { e -> logger.error(e) { "Error in close handler" } }
-            }
-        }
-    }
-
-    private fun fireClose() {
-        closeHandlers.value()
-    }
-
-    override fun onError(handler: ErrorListener) {
-        errorHandlers.update { old ->
-            {
-                old(it)
-                runCatching { handler(it) }.onFailure { e -> logger.error(e) { "Error in error handler" } }
-            }
-        }
-    }
-
-    private fun fireError(throwable: Throwable) {
-        errorHandlers.value(throwable)
-    }
 
     private val receiveChannel = Channel<JsonRpcMessage>(Channel.UNLIMITED)
     private val sendChannel = Channel<JsonRpcMessage>(Channel.UNLIMITED)
