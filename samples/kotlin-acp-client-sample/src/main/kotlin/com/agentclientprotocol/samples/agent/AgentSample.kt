@@ -3,9 +3,9 @@ package com.agentclientprotocol.samples.agent
 import com.agentclientprotocol.agent.AgentSideConnection
 import com.agentclientprotocol.transport.StdioTransport
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
 import kotlinx.io.asSource
 import kotlinx.io.asSink
 import kotlinx.io.buffered
@@ -30,6 +30,7 @@ suspend fun main() = coroutineScope {
         // Create STDIO transport
         val transport = StdioTransport(
             parentScope = this,
+            ioDispatcher = Dispatchers.IO,
             input = System.`in`.asSource().buffered(),
             output = System.out.asSink().buffered()
         )

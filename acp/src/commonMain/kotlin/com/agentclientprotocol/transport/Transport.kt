@@ -4,7 +4,9 @@ package com.agentclientprotocol.transport
 
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import kotlinx.coroutines.channels.ReceiveChannel
-import kotlinx.coroutines.flow.Flow
+
+public typealias ErrorListener = (Throwable) -> Unit
+public typealias CloseListener = () -> Unit
 
 /**
  * Base interface for ACP transport implementations.
@@ -35,4 +37,8 @@ public interface Transport : AutoCloseable {
      * Whether the transport is currently connected.
      */
     public val isConnected: Boolean
+
+    public fun onError(handler: ErrorListener)
+
+    public fun onClose(handler: CloseListener)
 }

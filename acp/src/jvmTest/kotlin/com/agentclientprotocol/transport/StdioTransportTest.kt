@@ -25,7 +25,7 @@ class StdioTransportTest {
         source = Channels.newInputStream(pipe.source()).asSource().buffered()
         sink = Channels.newOutputStream(pipe.sink()).asSink().buffered()
         scope = CoroutineScope(SupervisorJob())
-        transport = StdioTransport(scope, source, sink)
+        transport = StdioTransport(scope, Dispatchers.IO, source, sink)
         transport.start()
     }
 

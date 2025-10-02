@@ -23,5 +23,10 @@ fun createProcessStdioTransport(coroutineScope: CoroutineScope, vararg command: 
         .start()
     val stdin = process.outputStream.asSink().buffered()
     val stdout = process.inputStream.asSource().buffered()
-    return StdioTransport(parentScope = coroutineScope, input = stdout, output = stdin)
+    return StdioTransport(
+        parentScope = coroutineScope,
+        ioDispatcher = kotlinx.coroutines.Dispatchers.IO,
+        input = stdout,
+        output = stdin
+    )
 }

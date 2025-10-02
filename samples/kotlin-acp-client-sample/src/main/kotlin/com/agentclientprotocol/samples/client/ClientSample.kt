@@ -10,6 +10,7 @@ import com.agentclientprotocol.model.PromptRequest
 import com.agentclientprotocol.client.ClientSideConnection
 import com.agentclientprotocol.transport.StdioTransport
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.asSource
 import kotlinx.io.asSink
@@ -40,6 +41,7 @@ fun main() = runBlocking {
         // In a real scenario, this would connect to an agent process
         val transport = StdioTransport(
             parentScope = this,
+            ioDispatcher = Dispatchers.IO,
             input = System.`in`.asSource().buffered(),
             output = System.out.asSink().buffered()
         )

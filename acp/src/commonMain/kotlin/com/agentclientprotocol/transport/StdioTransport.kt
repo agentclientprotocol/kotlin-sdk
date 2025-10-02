@@ -3,17 +3,13 @@ package com.agentclientprotocol.transport
 import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.decodeJsonRpcMessage
-import com.agentclientprotocol.util.DispatcherIO
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.update
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
-import kotlinx.io.IOException
-import kotlinx.io.Sink
-import kotlinx.io.Source
-import kotlinx.io.readLine
-import kotlinx.io.writeString
+import kotlinx.io.*
 import kotlinx.serialization.encodeToString
 
 private val logger = KotlinLogging.logger {}
@@ -26,10 +22,41 @@ private val logger = KotlinLogging.logger {}
  */
 public class StdioTransport(
     private val parentScope: CoroutineScope,
+    private val ioDispatcher: CoroutineDispatcher,
     private val input: Source,
-    private val output: Sink
+    private val output: Sink,
 ) : Transport {
     private val childScope = CoroutineScope(parentScope.coroutineContext + CoroutineName(::StdioTransport.name) + SupervisorJob(parentScope.coroutineContext[Job]))
+    private val errorHandlers = atomic<ErrorListener>({})
+    private val closeHandlers = atomic<CloseListener>({})
+
+    override fun onClose(handler: CloseListener) {
+        closeHandlers.update { old ->
+            {
+                // old runCatching is made in the previous subscription
+                old()
+                runCatching { handler() }.onFailure { e -> logger.error(e) { "Error in close handler" } }
+            }
+        }
+    }
+
+    private fun fireClose() {
+        closeHandlers.value()
+    }
+
+    override fun onError(handler: ErrorListener) {
+        errorHandlers.update { old ->
+            {
+                old(it)
+                runCatching { handler(it) }.onFailure { e -> logger.error(e) { "Error in error handler" } }
+            }
+        }
+    }
+
+    private fun fireError(throwable: Throwable) {
+        errorHandlers.value(throwable)
+    }
+
     private val receiveChannel = Channel<JsonRpcMessage>(Channel.UNLIMITED)
     private val sendChannel = Channel<JsonRpcMessage>(Channel.UNLIMITED)
     
@@ -42,67 +69,93 @@ public class StdioTransport(
         // TODO handle state properly
         _isConnected.value = true
         // Start reading messages from input
-        childScope.launch(DispatcherIO + CoroutineName("${::StdioTransport.name}.send")) {
-            try {
-                while (_isConnected.value) {
-                    // ACP assumes working with ND Json (new line delimited Json) when working over stdio
-                    val line = try {
-                        input.readLine()
-                    } catch (e: IllegalStateException) {
-                        logger.trace(e) { "Input stream closed" }
-                        break
-                    } catch (e: IOException) {
-                        logger.trace(e) { "Input stream likely closed" }
-                        break
-                    }
-                    if (line == null) {
-                        // End of stream
-                        logger.trace { "End of stream" }
-                        break
-                    }
+        childScope.launch(CoroutineName("${::StdioTransport.name}.join-jobs")) {
+            val readJob = launch(ioDispatcher + CoroutineName("${::StdioTransport.name}.read-from-input")) {
+                try {
+                    while (_isConnected.value) {
+                        // ACP assumes working with ND Json (new line delimited Json) when working over stdio
+                        val line = try {
+                            input.readLine()
+                        } catch (e: IllegalStateException) {
+                            logger.trace(e) { "Input stream closed" }
+                            break
+                        } catch (e: IOException) {
+                            logger.trace(e) { "Input stream likely closed" }
+                            break
+                        }
+                        if (line == null) {
+                            // End of stream
+                            logger.trace { "End of stream" }
+                            break
+                        }
 
-                    val jsonRpcMessage = try {
-                        decodeJsonRpcMessage(line)
-                    } catch (t: Throwable) {
-                        logger.error(t) { "Failed to decode JSON message: $line" }
-                        continue
+                        val jsonRpcMessage = try {
+                            decodeJsonRpcMessage(line)
+                        } catch (t: Throwable) {
+                            logger.trace(t) { "Failed to decode JSON message: $line" }
+                            fireError(t)
+                            continue
+                        }
+                        logger.trace { "Sending message to channel: $jsonRpcMessage" }
+                        receiveChannel.send(jsonRpcMessage)
                     }
-                    logger.trace { "Sending message to channel: $jsonRpcMessage" }
-                    receiveChannel.send(jsonRpcMessage)
+                } catch (ce: CancellationException) {
+                    logger.trace(ce) { "Read job cancelled" }
+                    // don't throw as error
+                } catch (e: Exception) {
+                    logger.trace(e) { "Failed to read from input stream" }
+                    fireError(e)
+                } finally {
+                    withContext(NonCancellable) {
+                        logger.trace { "Closing channels..." }
+                        closeChannels()
+                        logger.trace { "Closing input..." }
+                        input.close()
+                    }
                 }
-            } catch (ce: CancellationException) {
-                logger.trace(ce) { "Input read cancelled" }
-                throw ce
-            } catch (e: Exception) {
-                logger.error(e) { "Failed to read from input stream" }
-                closeChannels(e)
-            } finally {
-                closeChannels()
-                input.close()
+                logger.trace { "Exiting read job..." }
             }
-        }
-        childScope.launch(DispatcherIO + CoroutineName("${::StdioTransport.name}.receive")) {
-            try {
-                for (message in sendChannel) {
-                    val encoded = ACPJson.encodeToString(message)
-                    try {
-                        output.writeString(encoded)
-                        output.writeString("\n")
-                        output.flush()
-                    } catch (e: IllegalStateException) {
-                        logger.trace(e) { "Output stream closed" }
-                        break
+            val writeJob = launch(ioDispatcher + CoroutineName("${::StdioTransport.name}.write-to-output")) {
+                try {
+                    for (message in sendChannel) {
+                        val encoded = ACPJson.encodeToString(message)
+                        try {
+                            output.writeString(encoded)
+                            output.writeString("\n")
+                            output.flush()
+                        } catch (e: IllegalStateException) {
+                            logger.trace(e) { "Output stream closed" }
+                            break
+                        }
+                    }
+                } catch (ce: CancellationException) {
+                    logger.trace(ce) { "Write job cancelled" }
+                    // don't throw as error
+                } catch (e: Throwable) {
+                    logger.trace(e) { "Failed to write to output stream" }
+                    fireError(e)
+                } finally {
+                    withContext(NonCancellable) {
+                        logger.trace { "Closing channels..." }
+                        closeChannels()
+                        logger.trace { "Closing output..." }
+                        output.close()
                     }
                 }
-            }catch (ce: CancellationException) {
-                logger.trace(ce) { "Output write cancelled" }
-                throw ce
-            } catch (e: Throwable) {
-                closeChannels(e)
-                logger.error(e) { "Failed to write to output stream" }
-            } finally {
-                closeChannels()
-                output.close()
+                logger.trace { "Exiting write job..." }
+            }
+            try {
+                logger.trace { "Joining read/write jobs..." }
+                joinAll(readJob, writeJob)
+            }
+            catch (e: Exception) {
+                logger.trace(e) { "Exception while waiting read/write jobs" }
+                fireError(e)
+            }
+            finally {
+                _isConnected.value = false
+                fireClose()
+                logger.trace { "Transport closed" }
             }
         }
     }
