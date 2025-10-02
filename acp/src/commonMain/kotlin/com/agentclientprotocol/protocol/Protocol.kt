@@ -55,7 +55,7 @@ public class Protocol(
     private val transport: Transport,
     private val options: ProtocolOptions = ProtocolOptions(),
 ) {
-    private val scope = CoroutineScope(parentScope.coroutineContext + CoroutineName(::Protocol.name) + SupervisorJob(parentScope.coroutineContext[Job]))
+    private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
     private val requestIdCounter: AtomicLong = atomic(0L)
     private val pendingRequests: AtomicRef<PersistentMap<RequestId, CompletableDeferred<JsonElement>>> =
         atomic(persistentMapOf())
@@ -77,7 +77,7 @@ public class Protocol(
      */
     public fun start() {
         // Start processing incoming messages
-        scope.launch(CoroutineName("${::Protocol.name}.read-messages")) {
+        scope.launch(CoroutineName("${Protocol::class.simpleName!!}.read-messages")) {
             try {
                 for (message in transport.asMessageChannel()) {
                     try {
