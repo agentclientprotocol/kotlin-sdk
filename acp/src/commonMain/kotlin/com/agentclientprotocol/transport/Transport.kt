@@ -3,8 +3,9 @@
 package com.agentclientprotocol.transport
 
 import com.agentclientprotocol.rpc.JsonRpcMessage
-import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.channels.Channel
 
+public typealias MessageListener = (JsonRpcMessage) -> Unit
 public typealias ErrorListener = (Throwable) -> Unit
 public typealias CloseListener = () -> Unit
 
@@ -28,17 +29,21 @@ public interface Transport : AutoCloseable {
     public fun send(message: JsonRpcMessage)
 
     /**
-     * Flow of incoming messages from the transport.
-     * Each message is a JSON-encoded string.
-     */
-    public val messages: ReceiveChannel<JsonRpcMessage>
-
-    /**
      * Whether the transport is currently connected.
      */
     public val isConnected: Boolean
 
+    public fun onMessage(handler: MessageListener)
+
     public fun onError(handler: ErrorListener)
 
     public fun onClose(handler: CloseListener)
+}
+
+public fun Transport.asMessageChannel(): Channel<JsonRpcMessage> {
+    val channel = Channel<JsonRpcMessage>(capacity = Channel.UNLIMITED)
+    onMessage { channel.trySend(it) }
+    onError { channel.close(it) }
+    onClose { channel.close() }
+    return channel
 }

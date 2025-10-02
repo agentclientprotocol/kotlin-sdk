@@ -32,9 +32,7 @@ public class StdioTransport(
     
     private val _isConnected = atomic(false)
     override val isConnected: Boolean get() = _isConnected.value
-    
-    override val messages: ReceiveChannel<JsonRpcMessage> = receiveChannel
-    
+
     override fun start() {
         // TODO handle state properly
         _isConnected.value = true
@@ -42,7 +40,8 @@ public class StdioTransport(
         childScope.launch(CoroutineName("${::StdioTransport.name}.join-jobs")) {
             val readJob = launch(ioDispatcher + CoroutineName("${::StdioTransport.name}.read-from-input")) {
                 try {
-                    while (_isConnected.value) {
+                    while (currentCoroutineContext().isActive) {
+                        currentCoroutineContext().ensureActive()
                         // ACP assumes working with ND Json (new line delimited Json) when working over stdio
                         val line = try {
                             input.readLine()
@@ -67,7 +66,7 @@ public class StdioTransport(
                             continue
                         }
                         logger.trace { "Sending message to channel: $jsonRpcMessage" }
-                        receiveChannel.send(jsonRpcMessage)
+                        fireMessage(jsonRpcMessage)
                     }
                 } catch (ce: CancellationException) {
                     logger.trace(ce) { "Read job cancelled" }
@@ -117,6 +116,10 @@ public class StdioTransport(
             try {
                 logger.trace { "Joining read/write jobs..." }
                 joinAll(readJob, writeJob)
+            }
+            catch (ce: CancellationException) {
+                logger.trace(ce) { "Join cancelled" }
+                // don't throw as error
             }
             catch (e: Exception) {
                 logger.trace(e) { "Exception while waiting read/write jobs" }

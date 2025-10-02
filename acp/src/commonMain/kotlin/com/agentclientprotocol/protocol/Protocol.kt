@@ -5,6 +5,7 @@ package com.agentclientprotocol.protocol
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.rpc.*
 import com.agentclientprotocol.transport.Transport
+import com.agentclientprotocol.transport.asMessageChannel
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.AtomicLong
 import kotlinx.atomicfu.AtomicRef
@@ -75,23 +76,19 @@ public class Protocol(
      * Connect to a transport and start processing messages.
      */
     public fun start() {
-        
-//        transport.onClose = {
-//            // Cancel all pending requests
-//            val requests = pendingRequests.getAndSet(persistentMapOf())
-//            requests.values.forEach { deferred ->
-//                deferred.cancel("Transport closed")
-//            }
-//        }
-
         // Start processing incoming messages
-        scope.launch {
-            for (message in transport.messages) {
-                try {
-                    handleIncomingMessage(message)
-                } catch (e: Exception) {
-                    logger.error(e) { "Error processing incoming message: $message" }
+        scope.launch(CoroutineName("${::Protocol.name}.read-messages")) {
+            try {
+                for (message in transport.asMessageChannel()) {
+                    try {
+                        handleIncomingMessage(message)
+                    } catch (e: Exception) {
+                        logger.error(e) { "Error processing incoming message: $message" }
+                    }
                 }
+            }
+            catch (e: Exception) {
+                logger.error(e) { "Error processing incoming messages" }
             }
         }
         transport.start()

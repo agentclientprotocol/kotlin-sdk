@@ -1,13 +1,19 @@
 package com.agentclientprotocol.transport
 
+import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.rpc.JsonRpcResponse
 import com.agentclientprotocol.rpc.RequestId
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.io.*
 import kotlinx.serialization.json.JsonPrimitive
+import java.nio.channels.Channel
 import java.nio.channels.Channels
+import java.nio.channels.Channels.newInputStream
+import java.nio.channels.Channels.newOutputStream
 import java.nio.channels.Pipe
 import kotlin.test.*
 import kotlin.time.Duration.Companion.milliseconds
@@ -18,14 +24,16 @@ class StdioTransportTest {
     private lateinit var sink: Sink
     private lateinit var scope: CoroutineScope
     private lateinit var transport: StdioTransport
+    private lateinit var messages: kotlinx.coroutines.channels.Channel<JsonRpcMessage>
 
     @BeforeTest
     fun setUp() {
         pipe = Pipe.open()
-        source = Channels.newInputStream(pipe.source()).asSource().buffered()
-        sink = Channels.newOutputStream(pipe.sink()).asSink().buffered()
+        source = newInputStream(pipe.source()).asSource().buffered()
+        sink = newOutputStream(pipe.sink()).asSink().buffered()
         scope = CoroutineScope(SupervisorJob())
         transport = StdioTransport(scope, Dispatchers.IO, source, sink)
+        messages = transport.asMessageChannel()
         transport.start()
     }
 
@@ -39,7 +47,7 @@ class StdioTransportTest {
         transport.send(JsonRpcRequest(RequestId("1"), "test.method", JsonPrimitive("value")))
 
         // Read the message from the transport
-        val message = transport.messages.receive()
+        val message = messages.receive()
 
         assertTrue(message is JsonRpcRequest)
         assertEquals(RequestId("1"), message.id)
@@ -52,7 +60,7 @@ class StdioTransportTest {
         transport.send(JsonRpcNotification(method = "test.notification"))
 
         // Read the message from the transport
-        val message = transport.messages.receive()
+        val message = messages.receive()
 
         assertTrue(message is JsonRpcNotification)
         assertEquals("test.notification", message.method)
@@ -63,7 +71,7 @@ class StdioTransportTest {
         transport.send(JsonRpcResponse(RequestId("42"), result = JsonPrimitive("success")))
 
         // Read the message from the transport
-        val message = transport.messages.receive()
+        val message = messages.receive()
 
         assertTrue(message is JsonRpcResponse)
         assertEquals(RequestId("42"), message.id)
@@ -76,9 +84,9 @@ class StdioTransportTest {
         transport.send(JsonRpcNotification(method = "notification1"))
         transport.send(JsonRpcResponse(RequestId("2"), result = JsonPrimitive("ok")))
 
-        val message1 = transport.messages.receive()
-        val message2 = transport.messages.receive()
-        val message3 = transport.messages.receive()
+        val message1 = messages.receive()
+        val message2 = messages.receive()
+        val message3 = messages.receive()
 
         assertTrue(message1 is JsonRpcRequest)
         assertEquals("method1", message1.method)
@@ -95,11 +103,11 @@ class StdioTransportTest {
         transport.send(JsonRpcRequest(RequestId("1"), "first"))
         transport.send(JsonRpcRequest(RequestId("2"), "second"))
 
-        val message1 = transport.messages.receive()
+        val message1 = messages.receive()
         assertTrue(message1 is JsonRpcRequest)
         assertEquals("first", message1.method)
 
-        val message2 = transport.messages.receive()
+        val message2 = messages.receive()
         assertTrue(message2 is JsonRpcRequest)
         assertEquals("second", message2.method)
     }
@@ -129,7 +137,7 @@ class StdioTransportTest {
     fun `should handle end of stream gracefully`(): Unit = runBlocking {
         transport.send(JsonRpcRequest(RequestId("1"), "test"))
 
-        val message = transport.messages.receive()
+        val message = messages.receive()
         assertTrue(message is JsonRpcRequest)
 
         // Wait a bit to ensure input coroutine processes EOF
@@ -148,7 +156,7 @@ class StdioTransportTest {
         jobs.joinAll()
 
         // Receive all messages
-        val messages = (1..10).map { transport.messages.receive() }
+        val messages = (1..10).map { messages.receive() }
 
         // All messages should be received
         (1..10).forEach { i ->
