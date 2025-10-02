@@ -4,6 +4,7 @@ package com.agentclientprotocol.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 /**
  * Priority levels for plan entries.
@@ -46,8 +47,9 @@ public enum class PlanEntryStatus {
 public data class PlanEntry(
     val content: String,
     val priority: PlanEntryPriority,
-    val status: PlanEntryStatus
-)
+    val status: PlanEntryStatus,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
 
 /**
  * An execution plan for accomplishing complex tasks.
@@ -60,5 +62,6 @@ public data class PlanEntry(
  */
 @Serializable
 public data class Plan(
-    val entries: List<PlanEntry>
-)
+    val entries: List<PlanEntry>,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta

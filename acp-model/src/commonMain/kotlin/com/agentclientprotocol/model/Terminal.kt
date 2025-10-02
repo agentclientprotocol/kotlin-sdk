@@ -3,6 +3,7 @@
 package com.agentclientprotocol.model
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 /**
  * Terminal-related request and response types.
@@ -21,7 +22,8 @@ public data class CreateTerminalRequest(
     val args: List<String> = emptyList(),
     val cwd: String? = null,
     val env: List<EnvVariable> = emptyList(),
-    val outputByteLimit: ULong? = null
+    val outputByteLimit: ULong? = null,
+    override val _meta: JsonElement? = null
 ) : AcpRequest
 
 /**
@@ -29,7 +31,8 @@ public data class CreateTerminalRequest(
  */
 @Serializable
 public data class CreateTerminalResponse(
-    val terminalId: String
+    val terminalId: String,
+    override val _meta: JsonElement? = null
 ) : AcpResponse
 
 /**
@@ -38,7 +41,8 @@ public data class CreateTerminalResponse(
 @Serializable
 public data class TerminalOutputRequest(
     val sessionId: SessionId,
-    val terminalId: String
+    val terminalId: String,
+    override val _meta: JsonElement? = null
 ) : AcpRequest
 
 /**
@@ -48,7 +52,8 @@ public data class TerminalOutputRequest(
 public data class TerminalOutputResponse(
     val output: String,
     val truncated: Boolean,
-    val exitStatus: TerminalExitStatus? = null
+    val exitStatus: TerminalExitStatus? = null,
+    override val _meta: JsonElement? = null
 ) : AcpResponse
 
 /**
@@ -57,7 +62,8 @@ public data class TerminalOutputResponse(
 @Serializable
 public data class ReleaseTerminalRequest(
     val sessionId: SessionId,
-    val terminalId: String
+    val terminalId: String,
+    override val _meta: JsonElement? = null
 ) : AcpRequest
 
 /**
@@ -66,7 +72,8 @@ public data class ReleaseTerminalRequest(
 @Serializable
 public data class WaitForTerminalExitRequest(
     val sessionId: SessionId,
-    val terminalId: String
+    val terminalId: String,
+    override val _meta: JsonElement? = null
 ) : AcpRequest
 
 /**
@@ -75,7 +82,8 @@ public data class WaitForTerminalExitRequest(
 @Serializable
 public data class WaitForTerminalExitResponse(
     val exitCode: UInt? = null,
-    val signal: String? = null
+    val signal: String? = null,
+    override val _meta: JsonElement? = null
 ) : AcpResponse
 
 /**
@@ -84,8 +92,9 @@ public data class WaitForTerminalExitResponse(
 @Serializable
 public data class TerminalExitStatus(
     val exitCode: UInt? = null,
-    val signal: String? = null
-)
+    val signal: String? = null,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
 
 /**
  * Request to kill a terminal command without releasing the terminal.
@@ -93,11 +102,14 @@ public data class TerminalExitStatus(
 @Serializable
 public data class KillTerminalCommandRequest(
     val sessionId: SessionId,
-    val terminalId: String
+    val terminalId: String,
+    override val _meta: JsonElement? = null
 ) : AcpRequest
 
 /**
  * Response to terminal/kill command method
  */
 @Serializable
-public class KillTerminalCommandResponse : AcpResponse
+public data class KillTerminalCommandResponse(
+    override val _meta: JsonElement? = null
+) : AcpResponse

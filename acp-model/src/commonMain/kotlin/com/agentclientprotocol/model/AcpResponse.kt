@@ -1,4 +1,3 @@
 package com.agentclientprotocol.model
 
-public interface AcpResponse {
-}
+public interface AcpResponse : AcpWithMeta

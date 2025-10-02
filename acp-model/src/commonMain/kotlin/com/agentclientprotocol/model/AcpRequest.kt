@@ -1,4 +1,3 @@
 package com.agentclientprotocol.model
 
-public interface AcpRequest {
-}
+public interface AcpRequest : AcpWithMeta

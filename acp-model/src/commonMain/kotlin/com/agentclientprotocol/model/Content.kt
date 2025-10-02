@@ -7,6 +7,7 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonClassDiscriminator
+import kotlinx.serialization.json.JsonElement
 
 /**
  * Content blocks represent displayable information in the Agent Client Protocol.
@@ -18,7 +19,7 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  */
 @Serializable
 @JsonClassDiscriminator("type")
-public sealed class ContentBlock {
+public sealed class ContentBlock : AcpWithMeta {
     public abstract val annotations: Annotations?
     
     /**
@@ -30,7 +31,8 @@ public sealed class ContentBlock {
     @SerialName("text")
     public data class Text(
         val text: String,
-        override val annotations: Annotations? = null
+        override val annotations: Annotations? = null,
+        override val _meta: JsonElement? = null
     ) : ContentBlock()
 
     /**
@@ -44,7 +46,8 @@ public sealed class ContentBlock {
         val data: String,
         val mimeType: String,
         val uri: String? = null,
-        override val annotations: Annotations? = null
+        override val annotations: Annotations? = null,
+        override val _meta: JsonElement? = null
     ) : ContentBlock()
 
     /**
@@ -57,7 +60,8 @@ public sealed class ContentBlock {
     public data class Audio(
         val data: String,
         val mimeType: String,
-        override val annotations: Annotations? = null
+        override val annotations: Annotations? = null,
+        override val _meta: JsonElement? = null
     ) : ContentBlock()
 
     /**
@@ -74,7 +78,8 @@ public sealed class ContentBlock {
         val mimeType: String? = null,
         val size: Long? = null,
         val title: String? = null,
-        override val annotations: Annotations? = null
+        override val annotations: Annotations? = null,
+        override val _meta: JsonElement? = null
     ) : ContentBlock()
 
     /**
@@ -88,7 +93,8 @@ public sealed class ContentBlock {
     @SerialName("resource")
     public data class Resource(
         val resource: EmbeddedResourceResource,
-        override val annotations: Annotations? = null
+        override val annotations: Annotations? = null,
+        override val _meta: JsonElement? = null
     ) : ContentBlock()
 }
 
@@ -96,7 +102,7 @@ public sealed class ContentBlock {
  * Resource content that can be embedded in a message.
  */
 @Serializable
-public sealed class EmbeddedResourceResource {
+public sealed class EmbeddedResourceResource : AcpWithMeta {
     /**
      * Text-based resource contents.
      */
@@ -105,7 +111,8 @@ public sealed class EmbeddedResourceResource {
     public data class TextResourceContents(
         val text: String,
         val uri: String,
-        val mimeType: String? = null
+        val mimeType: String? = null,
+        override val _meta: JsonElement? = null
     ) : EmbeddedResourceResource()
 
     /**
@@ -116,7 +123,8 @@ public sealed class EmbeddedResourceResource {
     public data class BlobResourceContents(
         val blob: String,
         val uri: String,
-        val mimeType: String? = null
+        val mimeType: String? = null,
+        override val _meta: JsonElement? = null
     ) : EmbeddedResourceResource()
 }
 
@@ -126,8 +134,9 @@ public sealed class EmbeddedResourceResource {
 @Serializable
 public data class EmbeddedResource(
     val resource: EmbeddedResourceResource,
-    val annotations: Annotations? = null
-)
+    val annotations: Annotations? = null,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
 
 /**
  * A resource that the server is capable of reading, included in a prompt or tool call result.
@@ -140,5 +149,6 @@ public data class ResourceLink(
     val mimeType: String? = null,
     val size: Long? = null,
     val title: String? = null,
-    val annotations: Annotations? = null
-)
+    val annotations: Annotations? = null,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta

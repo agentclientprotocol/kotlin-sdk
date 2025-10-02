@@ -54,8 +54,9 @@ public enum class ToolCallStatus {
 @Serializable
 public data class ToolCallLocation(
     val path: String,
-    val line: UInt? = null
-)
+    val line: UInt? = null,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
 
 /**
  * Content produced by a tool call.
@@ -84,8 +85,9 @@ public sealed class ToolCallContent {
     public data class Diff(
         val path: String,
         val newText: String,
-        val oldText: String? = null
-    ) : ToolCallContent()
+        val oldText: String? = null,
+        override val _meta: JsonElement? = null
+    ) : ToolCallContent(), AcpWithMeta
 
     /**
      * Terminal output reference.
@@ -114,8 +116,9 @@ public data class ToolCall(
     val content: List<ToolCallContent> = emptyList(),
     val locations: List<ToolCallLocation> = emptyList(),
     val rawInput: JsonElement? = null,
-    val rawOutput: JsonElement? = null
-)
+    val rawOutput: JsonElement? = null,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
 
 /**
  * An update to an existing tool call.
@@ -134,5 +137,6 @@ public data class ToolCallUpdate(
     val content: List<ToolCallContent>? = null,
     val locations: List<ToolCallLocation>? = null,
     val rawInput: JsonElement? = null,
-    val rawOutput: JsonElement? = null
-)
+    val rawOutput: JsonElement? = null,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta

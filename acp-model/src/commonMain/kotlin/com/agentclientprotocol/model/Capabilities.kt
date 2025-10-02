@@ -6,6 +6,7 @@ package com.agentclientprotocol.model
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 /**
  * File system capabilities that a client may support.
@@ -15,8 +16,9 @@ import kotlinx.serialization.Serializable
 @Serializable
 public data class FileSystemCapability(
     @EncodeDefault val readTextFile: Boolean = false,
-    @EncodeDefault val writeTextFile: Boolean = false
-)
+    @EncodeDefault val writeTextFile: Boolean = false,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
 
 /**
  * Prompt capabilities supported by the agent in `session/prompt` requests.
@@ -30,8 +32,9 @@ public data class FileSystemCapability(
 public data class PromptCapabilities(
     @EncodeDefault val audio: Boolean = false,
     @EncodeDefault val image: Boolean = false,
-    @EncodeDefault val embeddedContext: Boolean = false
-)
+    @EncodeDefault val embeddedContext: Boolean = false,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
 
 /**
  * Capabilities supported by the client.
@@ -44,8 +47,9 @@ public data class PromptCapabilities(
 @Serializable
 public data class ClientCapabilities(
     @EncodeDefault val fs: FileSystemCapability = FileSystemCapability(),
-    @EncodeDefault val terminal: Boolean = false
-)
+    @EncodeDefault val terminal: Boolean = false,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
 
 /**
  * MCP capabilities supported by the agent
@@ -53,8 +57,9 @@ public data class ClientCapabilities(
 @Serializable
 public data class McpCapabilities(
     @EncodeDefault val http: Boolean = false,
-    @EncodeDefault val sse: Boolean = false
-)
+    @EncodeDefault val sse: Boolean = false,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
 
 /**
  * Capabilities supported by the agent.
@@ -68,5 +73,6 @@ public data class McpCapabilities(
 public data class AgentCapabilities(
     @EncodeDefault val loadSession: Boolean = false,
     @EncodeDefault val promptCapabilities: PromptCapabilities = PromptCapabilities(),
-    @EncodeDefault val mcpCapabilities: McpCapabilities = McpCapabilities()
-)
+    @EncodeDefault val mcpCapabilities: McpCapabilities = McpCapabilities(),
+    override val _meta: JsonElement? = null
+) : AcpWithMeta

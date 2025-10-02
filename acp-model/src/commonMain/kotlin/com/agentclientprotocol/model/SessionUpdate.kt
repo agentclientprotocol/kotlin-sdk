@@ -31,8 +31,9 @@ public sealed class AvailableCommandInput {
 public data class AvailableCommand(
     val name: String,
     val description: String,
-    val input: AvailableCommandInput? = null
-)
+    val input: AvailableCommandInput? = null,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
 
 /**
  * Different types of updates that can be sent during session processing.
@@ -84,8 +85,9 @@ public sealed class SessionUpdate {
         val content: List<ToolCallContent> = emptyList(),
         val locations: List<ToolCallLocation> = emptyList(),
         val rawInput: JsonElement? = null,
-        val rawOutput: JsonElement? = null
-    ) : SessionUpdate()
+        val rawOutput: JsonElement? = null,
+        override val _meta: JsonElement? = null
+    ) : SessionUpdate(), AcpWithMeta
 
     /**
      * Update on the status or results of a tool call.
@@ -100,8 +102,9 @@ public sealed class SessionUpdate {
         val content: List<ToolCallContent>? = null,
         val locations: List<ToolCallLocation>? = null,
         val rawInput: JsonElement? = null,
-        val rawOutput: JsonElement? = null
-    ) : SessionUpdate()
+        val rawOutput: JsonElement? = null,
+        override val _meta: JsonElement? = null
+    ) : SessionUpdate(), AcpWithMeta
 
     /**
      * The agent's execution plan for complex tasks.
@@ -111,8 +114,9 @@ public sealed class SessionUpdate {
     @Serializable
     @SerialName("plan")
     public data class PlanUpdate(
-        val entries: List<PlanEntry>
-    ) : SessionUpdate()
+        val entries: List<PlanEntry>,
+        override val _meta: JsonElement? = null
+    ) : SessionUpdate(), AcpWithMeta
 
     /**
      * Available commands are ready or have changed
