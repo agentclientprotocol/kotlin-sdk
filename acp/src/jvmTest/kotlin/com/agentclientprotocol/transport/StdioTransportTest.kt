@@ -4,6 +4,7 @@ import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.rpc.JsonRpcResponse
+import com.agentclientprotocol.rpc.MethodName
 import com.agentclientprotocol.rpc.RequestId
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -52,9 +53,6 @@ class StdioTransportTest {
         errors.clear()
     }
 
-    suspend fun expectMessage(message: JsonRpcMessage, timeout: Duration = 1.seconds) {
-
-    }
 
     @BeforeTest
     fun setUp() {
@@ -85,26 +83,28 @@ class StdioTransportTest {
 
     @Test
     fun `should read JSON-RPC request from input`(): Unit = runBlocking {
-        transport.send(JsonRpcRequest(RequestId("1"), "test.method", JsonPrimitive("value")))
+        val testMethod = MethodName("test.method")
+        transport.send(JsonRpcRequest(RequestId("1"), testMethod, JsonPrimitive("value")))
 
         // Read the message from the transport
         val message = messages.receive()
 
         assertTrue(message is JsonRpcRequest)
         assertEquals(RequestId("1"), message.id)
-        assertEquals("test.method", message.method)
+        assertEquals(testMethod, message.method)
         assertNotNull(message.params)
     }
 
     @Test
     fun `should read JSON-RPC notification from input`(): Unit = runBlocking {
-        transport.send(JsonRpcNotification(method = "test.notification"))
+        val notificationTestMethod = MethodName("test.notification")
+        transport.send(JsonRpcNotification(method = notificationTestMethod))
 
         // Read the message from the transport
         val message = messages.receive()
 
         assertTrue(message is JsonRpcNotification)
-        assertEquals("test.notification", message.method)
+        assertEquals(notificationTestMethod, message.method)
     }
 
     @Test
@@ -121,8 +121,11 @@ class StdioTransportTest {
 
     @Test
     fun `should handle multiple messages in sequence`(): Unit = runBlocking {
-        transport.send(JsonRpcRequest(RequestId("1"), "method1"))
-        transport.send(JsonRpcNotification(method = "notification1"))
+        val method1 = MethodName("method1")
+        val notification1 = MethodName("notification1")
+
+        transport.send(JsonRpcRequest(RequestId("1"), method1))
+        transport.send(JsonRpcNotification(method = notification1))
         transport.send(JsonRpcResponse(RequestId("2"), result = JsonPrimitive("ok")))
 
         val message1 = messages.receive()
@@ -130,10 +133,10 @@ class StdioTransportTest {
         val message3 = messages.receive()
 
         assertTrue(message1 is JsonRpcRequest)
-        assertEquals("method1", message1.method)
+        assertEquals(method1, message1.method)
 
         assertTrue(message2 is JsonRpcNotification)
-        assertEquals("notification1", message2.method)
+        assertEquals(notification1, message2.method)
 
         assertTrue(message3 is JsonRpcResponse)
         assertEquals(RequestId("2"), message3.id)
@@ -141,16 +144,19 @@ class StdioTransportTest {
 
     @Test
     fun `should skip invalid JSON lines and continue processing`(): Unit = runBlocking {
-        transport.send(JsonRpcRequest(RequestId("1"), "first"))
-        transport.send(JsonRpcRequest(RequestId("2"), "second"))
+        val firstMethod = MethodName("first")
+        val secondMethod = MethodName("second")
+
+        transport.send(JsonRpcRequest(RequestId("1"), firstMethod))
+        transport.send(JsonRpcRequest(RequestId("2"), secondMethod))
 
         val message1 = messages.receive()
         assertTrue(message1 is JsonRpcRequest)
-        assertEquals("first", message1.method)
+        assertEquals(firstMethod, message1.method)
 
         val message2 = messages.receive()
         assertTrue(message2 is JsonRpcRequest)
-        assertEquals("second", message2.method)
+        assertEquals(secondMethod, message2.method)
     }
 
     @Test
@@ -198,11 +204,12 @@ class StdioTransportTest {
     }
 
     private suspend fun CoroutineScope.testWhileBackgroundSend(block: suspend () -> Unit) {
+        val testMethod = MethodName("test")
         expectState(Transport.State.STARTED)
         launch {
             var i = 0
             while (transport.state.value != Transport.State.CLOSED) {
-                transport.send(JsonRpcRequest(RequestId("${i++}"), "test"))
+                transport.send(JsonRpcRequest(RequestId("${i++}"), testMethod))
                 delay(10.milliseconds)
             }
         }
@@ -213,7 +220,8 @@ class StdioTransportTest {
 
     @Test
     fun `should handle end of stream gracefully`(): Unit = runBlocking {
-        transport.send(JsonRpcRequest(RequestId("1"), "test"))
+        val testMethod = MethodName("test")
+        transport.send(JsonRpcRequest(RequestId("1"), testMethod))
 
         val message = messages.receive()
         assertTrue(message is JsonRpcRequest)
@@ -227,7 +235,7 @@ class StdioTransportTest {
         // Send multiple messages concurrently
         val jobs = (1..10).map { i ->
             scope.launch {
-                transport.send(JsonRpcNotification(method = "method$i"))
+                transport.send(JsonRpcNotification(method = MethodName("method$i")))
             }
         }
 
@@ -238,7 +246,7 @@ class StdioTransportTest {
 
         // All messages should be received
         (1..10).forEach { i ->
-            assertTrue(messages.any { it is JsonRpcNotification && it.method == "method$i" })
+            assertTrue(messages.any { it is JsonRpcNotification && it.method == MethodName("method$i") })
         }
     }
 }

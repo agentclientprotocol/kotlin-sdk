@@ -3,6 +3,9 @@
 package com.agentclientprotocol.protocol
 
 import com.agentclientprotocol.model.AcpMethod
+import com.agentclientprotocol.model.AcpNotification
+import com.agentclientprotocol.model.AcpRequest
+import com.agentclientprotocol.model.AcpResponse
 import com.agentclientprotocol.rpc.*
 import com.agentclientprotocol.transport.Transport
 import com.agentclientprotocol.transport.asMessageChannel
@@ -16,6 +19,8 @@ import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.encodeToJsonElement
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -53,7 +58,7 @@ public open class ProtocolOptions(
 public class Protocol(
     parentScope: CoroutineScope,
     private val transport: Transport,
-    private val options: ProtocolOptions = ProtocolOptions(),
+    public val options: ProtocolOptions = ProtocolOptions(),
 ) {
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
     private val requestIdCounter: AtomicLong = atomic(0L)
@@ -63,13 +68,13 @@ public class Protocol(
     /**
      * Request handlers for incoming requests.
      */
-    private val requestHandlers: AtomicRef<PersistentMap<String, suspend (JsonRpcRequest) -> JsonElement?>> = 
+    private val requestHandlers: AtomicRef<PersistentMap<MethodName, suspend (JsonRpcRequest) -> JsonElement?>> =
         atomic(persistentMapOf())
 
     /**
      * Notification handlers for incoming notifications.
      */
-    private val notificationHandlers: AtomicRef<PersistentMap<String, suspend (JsonRpcNotification) -> Unit>> = 
+    private val notificationHandlers: AtomicRef<PersistentMap<MethodName, suspend (JsonRpcNotification) -> Unit>> =
         atomic(persistentMapOf())
 
     /**
@@ -97,8 +102,8 @@ public class Protocol(
     /**
      * Send a request and wait for the response.
      */
-    public suspend fun sendRequest(
-        method: AcpMethod,
+    public suspend fun sendRequestRaw(
+        method: MethodName,
         params: JsonElement? = null,
         timeout: Duration = options.requestTimeout
     ): JsonElement {
@@ -110,7 +115,7 @@ public class Protocol(
         try {
             val request = JsonRpcRequest(
                 id = requestId,
-                method = method.methodName,
+                method = method,
                 params = params
             )
 
@@ -120,7 +125,7 @@ public class Protocol(
                 deferred.await()
             }
         } catch (e: TimeoutCancellationException) {
-            throw RequestTimeoutException("Request timed out after $timeout: ${method.methodName}")
+            throw RequestTimeoutException("Request timed out after $timeout: ${method.name}")
         } catch (e: Exception) {
             throw e
         }
@@ -132,7 +137,7 @@ public class Protocol(
     /**
      * Send a notification (no response expected).
      */
-    public fun sendNotification(method: AcpMethod, params: JsonElement? = null) {
+    public fun sendNotificationRaw(method: AcpMethod.AcpNotificationMethod<*>, params: JsonElement? = null) {
         val notification = JsonRpcNotification(
             method = method.methodName,
             params = params
@@ -143,8 +148,8 @@ public class Protocol(
     /**
      * Register a handler for incoming requests.
      */
-    public fun setRequestHandler(
-        method: AcpMethod,
+    public fun setRequestHandlerRaw(
+        method: AcpMethod.AcpRequestResponseMethod<*, *>,
         handler: suspend (JsonRpcRequest) -> JsonElement?
     ) {
         requestHandlers.update { it.put(method.methodName, handler) }
@@ -153,8 +158,8 @@ public class Protocol(
     /**
      * Register a handler for incoming notifications.
      */
-    public fun setNotificationHandler(
-        method: AcpMethod,
+    public fun setNotificationHandlerRaw(
+        method: AcpMethod.AcpNotificationMethod<*>,
         handler: suspend (JsonRpcNotification) -> Unit
     ) {
         notificationHandlers.update { it.put(method.methodName, handler) }
@@ -258,5 +263,44 @@ public class Protocol(
             error = error
         )
         transport.send(response)
+    }
+}
+
+public suspend inline fun <reified TRequest : AcpRequest, reified TResponse : AcpResponse> Protocol.sendRequest(
+    method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
+    request: TRequest?,
+    timeout: Duration = options.requestTimeout
+): TResponse {
+    val params = request?.let { ACPJson.encodeToJsonElement(request) }
+    val responseJson = this.sendRequestRaw(method.methodName, params)
+    return ACPJson.decodeFromJsonElement(responseJson)
+}
+
+public inline fun <reified TNotification: AcpNotification> Protocol.sendNotification(
+    method: AcpMethod.AcpNotificationMethod<TNotification>,
+    notification: TNotification? = null,
+) {
+    val params = notification?.let { ACPJson.encodeToJsonElement(notification) }
+    this.sendNotificationRaw(method, params)
+}
+
+public inline fun<reified TRequest : AcpRequest, reified TResponse : AcpResponse> Protocol.setRequestHandler(
+    method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
+    noinline handler: suspend (TRequest) -> TResponse
+) {
+    this.setRequestHandlerRaw(method) { request ->
+        val requestParams = ACPJson.decodeFromJsonElement<TRequest>(request.params ?: JsonNull)
+        val responseObject = handler(requestParams)
+        ACPJson.encodeToJsonElement(responseObject)
+    }
+}
+
+public inline fun<reified TNotification : AcpNotification> Protocol.setNotificationHandler(
+    method: AcpMethod.AcpNotificationMethod<TNotification>,
+    noinline handler: suspend (TNotification) -> Unit
+) {
+    this.setNotificationHandlerRaw(method) { notification ->
+        val notificationParams = ACPJson.decodeFromJsonElement<TNotification>(notification.params ?: JsonNull)
+        handler(notificationParams)
     }
 }

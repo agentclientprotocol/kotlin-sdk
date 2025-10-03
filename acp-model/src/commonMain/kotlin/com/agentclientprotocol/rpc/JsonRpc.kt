@@ -4,7 +4,9 @@ package com.agentclientprotocol.rpc
 
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.*
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlin.jvm.JvmInline
 
 /**
@@ -21,6 +23,10 @@ public value class RequestId(public val value: String) {
     override fun toString(): String = value
 }
 
+@JvmInline
+@Serializable
+public value class MethodName(public val name: String)
+
 @Serializable
 public sealed interface JsonRpcMessage
 
@@ -30,7 +36,7 @@ public sealed interface JsonRpcMessage
 @Serializable
 public data class JsonRpcRequest(
     val id: RequestId,
-    val method: String,
+    val method: MethodName,
     val params: JsonElement? = null,
     val jsonrpc: String = JSONRPC_VERSION,
 ) : JsonRpcMessage
@@ -40,7 +46,7 @@ public data class JsonRpcRequest(
  */
 @Serializable
 public data class JsonRpcNotification(
-    val method: String,
+    val method: MethodName,
     val params: JsonElement? = null,
     val jsonrpc: String = JSONRPC_VERSION,
 ) : JsonRpcMessage

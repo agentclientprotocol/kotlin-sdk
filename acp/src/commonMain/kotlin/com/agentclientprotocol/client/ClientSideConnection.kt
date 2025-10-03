@@ -28,11 +28,14 @@ import com.agentclientprotocol.model.WaitForTerminalExitRequest
 import com.agentclientprotocol.model.WriteTextFileRequest
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.ProtocolOptions
-import com.agentclientprotocol.rpc.ACPJson
+import com.agentclientprotocol.protocol.sendNotification
+import com.agentclientprotocol.protocol.sendRequest
+import com.agentclientprotocol.protocol.setNotificationHandler
+import com.agentclientprotocol.protocol.setRequestHandler
+
 import com.agentclientprotocol.transport.Transport
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
 
 private val logger = KotlinLogging.logger {}
@@ -57,75 +60,40 @@ public class ClientSideConnection(
 
     public fun start() {
         // Set up request handlers for incoming agent requests
-        protocol.setRequestHandler(AcpMethod.ClientMethods.FsReadTextFile) { request ->
-            val params = ACPJson.decodeFromString<ReadTextFileRequest>(
-                request.params?.toString() ?: "{}"
-            )
-            val response = client.fsReadTextFile(params)
-            ACPJson.encodeToJsonElement(response)
+        protocol.setRequestHandler(AcpMethod.ClientMethods.FsReadTextFile) { params: ReadTextFileRequest ->
+            client.fsReadTextFile(params)
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.FsWriteTextFile) { request ->
-            val params = ACPJson.decodeFromString<WriteTextFileRequest>(
-                request.params?.toString() ?: "{}"
-            )
-            val response = client.fsWriteTextFile(params)
-            ACPJson.encodeToJsonElement(response)
+        protocol.setRequestHandler(AcpMethod.ClientMethods.FsWriteTextFile) { params: WriteTextFileRequest ->
+            client.fsWriteTextFile(params)
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.SessionRequestPermission) { request ->
-            val params = ACPJson.decodeFromString<RequestPermissionRequest>(
-                request.params?.toString() ?: "{}"
-            )
-            val response = client.sessionRequestPermission(params)
-            ACPJson.encodeToJsonElement(response)
+        protocol.setRequestHandler(AcpMethod.ClientMethods.SessionRequestPermission) { params: RequestPermissionRequest ->
+            client.sessionRequestPermission(params)
         }
 
-        protocol.setNotificationHandler(AcpMethod.ClientMethods.SessionUpdate) { notification ->
-            val params = ACPJson.decodeFromString<SessionNotification>(
-                notification.params?.toString() ?: "{}"
-            )
+        protocol.setNotificationHandler(AcpMethod.ClientMethods.SessionUpdate) { params: SessionNotification ->
             client.sessionUpdate(params)
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalCreate) { request ->
-            val params = ACPJson.decodeFromString<CreateTerminalRequest>(
-                request.params?.toString() ?: "{}"
-            )
-            val response = client.terminalCreate(params)
-            ACPJson.encodeToJsonElement(response)
+        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalCreate) { params: CreateTerminalRequest ->
+            client.terminalCreate(params)
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalOutput) { request ->
-            val params = ACPJson.decodeFromString<TerminalOutputRequest>(
-                request.params?.toString() ?: "{}"
-            )
-            val response = client.terminalOutput(params)
-            ACPJson.encodeToJsonElement(response)
+        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalOutput) { params: TerminalOutputRequest ->
+            client.terminalOutput(params)
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalRelease) { request ->
-            val params = ACPJson.decodeFromString<ReleaseTerminalRequest>(
-                request.params?.toString() ?: "{}"
-            )
-            val response = client.terminalRelease(params)
-            ACPJson.encodeToJsonElement(response)
+        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalRelease) { params: ReleaseTerminalRequest ->
+            client.terminalRelease(params)
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalWaitForExit) { request ->
-            val params = ACPJson.decodeFromString<WaitForTerminalExitRequest>(
-                request.params?.toString() ?: "{}"
-            )
-            val response = client.terminalWaitForExit(params)
-            ACPJson.encodeToJsonElement(response)
+        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalWaitForExit) { params: WaitForTerminalExitRequest ->
+            client.terminalWaitForExit(params)
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalKill) { request ->
-            val params = ACPJson.decodeFromString<KillTerminalCommandRequest>(
-                request.params?.toString() ?: "{}"
-            )
-            val response = client.terminalKill(params)
-            ACPJson.encodeToJsonElement(response)
+        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalKill) { params: KillTerminalCommandRequest ->
+            client.terminalKill(params)
         }
 
         protocol.start()
@@ -133,43 +101,30 @@ public class ClientSideConnection(
     }
 
     override suspend fun initialize(request: InitializeRequest): InitializeResponse {
-        val params = ACPJson.encodeToJsonElement(request)
-        val responseJson = protocol.sendRequest(AcpMethod.AgentMethods.Initialize, params)
-        return ACPJson.decodeFromJsonElement(responseJson)
+        return protocol.sendRequest(AcpMethod.AgentMethods.Initialize, request)
     }
 
     override suspend fun authenticate(request: AuthenticateRequest): AuthenticateResponse {
-        val params = ACPJson.encodeToJsonElement(request)
-        val responseJson = protocol.sendRequest(AcpMethod.AgentMethods.Authenticate, params)
-        return ACPJson.decodeFromJsonElement(responseJson)
+        return protocol.sendRequest(AcpMethod.AgentMethods.Authenticate, request)
     }
 
     override suspend fun sessionNew(request: NewSessionRequest): NewSessionResponse {
-        val params = ACPJson.encodeToJsonElement(request)
-        val responseJson = protocol.sendRequest(AcpMethod.AgentMethods.SessionNew, params)
-        return ACPJson.decodeFromJsonElement(responseJson)
+        return protocol.sendRequest(AcpMethod.AgentMethods.SessionNew, request)
     }
 
     override suspend fun sessionLoad(request: LoadSessionRequest): LoadSessionResponse {
-        val params = ACPJson.encodeToJsonElement(request)
-        val responseJson = protocol.sendRequest(AcpMethod.AgentMethods.SessionLoad, params)
-        return ACPJson.decodeFromJsonElement(responseJson)
+        return protocol.sendRequest(AcpMethod.AgentMethods.SessionLoad, request)
     }
 
     override suspend fun sessionSetMode(request: SetSessionModeRequest): SetSessionModeResponse {
-        val params = ACPJson.encodeToJsonElement(request)
-        val responseJson = protocol.sendRequest(AcpMethod.AgentMethods.SessionSetMode, params)
-        return ACPJson.decodeFromJsonElement(responseJson)
+        return protocol.sendRequest(AcpMethod.AgentMethods.SessionSetMode, request)
     }
 
     override suspend fun sessionPrompt(request: PromptRequest): PromptResponse {
-        val params = ACPJson.encodeToJsonElement(request)
-        val responseJson = protocol.sendRequest(AcpMethod.AgentMethods.SessionPrompt, params)
-        return ACPJson.decodeFromJsonElement(responseJson)
+        return protocol.sendRequest(AcpMethod.AgentMethods.SessionPrompt, request)
     }
 
     override suspend fun sessionCancel(notification: CancelNotification) {
-        val params = ACPJson.encodeToJsonElement(notification)
-        protocol.sendNotification(AcpMethod.AgentMethods.SessionCancel, params)
+        protocol.sendNotification(AcpMethod.AgentMethods.SessionCancel, notification)
     }
 }

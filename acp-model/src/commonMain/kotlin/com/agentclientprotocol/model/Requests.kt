@@ -460,7 +460,7 @@ public data class ReleaseTerminalResponse(
 public data class CancelNotification(
     val sessionId: SessionId,
     override val _meta: JsonElement? = null
-) : AcpWithMeta
+) : AcpNotification
 
 /**
  * Notification containing a session update from the agent.
@@ -474,4 +474,4 @@ public data class SessionNotification(
     val sessionId: SessionId,
     val update: SessionUpdate,
     override val _meta: JsonElement? = null
-) : AcpWithMeta
+) : AcpNotification
