@@ -287,8 +287,6 @@ public class Protocol(
         result: JsonElement?,
         error: JsonRpcError?
     ) {
-        val transport = checkNotNull(this.transport) { "Transport not connected" }
-        
         val response = JsonRpcResponse(
             id = requestId,
             result = result,
