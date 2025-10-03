@@ -1,6 +1,7 @@
 plugins {
     id("acp.multiplatform")
     id("acp.publishing")
+    alias(libs.plugins.kotlinx.binary.compatibility.validator)
 }
 
 kotlin {

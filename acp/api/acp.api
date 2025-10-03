@@ -1,0 +1,131 @@
+public final class com/agentclientprotocol/LibVersionKt {
+	public static final field LIB_VERSION Ljava/lang/String;
+}
+
+public abstract interface class com/agentclientprotocol/agent/Agent {
+	public abstract fun authenticate (Lcom/agentclientprotocol/model/AuthenticateRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun initialize (Lcom/agentclientprotocol/model/InitializeRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sessionCancel (Lcom/agentclientprotocol/model/CancelNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sessionLoad (Lcom/agentclientprotocol/model/LoadSessionRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sessionNew (Lcom/agentclientprotocol/model/NewSessionRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sessionPrompt (Lcom/agentclientprotocol/model/PromptRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sessionSetMode (Lcom/agentclientprotocol/model/SetSessionModeRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class com/agentclientprotocol/agent/AgentSideConnection : com/agentclientprotocol/client/Client {
+	public fun <init> (Lkotlinx/coroutines/CoroutineScope;Lcom/agentclientprotocol/agent/Agent;Lcom/agentclientprotocol/transport/Transport;Lcom/agentclientprotocol/protocol/ProtocolOptions;)V
+	public synthetic fun <init> (Lkotlinx/coroutines/CoroutineScope;Lcom/agentclientprotocol/agent/Agent;Lcom/agentclientprotocol/transport/Transport;Lcom/agentclientprotocol/protocol/ProtocolOptions;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun fsReadTextFile (Lcom/agentclientprotocol/model/ReadTextFileRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun fsWriteTextFile (Lcom/agentclientprotocol/model/WriteTextFileRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun sessionRequestPermission (Lcom/agentclientprotocol/model/RequestPermissionRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun sessionUpdate (Lcom/agentclientprotocol/model/SessionNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun start ()V
+	public fun terminalCreate (Lcom/agentclientprotocol/model/CreateTerminalRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun terminalKill (Lcom/agentclientprotocol/model/KillTerminalCommandRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun terminalOutput (Lcom/agentclientprotocol/model/TerminalOutputRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun terminalRelease (Lcom/agentclientprotocol/model/ReleaseTerminalRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun terminalWaitForExit (Lcom/agentclientprotocol/model/WaitForTerminalExitRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class com/agentclientprotocol/client/Client {
+	public abstract fun fsReadTextFile (Lcom/agentclientprotocol/model/ReadTextFileRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun fsWriteTextFile (Lcom/agentclientprotocol/model/WriteTextFileRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sessionRequestPermission (Lcom/agentclientprotocol/model/RequestPermissionRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sessionUpdate (Lcom/agentclientprotocol/model/SessionNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun terminalCreate (Lcom/agentclientprotocol/model/CreateTerminalRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun terminalKill (Lcom/agentclientprotocol/model/KillTerminalCommandRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun terminalOutput (Lcom/agentclientprotocol/model/TerminalOutputRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun terminalRelease (Lcom/agentclientprotocol/model/ReleaseTerminalRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun terminalWaitForExit (Lcom/agentclientprotocol/model/WaitForTerminalExitRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class com/agentclientprotocol/client/ClientSideConnection : com/agentclientprotocol/agent/Agent {
+	public fun <init> (Lkotlinx/coroutines/CoroutineScope;Lcom/agentclientprotocol/transport/Transport;Lcom/agentclientprotocol/client/Client;Lcom/agentclientprotocol/protocol/ProtocolOptions;)V
+	public synthetic fun <init> (Lkotlinx/coroutines/CoroutineScope;Lcom/agentclientprotocol/transport/Transport;Lcom/agentclientprotocol/client/Client;Lcom/agentclientprotocol/protocol/ProtocolOptions;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun authenticate (Lcom/agentclientprotocol/model/AuthenticateRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun initialize (Lcom/agentclientprotocol/model/InitializeRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun sessionCancel (Lcom/agentclientprotocol/model/CancelNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun sessionLoad (Lcom/agentclientprotocol/model/LoadSessionRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun sessionNew (Lcom/agentclientprotocol/model/NewSessionRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun sessionPrompt (Lcom/agentclientprotocol/model/PromptRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun sessionSetMode (Lcom/agentclientprotocol/model/SetSessionModeRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun start ()V
+}
+
+public final class com/agentclientprotocol/protocol/JsonRpcException : java/lang/Exception {
+	public fun <init> (ILjava/lang/String;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (ILjava/lang/String;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getCode ()I
+	public final fun getData ()Lkotlinx/serialization/json/JsonElement;
+}
+
+public final class com/agentclientprotocol/protocol/Protocol {
+	public fun <init> (Lkotlinx/coroutines/CoroutineScope;Lcom/agentclientprotocol/transport/Transport;Lcom/agentclientprotocol/protocol/ProtocolOptions;)V
+	public synthetic fun <init> (Lkotlinx/coroutines/CoroutineScope;Lcom/agentclientprotocol/transport/Transport;Lcom/agentclientprotocol/protocol/ProtocolOptions;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun close ()V
+	public final fun sendNotification (Lcom/agentclientprotocol/model/AcpMethod;Lkotlinx/serialization/json/JsonElement;)V
+	public static synthetic fun sendNotification$default (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/model/AcpMethod;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)V
+	public final fun sendRequest-exY8QGI (Lcom/agentclientprotocol/model/AcpMethod;Lkotlinx/serialization/json/JsonElement;JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun sendRequest-exY8QGI$default (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/model/AcpMethod;Lkotlinx/serialization/json/JsonElement;JLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun setNotificationHandler (Lcom/agentclientprotocol/model/AcpMethod;Lkotlin/jvm/functions/Function2;)V
+	public final fun setRequestHandler (Lcom/agentclientprotocol/model/AcpMethod;Lkotlin/jvm/functions/Function2;)V
+	public final fun start ()V
+}
+
+public class com/agentclientprotocol/protocol/ProtocolOptions {
+	public synthetic fun <init> (JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (JLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getRequestTimeout-UwyO8pc ()J
+}
+
+public final class com/agentclientprotocol/protocol/RequestTimeoutException : java/lang/Exception {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public abstract class com/agentclientprotocol/transport/BaseTransport : com/agentclientprotocol/transport/Transport {
+	public fun <init> ()V
+	protected final fun fireClose ()V
+	protected final fun fireError (Ljava/lang/Throwable;)V
+	protected final fun fireMessage (Lcom/agentclientprotocol/rpc/JsonRpcMessage;)V
+	public fun getState ()Lkotlinx/coroutines/flow/StateFlow;
+	protected final fun get_state ()Lkotlinx/coroutines/flow/MutableStateFlow;
+	public fun onClose (Lkotlin/jvm/functions/Function0;)V
+	public fun onError (Lkotlin/jvm/functions/Function1;)V
+	public fun onMessage (Lkotlin/jvm/functions/Function1;)V
+}
+
+public final class com/agentclientprotocol/transport/StdioTransport : com/agentclientprotocol/transport/BaseTransport {
+	public fun <init> (Lkotlinx/coroutines/CoroutineScope;Lkotlinx/coroutines/CoroutineDispatcher;Lkotlinx/io/Source;Lkotlinx/io/Sink;)V
+	public fun close ()V
+	public fun send (Lcom/agentclientprotocol/rpc/JsonRpcMessage;)V
+	public fun start ()V
+}
+
+public abstract interface class com/agentclientprotocol/transport/Transport : java/lang/AutoCloseable {
+	public abstract fun getState ()Lkotlinx/coroutines/flow/StateFlow;
+	public abstract fun onClose (Lkotlin/jvm/functions/Function0;)V
+	public abstract fun onError (Lkotlin/jvm/functions/Function1;)V
+	public abstract fun onMessage (Lkotlin/jvm/functions/Function1;)V
+	public abstract fun send (Lcom/agentclientprotocol/rpc/JsonRpcMessage;)V
+	public abstract fun start ()V
+}
+
+public final class com/agentclientprotocol/transport/Transport$State : java/lang/Enum {
+	public static final field CLOSED Lcom/agentclientprotocol/transport/Transport$State;
+	public static final field CLOSING Lcom/agentclientprotocol/transport/Transport$State;
+	public static final field CREATED Lcom/agentclientprotocol/transport/Transport$State;
+	public static final field STARTED Lcom/agentclientprotocol/transport/Transport$State;
+	public static final field STARTING Lcom/agentclientprotocol/transport/Transport$State;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/agentclientprotocol/transport/Transport$State;
+	public static fun values ()[Lcom/agentclientprotocol/transport/Transport$State;
+}
+
+public final class com/agentclientprotocol/transport/TransportKt {
+	public static final fun asMessageChannel (Lcom/agentclientprotocol/transport/Transport;)Lkotlinx/coroutines/channels/Channel;
+}
+
+public final class com/agentclientprotocol/util/Dispatcher_jvmKt {
+	public static final fun getDispatcherIO ()Lkotlinx/coroutines/CoroutineDispatcher;
+}
+
