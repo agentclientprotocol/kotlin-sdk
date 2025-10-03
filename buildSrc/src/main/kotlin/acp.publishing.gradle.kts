@@ -1,3 +1,4 @@
+import com.vanniktech.maven.publish.MavenPublishBaseExtension
 import java.util.Properties
 
 plugins {
@@ -14,18 +15,22 @@ if (envFile.exists()) {
     envFile.inputStream().use { envProps.load(it) }
 }
 
-fun getEnvProperty(name: String): String {
+fun getEnvProperty(name: String, fallback:() -> String = { "" } ): String {
     return envProps.getProperty(name)
         ?: project.findProperty(name) as String?
         ?: System.getenv(name)
-        ?: ""
+        ?: fallback()
 }
 
 val spaceUsername: String = getEnvProperty("SPACE_USERNAME")
 val spacePassword: String = getEnvProperty("SPACE_PASSWORD")
 
+val gpgKey: String = getEnvProperty("GPG_SECRET_KEY") { rootProject.file(".asc").readText() }
+val gpgPassphrase: String = getEnvProperty("SIGNING_PASSPHRASE")
 
 mavenPublishing {
+    publishToMavenCentral(automaticRelease = false) // TODO: change to true once properly tested
+    configureSigning(this)
     pom {
         name = project.name
         description = "Kotlin implementation of Agent Client Protocol (ACP)"
@@ -63,5 +68,12 @@ publishing {
                 password = spacePassword
             }
         }
+    }
+}
+
+private fun Project.configureSigning(mavenPublishing: MavenPublishBaseExtension) {
+    if (gpgKey.isNotEmpty()) {
+        mavenPublishing.signAllPublications()
+        signing.useInMemoryPgpKeys(gpgKey, gpgPassphrase)
     }
 }
