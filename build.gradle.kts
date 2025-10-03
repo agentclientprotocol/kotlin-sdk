@@ -5,14 +5,15 @@ plugins {
 }
 
 private val buildNumber: String? = System.getenv("GITHUB_RUN_NUMBER")
+private val isReleasePublication = System.getenv("RELEASE_PUBLICATION")?.toBoolean() ?: false
 
-private val baseVersion = "0.1"
+private val baseVersion = "0.1.0"
 
 allprojects {
     group = "com.agentclientprotocol"
-    version = when (buildNumber) {
-        "-1" -> baseVersion // -1 as a buildNumber means that we are releasing this version
-        null -> "$baseVersion-SNAPSHOT"
-        else -> "$baseVersion-dev$buildNumber"
+    version = when {
+        isReleasePublication -> baseVersion
+        buildNumber == null -> "$baseVersion-SNAPSHOT"
+        else -> "$baseVersion-dev-$buildNumber"
     }
 }
