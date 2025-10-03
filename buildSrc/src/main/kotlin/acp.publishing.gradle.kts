@@ -2,6 +2,7 @@ import java.util.Properties
 
 plugins {
     `maven-publish`
+    id("com.vanniktech.maven.publish")
     signing
 }
 
@@ -23,6 +24,35 @@ fun getEnvProperty(name: String): String {
 val spaceUsername: String = getEnvProperty("SPACE_USERNAME")
 val spacePassword: String = getEnvProperty("SPACE_PASSWORD")
 
+
+mavenPublishing {
+    pom {
+        name = project.name
+        description = "Kotlin implementation of Agent Client Protocol (ACP)"
+        url = "https://github.com/JetBrains/acp-kotlin-sdk" // TODO: change the repo once it is moved
+
+        licenses {
+            license {
+                name = "The Apache Software License, Version 2.0"
+                url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+                distribution = "repo"
+            }
+        }
+
+        developers {
+            developer {
+                id = "JetBrains"
+                name = "JetBrains Team"
+                organization = "JetBrains"
+                organizationUrl = "https://www.jetbrains.com"
+            }
+        }
+
+        scm {
+            url = "https://github.com/JetBrains/acp-kotlin-sdk" // TODO: change the repo once it is moved
+        }
+    }
+}
 publishing {
     repositories {
         maven {
@@ -34,19 +64,4 @@ publishing {
             }
         }
     }
-
-    publications.withType<MavenPublication> {
-        groupId = project.group.toString()
-        version = project.version.toString()
-    }
 }
-
-tasks.withType<GenerateModuleMetadata> {
-    enabled = false
-}
-
-//signing {
-//    isRequired = false
-//    useGpgCmd()
-//    sign(publishing.publications)
-//}
