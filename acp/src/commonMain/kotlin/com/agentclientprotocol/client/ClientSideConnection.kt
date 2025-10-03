@@ -51,14 +51,11 @@ private val logger = KotlinLogging.logger {}
  * See protocol docs: [Client](https://agentclientprotocol.com/protocol/overview#client)
  */
 public class ClientSideConnection(
-    parentScope: CoroutineScope,
-    private val transport: Transport,
     private val client: Client,
-    options: ProtocolOptions = ProtocolOptions()
+    private val protocol: Protocol,
 ) : Agent {
-    private val protocol = Protocol(parentScope, transport, options)
 
-    public fun start() {
+    init {
         // Set up request handlers for incoming agent requests
         protocol.setRequestHandler(AcpMethod.ClientMethods.FsReadTextFile) { params: ReadTextFileRequest ->
             client.fsReadTextFile(params)
@@ -95,9 +92,6 @@ public class ClientSideConnection(
         protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalKill) { params: KillTerminalCommandRequest ->
             client.terminalKill(params)
         }
-
-        protocol.start()
-        logger.info { "Client-side connection established" }
     }
 
     override suspend fun initialize(request: InitializeRequest): InitializeResponse {

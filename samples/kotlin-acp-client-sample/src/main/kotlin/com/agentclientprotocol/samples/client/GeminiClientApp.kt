@@ -9,6 +9,7 @@ import com.agentclientprotocol.model.NewSessionRequest
 import com.agentclientprotocol.model.PromptRequest
 import com.agentclientprotocol.model.StopReason
 import com.agentclientprotocol.client.ClientSideConnection
+import com.agentclientprotocol.protocol.Protocol
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.coroutineScope
 import java.io.File
@@ -40,12 +41,13 @@ suspend fun main() = coroutineScope {
         val transport = createProcessStdioTransport(this, "gemini", "--experimental-acp")
         
         // Create client-side connection
-        val connection = ClientSideConnection(this, transport, client)
+        val protocol = Protocol(this, transport)
+        val connection = ClientSideConnection(client, protocol)
         
         logger.info { "Starting Gemini agent process..." }
         
         // Connect to agent and start transport
-        connection.start()
+        protocol.start()
         
         logger.info { "Connected to Gemini agent, initializing..." }
         

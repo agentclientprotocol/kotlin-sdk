@@ -30,15 +30,11 @@ private val logger = KotlinLogging.logger {}
  * See protocol docs: [Agent](https://agentclientprotocol.com/protocol/overview#agent)
  */
 public class AgentSideConnection(
-    private val parentScope: CoroutineScope,
     private val agent: Agent,
-    private val transport: Transport,
-    options: ProtocolOptions = ProtocolOptions()
+    private val protocol: Protocol,
 ) : Client {
-    private val protocol = Protocol(parentScope, transport, options)
 
-    public fun start() {
-
+    init {
         // Set up request handlers for incoming client requests
         protocol.setRequestHandler(AcpMethod.AgentMethods.Initialize) { params: InitializeRequest ->
             agent.initialize(params)
@@ -67,9 +63,6 @@ public class AgentSideConnection(
         protocol.setNotificationHandler(AcpMethod.AgentMethods.SessionCancel) { params: CancelNotification ->
             agent.sessionCancel(params)
         }
-
-        protocol.start()
-        logger.info { "Agent-side connection established" }
     }
 
     override suspend fun sessionUpdate(notification: SessionNotification) {

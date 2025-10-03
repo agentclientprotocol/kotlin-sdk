@@ -8,6 +8,7 @@ import com.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
 import com.agentclientprotocol.model.NewSessionRequest
 import com.agentclientprotocol.model.PromptRequest
 import com.agentclientprotocol.client.ClientSideConnection
+import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.transport.StdioTransport
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
@@ -46,11 +47,12 @@ fun main() = runBlocking {
             output = System.out.asSink().buffered()
         )
 
+        val protocol = Protocol(this, transport)
         // Create client-side connection
-        val connection = ClientSideConnection(this, transport, client)
+        val connection = ClientSideConnection(client, protocol)
 
         // Connect to agent
-        connection.start()
+        protocol.start()
         
         // Initialize the agent
         val initResponse = connection.initialize(

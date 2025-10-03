@@ -1,6 +1,7 @@
 package com.agentclientprotocol.samples.agent
 
 import com.agentclientprotocol.agent.AgentSideConnection
+import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.transport.StdioTransport
 import com.agentclientprotocol.transport.Transport
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -40,7 +41,8 @@ suspend fun main() = coroutineScope {
         val agent = SimpleAgent()
 
         // Create agent-side connection - this implements Client interface
-        val connection = AgentSideConnection(this, agent, transport)
+        val protocol = Protocol(this, transport)
+        val connection = AgentSideConnection(agent, protocol)
 
         // Wire up the agent to send updates through the connection
         agent.onSessionUpdate = { notification ->
@@ -48,7 +50,7 @@ suspend fun main() = coroutineScope {
         }
 
         // Connect and start processing
-        connection.start()
+        protocol.start()
         
         logger.info { "Agent connected and ready" }
         
