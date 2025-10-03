@@ -72,6 +72,7 @@ public class Protocol(
     public val options: ProtocolOptions = ProtocolOptions(),
 ) {
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
+    private val requestsScope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
     private val requestIdCounter: AtomicLong = atomic(0L)
     private val pendingRequests: AtomicRef<PersistentMap<RequestId, CompletableDeferred<JsonElement>>> =
         atomic(persistentMapOf())
@@ -192,14 +193,20 @@ public class Protocol(
         scope.cancel()
     }
 
-    private suspend fun handleIncomingMessage(message: JsonRpcMessage) {
+    // Should not be suspend to not block message queue by long running request handlers.
+    // Otherwise, nested requests/notifications won't be possible
+    private fun handleIncomingMessage(message: JsonRpcMessage) {
         try {
             when (message) {
                 is JsonRpcNotification -> {
-                    handleNotification(message)
+                    requestsScope.launch {
+                        handleNotification(message)
+                    }
                 }
                 is JsonRpcRequest -> {
-                    handleRequest(message)
+                    requestsScope.launch {
+                        handleRequest(message)
+                    }
                 }
                 is JsonRpcResponse -> {
                     handleResponse(message)
