@@ -25,7 +25,10 @@ fun getEnvProperty(name: String, fallback:() -> String = { "" } ): String {
 val spaceUsername: String = getEnvProperty("SPACE_USERNAME")
 val spacePassword: String = getEnvProperty("SPACE_PASSWORD")
 
-val gpgKey: String = getEnvProperty("GPG_SECRET_KEY") { rootProject.file(".asc").readText() }
+val gpgKey: String = getEnvProperty("GPG_SECRET_KEY") {
+    rootProject.file(".asc").takeIf { it.exists() }?.readText() ?: ""
+}
+
 val gpgPassphrase: String = getEnvProperty("SIGNING_PASSPHRASE")
 
 mavenPublishing {
