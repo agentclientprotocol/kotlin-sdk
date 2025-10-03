@@ -18,7 +18,7 @@ kotlin {
 }
 
 dependencies {
-    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21")
-    implementation("org.jetbrains.kotlin:kotlin-serialization:2.0.21")
+    implementation(libs.kotlin.gradle.plugin)
+    implementation(libs.kotlin.serialization.plugin)
 }
 
