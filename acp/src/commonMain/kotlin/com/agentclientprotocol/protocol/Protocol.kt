@@ -17,6 +17,7 @@ import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.*
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -25,6 +26,16 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 private val logger = KotlinLogging.logger {}
+
+/**
+ * An exception that gracefully handled and passed to the counterpart.
+ */
+public class AcpExpectedError(message: String) : Exception(message)
+
+/**
+ * Throws [AcpExpectedError] that gracefully handled and passed to the counterpart.
+ */
+public fun acpFail(message: String): Nothing = throw AcpExpectedError(message)
 
 /**
  * Exception thrown when a request times out.
@@ -101,6 +112,8 @@ public class Protocol(
 
     /**
      * Send a request and wait for the response.
+     *
+     * Prefer typed [sendRequest] over this method.
      */
     public suspend fun sendRequestRaw(
         method: MethodName,
@@ -136,6 +149,8 @@ public class Protocol(
 
     /**
      * Send a notification (no response expected).
+     *
+     * Prefer typed [sendNotification] over this method.
      */
     public fun sendNotificationRaw(method: AcpMethod.AcpNotificationMethod<*>, params: JsonElement? = null) {
         val notification = JsonRpcNotification(
@@ -147,6 +162,8 @@ public class Protocol(
 
     /**
      * Register a handler for incoming requests.
+     *
+     * Prefer typed [setRequestHandler] over this method.
      */
     public fun setRequestHandlerRaw(
         method: AcpMethod.AcpRequestResponseMethod<*, *>,
@@ -157,6 +174,8 @@ public class Protocol(
 
     /**
      * Register a handler for incoming notifications.
+     *
+     * Prefer typed [setNotificationHandler] over this method.
      */
     public fun setNotificationHandlerRaw(
         method: AcpMethod.AcpNotificationMethod<*>,
@@ -197,18 +216,31 @@ public class Protocol(
             try {
                 val result = handler(request)
                 sendResponse(request.id, result, null)
-            } catch (e: Exception) {
-                logger.error(e) { "Error handling request ${request.method}" }
-                val error = JsonRpcError(
-                    code = JsonRpcErrorCode.INTERNAL_ERROR,
-                    message = e.message ?: "Internal error"
+            } catch (e: AcpExpectedError) {
+                logger.trace(e) { "Expected error on '${request.method}'" }
+                sendResponse(
+                    request.id, null, JsonRpcError(
+                        code = JsonRpcErrorCode.INVALID_PARAMS, message = e.message ?: "Invalid params"
+                    )
                 )
-                sendResponse(request.id, null, error)
+            } catch (e: SerializationException) {
+                logger.trace(e) { "Serialization error on ${request.method}" }
+                sendResponse(
+                    request.id, null, JsonRpcError(
+                        code = JsonRpcErrorCode.PARSE_ERROR, message = e.message ?: "Serialization error"
+                    )
+                )
+            } catch (e: Exception) {
+                logger.error(e) { "Exception on ${request.method}" }
+                sendResponse(
+                    request.id, null, JsonRpcError(
+                        code = JsonRpcErrorCode.INTERNAL_ERROR, message = e.message ?: "Internal error"
+                    )
+                )
             }
         } else {
             val error = JsonRpcError(
-                code = JsonRpcErrorCode.METHOD_NOT_FOUND,
-                message = "Method not supported: ${request.method}"
+                code = JsonRpcErrorCode.METHOD_NOT_FOUND, message = "Method not supported: ${request.method}"
             )
             sendResponse(request.id, null, error)
         }
@@ -266,6 +298,9 @@ public class Protocol(
     }
 }
 
+/**
+ *  Send a request and wait for the response.
+ */
 public suspend inline fun <reified TRequest : AcpRequest, reified TResponse : AcpResponse> Protocol.sendRequest(
     method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
     request: TRequest?,
@@ -276,6 +311,9 @@ public suspend inline fun <reified TRequest : AcpRequest, reified TResponse : Ac
     return ACPJson.decodeFromJsonElement(responseJson)
 }
 
+/**
+ * Send a notification (no response expected).
+ */
 public inline fun <reified TNotification: AcpNotification> Protocol.sendNotification(
     method: AcpMethod.AcpNotificationMethod<TNotification>,
     notification: TNotification? = null,
@@ -284,6 +322,9 @@ public inline fun <reified TNotification: AcpNotification> Protocol.sendNotifica
     this.sendNotificationRaw(method, params)
 }
 
+/**
+ * Register a handler for incoming requests.
+ */
 public inline fun<reified TRequest : AcpRequest, reified TResponse : AcpResponse> Protocol.setRequestHandler(
     method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
     noinline handler: suspend (TRequest) -> TResponse
@@ -295,6 +336,9 @@ public inline fun<reified TRequest : AcpRequest, reified TResponse : AcpResponse
     }
 }
 
+/**
+ * Register a handler for incoming notifications.
+ */
 public inline fun<reified TNotification : AcpNotification> Protocol.setNotificationHandler(
     method: AcpMethod.AcpNotificationMethod<TNotification>,
     noinline handler: suspend (TNotification) -> Unit
