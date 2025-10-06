@@ -19,6 +19,9 @@ dependencyResolutionManagement {
 
 include(":acp-model")
 include(":acp")
+include(":acp-ktor")
+include(":acp-ktor-client")
+include(":acp-ktor-server")
 
 // Include sample projects
 include(":samples:kotlin-acp-client-sample")
