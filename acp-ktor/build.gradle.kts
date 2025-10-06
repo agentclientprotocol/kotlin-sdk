@@ -8,6 +8,7 @@ kotlin {
     sourceSets {
         commonMain {
             dependencies {
+                api(project(":acp"))
                 api(project(":acp-model"))
                 api(libs.ktor.utils)
                 api(libs.ktor.client.websockets)
