@@ -2,20 +2,13 @@
 
 package com.agentclientprotocol.agent
 
-import com.agentclientprotocol.client.Client
+import com.agentclientprotocol.client.RemoteClient
+import com.agentclientprotocol.client.asContextElement
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
-import com.agentclientprotocol.protocol.ProtocolOptions
-import com.agentclientprotocol.protocol.sendNotification
-import com.agentclientprotocol.protocol.sendRequest
 import com.agentclientprotocol.protocol.setNotificationHandler
 import com.agentclientprotocol.protocol.setRequestHandler
-
-import com.agentclientprotocol.transport.Transport
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.encodeToJsonElement
 
 private val logger = KotlinLogging.logger {}
 
@@ -32,72 +25,37 @@ private val logger = KotlinLogging.logger {}
 public class AgentSideConnection(
     private val agent: Agent,
     private val protocol: Protocol,
-) : Client {
+) {
+    private val remoteClient = RemoteClient(protocol)
 
     init {
         // Set up request handlers for incoming client requests
-        protocol.setRequestHandler(AcpMethod.AgentMethods.Initialize) { params: InitializeRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.Initialize, coroutineContext = remoteClient.asContextElement()) { params: InitializeRequest ->
             agent.initialize(params)
         }
 
-        protocol.setRequestHandler(AcpMethod.AgentMethods.Authenticate) { params: AuthenticateRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.Authenticate, coroutineContext = remoteClient.asContextElement()) { params: AuthenticateRequest ->
             agent.authenticate(params)
         }
 
-        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionNew) { params: NewSessionRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionNew, coroutineContext = remoteClient.asContextElement()) { params: NewSessionRequest ->
             agent.sessionNew(params)
         }
 
-        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionLoad) { params: LoadSessionRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionLoad, coroutineContext = remoteClient.asContextElement()) { params: LoadSessionRequest ->
             agent.sessionLoad(params)
         }
 
-        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionSetMode) { params: SetSessionModeRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionSetMode, coroutineContext = remoteClient.asContextElement()) { params: SetSessionModeRequest ->
             agent.sessionSetMode(params)
         }
 
-        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionPrompt) { params: PromptRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionPrompt, coroutineContext = remoteClient.asContextElement()) { params: PromptRequest ->
             agent.sessionPrompt(params)
         }
 
-        protocol.setNotificationHandler(AcpMethod.AgentMethods.SessionCancel) { params: CancelNotification ->
+        protocol.setNotificationHandler(AcpMethod.AgentMethods.SessionCancel, coroutineContext = remoteClient.asContextElement()) { params: CancelNotification ->
             agent.sessionCancel(params)
         }
-    }
-
-    override suspend fun sessionUpdate(notification: SessionNotification) {
-        protocol.sendNotification(AcpMethod.ClientMethods.SessionUpdate, notification)
-    }
-
-    override suspend fun sessionRequestPermission(request: RequestPermissionRequest): RequestPermissionResponse {
-        return protocol.sendRequest(AcpMethod.ClientMethods.SessionRequestPermission, request)
-    }
-
-    override suspend fun fsReadTextFile(request: ReadTextFileRequest): ReadTextFileResponse {
-        return protocol.sendRequest(AcpMethod.ClientMethods.FsReadTextFile, request)
-    }
-
-    override suspend fun fsWriteTextFile(request: WriteTextFileRequest): WriteTextFileResponse {
-        return protocol.sendRequest(AcpMethod.ClientMethods.FsWriteTextFile, request)
-    }
-
-    override suspend fun terminalCreate(request: CreateTerminalRequest): CreateTerminalResponse {
-        return protocol.sendRequest(AcpMethod.ClientMethods.TerminalCreate, request)
-    }
-
-    override suspend fun terminalOutput(request: TerminalOutputRequest): TerminalOutputResponse {
-        return protocol.sendRequest(AcpMethod.ClientMethods.TerminalOutput, request)
-    }
-
-    override suspend fun terminalRelease(request: ReleaseTerminalRequest): ReleaseTerminalResponse {
-        return protocol.sendRequest(AcpMethod.ClientMethods.TerminalRelease, request)
-    }
-
-    override suspend fun terminalWaitForExit(request: WaitForTerminalExitRequest): WaitForTerminalExitResponse {
-        return protocol.sendRequest(AcpMethod.ClientMethods.TerminalWaitForExit, request)
-    }
-
-    override suspend fun terminalKill(request: KillTerminalCommandRequest): KillTerminalCommandResponse {
-        return protocol.sendRequest(AcpMethod.ClientMethods.TerminalKill, request)
     }
 }

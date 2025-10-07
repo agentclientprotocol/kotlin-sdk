@@ -22,6 +22,8 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -332,6 +334,7 @@ public inline fun <reified TNotification: AcpNotification> Protocol.sendNotifica
  */
 public inline fun<reified TRequest : AcpRequest, reified TResponse : AcpResponse> Protocol.setRequestHandler(
     method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
+    coroutineContext: CoroutineContext = EmptyCoroutineContext,
     noinline handler: suspend (TRequest) -> TResponse
 ) {
     this.setRequestHandlerRaw(method) { request ->
@@ -346,6 +349,7 @@ public inline fun<reified TRequest : AcpRequest, reified TResponse : AcpResponse
  */
 public inline fun<reified TNotification : AcpNotification> Protocol.setNotificationHandler(
     method: AcpMethod.AcpNotificationMethod<TNotification>,
+    coroutineContext: CoroutineContext = EmptyCoroutineContext,
     noinline handler: suspend (TNotification) -> Unit
 ) {
     this.setNotificationHandlerRaw(method) { notification ->
