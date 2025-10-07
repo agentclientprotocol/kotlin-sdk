@@ -4,7 +4,7 @@ import com.agentclientprotocol.agent.Agent
 import com.agentclientprotocol.model.AgentCapabilities
 import com.agentclientprotocol.model.AuthenticateRequest
 import com.agentclientprotocol.model.CancelNotification
-import com.agentclientprotocol.client.Client
+import com.agentclientprotocol.client.remoteClient
 import com.agentclientprotocol.model.AuthenticateResponse
 import com.agentclientprotocol.model.ClientCapabilities
 import com.agentclientprotocol.model.ContentBlock
@@ -36,6 +36,7 @@ import com.agentclientprotocol.model.ToolCallStatus
 import com.agentclientprotocol.model.ToolKind
 
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import java.util.concurrent.ConcurrentHashMap
 
@@ -56,9 +57,6 @@ private val logger = KotlinLogging.logger {}
 class SimpleAgent : Agent {
     private val sessions = ConcurrentHashMap<SessionId, SessionContext>()
     private var clientCapabilities: ClientCapabilities? = null
-
-    // Callback for sending session updates - set by the connection wrapper
-    internal var onSessionUpdate: (suspend (SessionNotification) -> Unit)? = null
 
     data class SessionContext(
         val sessionId: SessionId,
@@ -131,14 +129,15 @@ class SimpleAgent : Agent {
         }
         
         logger.info { "Processing sessionPrompt for session ${request.sessionId}" }
-        
+        val client = currentCoroutineContext().remoteClient
+
         try {
             // Send initial plan
             sendPlan(request.sessionId)
-            
+
             // Echo the user's message
             for (block in request.prompt) {
-                onSessionUpdate?.invoke(
+                client.sessionUpdate(
                     SessionNotification(
                         sessionId = request.sessionId,
                         update = SessionUpdate.UserMessageChunk(block)
@@ -153,7 +152,7 @@ class SimpleAgent : Agent {
                     .joinToString(" ") { it.text }
             }"
 
-            onSessionUpdate?.invoke(
+            client.sessionUpdate(
                 SessionNotification(
                     sessionId = request.sessionId,
                     update = SessionUpdate.AgentMessageChunk(
@@ -189,7 +188,7 @@ class SimpleAgent : Agent {
             )
         )
         
-        onSessionUpdate?.invoke(
+        currentCoroutineContext().remoteClient.sessionUpdate(
             SessionNotification(
                 sessionId = sessionId,
                 update = SessionUpdate.PlanUpdate(plan.entries)
@@ -201,7 +200,7 @@ class SimpleAgent : Agent {
         val toolCallId = ToolCallId("tool-${System.currentTimeMillis()}")
 
         // Start tool call
-        onSessionUpdate?.invoke(
+        currentCoroutineContext().remoteClient.sessionUpdate(
             SessionNotification(
                 sessionId = sessionId,
                 update = SessionUpdate.ToolCallUpdate(
@@ -218,7 +217,7 @@ class SimpleAgent : Agent {
         delay(500) // Simulate work
 
         // Update to in progress
-        onSessionUpdate?.invoke(
+        currentCoroutineContext().remoteClient.sessionUpdate(
             SessionNotification(
                 sessionId = sessionId,
                 update = SessionUpdate.ToolCallUpdate(
@@ -231,7 +230,7 @@ class SimpleAgent : Agent {
         delay(500) // Simulate more work
 
         // Complete the tool call
-        onSessionUpdate?.invoke(
+        currentCoroutineContext().remoteClient.sessionUpdate(
             SessionNotification(
                 sessionId = sessionId,
                 update = SessionUpdate.ToolCallUpdate(
