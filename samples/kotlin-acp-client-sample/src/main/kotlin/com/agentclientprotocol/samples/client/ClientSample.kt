@@ -7,7 +7,7 @@ import com.agentclientprotocol.model.InitializeRequest
 import com.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
 import com.agentclientprotocol.model.NewSessionRequest
 import com.agentclientprotocol.model.PromptRequest
-import com.agentclientprotocol.client.ClientSideConnection
+import com.agentclientprotocol.client.ClientInstance
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.transport.StdioTransport
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -32,6 +32,7 @@ private val logger = KotlinLogging.logger {}
  * ```
  */
 fun main() = runBlocking {
+    // TODO: invalid sample. need to connect and emulate counterside via protocol
     logger.info { "Starting ACP Client Sample" }
     
     try {
@@ -49,50 +50,50 @@ fun main() = runBlocking {
 
         val protocol = Protocol(this, transport)
         // Create client-side connection
-        val connection = ClientSideConnection(client, protocol)
+        val clientInstance = ClientInstance(protocol, client)
 
         // Connect to agent
         protocol.start()
-        
-        // Initialize the agent
-        val initResponse = connection.initialize(
-            InitializeRequest(
-                protocolVersion = LATEST_PROTOCOL_VERSION,
-                clientCapabilities = ClientCapabilities(
-                    fs = FileSystemCapability(
-                        readTextFile = true,
-                        writeTextFile = true
-                    )
-                )
-            )
-        )
-        
-        println("Connected to agent:")
-        println("  Protocol version: ${initResponse.protocolVersion}")
-        println("  Agent capabilities: ${initResponse.agentCapabilities}")
-        println("  Auth methods: ${initResponse.authMethods}")
-        
-        // Create a session
-        val sessionResponse = connection.sessionNew(
-            NewSessionRequest(
-                cwd = System.getProperty("user.dir"),
-                mcpServers = emptyList()
-            )
-        )
-        
-        println("Created session: ${sessionResponse.sessionId}")
-        
-        // Send a test sessionPrompt
-        val promptResponse = connection.sessionPrompt(
-            PromptRequest(
-                sessionId = sessionResponse.sessionId,
-                prompt = listOf(
-                    ContentBlock.Text("Hello, I'm testing the ACP Kotlin SDK!")
-                )
-            )
-        )
-        
-        println("Prompt completed with stop reason: ${promptResponse.stopReason}")
+
+        // TODO rewrite, emulate other side
+//        // Initialize the agent
+//        val initResponse = cl.initialize(
+//            InitializeRequest(
+//                protocolVersion = LATEST_PROTOCOL_VERSION,
+//                clientCapabilities = ClientCapabilities(
+//                    fs = FileSystemCapability(
+//                        readTextFile = true,
+//                        writeTextFile = true
+//                    )
+//                )
+//            )
+//        )
+//
+//        println("Connected to agent:")
+//        println("  Protocol version: ${initResponse.protocolVersion}")
+//        println("  Agent capabilities: ${initResponse.agentCapabilities}")
+//        println("  Auth methods: ${initResponse.authMethods}")
+//
+//
+//        // Create a session
+//        val sessionResponse = clientInstance.sessionNew(
+//            NewSessionRequest(
+//                cwd = System.getProperty("user.dir"),
+//                mcpServers = emptyList()
+//            )
+//        )
+//
+//        println("Created session: ${sessionResponse.sessionId}")
+//
+//        // Send a test sessionPrompt
+//        val promptResponse = clientInstance.sessionPrompt(
+//            PromptRequest(
+//                sessionId = sessionResponse.sessionId,
+//                prompt = listOf(
+//                    ContentBlock.Text("Hello, I'm testing the ACP Kotlin SDK!")
+//                )
+//            )
+//        )
         
         // Keep client running for a bit to receive any final updates
         kotlinx.coroutines.delay(2000)

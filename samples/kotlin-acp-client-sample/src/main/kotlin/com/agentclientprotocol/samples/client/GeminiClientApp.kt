@@ -8,7 +8,7 @@ import com.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
 import com.agentclientprotocol.model.NewSessionRequest
 import com.agentclientprotocol.model.PromptRequest
 import com.agentclientprotocol.model.StopReason
-import com.agentclientprotocol.client.ClientSideConnection
+import com.agentclientprotocol.client.ClientInstance
 import com.agentclientprotocol.protocol.Protocol
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.coroutineScope
@@ -42,7 +42,7 @@ suspend fun main() = coroutineScope {
         
         // Create client-side connection
         val protocol = Protocol(this, transport)
-        val connection = ClientSideConnection(client, protocol)
+        val clientInstance = ClientInstance(protocol, client)
         
         logger.info { "Starting Gemini agent process..." }
         
@@ -52,7 +52,7 @@ suspend fun main() = coroutineScope {
         logger.info { "Connected to Gemini agent, initializing..." }
         
         // Initialize the agent
-        val initResponse = connection.initialize(
+        val initResponse = clientInstance.remoteAgent.initialize(
             InitializeRequest(
                 protocolVersion = LATEST_PROTOCOL_VERSION,
                 clientCapabilities = ClientCapabilities(
@@ -73,7 +73,7 @@ suspend fun main() = coroutineScope {
         println()
         
         // Create a session
-        val sessionResponse = connection.sessionNew(
+        val sessionResponse = clientInstance.remoteAgent.sessionNew(
             NewSessionRequest(
                 cwd = System.getProperty("user.dir"),
                 mcpServers = emptyList()
@@ -105,7 +105,7 @@ suspend fun main() = coroutineScope {
                 print("Agent: ")
                 
                 // Send user input to agent
-                val promptResponse = connection.sessionPrompt(
+                val promptResponse = clientInstance.remoteAgent.sessionPrompt(
                     PromptRequest(
                         sessionId = sessionResponse.sessionId,
                         prompt = listOf(

@@ -2,6 +2,7 @@
 
 package com.agentclientprotocol.client
 
+import com.agentclientprotocol.agent.Agent
 import com.agentclientprotocol.agent.RemoteAgent
 import com.agentclientprotocol.agent.asContextElement
 import com.agentclientprotocol.model.*
@@ -22,12 +23,11 @@ private val logger = KotlinLogging.logger {}
  *
  * See protocol docs: [Client](https://agentclientprotocol.com/protocol/overview#client)
  */
-public class ClientSideConnection(
-    private val client: Client,
+public class ClientInstance(
     private val protocol: Protocol,
+    private val client: Client,
+    public val remoteAgent: Agent = RemoteAgent(protocol)
 ) {
-    private val remoteAgent = RemoteAgent(protocol)
-
     init {
         // Set up request handlers for incoming agent requests
         protocol.setRequestHandler(AcpMethod.ClientMethods.FsReadTextFile, coroutineContext = remoteAgent.asContextElement()) { params: ReadTextFileRequest ->

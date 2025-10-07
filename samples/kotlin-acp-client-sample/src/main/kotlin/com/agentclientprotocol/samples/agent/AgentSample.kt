@@ -1,6 +1,6 @@
 package com.agentclientprotocol.samples.agent
 
-import com.agentclientprotocol.agent.AgentSideConnection
+import com.agentclientprotocol.agent.AgentInstance
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.transport.StdioTransport
 import com.agentclientprotocol.transport.Transport
@@ -26,6 +26,7 @@ private val logger = KotlinLogging.logger {}
  * ```
  */
 suspend fun main() = coroutineScope {
+    // TODO: invalid sample. need to connect and emulate counterside via protocol
     logger.info { "Starting ACP Agent Sample" }
 
     try {
@@ -42,12 +43,8 @@ suspend fun main() = coroutineScope {
 
         // Create agent-side connection - this implements Client interface
         val protocol = Protocol(this, transport)
-        val connection = AgentSideConnection(agent, protocol)
+        val agentInstance = AgentInstance(protocol, agent)
 
-        // Wire up the agent to send updates through the connection
-        agent.onSessionUpdate = { notification ->
-            connection.sessionUpdate(notification)
-        }
 
         // Connect and start processing
         protocol.start()
