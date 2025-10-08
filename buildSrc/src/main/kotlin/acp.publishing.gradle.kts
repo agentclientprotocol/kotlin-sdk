@@ -32,7 +32,9 @@ val gpgKey: String = getEnvProperty("GPG_SECRET_KEY") {
 val gpgPassphrase: String = getEnvProperty("SIGNING_PASSPHRASE")
 
 mavenPublishing {
-    publishToMavenCentral(automaticRelease = false) // TODO: change to true once properly tested
+    // Automatically publish artifacts without manual button press on https://central.sonatype.com/
+    publishToMavenCentral(automaticRelease = true)
+
     configureSigning(this)
     pom {
         name = project.name
