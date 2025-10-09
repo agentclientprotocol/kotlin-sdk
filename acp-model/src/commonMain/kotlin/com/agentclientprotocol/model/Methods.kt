@@ -28,10 +28,12 @@ public sealed class AcpMethod(public val methodName: MethodName) {
 
     public class ClientMethods {
         // Client-side operations (methods that clients can call on agents)
-        public object FsReadTextFile : AcpRequestResponseMethod<ReadTextFileRequest, ReadTextFileResponse>("fs/read_text_file")
-        public object FsWriteTextFile : AcpRequestResponseMethod<WriteTextFileRequest, WriteTextFileResponse>("fs/write_text_file")
         public object SessionRequestPermission : AcpRequestResponseMethod<RequestPermissionRequest, RequestPermissionResponse>("session/request_permission")
         public object SessionUpdate : AcpNotificationMethod<SessionNotification>("session/update")
+
+        // extensions
+        public object FsReadTextFile : AcpRequestResponseMethod<ReadTextFileRequest, ReadTextFileResponse>("fs/read_text_file")
+        public object FsWriteTextFile : AcpRequestResponseMethod<WriteTextFileRequest, WriteTextFileResponse>("fs/write_text_file")
         public object TerminalCreate : AcpRequestResponseMethod<CreateTerminalRequest, CreateTerminalResponse>("terminal/create")
         public object TerminalOutput : AcpRequestResponseMethod<TerminalOutputRequest, TerminalOutputResponse>("terminal/output")
         public object TerminalRelease : AcpRequestResponseMethod<ReleaseTerminalRequest, ReleaseTerminalResponse>("terminal/release")
