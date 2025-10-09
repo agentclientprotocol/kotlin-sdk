@@ -202,11 +202,11 @@ public data class NewSessionRequest(
  */
 @Serializable
 public data class LoadSessionRequest(
-    val sessionId: SessionId,
+    override val sessionId: SessionId,
     val cwd: String,
     val mcpServers: List<McpServer>,
     override val _meta: JsonElement? = null
-) : AcpRequest
+) : AcpRequest, AcpWithSessionId
 
 /**
  * Request parameters for sending a user prompt to the agent.
@@ -217,10 +217,10 @@ public data class LoadSessionRequest(
  */
 @Serializable
 public data class PromptRequest(
-    val sessionId: SessionId,
+    override val sessionId: SessionId,
     val prompt: List<ContentBlock>,
     override val _meta: JsonElement? = null
-) : AcpRequest
+) : AcpRequest, AcpWithSessionId
 
 /**
  * Request to read content from a text file.
@@ -229,12 +229,12 @@ public data class PromptRequest(
  */
 @Serializable
 public data class ReadTextFileRequest(
-    val sessionId: SessionId,
+    override val sessionId: SessionId,
     val path: String,
     val line: UInt? = null,
     val limit: UInt? = null,
     override val _meta: JsonElement? = null
-) : AcpRequest
+) : AcpRequest, AcpWithSessionId
 
 /**
  * Request to write content to a text file.
@@ -243,11 +243,11 @@ public data class ReadTextFileRequest(
  */
 @Serializable
 public data class WriteTextFileRequest(
-    val sessionId: SessionId,
+    override val sessionId: SessionId,
     val path: String,
     val content: String,
     override val _meta: JsonElement? = null
-) : AcpRequest
+) : AcpRequest, AcpWithSessionId
 
 /**
  * Request for user permission to execute a tool call.
@@ -258,21 +258,21 @@ public data class WriteTextFileRequest(
  */
 @Serializable
 public data class RequestPermissionRequest(
-    val sessionId: SessionId,
+    override val sessionId: SessionId,
     val toolCall: SessionUpdate.ToolCallUpdate,
     val options: List<PermissionOption>,
     override val _meta: JsonElement? = null
-) : AcpRequest
+) : AcpRequest, AcpWithSessionId
 
 /**
  * Request parameters for setting a session mode.
  */
 @Serializable
 public data class SetSessionModeRequest(
-    val sessionId: SessionId,
+    override val sessionId: SessionId,
     val modeId: SessionModeId,
     override val _meta: JsonElement? = null
-) : AcpRequest
+) : AcpRequest, AcpWithSessionId
 
 /**
  * **UNSTABLE**
@@ -283,10 +283,10 @@ public data class SetSessionModeRequest(
  */
 @Serializable
 public data class SetSessionModelRequest(
-    val sessionId: SessionId,
+    override val sessionId: SessionId,
     val modelId: ModelId,
     override val _meta: JsonElement? = null
-) : AcpRequest
+) : AcpRequest, AcpWithSessionId
 
 // === Response Types ===
 
@@ -364,11 +364,11 @@ public data class SessionModelState(
  */
 @Serializable
 public data class NewSessionResponse(
-    val sessionId: SessionId,
+    override val sessionId: SessionId,
     val modes: SessionModeState? = null,
     val models: SessionModelState? = null,
     override val _meta: JsonElement? = null
-) : AcpResponse
+) : AcpResponse, AcpWithSessionId
 
 /**
  * Response from processing a user prompt.
@@ -462,9 +462,9 @@ public data class ReleaseTerminalResponse(
  */
 @Serializable
 public data class CancelNotification(
-    val sessionId: SessionId,
+    override val sessionId: SessionId,
     override val _meta: JsonElement? = null
-) : AcpNotification
+) : AcpNotification, AcpWithSessionId
 
 /**
  * Notification containing a session update from the agent.
@@ -475,7 +475,7 @@ public data class CancelNotification(
  */
 @Serializable
 public data class SessionNotification(
-    val sessionId: SessionId,
+    override val sessionId: SessionId,
     val update: SessionUpdate,
     override val _meta: JsonElement? = null
-) : AcpNotification
+) : AcpNotification, AcpWithSessionId

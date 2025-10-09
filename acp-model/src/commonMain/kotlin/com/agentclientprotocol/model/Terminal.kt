@@ -17,14 +17,14 @@ import kotlinx.serialization.json.JsonElement
  */
 @Serializable
 public data class CreateTerminalRequest(
-    val sessionId: SessionId,
+    override val sessionId: SessionId,
     val command: String,
     val args: List<String> = emptyList(),
     val cwd: String? = null,
     val env: List<EnvVariable> = emptyList(),
     val outputByteLimit: ULong? = null,
     override val _meta: JsonElement? = null
-) : AcpRequest
+) : AcpRequest, AcpWithSessionId
 
 /**
  * Response from creating a terminal session.
@@ -40,10 +40,10 @@ public data class CreateTerminalResponse(
  */
 @Serializable
 public data class TerminalOutputRequest(
-    val sessionId: SessionId,
+    override val sessionId: SessionId,
     val terminalId: String,
     override val _meta: JsonElement? = null
-) : AcpRequest
+) : AcpRequest, AcpWithSessionId
 
 /**
  * Response containing terminal output.
@@ -61,20 +61,20 @@ public data class TerminalOutputResponse(
  */
 @Serializable
 public data class ReleaseTerminalRequest(
-    val sessionId: SessionId,
+    override val sessionId: SessionId,
     val terminalId: String,
     override val _meta: JsonElement? = null
-) : AcpRequest
+) : AcpRequest, AcpWithSessionId
 
 /**
  * Request to wait for a terminal to exit.
  */
 @Serializable
 public data class WaitForTerminalExitRequest(
-    val sessionId: SessionId,
+    override val sessionId: SessionId,
     val terminalId: String,
     override val _meta: JsonElement? = null
-) : AcpRequest
+) : AcpRequest, AcpWithSessionId
 
 /**
  * Response from waiting for terminal exit.
@@ -101,10 +101,10 @@ public data class TerminalExitStatus(
  */
 @Serializable
 public data class KillTerminalCommandRequest(
-    val sessionId: SessionId,
+    override val sessionId: SessionId,
     val terminalId: String,
     override val _meta: JsonElement? = null
-) : AcpRequest
+) : AcpRequest, AcpWithSessionId
 
 /**
  * Response to terminal/kill command method
