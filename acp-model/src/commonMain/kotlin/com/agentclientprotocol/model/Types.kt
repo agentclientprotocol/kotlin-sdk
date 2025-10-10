@@ -14,12 +14,12 @@ import kotlin.jvm.JvmInline
  * This version is only bumped for breaking changes.
  * Non-breaking changes should be introduced via capabilities.
  */
-public typealias ProtocolVersion = UShort
+public typealias ProtocolVersion = Int
 
 /**
  * The latest protocol version supported.
  */
-public const val LATEST_PROTOCOL_VERSION: ProtocolVersion = 1u
+public const val LATEST_PROTOCOL_VERSION: ProtocolVersion = 1
 
 /**
  * All supported protocol versions.
