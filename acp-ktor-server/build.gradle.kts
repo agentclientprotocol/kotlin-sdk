@@ -9,6 +9,8 @@ kotlin {
         commonMain {
             dependencies {
                 api(project(":acp-ktor"))
+                api(libs.ktor.server.core)
+                api(libs.ktor.server.websockets)
             }
         }
     }

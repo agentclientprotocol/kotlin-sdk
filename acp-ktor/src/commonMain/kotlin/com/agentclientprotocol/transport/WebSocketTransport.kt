@@ -15,6 +15,8 @@ import kotlin.coroutines.cancellation.CancellationException
 
 private val logger = KotlinLogging.logger {}
 
+public const val ACP_PATH: String = "acp"
+
 public class WebSocketTransport(private val parentScope: CoroutineScope, private val wss: WebSocketSession) : BaseTransport() {
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
     private val sendChannel = Channel<JsonRpcMessage>(Channel.UNLIMITED)

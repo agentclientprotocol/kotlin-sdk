@@ -11,6 +11,8 @@ kotlin {
                 implementation(project(":acp-ktor-server"))
                 implementation(kotlin("test"))
                 implementation(libs.ktor.server.test.host)
+                implementation(libs.ktor.server.websockets)
+                implementation(libs.ktor.client.core)
             }
         }
     }
