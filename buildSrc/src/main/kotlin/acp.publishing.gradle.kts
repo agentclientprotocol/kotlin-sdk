@@ -39,7 +39,7 @@ mavenPublishing {
     pom {
         name = project.name
         description = "Kotlin implementation of Agent Client Protocol (ACP)"
-        url = "https://github.com/JetBrains/acp-kotlin-sdk" // TODO: change the repo once it is moved
+        url = "https://github.com/agentclientprotocol/acp-kotlin-sdk"
 
         licenses {
             license {
@@ -59,7 +59,7 @@ mavenPublishing {
         }
 
         scm {
-            url = "https://github.com/JetBrains/acp-kotlin-sdk" // TODO: change the repo once it is moved
+            url = "https://github.com/agentclientprotocol/acp-kotlin-sdk"
         }
     }
 }
