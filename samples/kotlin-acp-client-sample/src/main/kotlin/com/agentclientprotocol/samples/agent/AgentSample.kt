@@ -25,41 +25,41 @@ private val logger = KotlinLogging.logger {}
  * ./gradlew :samples:kotlin-acp-agent-sample:run
  * ```
  */
-suspend fun main() = coroutineScope {
-    // TODO: invalid sample. need to connect and emulate counterside via protocol
-    logger.info { "Starting ACP Agent Sample" }
-
-    try {
-        // Create STDIO transport
-        val transport = StdioTransport(
-            parentScope = this,
-            ioDispatcher = Dispatchers.IO,
-            input = System.`in`.asSource().buffered(),
-            output = System.out.asSink().buffered()
-        )
-
-        // Create agent
-        val agent = SimpleAgent()
-
-        // Create agent-side connection - this implements Client interface
-        val protocol = Protocol(this, transport)
-        val agentInstance = AgentInstance(protocol, agent)
-
-
-        // Connect and start processing
-        protocol.start()
-        
-        logger.info { "Agent connected and ready" }
-        
-        // Keep the agent running
-        // In a real implementation, you might want to handle shutdown signals
-        while (transport.state.value == Transport.State.STARTED) {
-            delay(1000)
-        }
-        
-    } catch (e: Exception) {
-        logger.error(e) { "Agent error" }
-    } finally {
-        logger.info { "Agent shutting down" }
-    }
-}
+//suspend fun main() = coroutineScope {
+//    // TODO: invalid sample. need to connect and emulate counterside via protocol
+//    logger.info { "Starting ACP Agent Sample" }
+//
+//    try {
+//        // Create STDIO transport
+//        val transport = StdioTransport(
+//            parentScope = this,
+//            ioDispatcher = Dispatchers.IO,
+//            input = System.`in`.asSource().buffered(),
+//            output = System.out.asSink().buffered()
+//        )
+//
+//        // Create agent
+//        val agent = SimpleAgent()
+//
+//        // Create agent-side connection - this implements Client interface
+//        val protocol = Protocol(this, transport)
+//        val agentInstance = AgentInstance(protocol, agent)
+//
+//
+//        // Connect and start processing
+//        protocol.start()
+//
+//        logger.info { "Agent connected and ready" }
+//
+//        // Keep the agent running
+//        // In a real implementation, you might want to handle shutdown signals
+//        while (transport.state.value == Transport.State.STARTED) {
+//            delay(1000)
+//        }
+//
+//    } catch (e: Exception) {
+//        logger.error(e) { "Agent error" }
+//    } finally {
+//        logger.info { "Agent shutting down" }
+//    }
+//}

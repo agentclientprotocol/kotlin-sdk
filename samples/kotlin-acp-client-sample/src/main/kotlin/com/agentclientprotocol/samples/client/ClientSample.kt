@@ -31,76 +31,76 @@ private val logger = KotlinLogging.logger {}
  * ./gradlew :samples:kotlin-acp-client-sample:run
  * ```
  */
-fun main() = runBlocking {
-    // TODO: invalid sample. need to connect and emulate counterside via protocol
-    logger.info { "Starting ACP Client Sample" }
-    
-    try {
-        // Create the client implementation
-        val client = SimpleClient(File("."))
-        
-        // Create STDIO transport (for subprocess communication)
-        // In a real scenario, this would connect to an agent process
-        val transport = StdioTransport(
-            parentScope = this,
-            ioDispatcher = Dispatchers.IO,
-            input = System.`in`.asSource().buffered(),
-            output = System.out.asSink().buffered()
-        )
-
-        val protocol = Protocol(this, transport)
-        // Create client-side connection
-        val clientInstance = ClientInstance(protocol, client)
-
-        // Connect to agent
-        protocol.start()
-
-        // TODO rewrite, emulate other side
-//        // Initialize the agent
-//        val initResponse = cl.initialize(
-//            InitializeRequest(
-//                protocolVersion = LATEST_PROTOCOL_VERSION,
-//                clientCapabilities = ClientCapabilities(
-//                    fs = FileSystemCapability(
-//                        readTextFile = true,
-//                        writeTextFile = true
-//                    )
-//                )
-//            )
+//fun main() = runBlocking {
+//    // TODO: invalid sample. need to connect and emulate counterside via protocol
+//    logger.info { "Starting ACP Client Sample" }
+//
+//    try {
+//        // Create the client implementation
+//        val client = SimpleClient(File("."))
+//
+//        // Create STDIO transport (for subprocess communication)
+//        // In a real scenario, this would connect to an agent process
+//        val transport = StdioTransport(
+//            parentScope = this,
+//            ioDispatcher = Dispatchers.IO,
+//            input = System.`in`.asSource().buffered(),
+//            output = System.out.asSink().buffered()
 //        )
 //
-//        println("Connected to agent:")
-//        println("  Protocol version: ${initResponse.protocolVersion}")
-//        println("  Agent capabilities: ${initResponse.agentCapabilities}")
-//        println("  Auth methods: ${initResponse.authMethods}")
+//        val protocol = Protocol(this, transport)
+//        // Create client-side connection
+//        val clientInstance = ClientInstance(protocol, client)
 //
+//        // Connect to agent
+//        protocol.start()
 //
-//        // Create a session
-//        val sessionResponse = clientInstance.sessionNew(
-//            NewSessionRequest(
-//                cwd = System.getProperty("user.dir"),
-//                mcpServers = emptyList()
-//            )
-//        )
+//        // TODO rewrite, emulate other side
+////        // Initialize the agent
+////        val initResponse = cl.initialize(
+////            InitializeRequest(
+////                protocolVersion = LATEST_PROTOCOL_VERSION,
+////                clientCapabilities = ClientCapabilities(
+////                    fs = FileSystemCapability(
+////                        readTextFile = true,
+////                        writeTextFile = true
+////                    )
+////                )
+////            )
+////        )
+////
+////        println("Connected to agent:")
+////        println("  Protocol version: ${initResponse.protocolVersion}")
+////        println("  Agent capabilities: ${initResponse.agentCapabilities}")
+////        println("  Auth methods: ${initResponse.authMethods}")
+////
+////
+////        // Create a session
+////        val sessionResponse = clientInstance.sessionNew(
+////            NewSessionRequest(
+////                cwd = System.getProperty("user.dir"),
+////                mcpServers = emptyList()
+////            )
+////        )
+////
+////        println("Created session: ${sessionResponse.sessionId}")
+////
+////        // Send a test sessionPrompt
+////        val promptResponse = clientInstance.sessionPrompt(
+////            PromptRequest(
+////                sessionId = sessionResponse.sessionId,
+////                prompt = listOf(
+////                    ContentBlock.Text("Hello, I'm testing the ACP Kotlin SDK!")
+////                )
+////            )
+////        )
 //
-//        println("Created session: ${sessionResponse.sessionId}")
+//        // Keep client running for a bit to receive any final updates
+//        kotlinx.coroutines.delay(2000)
 //
-//        // Send a test sessionPrompt
-//        val promptResponse = clientInstance.sessionPrompt(
-//            PromptRequest(
-//                sessionId = sessionResponse.sessionId,
-//                prompt = listOf(
-//                    ContentBlock.Text("Hello, I'm testing the ACP Kotlin SDK!")
-//                )
-//            )
-//        )
-        
-        // Keep client running for a bit to receive any final updates
-        kotlinx.coroutines.delay(2000)
-        
-    } catch (e: Exception) {
-        logger.error(e) { "Client error" }
-    } finally {
-        logger.info { "Client shutting down" }
-    }
-}
+//    } catch (e: Exception) {
+//        logger.error(e) { "Client error" }
+//    } finally {
+//        logger.info { "Client shutting down" }
+//    }
+//}

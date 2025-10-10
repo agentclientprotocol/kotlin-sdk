@@ -1,20 +1,109 @@
 package com.agentclientprotocol.samples.client
 
-import com.agentclientprotocol.model.ClientCapabilities
-import com.agentclientprotocol.model.ContentBlock
-import com.agentclientprotocol.model.FileSystemCapability
-import com.agentclientprotocol.model.InitializeRequest
-import com.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
-import com.agentclientprotocol.model.NewSessionRequest
-import com.agentclientprotocol.model.PromptRequest
-import com.agentclientprotocol.model.StopReason
+import com.agentclientprotocol.client.ClientInfo
 import com.agentclientprotocol.client.ClientInstance
+import com.agentclientprotocol.client.ClientSessionBase
+import com.agentclientprotocol.common.SessionParameters
+import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.coroutineScope
-import java.io.File
+import kotlinx.serialization.json.JsonElement
+import java.nio.file.Paths
+import kotlin.io.path.absolutePathString
 
 private val logger = KotlinLogging.logger {}
+
+internal class TerminalClient(protocol: Protocol, clientInfo: ClientInfo) : ClientInstance(protocol, clientInfo) {
+    override suspend fun createSessionImpl(
+        sessionId: SessionId,
+        sessionParameters: SessionParameters,
+        modeState: SessionModeState?,
+        modelState: SessionModelState?,
+    ): ClientSessionBase {
+        return TerminalSession(sessionId, protocol, modeState, modelState)
+    }
+
+    override suspend fun loadSessionImpl(
+        sessionId: SessionId,
+        sessionParameters: SessionParameters,
+        modeState: SessionModeState?,
+        modelState: SessionModelState?,
+    ): ClientSessionBase {
+        TODO("Not yet implemented")
+    }
+}
+
+internal class TerminalSession(
+    sessionId: SessionId,
+    protocol: Protocol,
+    modeState: SessionModeState?,
+    modelState: SessionModelState?
+) : ClientSessionBase(sessionId, protocol, modeState, modelState) {
+
+    override suspend fun requestPermissions(
+        toolCall: ToolCallUpdate,
+        permissions: List<PermissionOption>,
+        _meta: JsonElement?,
+    ): RequestPermissionResponse {
+        println("Agent requested permissions for tool call: ${toolCall.title}. Choose one of the following options:")
+        for ((i, permission) in permissions.withIndex()) {
+            println("${i + 1}. ${permission.name}")
+        }
+        while (true) {
+            val read = readln()
+            val optionIndex = read.toIntOrNull()
+            if (optionIndex != null && optionIndex in permissions.indices) {
+                return RequestPermissionResponse(RequestPermissionOutcome.Selected(permissions[optionIndex].optionId), _meta)
+            }
+            println("Invalid option selected. Try again.")
+        }
+    }
+
+    override suspend fun update(
+        params: SessionUpdate,
+        _meta: JsonElement?,
+    ) {
+        when (params) {
+            is SessionUpdate.AgentMessageChunk -> {
+                println("Agent: ${params.content.render()}")
+            }
+            is SessionUpdate.AgentThoughtChunk -> {
+                println("Agent thinks: ${params.content.render()}")
+            }
+            is SessionUpdate.AvailableCommandsUpdate -> {
+                println("Available commands updated:")
+            }
+            is SessionUpdate.CurrentModeUpdate -> {
+                println("Session mode changed to: ${params.currentModeId.value}")
+            }
+            is SessionUpdate.PlanUpdate -> {
+                println("Agent plan: ")
+                for (entry in params.entries) {
+                    println("  [${entry.status}] ${entry.content} (${entry.priority})")
+                }
+            }
+            is SessionUpdate.ToolCall -> {
+                println("Tool call started: ${params.title} (${params.kind})")
+            }
+            is SessionUpdate.ToolCallUpdate -> {
+                println("Tool call updated: ${params.title} (${params.kind})")
+            }
+            is SessionUpdate.UserMessageChunk -> {
+                println("User: ${params.content.render()}")
+            }
+        }
+    }
+}
+
+private fun ContentBlock.render(): String {
+    return when (this) {
+        is ContentBlock.Text -> text
+        else -> {
+            "Unsupported chunk: [${this::class.simpleName}]"
+        }
+    }
+}
 
 /**
  * Interactive console chat app that communicates with a Gemini agent via ACP.
@@ -34,15 +123,13 @@ suspend fun main() = coroutineScope {
     logger.info { "Starting Gemini ACP Client App" }
     
     try {
-        // Create the client implementation
-        val client = SimpleClient(File("."))
         
         // Create process transport to start Gemini agent
         val transport = createProcessStdioTransport(this, "gemini", "--experimental-acp")
         
         // Create client-side connection
         val protocol = Protocol(this, transport)
-        val clientInstance = ClientInstance(protocol, client)
+        val clientInstance = TerminalClient(protocol, ClientInfo())
         
         logger.info { "Starting Gemini agent process..." }
         
@@ -50,37 +137,18 @@ suspend fun main() = coroutineScope {
         protocol.start()
         
         logger.info { "Connected to Gemini agent, initializing..." }
-        
-        // Initialize the agent
-        val initResponse = clientInstance.remoteAgent.initialize(
-            InitializeRequest(
-                protocolVersion = LATEST_PROTOCOL_VERSION,
-                clientCapabilities = ClientCapabilities(
-                    fs = FileSystemCapability(
-                        readTextFile = true,
-                        writeTextFile = true
-                    )
-                )
-            )
-        )
-        
-        println("=== Successfully connected to Gemini agent ===")
-        println("Protocol version: ${initResponse.protocolVersion}")
-        println("Agent capabilities: ${initResponse.agentCapabilities}")
-        if (initResponse.authMethods.isNotEmpty()) {
-            println("Auth methods: ${initResponse.authMethods}")
-        }
+
+        val agentInfo = clientInstance.initialize()
+        println("Agent info: $agentInfo")
+
         println()
         
         // Create a session
-        val sessionResponse = clientInstance.remoteAgent.sessionNew(
-            NewSessionRequest(
-                cwd = System.getProperty("user.dir"),
-                mcpServers = emptyList()
-            )
+        val session = clientInstance.newSession(
+            SessionParameters(Paths.get("").absolutePathString(), emptyList())
         )
         
-        println("=== Session created: ${sessionResponse.sessionId} ===")
+        println("=== Session created: ${session.sessionId} ===")
         println("Type your messages below. Use 'exit', 'quit', or Ctrl+C to stop.")
         println("=".repeat(60))
         println()
@@ -102,22 +170,10 @@ suspend fun main() = coroutineScope {
             }
             
             try {
-                print("Agent: ")
+                val response = session.prompt(listOf(ContentBlock.Text(userInput.trim())))
+
                 
-                // Send user input to agent
-                val promptResponse = clientInstance.remoteAgent.sessionPrompt(
-                    PromptRequest(
-                        sessionId = sessionResponse.sessionId,
-                        prompt = listOf(
-                            ContentBlock.Text(userInput.trim())
-                        )
-                    )
-                )
-                
-                // Give a moment for any final session updates to be processed
-                kotlinx.coroutines.delay(500)
-                
-                when (promptResponse.stopReason) {
+                when (response.stopReason) {
                     StopReason.END_TURN -> {
                         // Normal completion - no action needed
                     }
