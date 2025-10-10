@@ -167,11 +167,7 @@ class SimpleClient(private val workingDirectory: File = File(".")) : Client {
                 update.availableCommands.forEach { command ->
                     println("  /${command.name} - ${command.description}")
                     command.input?.let { input ->
-                        when (input) {
-                            is AvailableCommandInput.UnstructuredCommandInput -> {
-                                println("    Input hint: ${input.hint}")
-                            }
-                        }
+                        println("    Input hint: ${input.hint}")
                     }
                 }
             }

@@ -11,18 +11,11 @@ import kotlinx.serialization.json.JsonElement
 
 /**
  * Input specification for a command.
+ *
+ * [hint] All text that was typed after the command name is provided as input.
  */
 @Serializable
-public sealed class AvailableCommandInput {
-    /**
-     * All text that was typed after the command name is provided as input.
-     */
-    @Serializable
-    @SerialName("UnstructuredCommandInput")
-    public data class UnstructuredCommandInput(
-        val hint: String
-    ) : AvailableCommandInput()
-}
+public data class AvailableCommandInput(val hint: String)
 
 /**
  * Information about a command.
