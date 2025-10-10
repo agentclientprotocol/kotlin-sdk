@@ -333,40 +333,30 @@ public final class com/agentclientprotocol/model/AvailableCommand$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
-public abstract class com/agentclientprotocol/model/AvailableCommandInput {
+public final class com/agentclientprotocol/model/AvailableCommandInput {
 	public static final field Companion Lcom/agentclientprotocol/model/AvailableCommandInput$Companion;
-	public synthetic fun <init> (ILkotlinx/serialization/internal/SerializationConstructorMarker;)V
-	public static final synthetic fun write$Self (Lcom/agentclientprotocol/model/AvailableCommandInput;Lkotlinx/serialization/encoding/CompositeEncoder;Lkotlinx/serialization/descriptors/SerialDescriptor;)V
-}
-
-public final class com/agentclientprotocol/model/AvailableCommandInput$Companion {
-	public final fun serializer ()Lkotlinx/serialization/KSerializer;
-}
-
-public final class com/agentclientprotocol/model/AvailableCommandInput$UnstructuredCommandInput : com/agentclientprotocol/model/AvailableCommandInput {
-	public static final field Companion Lcom/agentclientprotocol/model/AvailableCommandInput$UnstructuredCommandInput$Companion;
 	public fun <init> (Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;)Lcom/agentclientprotocol/model/AvailableCommandInput$UnstructuredCommandInput;
-	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/AvailableCommandInput$UnstructuredCommandInput;Ljava/lang/String;ILjava/lang/Object;)Lcom/agentclientprotocol/model/AvailableCommandInput$UnstructuredCommandInput;
+	public final fun copy (Ljava/lang/String;)Lcom/agentclientprotocol/model/AvailableCommandInput;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/AvailableCommandInput;Ljava/lang/String;ILjava/lang/Object;)Lcom/agentclientprotocol/model/AvailableCommandInput;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getHint ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
 
-public final synthetic class com/agentclientprotocol/model/AvailableCommandInput$UnstructuredCommandInput$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
-	public static final field INSTANCE Lcom/agentclientprotocol/model/AvailableCommandInput$UnstructuredCommandInput$$serializer;
+public final synthetic class com/agentclientprotocol/model/AvailableCommandInput$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/AvailableCommandInput$$serializer;
 	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
-	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/AvailableCommandInput$UnstructuredCommandInput;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/AvailableCommandInput;
 	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
 	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
-	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/AvailableCommandInput$UnstructuredCommandInput;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/AvailableCommandInput;)V
 	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
 	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
 }
 
-public final class com/agentclientprotocol/model/AvailableCommandInput$UnstructuredCommandInput$Companion {
+public final class com/agentclientprotocol/model/AvailableCommandInput$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
@@ -899,16 +889,16 @@ public final class com/agentclientprotocol/model/HttpHeader$Companion {
 
 public final class com/agentclientprotocol/model/InitializeRequest : com/agentclientprotocol/model/AcpRequest {
 	public static final field Companion Lcom/agentclientprotocol/model/InitializeRequest$Companion;
-	public synthetic fun <init> (SLcom/agentclientprotocol/model/ClientCapabilities;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public synthetic fun <init> (SLcom/agentclientprotocol/model/ClientCapabilities;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun component1-Mh2AYeg ()S
+	public fun <init> (ILcom/agentclientprotocol/model/ClientCapabilities;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (ILcom/agentclientprotocol/model/ClientCapabilities;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
 	public final fun component2 ()Lcom/agentclientprotocol/model/ClientCapabilities;
 	public final fun component3 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun copy-_TFR7lA (SLcom/agentclientprotocol/model/ClientCapabilities;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/InitializeRequest;
-	public static synthetic fun copy-_TFR7lA$default (Lcom/agentclientprotocol/model/InitializeRequest;SLcom/agentclientprotocol/model/ClientCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/InitializeRequest;
+	public final fun copy (ILcom/agentclientprotocol/model/ClientCapabilities;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/InitializeRequest;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/InitializeRequest;ILcom/agentclientprotocol/model/ClientCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/InitializeRequest;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getClientCapabilities ()Lcom/agentclientprotocol/model/ClientCapabilities;
-	public final fun getProtocolVersion-Mh2AYeg ()S
+	public final fun getProtocolVersion ()I
 	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
@@ -931,18 +921,18 @@ public final class com/agentclientprotocol/model/InitializeRequest$Companion {
 
 public final class com/agentclientprotocol/model/InitializeResponse : com/agentclientprotocol/model/AcpResponse {
 	public static final field Companion Lcom/agentclientprotocol/model/InitializeResponse$Companion;
-	public synthetic fun <init> (SLcom/agentclientprotocol/model/AgentCapabilities;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public synthetic fun <init> (SLcom/agentclientprotocol/model/AgentCapabilities;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun component1-Mh2AYeg ()S
+	public fun <init> (ILcom/agentclientprotocol/model/AgentCapabilities;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (ILcom/agentclientprotocol/model/AgentCapabilities;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
 	public final fun component2 ()Lcom/agentclientprotocol/model/AgentCapabilities;
 	public final fun component3 ()Ljava/util/List;
 	public final fun component4 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun copy-k_pLkZQ (SLcom/agentclientprotocol/model/AgentCapabilities;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/InitializeResponse;
-	public static synthetic fun copy-k_pLkZQ$default (Lcom/agentclientprotocol/model/InitializeResponse;SLcom/agentclientprotocol/model/AgentCapabilities;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/InitializeResponse;
+	public final fun copy (ILcom/agentclientprotocol/model/AgentCapabilities;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/InitializeResponse;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/InitializeResponse;ILcom/agentclientprotocol/model/AgentCapabilities;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/InitializeResponse;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getAgentCapabilities ()Lcom/agentclientprotocol/model/AgentCapabilities;
 	public final fun getAuthMethods ()Ljava/util/List;
-	public final fun getProtocolVersion-Mh2AYeg ()S
+	public final fun getProtocolVersion ()I
 	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
@@ -2890,8 +2880,8 @@ public final class com/agentclientprotocol/model/ToolKind$Companion {
 }
 
 public final class com/agentclientprotocol/model/TypesKt {
-	public static final field LATEST_PROTOCOL_VERSION S
-	public static final fun getSUPPORTED_PROTOCOL_VERSIONS ()[Lkotlin/UShort;
+	public static final field LATEST_PROTOCOL_VERSION I
+	public static final fun getSUPPORTED_PROTOCOL_VERSIONS ()[Ljava/lang/Integer;
 }
 
 public final class com/agentclientprotocol/model/WaitForTerminalExitRequest : com/agentclientprotocol/model/AcpRequest {
