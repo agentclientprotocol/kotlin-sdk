@@ -74,10 +74,10 @@ class SimpleAgent : Agent {
         return InitializeResponse(
             protocolVersion = LATEST_PROTOCOL_VERSION,
             agentCapabilities = AgentCapabilities(
-                loadSession = true,
+                loadSession = false,
                 promptCapabilities = PromptCapabilities(
                     audio = false,
-                    image = true,
+                    image = false,
                     embeddedContext = true
                 )
             ),

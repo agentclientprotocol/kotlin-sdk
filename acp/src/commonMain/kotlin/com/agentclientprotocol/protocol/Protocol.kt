@@ -10,6 +10,7 @@ import com.agentclientprotocol.rpc.*
 import com.agentclientprotocol.transport.Transport
 import com.agentclientprotocol.transport.asMessageChannel
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.atomicfu.AtomicInt
 import kotlinx.atomicfu.AtomicLong
 import kotlinx.atomicfu.AtomicRef
 import kotlinx.atomicfu.atomic
@@ -73,7 +74,7 @@ public class Protocol(
 ) {
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
     private val requestsScope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
-    private val requestIdCounter: AtomicLong = atomic(0L)
+    private val requestIdCounter: AtomicInt = atomic(0)
     private val pendingRequests: AtomicRef<PersistentMap<RequestId, CompletableDeferred<JsonElement>>> =
         atomic(persistentMapOf())
 
@@ -121,7 +122,7 @@ public class Protocol(
         params: JsonElement? = null,
         timeout: Duration = options.requestTimeout
     ): JsonElement {
-        val requestId = RequestId(requestIdCounter.incrementAndGet().toString())
+        val requestId = RequestId(requestIdCounter.incrementAndGet())
         val deferred = CompletableDeferred<JsonElement>()
 
         pendingRequests.update { it.put(requestId, deferred) }

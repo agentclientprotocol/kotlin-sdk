@@ -19,8 +19,8 @@ public const val JSONRPC_VERSION: String = "2.0"
  */
 @JvmInline
 @Serializable
-public value class RequestId(public val value: String) {
-    override fun toString(): String = value
+public value class RequestId(public val value: Int) {
+    override fun toString(): String = value.toString()
 }
 
 @JvmInline
