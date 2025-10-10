@@ -25,8 +25,9 @@ public class StdioTransport(
     private val ioDispatcher: CoroutineDispatcher,
     private val input: Source,
     private val output: Sink,
+    private val name: String = StdioTransport::class.simpleName!!,
 ) : BaseTransport() {
-    private val childScope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
+    private val childScope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]) + CoroutineName(name))
 
     private val receiveChannel = Channel<JsonRpcMessage>(Channel.UNLIMITED)
     private val sendChannel = Channel<JsonRpcMessage>(Channel.UNLIMITED)
@@ -34,8 +35,8 @@ public class StdioTransport(
     override fun start() {
         if (_state.getAndUpdate { State.STARTING } != State.CREATED) error("Transport is not in ${State.CREATED.name} state")
         // Start reading messages from input
-        childScope.launch(CoroutineName("${StdioTransport::class.simpleName!!}.join-jobs")) {
-            val readJob = launch(ioDispatcher + CoroutineName("${::StdioTransport.name}.read-from-input")) {
+        childScope.launch(CoroutineName("$name.join-jobs")) {
+            val readJob = launch(ioDispatcher + CoroutineName("$name.read-from-input")) {
                 try {
                     while (currentCoroutineContext().isActive) {
                         currentCoroutineContext().ensureActive()
@@ -78,7 +79,7 @@ public class StdioTransport(
                 }
                 logger.trace { "Exiting read job..." }
             }
-            val writeJob = launch(ioDispatcher + CoroutineName("${StdioTransport::class.simpleName}.write-to-output")) {
+            val writeJob = launch(ioDispatcher + CoroutineName("$name.write-to-output")) {
                 try {
                     for (message in sendChannel) {
                         val encoded = ACPJson.encodeToString(message)
