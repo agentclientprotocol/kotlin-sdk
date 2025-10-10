@@ -122,6 +122,7 @@ public class StdioTransport(
                 fireError(e)
             }
             finally {
+                childScope.cancel()
                 if (_state.getAndUpdate { State.CLOSED } != State.CLOSING) logger.warn { "Transport is not in ${State.CLOSING.name} state" }
                 fireClose()
                 logger.trace { "Transport closed" }
