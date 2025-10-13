@@ -3,6 +3,7 @@
 package com.agentclientprotocol.agent
 
 import com.agentclientprotocol.client.ClientInfo
+import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.Session
 import com.agentclientprotocol.common.SessionParameters
 import com.agentclientprotocol.model.*
@@ -15,6 +16,9 @@ import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.takeWhile
+import kotlinx.coroutines.flow.transformWhile
 import kotlinx.serialization.json.JsonElement
 
 private val logger = KotlinLogging.logger {}
@@ -79,7 +83,20 @@ public abstract class AgentInstance(
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionPrompt) { params: PromptRequest ->
             val session = getSession(params.sessionId) ?: acpFail("Session ${params.sessionId} not found")
-            return@setRequestHandler session.prompt(params.prompt, params._meta)
+            var response: PromptResponse? = null
+            session.prompt(params.prompt, params._meta).takeWhile { event ->
+                when (event) {
+                    is Event.PromptResponseEvent -> {
+                        response = event.response
+                        return@takeWhile false
+                    }
+                    is Event.SessionUpdateEvent -> {
+                        session.update(event.update, params._meta)
+                        return@takeWhile true
+                    }
+                }
+            }.collect()
+            return@setRequestHandler response ?: PromptResponse(StopReason.END_TURN)
         }
 
         protocol.setNotificationHandler(AcpMethod.AgentMethods.SessionCancel) { params: CancelNotification ->

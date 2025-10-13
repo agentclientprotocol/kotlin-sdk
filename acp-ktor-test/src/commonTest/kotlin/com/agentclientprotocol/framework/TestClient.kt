@@ -47,7 +47,7 @@ open class TestClientSession(sessionId: SessionId, protocol: Protocol, modeState
         TODO("Not yet implemented")
     }
 
-    override suspend fun update(
+    override suspend fun updateImpl(
         params: SessionUpdate,
         _meta: JsonElement?,
     ) {

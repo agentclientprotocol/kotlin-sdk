@@ -11,8 +11,14 @@ import com.agentclientprotocol.model.SessionMode
 import com.agentclientprotocol.model.SessionModeId
 import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.model.ToolCallUpdate
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.json.JsonElement
+
+public sealed class Event {
+    public class SessionUpdateEvent(public val update: SessionUpdate) : Event()
+    public class PromptResponseEvent(public val response: PromptResponse) : Event()
+}
 
 public interface Session {
     public val sessionId: SessionId
@@ -31,7 +37,7 @@ public interface Session {
      *
      * Corresponds to the [com.agentclientprotocol.model.AcpMethod.AgentMethods.SessionPrompt]
      */
-    public suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): PromptResponse
+    public suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): Flow<Event>
 
     /**
      * Cancels the current agent turn and returns after the agent canceled all activities of the current turn.

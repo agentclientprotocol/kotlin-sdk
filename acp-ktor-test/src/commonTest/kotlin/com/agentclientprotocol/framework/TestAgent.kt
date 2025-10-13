@@ -3,21 +3,13 @@ package com.agentclientprotocol.framework
 import com.agentclientprotocol.agent.AgentInfo
 import com.agentclientprotocol.agent.AgentInstance
 import com.agentclientprotocol.agent.AgentSessionBase
+import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.Session
 import com.agentclientprotocol.common.SessionParameters
-import com.agentclientprotocol.model.ContentBlock
-import com.agentclientprotocol.model.ModelId
-import com.agentclientprotocol.model.ModelInfo
-import com.agentclientprotocol.model.PromptResponse
-import com.agentclientprotocol.model.SessionId
-import com.agentclientprotocol.model.SessionMode
-import com.agentclientprotocol.model.SessionModeId
-import com.agentclientprotocol.model.StopReason
+import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.JsonElement
 import kotlin.uuid.ExperimentalUuidApi
 
@@ -77,8 +69,14 @@ open class TestAgentSession(sessionId: SessionId, protocol: Protocol, public val
     override suspend fun prompt(
         content: List<ContentBlock>,
         _meta: JsonElement?,
-    ): PromptResponse {
-        return PromptResponse(stopReason = StopReason.END_TURN)
+    ): Flow<Event> = flow {
+        emit(Event.SessionUpdateEvent(SessionUpdate.AgentMessageChunk(ContentBlock.Text("Hello!\r\n"))))
+        delay(500)
+        emit(Event.SessionUpdateEvent(SessionUpdate.AgentMessageChunk(ContentBlock.Text("I'm a test agent!\r\n"))))
+        delay(500)
+        emit(Event.SessionUpdateEvent(SessionUpdate.AgentMessageChunk(ContentBlock.Text("I'm running in ${currentMode.value} mode.\r\n"))))
+        delay(500)
+        emit(Event.SessionUpdateEvent(SessionUpdate.AgentMessageChunk(ContentBlock.Text("I'm using ${currentModel.value} model.\r\n"))))
     }
 
     override suspend fun cancel() {

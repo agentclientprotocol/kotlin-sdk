@@ -3,6 +3,7 @@ package com.agentclientprotocol.samples.client
 import com.agentclientprotocol.client.ClientInfo
 import com.agentclientprotocol.client.ClientInstance
 import com.agentclientprotocol.client.ClientSessionBase
+import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionParameters
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
@@ -60,39 +61,51 @@ internal class TerminalSession(
         }
     }
 
-    override suspend fun update(
+    override suspend fun updateImpl(
         params: SessionUpdate,
         _meta: JsonElement?,
     ) {
-        when (params) {
-            is SessionUpdate.AgentMessageChunk -> {
-                println("Agent: ${params.content.render()}")
-            }
-            is SessionUpdate.AgentThoughtChunk -> {
-                println("Agent thinks: ${params.content.render()}")
-            }
-            is SessionUpdate.AvailableCommandsUpdate -> {
-                println("Available commands updated:")
-            }
-            is SessionUpdate.CurrentModeUpdate -> {
-                println("Session mode changed to: ${params.currentModeId.value}")
-            }
-            is SessionUpdate.PlanUpdate -> {
-                println("Agent plan: ")
-                for (entry in params.entries) {
-                    println("  [${entry.status}] ${entry.content} (${entry.priority})")
-                }
-            }
-            is SessionUpdate.ToolCall -> {
-                println("Tool call started: ${params.title} (${params.kind})")
-            }
-            is SessionUpdate.ToolCallUpdate -> {
-                println("Tool call updated: ${params.title} (${params.kind})")
-            }
-            is SessionUpdate.UserMessageChunk -> {
-                println("User: ${params.content.render()}")
+        params.render()
+    }
+}
+
+private fun SessionUpdate.render() {
+    when (this) {
+        is SessionUpdate.AgentMessageChunk -> {
+            println("Agent: ${this.content.render()}")
+        }
+
+        is SessionUpdate.AgentThoughtChunk -> {
+            println("Agent thinks: ${this.content.render()}")
+        }
+
+        is SessionUpdate.AvailableCommandsUpdate -> {
+            println("Available commands updated:")
+        }
+
+        is SessionUpdate.CurrentModeUpdate -> {
+            println("Session mode changed to: ${this.currentModeId.value}")
+        }
+
+        is SessionUpdate.PlanUpdate -> {
+            println("Agent plan: ")
+            for (entry in this.entries) {
+                println("  [${entry.status}] ${entry.content} (${entry.priority})")
             }
         }
+
+        is SessionUpdate.ToolCall -> {
+            println("Tool call started: ${this.title} (${this.kind})")
+        }
+
+        is SessionUpdate.ToolCallUpdate -> {
+            println("Tool call updated: ${this.title} (${this.kind})")
+        }
+
+        is SessionUpdate.UserMessageChunk -> {
+            println("User: ${this.content.render()}")
+        }
+
     }
 }
 
@@ -170,27 +183,35 @@ suspend fun main() = coroutineScope {
             }
             
             try {
-                val response = session.prompt(listOf(ContentBlock.Text(userInput.trim())))
-
-                
-                when (response.stopReason) {
-                    StopReason.END_TURN -> {
-                        // Normal completion - no action needed
-                    }
-                    StopReason.MAX_TOKENS -> {
-                        println("\n[Response truncated due to token limit]")
-                    }
-                    StopReason.MAX_TURN_REQUESTS -> {
-                        println("\n[Turn limit reached]")
-                    }
-                    StopReason.REFUSAL -> {
-                        println("\n[Agent declined to respond]")
-                    }
-                    StopReason.CANCELLED -> {
-                        println("\n[Response was cancelled]")
+                session.prompt(listOf(ContentBlock.Text(userInput.trim()))).collect { event ->
+                    when (event) {
+                        is Event.SessionUpdateEvent -> {
+                            event.update.render()
+                        }
+                        is Event.PromptResponseEvent -> {
+                            when (event.response.stopReason) {
+                                StopReason.END_TURN -> {
+                                    // Normal completion - no action needed
+                                }
+                                StopReason.MAX_TOKENS -> {
+                                    println("\n[Response truncated due to token limit]")
+                                }
+                                StopReason.MAX_TURN_REQUESTS -> {
+                                    println("\n[Turn limit reached]")
+                                }
+                                StopReason.REFUSAL -> {
+                                    println("\n[Agent declined to respond]")
+                                }
+                                StopReason.CANCELLED -> {
+                                    println("\n[Response was cancelled]")
+                                }
+                            }
+                        }
                     }
                 }
+
                 
+
                 println() // Extra newline for readability
                 
             } catch (e: Exception) {
