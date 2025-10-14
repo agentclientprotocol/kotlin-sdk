@@ -10,7 +10,6 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
-import kotlin.time.Duration
 
 
 /**
@@ -18,8 +17,7 @@ import kotlin.time.Duration
  */
 public suspend inline fun <reified TRequest : AcpRequest, reified TResponse : AcpResponse> Protocol.sendRequest(
     method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
-    request: TRequest?,
-    timeout: Duration = options.requestTimeout
+    request: TRequest?
 ): TResponse {
     val params = request?.let { ACPJson.encodeToJsonElement(request) }
     val responseJson = this.sendRequestRaw(method.methodName, params)

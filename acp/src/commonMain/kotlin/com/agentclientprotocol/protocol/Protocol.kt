@@ -54,6 +54,7 @@ public open class ProtocolOptions(
     /**
      * Default timeout for requests.
      */
+    @Deprecated("Use coroutine timeouts")
     public val requestTimeout: Duration = 60.seconds
 )
 
@@ -118,8 +119,7 @@ public class Protocol(
      */
     public suspend fun sendRequestRaw(
         method: MethodName,
-        params: JsonElement? = null,
-        timeout: Duration = options.requestTimeout
+        params: JsonElement? = null
     ): JsonElement {
         val requestId = RequestId(requestIdCounter.incrementAndGet())
         val deferred = CompletableDeferred<JsonElement>()
@@ -134,14 +134,7 @@ public class Protocol(
             )
 
             transport.send(request)
-
-            return withTimeout(timeout) {
-                deferred.await()
-            }
-        } catch (e: TimeoutCancellationException) {
-            throw RequestTimeoutException("Request timed out after $timeout: ${method.name}")
-        } catch (e: Exception) {
-            throw e
+            return deferred.await()
         }
         finally {
             pendingOutgoingRequests.update { it.remove(requestId) }
