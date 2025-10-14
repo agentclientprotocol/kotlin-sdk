@@ -3,6 +3,7 @@
 package com.agentclientprotocol.protocol
 
 import com.agentclientprotocol.model.AcpMethod
+import com.agentclientprotocol.model.CancelRequestNotification
 import com.agentclientprotocol.rpc.*
 import com.agentclientprotocol.transport.Transport
 import com.agentclientprotocol.transport.asMessageChannel
@@ -46,6 +47,14 @@ public class JsonRpcException(
     message: String,
     public val data: JsonElement? = null
 ) : Exception(message)
+
+/**
+ * Exception thrown when a request is cancelled.
+ */
+public class JsonRpcCanceledException(
+    message: String,
+    public val data: JsonElement? = null
+) : CancellationException(message)
 
 /**
  * Configuration options for the protocol.
@@ -94,6 +103,19 @@ public class Protocol(
      * Connect to a transport and start processing messages.
      */
     public fun start() {
+        setNotificationHandler(AcpMethod.MetaMethods.CancelRequest) { request ->
+            var requestJob: Job? = null
+            pendingIncomingRequests.update { map ->
+                requestJob = map[request.requestId]
+                map.remove(request.requestId)
+            }
+            if (requestJob == null) {
+                logger.warn { "Received CancelRequest for unknown request: ${request.requestId}" }
+                return@setNotificationHandler
+            }
+            requestJob.cancel(JsonRpcCanceledException(request.message ?: "Cancelled by the counterpart"))
+        }
+
         // Start processing incoming messages
         scope.launch(CoroutineName("${Protocol::class.simpleName!!}.read-messages")) {
             try {
@@ -135,6 +157,18 @@ public class Protocol(
 
             transport.send(request)
             return deferred.await()
+        }
+        catch (ce: CancellationException) {
+            // when ce is JsonRpcCanceledException it means that the cancellation is done on the counterpart side
+            // no need to send CancelRequest notification in this case
+            if (ce !is JsonRpcCanceledException) {
+                logger.trace(ce) { "Request cancelled on this side. Sending CancelRequest notification." }
+                withContext(NonCancellable) {
+                    AcpMethod.MetaMethods.CancelRequest(this@Protocol, CancelRequestNotification(requestId, ce.message))
+                    deferred.cancel()
+                }
+            }
+            throw ce
         }
         finally {
             pendingOutgoingRequests.update { it.remove(requestId) }
@@ -261,13 +295,15 @@ public class Protocol(
                 )
             } catch (ce: CancellationException) {
                 logger.trace(ce) { "Incoming request cancelled: ${request.method}" }
-                sendResponse(
-                    request.id, null,
-                    JsonRpcError(
-                        code = JsonRpcErrorCode.CANCELLED,
-                        message = ce.message ?: "Cancelled"
+                if (ce !is JsonRpcCanceledException) { // JsonRpcCanceledException already means that the request was cancelled on the counterpart side
+                    sendResponse(
+                        request.id, null,
+                        JsonRpcError(
+                            code = JsonRpcErrorCode.CANCELLED,
+                            message = ce.message ?: "Cancelled"
+                        )
                     )
-                )
+                }
             } catch (e: Exception) {
                 logger.error(e) { "Exception on ${request.method}" }
                 sendResponse(
@@ -307,7 +343,7 @@ public class Protocol(
             val responseError = response.error
             if (responseError != null) {
                 if (responseError.code == JsonRpcErrorCode.CANCELLED) {
-                    deferred.cancel(responseError.message)
+                    deferred.cancel(JsonRpcCanceledException(responseError.message, responseError.data))
                 }
                 else {
                     val exception = JsonRpcException(

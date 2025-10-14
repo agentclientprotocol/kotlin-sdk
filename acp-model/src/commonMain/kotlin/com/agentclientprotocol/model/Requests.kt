@@ -3,6 +3,7 @@
 
 package com.agentclientprotocol.model
 
+import com.agentclientprotocol.rpc.RequestId
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -479,3 +480,15 @@ public data class SessionNotification(
     val update: SessionUpdate,
     override val _meta: JsonElement? = null
 ) : AcpNotification, AcpWithSessionId
+
+/**
+ * Notification used to cancel a running request with [requestId] on a counterpart side.
+ *
+ * (The same method is used in LSP)
+ */
+@Serializable
+public class CancelRequestNotification(
+    public val requestId: RequestId,
+    public val message: String?,
+    override val _meta: JsonElement? = null,
+) : AcpNotification
