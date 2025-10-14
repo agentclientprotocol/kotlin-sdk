@@ -4,7 +4,9 @@ import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.AcpRequest
 import com.agentclientprotocol.model.AcpResponse
+import com.agentclientprotocol.protocol.AcpExpectedError
 import com.agentclientprotocol.protocol.JsonRpcException
+import com.agentclientprotocol.protocol.acpFail
 import com.agentclientprotocol.protocol.sendRequest
 import com.agentclientprotocol.protocol.setRequestHandler
 import com.agentclientprotocol.rpc.JsonRpcErrorCode
@@ -17,7 +19,9 @@ import kotlinx.coroutines.test.TestResult
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.put
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -181,7 +185,7 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     }
 
     @Test
-    fun `error thrown in request handler is propagated to client with message`() = testWithProtocols { clientProtocol, agentProtocol ->
+    fun `error is propagated to client (INTERNAL_ERROR)`() = testWithProtocols { clientProtocol, agentProtocol ->
         val errorMessage = "Test error from handler"
         agentProtocol.setRequestHandler(TestMethod) { request ->
             throw IllegalStateException(errorMessage)
@@ -193,10 +197,56 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         }
         catch (e: JsonRpcException) {
             assertEquals(errorMessage, e.message, "Error message should be propagated to client")
-            assertEquals(JsonRpcErrorCode.INTERNAL_ERROR, e.code, "Error code should be ${JsonRpcErrorCode.INTERNAL_ERROR}")
+            assertEquals(JsonRpcErrorCode.INTERNAL_ERROR, e.code, "Error code should be INTERNAL_ERROR")
+        }
+    }
+
+    @Test
+    fun `error is propagated to client(INVALID_PARAMS)`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val errorMessage = "Invalid parameters provided"
+        agentProtocol.setRequestHandler(TestMethod) { request ->
+            acpFail(errorMessage)
+        }
+
+        try {
+            clientProtocol.sendRequest(TestMethod, TestRequest("Test"))
+            fail("Expected JsonRpcException to be thrown")
+        }
+        catch (e: AcpExpectedError) {
+            assertEquals(errorMessage, e.message, "Error message should be propagated to client")
+        }
+    }
+
+    @Test
+    fun `error is propagated to client(PARSE_ERROR)`() = testWithProtocols { clientProtocol, agentProtocol ->
+        agentProtocol.setRequestHandler(TestMethod) { request ->
+            TestResponse("should not reach here")
+        }
+
+        try {
+            // Send invalid JSON that cannot be deserialized to TestRequest
+            clientProtocol.sendRequestRaw(TestMethod.methodName, kotlinx.serialization.json.buildJsonObject {
+                put("invalidField", "not a valid TestRequest")
+            })
+            fail("Expected JsonRpcException to be thrown")
+        }
+        catch (e: SerializationException) {
+            // expected
         }
         catch (e: Exception) {
             fail("Unexpected exception: ${e.message}", e)
+        }
+    }
+
+    @Test
+    fun `error is propagated to client(METHOD_NOT_FOUND)`() = testWithProtocols { clientProtocol, agentProtocol ->
+        // Don't set any handler, so METHOD_NOT_FOUND is returned
+        try {
+            clientProtocol.sendRequest(TestMethod, TestRequest("Test"))
+            fail("Expected JsonRpcException to be thrown")
+        }
+        catch (e: JsonRpcException) {
+            assertEquals(JsonRpcErrorCode.METHOD_NOT_FOUND, e.code, "Error code should be METHOD_NOT_FOUND")
         }
     }
 }

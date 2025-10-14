@@ -49,9 +49,9 @@ public class JsonRpcException(
 ) : Exception(message)
 
 /**
- * Exception thrown when a request is cancelled.
+ * Exception thrown when a request is cancelled explicitly by invoking [AcpMethod.MetaMethods.CancelRequest] from the calling site
  */
-public class JsonRpcCanceledException(
+public class JsonRpcRequestCanceledException(
     message: String,
     public val data: JsonElement? = null
 ) : CancellationException(message)
@@ -113,7 +113,7 @@ public class Protocol(
                 logger.warn { "Received CancelRequest for unknown request: ${request.requestId}" }
                 return@setNotificationHandler
             }
-            requestJob.cancel(JsonRpcCanceledException(request.message ?: "Cancelled by the counterpart"))
+            requestJob.cancel(JsonRpcRequestCanceledException(request.message ?: "Cancelled by the counterpart"))
         }
 
         // Start processing incoming messages
@@ -158,10 +158,27 @@ public class Protocol(
             transport.send(request)
             return deferred.await()
         }
+        catch (jsonRpcException: JsonRpcException) {
+            when (jsonRpcException.code) {
+                JsonRpcErrorCode.PARSE_ERROR -> {
+                    throw SerializationException(jsonRpcException.message, jsonRpcException)
+                }
+                JsonRpcErrorCode.INVALID_PARAMS -> {
+                    throw AcpExpectedError(jsonRpcException.message ?: "Invalid params")
+                }
+                JsonRpcErrorCode.CANCELLED -> {
+                    throw CancellationException(jsonRpcException.message ?: "Cancelled on the counterpart side", jsonRpcException)
+                }
+                else -> {
+                    throw jsonRpcException
+                }
+            }
+        }
         catch (ce: CancellationException) {
             // when ce is JsonRpcCanceledException it means that the cancellation is done on the counterpart side
             // no need to send CancelRequest notification in this case
-            if (ce !is JsonRpcCanceledException) {
+            // actually, this kind of exception should not happen here because it's used only for incoming requests cancellation
+            if (ce !is JsonRpcRequestCanceledException) {
                 logger.trace(ce) { "Request cancelled on this side. Sending CancelRequest notification." }
                 withContext(NonCancellable) {
                     AcpMethod.MetaMethods.CancelRequest(this@Protocol, CancelRequestNotification(requestId, ce.message))
@@ -295,7 +312,7 @@ public class Protocol(
                 )
             } catch (ce: CancellationException) {
                 logger.trace(ce) { "Incoming request cancelled: ${request.method}" }
-                if (ce !is JsonRpcCanceledException) { // JsonRpcCanceledException already means that the request was cancelled on the counterpart side
+                if (ce !is JsonRpcRequestCanceledException) { // JsonRpcCanceledException already means that the request was cancelled on the counterpart side
                     sendResponse(
                         request.id, null,
                         JsonRpcError(
@@ -342,17 +359,14 @@ public class Protocol(
         if (deferred != null) {
             val responseError = response.error
             if (responseError != null) {
-                if (responseError.code == JsonRpcErrorCode.CANCELLED) {
-                    deferred.cancel(JsonRpcCanceledException(responseError.message, responseError.data))
-                }
-                else {
-                    val exception = JsonRpcException(
-                        code = responseError.code,
-                        message = responseError.message,
-                        data = responseError.data
-                    )
-                    deferred.completeExceptionally(exception)
-                }
+                // do not convert CANCELLED to CancellationException here, because it's done in sendRequestRaw
+                val exception = JsonRpcException(
+                    code = responseError.code,
+                    message = responseError.message,
+                    data = responseError.data
+                )
+                deferred.completeExceptionally(exception)
+
             } else {
                 deferred.complete(response.result ?: JsonNull)
             }
