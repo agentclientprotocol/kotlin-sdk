@@ -10,7 +10,6 @@ import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionMode
 import com.agentclientprotocol.model.SessionModeId
 import com.agentclientprotocol.model.SessionUpdate
-import com.agentclientprotocol.model.ToolCallUpdate
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.json.JsonElement
@@ -51,7 +50,7 @@ public interface Session {
      *
      * Corresponds to the [com.agentclientprotocol.model.AcpMethod.ClientMethods.SessionRequestPermission]
      */
-    public suspend fun requestPermissions(toolCall: ToolCallUpdate, permissions: List<PermissionOption>, _meta: JsonElement? = null): RequestPermissionResponse
+    public suspend fun requestPermissions(toolCall: SessionUpdate.ToolCallUpdate, permissions: List<PermissionOption>, _meta: JsonElement? = null): RequestPermissionResponse
 
     /**
      * Sends update notifications to the agent.

@@ -78,7 +78,7 @@ public abstract class ClientSessionBase(
     }
 
     abstract override suspend fun requestPermissions(
-        toolCall: ToolCallUpdate,
+        toolCall: SessionUpdate.ToolCallUpdate,
         permissions: List<PermissionOption>,
         _meta: JsonElement?,
     ): RequestPermissionResponse

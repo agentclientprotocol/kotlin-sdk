@@ -43,7 +43,7 @@ internal class TerminalSession(
 ) : ClientSessionBase(sessionId, protocol, modeState, modelState) {
 
     override suspend fun requestPermissions(
-        toolCall: ToolCallUpdate,
+        toolCall: SessionUpdate.ToolCallUpdate,
         permissions: List<PermissionOption>,
         _meta: JsonElement?,
     ): RequestPermissionResponse {

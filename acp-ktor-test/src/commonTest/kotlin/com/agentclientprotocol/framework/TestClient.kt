@@ -10,7 +10,6 @@ import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionModeState
 import com.agentclientprotocol.model.SessionModelState
 import com.agentclientprotocol.model.SessionUpdate
-import com.agentclientprotocol.model.ToolCallUpdate
 import com.agentclientprotocol.protocol.Protocol
 import kotlinx.serialization.json.JsonElement
 
@@ -40,7 +39,7 @@ open class TestClientSession(sessionId: SessionId, protocol: Protocol, modeState
     modeState, modelState
 ) {
     override suspend fun requestPermissions(
-        toolCall: ToolCallUpdate,
+        toolCall: SessionUpdate.ToolCallUpdate,
         permissions: List<PermissionOption>,
         _meta: JsonElement?,
     ): RequestPermissionResponse {

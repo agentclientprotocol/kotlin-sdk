@@ -11,7 +11,7 @@ public abstract class AgentSessionBase(
     private val protocol: Protocol,
 ): Session {
     override suspend fun requestPermissions(
-        toolCall: ToolCallUpdate,
+        toolCall: SessionUpdate.ToolCallUpdate,
         permissions: List<PermissionOption>,
         _meta: JsonElement?,
     ): RequestPermissionResponse {
