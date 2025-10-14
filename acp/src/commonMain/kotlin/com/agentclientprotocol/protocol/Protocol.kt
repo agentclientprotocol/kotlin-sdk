@@ -3,17 +3,14 @@
 package com.agentclientprotocol.protocol
 
 import com.agentclientprotocol.model.AcpMethod
-import com.agentclientprotocol.model.AcpNotification
-import com.agentclientprotocol.model.AcpRequest
-import com.agentclientprotocol.model.AcpResponse
 import com.agentclientprotocol.rpc.*
 import com.agentclientprotocol.transport.Transport
 import com.agentclientprotocol.transport.asMessageChannel
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.AtomicInt
-import kotlinx.atomicfu.AtomicLong
 import kotlinx.atomicfu.AtomicRef
 import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.getAndUpdate
 import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
@@ -21,10 +18,6 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.encodeToJsonElement
-import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -75,9 +68,13 @@ public class Protocol(
     public val options: ProtocolOptions = ProtocolOptions(),
 ) {
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
-    private val requestsScope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
+    // a scope and dispatcher that executes requests to avoid blocking of message processing
+    private val requestsScope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job])
+            + Dispatchers.Default.limitedParallelism(parallelism = 1, name = "MessageProcessor"))
     private val requestIdCounter: AtomicInt = atomic(0)
-    private val pendingRequests: AtomicRef<PersistentMap<RequestId, CompletableDeferred<JsonElement>>> =
+    private val pendingOutgoingRequests: AtomicRef<PersistentMap<RequestId, CompletableDeferred<JsonElement>>> =
+        atomic(persistentMapOf())
+    private val pendingIncomingRequests: AtomicRef<PersistentMap<RequestId, Job>> =
         atomic(persistentMapOf())
 
     /**
@@ -127,7 +124,7 @@ public class Protocol(
         val requestId = RequestId(requestIdCounter.incrementAndGet())
         val deferred = CompletableDeferred<JsonElement>()
 
-        pendingRequests.update { it.put(requestId, deferred) }
+        pendingOutgoingRequests.update { it.put(requestId, deferred) }
 
         try {
             val request = JsonRpcRequest(
@@ -147,7 +144,7 @@ public class Protocol(
             throw e
         }
         finally {
-            pendingRequests.update { it.remove(requestId) }
+            pendingOutgoingRequests.update { it.remove(requestId) }
         }
     }
 
@@ -193,22 +190,51 @@ public class Protocol(
      */
     public fun close() {
         transport.close()
-        scope.cancel()
+        val message = "Protocol closed"
+        cancelPendingIncomingRequests(CancellationException(message))
+        cancelPendingOutgoingRequests(CancellationException(message))
+        scope.cancel(message)
     }
 
-    // Should not be suspend to not block message queue by long running request handlers.
-    // Otherwise, nested requests/notifications won't be possible
-    private fun handleIncomingMessage(message: JsonRpcMessage) {
+    /**
+     * Cancels all requests that are currently being executed by this side.
+     *
+     * The message of [ce] will be rethrown as a [CancellationException] on the counterpart side.
+     */
+    public fun cancelPendingIncomingRequests(ce: CancellationException? = null) {
+        val requests = pendingIncomingRequests.getAndUpdate { it.clear() }
+        for (job in requests.values) {
+            logger.trace { "Canceling pending incoming request: ${job.key}" }
+            job.cancel(ce)
+        }
+    }
+
+    /**
+     * Cancels all requests that are currently awaited for a response from the counterpart.
+     *
+     * Methods that await for a response will throw [ce]
+     */
+    public fun cancelPendingOutgoingRequests(ce: CancellationException? = null) {
+        val requests = pendingOutgoingRequests.getAndUpdate { it.clear() }
+        for (deferred in requests.values) {
+            logger.trace { "Canceling pending outgoing request: ${deferred.key}" }
+            deferred.cancel(ce)
+        }
+    }
+
+    private suspend fun handleIncomingMessage(message: JsonRpcMessage) {
         try {
             when (message) {
                 is JsonRpcNotification -> {
-                    requestsScope.launch {
-                        handleNotification(message)
-                    }
+                    handleNotification(message)
                 }
                 is JsonRpcRequest -> {
                     requestsScope.launch {
                         handleRequest(message)
+                    }.also { job ->
+                        pendingIncomingRequests.update { map -> map.put(message.id, job) }
+                    }.invokeOnCompletion {
+                        pendingIncomingRequests.update { it.remove(message.id) }
                     }
                 }
                 is JsonRpcResponse -> {
@@ -238,6 +264,15 @@ public class Protocol(
                 sendResponse(
                     request.id, null, JsonRpcError(
                         code = JsonRpcErrorCode.PARSE_ERROR, message = e.message ?: "Serialization error"
+                    )
+                )
+            } catch (ce: CancellationException) {
+                logger.trace(ce) { "Incoming request cancelled: ${request.method}" }
+                sendResponse(
+                    request.id, null,
+                    JsonRpcError(
+                        code = JsonRpcErrorCode.CANCELLED,
+                        message = ce.message ?: "Cancelled"
                     )
                 )
             } catch (e: Exception) {
@@ -271,19 +306,24 @@ public class Protocol(
 
     private fun handleResponse(response: JsonRpcResponse) {
         var deferred: CompletableDeferred<JsonElement>? = null
-        pendingRequests.update { currentRequests ->
+        pendingOutgoingRequests.update { currentRequests ->
             deferred = currentRequests[response.id]
             currentRequests.remove(response.id)
         }
         if (deferred != null) {
             val responseError = response.error
             if (responseError != null) {
-                val exception = JsonRpcException(
-                    code = responseError.code,
-                    message = responseError.message,
-                    data = responseError.data
-                )
-                deferred.completeExceptionally(exception)
+                if (responseError.code == JsonRpcErrorCode.CANCELLED) {
+                    deferred.cancel(responseError.message)
+                }
+                else {
+                    val exception = JsonRpcException(
+                        code = responseError.code,
+                        message = responseError.message,
+                        data = responseError.data
+                    )
+                    deferred.completeExceptionally(exception)
+                }
             } else {
                 deferred.complete(response.result ?: JsonNull)
             }

@@ -81,6 +81,8 @@ public object JsonRpcErrorCode {
     public const val METHOD_NOT_FOUND: Int = -32601
     public const val INVALID_PARAMS: Int = -32602
     public const val INTERNAL_ERROR: Int = -32603
+    // The same code as in LSP
+    public const val CANCELLED: Int = -32800
 }
 
 @OptIn(ExperimentalSerializationApi::class)
