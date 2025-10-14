@@ -4,8 +4,10 @@ import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.AcpRequest
 import com.agentclientprotocol.model.AcpResponse
+import com.agentclientprotocol.protocol.JsonRpcException
 import com.agentclientprotocol.protocol.sendRequest
 import com.agentclientprotocol.protocol.setRequestHandler
+import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.awaitCancellation
@@ -176,5 +178,25 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         val agentCe = withTimeoutOrNull(1000) { agentCeDeferred.await() }
         assertNotNull(agentCe, "Cancellation exception should be propagated to agent")
         assertEquals(cancellationMessage, agentCe.message, "Cancellation exception should be propagated to agent")
+    }
+
+    @Test
+    fun `error thrown in request handler is propagated to client with message`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val errorMessage = "Test error from handler"
+        agentProtocol.setRequestHandler(TestMethod) { request ->
+            throw IllegalStateException(errorMessage)
+        }
+
+        try {
+            clientProtocol.sendRequest(TestMethod, TestRequest("Test"))
+            fail("Expected exception to be thrown")
+        }
+        catch (e: JsonRpcException) {
+            assertEquals(errorMessage, e.message, "Error message should be propagated to client")
+            assertEquals(JsonRpcErrorCode.INTERNAL_ERROR, e.code, "Error code should be ${JsonRpcErrorCode.INTERNAL_ERROR}")
+        }
+        catch (e: Exception) {
+            fail("Unexpected exception: ${e.message}", e)
+        }
     }
 }
