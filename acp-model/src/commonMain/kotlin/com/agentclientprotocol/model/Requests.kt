@@ -255,7 +255,7 @@ public data class WriteTextFileRequest(
 @Serializable
 public data class RequestPermissionRequest(
     val sessionId: SessionId,
-    val toolCall: ToolCallUpdate,
+    val toolCall: SessionUpdate.ToolCallUpdate,
     val options: List<PermissionOption>,
     override val _meta: JsonElement? = null
 ) : AcpRequest

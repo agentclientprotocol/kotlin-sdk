@@ -1789,18 +1789,18 @@ public final class com/agentclientprotocol/model/RequestPermissionOutcome$Select
 
 public final class com/agentclientprotocol/model/RequestPermissionRequest : com/agentclientprotocol/model/AcpRequest {
 	public static final field Companion Lcom/agentclientprotocol/model/RequestPermissionRequest$Companion;
-	public synthetic fun <init> (Ljava/lang/String;Lcom/agentclientprotocol/model/ToolCallUpdate;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public synthetic fun <init> (Ljava/lang/String;Lcom/agentclientprotocol/model/ToolCallUpdate;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lcom/agentclientprotocol/model/SessionUpdate$ToolCallUpdate;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lcom/agentclientprotocol/model/SessionUpdate$ToolCallUpdate;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1-7EW-EgU ()Ljava/lang/String;
-	public final fun component2 ()Lcom/agentclientprotocol/model/ToolCallUpdate;
+	public final fun component2 ()Lcom/agentclientprotocol/model/SessionUpdate$ToolCallUpdate;
 	public final fun component3 ()Ljava/util/List;
 	public final fun component4 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun copy-wPMwmcM (Ljava/lang/String;Lcom/agentclientprotocol/model/ToolCallUpdate;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/RequestPermissionRequest;
-	public static synthetic fun copy-wPMwmcM$default (Lcom/agentclientprotocol/model/RequestPermissionRequest;Ljava/lang/String;Lcom/agentclientprotocol/model/ToolCallUpdate;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/RequestPermissionRequest;
+	public final fun copy-wPMwmcM (Ljava/lang/String;Lcom/agentclientprotocol/model/SessionUpdate$ToolCallUpdate;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/RequestPermissionRequest;
+	public static synthetic fun copy-wPMwmcM$default (Lcom/agentclientprotocol/model/RequestPermissionRequest;Ljava/lang/String;Lcom/agentclientprotocol/model/SessionUpdate$ToolCallUpdate;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/RequestPermissionRequest;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getOptions ()Ljava/util/List;
 	public final fun getSessionId-7EW-EgU ()Ljava/lang/String;
-	public final fun getToolCall ()Lcom/agentclientprotocol/model/ToolCallUpdate;
+	public final fun getToolCall ()Lcom/agentclientprotocol/model/SessionUpdate$ToolCallUpdate;
 	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
@@ -2595,50 +2595,6 @@ public final class com/agentclientprotocol/model/TerminalOutputResponse$Companio
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
-public final class com/agentclientprotocol/model/ToolCall : com/agentclientprotocol/model/AcpWithMeta {
-	public static final field Companion Lcom/agentclientprotocol/model/ToolCall$Companion;
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/ToolKind;Lcom/agentclientprotocol/model/ToolCallStatus;Ljava/util/List;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/ToolKind;Lcom/agentclientprotocol/model/ToolCallStatus;Ljava/util/List;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun component1-DimCYko ()Ljava/lang/String;
-	public final fun component2 ()Ljava/lang/String;
-	public final fun component3 ()Lcom/agentclientprotocol/model/ToolKind;
-	public final fun component4 ()Lcom/agentclientprotocol/model/ToolCallStatus;
-	public final fun component5 ()Ljava/util/List;
-	public final fun component6 ()Ljava/util/List;
-	public final fun component7 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun component8 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun component9 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun copy-IATGWB8 (Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/ToolKind;Lcom/agentclientprotocol/model/ToolCallStatus;Ljava/util/List;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/ToolCall;
-	public static synthetic fun copy-IATGWB8$default (Lcom/agentclientprotocol/model/ToolCall;Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/ToolKind;Lcom/agentclientprotocol/model/ToolCallStatus;Ljava/util/List;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/ToolCall;
-	public fun equals (Ljava/lang/Object;)Z
-	public final fun getContent ()Ljava/util/List;
-	public final fun getKind ()Lcom/agentclientprotocol/model/ToolKind;
-	public final fun getLocations ()Ljava/util/List;
-	public final fun getRawInput ()Lkotlinx/serialization/json/JsonElement;
-	public final fun getRawOutput ()Lkotlinx/serialization/json/JsonElement;
-	public final fun getStatus ()Lcom/agentclientprotocol/model/ToolCallStatus;
-	public final fun getTitle ()Ljava/lang/String;
-	public final fun getToolCallId-DimCYko ()Ljava/lang/String;
-	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
-	public fun hashCode ()I
-	public fun toString ()Ljava/lang/String;
-}
-
-public final synthetic class com/agentclientprotocol/model/ToolCall$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
-	public static final field INSTANCE Lcom/agentclientprotocol/model/ToolCall$$serializer;
-	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
-	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/ToolCall;
-	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
-	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
-	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/ToolCall;)V
-	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
-	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
-}
-
-public final class com/agentclientprotocol/model/ToolCall$Companion {
-	public final fun serializer ()Lkotlinx/serialization/KSerializer;
-}
-
 public abstract class com/agentclientprotocol/model/ToolCallContent {
 	public static final field Companion Lcom/agentclientprotocol/model/ToolCallContent$Companion;
 	public synthetic fun <init> (ILkotlinx/serialization/internal/SerializationConstructorMarker;)V
@@ -2811,50 +2767,6 @@ public final class com/agentclientprotocol/model/ToolCallStatus : java/lang/Enum
 }
 
 public final class com/agentclientprotocol/model/ToolCallStatus$Companion {
-	public final fun serializer ()Lkotlinx/serialization/KSerializer;
-}
-
-public final class com/agentclientprotocol/model/ToolCallUpdate : com/agentclientprotocol/model/AcpWithMeta {
-	public static final field Companion Lcom/agentclientprotocol/model/ToolCallUpdate$Companion;
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/ToolKind;Lcom/agentclientprotocol/model/ToolCallStatus;Ljava/util/List;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/ToolKind;Lcom/agentclientprotocol/model/ToolCallStatus;Ljava/util/List;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun component1-DimCYko ()Ljava/lang/String;
-	public final fun component2 ()Ljava/lang/String;
-	public final fun component3 ()Lcom/agentclientprotocol/model/ToolKind;
-	public final fun component4 ()Lcom/agentclientprotocol/model/ToolCallStatus;
-	public final fun component5 ()Ljava/util/List;
-	public final fun component6 ()Ljava/util/List;
-	public final fun component7 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun component8 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun component9 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun copy-IATGWB8 (Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/ToolKind;Lcom/agentclientprotocol/model/ToolCallStatus;Ljava/util/List;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/ToolCallUpdate;
-	public static synthetic fun copy-IATGWB8$default (Lcom/agentclientprotocol/model/ToolCallUpdate;Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/ToolKind;Lcom/agentclientprotocol/model/ToolCallStatus;Ljava/util/List;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/ToolCallUpdate;
-	public fun equals (Ljava/lang/Object;)Z
-	public final fun getContent ()Ljava/util/List;
-	public final fun getKind ()Lcom/agentclientprotocol/model/ToolKind;
-	public final fun getLocations ()Ljava/util/List;
-	public final fun getRawInput ()Lkotlinx/serialization/json/JsonElement;
-	public final fun getRawOutput ()Lkotlinx/serialization/json/JsonElement;
-	public final fun getStatus ()Lcom/agentclientprotocol/model/ToolCallStatus;
-	public final fun getTitle ()Ljava/lang/String;
-	public final fun getToolCallId-DimCYko ()Ljava/lang/String;
-	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
-	public fun hashCode ()I
-	public fun toString ()Ljava/lang/String;
-}
-
-public final synthetic class com/agentclientprotocol/model/ToolCallUpdate$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
-	public static final field INSTANCE Lcom/agentclientprotocol/model/ToolCallUpdate$$serializer;
-	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
-	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/ToolCallUpdate;
-	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
-	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
-	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/ToolCallUpdate;)V
-	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
-	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
-}
-
-public final class com/agentclientprotocol/model/ToolCallUpdate$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
