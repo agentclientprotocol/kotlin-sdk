@@ -1,9 +1,12 @@
 @file:Suppress("unused")
+@file:OptIn(ExperimentalSerializationApi::class)
 
 package com.agentclientprotocol.model
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonClassDiscriminator
 import kotlinx.serialization.json.JsonElement
 
 /**
@@ -132,6 +135,7 @@ public data class PermissionOption(
  * The outcome of a permission request.
  */
 @Serializable
+@JsonClassDiscriminator("outcome")
 public sealed class RequestPermissionOutcome {
     /**
      * The prompt turn was cancelled before the user responded.
