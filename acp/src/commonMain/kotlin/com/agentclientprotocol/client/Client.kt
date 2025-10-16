@@ -14,7 +14,6 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.persistentMapOf
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.serialization.json.JsonElement
 
 private val logger = KotlinLogging.logger {}
@@ -97,7 +96,7 @@ public class Client(
         )
 
         val session = createSessionImpl(newSessionResponse.sessionId, sessionParameters, newSessionResponse.modes, newSessionResponse.models)
-        val sessionApi = clientSupport.createClientSessionApi(session, newSessionResponse._meta)
+        val sessionApi = clientSupport.createClientSession(session, newSessionResponse._meta)
         session.setApi(sessionApi)
         _sessions.update { it.put(newSessionResponse.sessionId, session) }
         return session
@@ -113,7 +112,7 @@ public class Client(
             ))
         val session = createSessionImpl(sessionId, sessionParameters, loadSessionResponse.modes, loadSessionResponse.models)
 
-        val sessionApi = clientSupport.createClientSessionApi(session, loadSessionResponse._meta)
+        val sessionApi = clientSupport.createClientSession(session, loadSessionResponse._meta)
         session.setApi(sessionApi)
         _sessions.update { it.put(sessionId, session) }
         return session

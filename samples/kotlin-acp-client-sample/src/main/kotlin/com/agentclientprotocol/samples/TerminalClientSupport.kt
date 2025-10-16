@@ -24,7 +24,7 @@ import kotlin.io.path.absolutePathString
 private val logger = KotlinLogging.logger {}
 
 class TerminalClientSupport : ClientSupport {
-    override suspend fun createClientSessionApi(
+    override suspend fun createClientSession(
         session: ClientSession,
         _sessionResponseMeta: JsonElement?,
     ): ClientSessionOperations {
