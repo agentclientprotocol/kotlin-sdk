@@ -1,142 +1,134 @@
+@file:Suppress("unused")
+
 package com.agentclientprotocol.client
 
-import com.agentclientprotocol.model.CreateTerminalRequest
-import com.agentclientprotocol.model.CreateTerminalResponse
-import com.agentclientprotocol.model.KillTerminalCommandRequest
-import com.agentclientprotocol.model.KillTerminalCommandResponse
-import com.agentclientprotocol.model.ReadTextFileRequest
-import com.agentclientprotocol.model.ReadTextFileResponse
-import com.agentclientprotocol.model.ReleaseTerminalRequest
-import com.agentclientprotocol.model.ReleaseTerminalResponse
-import com.agentclientprotocol.model.RequestPermissionRequest
-import com.agentclientprotocol.model.RequestPermissionResponse
-import com.agentclientprotocol.model.SessionNotification
-import com.agentclientprotocol.model.TerminalOutputRequest
-import com.agentclientprotocol.model.TerminalOutputResponse
-import com.agentclientprotocol.model.WaitForTerminalExitRequest
-import com.agentclientprotocol.model.WaitForTerminalExitResponse
-import com.agentclientprotocol.model.WriteTextFileRequest
-import com.agentclientprotocol.model.WriteTextFileResponse
+import com.agentclientprotocol.agent.AgentInfo
+import com.agentclientprotocol.common.SessionParameters
+import com.agentclientprotocol.model.*
+import com.agentclientprotocol.protocol.Protocol
+import com.agentclientprotocol.protocol.acpFail
+import com.agentclientprotocol.protocol.invoke
+import com.agentclientprotocol.protocol.setNotificationHandler
+import com.agentclientprotocol.protocol.setRequestHandler
+import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.update
+import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.serialization.json.JsonElement
+
+private val logger = KotlinLogging.logger {}
+
+@Deprecated("Use Client instead", ReplaceWith("Client"))
+public typealias ClientInstance = Client
 
 /**
- * Interface that clients must implement to handle agent requests.
+ * A client-side connection to an agent.
  *
- * This interface defines the contract for client implementations,
- * covering file system operations, permission handling, and session updates.
+ * This class provides the client's view of an ACP connection, allowing
+ * clients (such as code editors) to communicate with agents. It implements
+ * the {@link Agent} to provide methods for initializing sessions, sending
+ * prompts, and managing the agent lifecycle.
  *
  * See protocol docs: [Client](https://agentclientprotocol.com/protocol/overview#client)
  */
-public interface Client {
-    /**
-     * Read content from a text file in the client's file system.
-     *
-     * Only called if the client advertises the `fs.readTextFile` capability.
-     * The client should validate the path and ensure it's within allowed boundaries.
-     *
-     * @param request The file read request containing path and optional line/limit
-     * @return The file contents
-     */
-    public suspend fun fsReadTextFile(request: ReadTextFileRequest): ReadTextFileResponse
+public class Client(
+    public val protocol: Protocol,
+    private val clientSupport: ClientSupport
+) {
+    private val _sessions = atomic(persistentMapOf<SessionId, ClientSessionImpl>())
 
-    /**
-     * Write content to a text file in the client's file system.
-     *
-     * Only called if the client advertises the `fs.writeTextFile` capability.
-     * The client should validate the path and ensure it's within allowed boundaries.
-     *
-     * @param request The file write request containing path and content
-     * @return Write text file response
-     */
-    public suspend fun fsWriteTextFile(request: WriteTextFileRequest): WriteTextFileResponse
+    init {
+        // Set up request handlers for incoming agent requests
+        protocol.setRequestHandler(AcpMethod.ClientMethods.SessionRequestPermission) { params: RequestPermissionRequest ->
+            val session = getSessionOrThrow(params.sessionId)
+            return@setRequestHandler session.handlePermissionResponse(params.toolCall, params.options, params._meta)
+        }
 
-    /**
-     * Request permission from the user for a tool call operation.
-     *
-     * The client should present the permission options to the user and return their choice.
-     * This is called when the agent needs authorization for potentially sensitive operations.
-     *
-     * @param request The permission request with tool call details and options
-     * @return The user's permission decision
-     */
-    public suspend fun sessionRequestPermission(request: RequestPermissionRequest): RequestPermissionResponse
+        protocol.setNotificationHandler(AcpMethod.ClientMethods.SessionUpdate) { params: SessionNotification ->
+            val session = getSessionOrThrow(params.sessionId)
+            session.handleNotification(params.update, params._meta)
+        }
 
-    /**
-     * Handle session update notifications from the agent.
-     *
-     * This is a notification method (no response expected) that receives
-     * real-time updates about session progress, including message chunks,
-     * tool calls, and execution plans.
-     *
-     * @param notification The session update notification
-     */
-    public suspend fun sessionUpdate(notification: SessionNotification)
+        // should be handled by extensions
+//        protocol.setRequestHandler(AcpMethod.ClientMethods.FsReadTextFile, coroutineContext = remoteAgent.asContextElement()) { params: ReadTextFileRequest ->
+//            client.fsReadTextFile(params)
+//        }
+//
+//        protocol.setRequestHandler(AcpMethod.ClientMethods.FsWriteTextFile, coroutineContext = remoteAgent.asContextElement()) { params: WriteTextFileRequest ->
+//            client.fsWriteTextFile(params)
+//        }
+//
+//
+//        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalCreate, coroutineContext = remoteAgent.asContextElement()) { params: CreateTerminalRequest ->
+//            client.terminalCreate(params)
+//        }
+//
+//        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalOutput, coroutineContext = remoteAgent.asContextElement()) { params: TerminalOutputRequest ->
+//            client.terminalOutput(params)
+//        }
+//
+//        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalRelease, coroutineContext = remoteAgent.asContextElement()) { params: ReleaseTerminalRequest ->
+//            client.terminalRelease(params)
+//        }
+//
+//        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalWaitForExit, coroutineContext = remoteAgent.asContextElement()) { params: WaitForTerminalExitRequest ->
+//            client.terminalWaitForExit(params)
+//        }
+//
+//        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalKill, coroutineContext = remoteAgent.asContextElement()) { params: KillTerminalCommandRequest ->
+//            client.terminalKill(params)
+//        }
+    }
 
-    /**
-     * Creates a new terminal to execute a command.
-     *
-     * Only called if the client advertises the `terminal` capability.
-     * The agent must call [terminalRelease] when done with the terminal to free resources.
-     *
-     * See protocol docs: [Terminal Documentation](https://agentclientprotocol.com/protocol/terminals)
-     *
-     * @param request The terminal creation request containing command, args, and environment
-     * @return The created terminal's ID
-     */
-    public suspend fun terminalCreate(request: CreateTerminalRequest): CreateTerminalResponse
+    public suspend fun initialize(clientInfo: ClientInfo, _meta: JsonElement? = null): AgentInfo {
+        val initializeResponse = AcpMethod.AgentMethods.Initialize(protocol, InitializeRequest(clientInfo.protocolVersion, clientInfo.capabilities, _meta))
+        val agentInfo = AgentInfo(initializeResponse.protocolVersion, initializeResponse.agentCapabilities, initializeResponse.authMethods, initializeResponse._meta)
+        return agentInfo
+    }
 
-    /**
-     * Gets the current output and exit status of a terminal.
-     *
-     * Returns immediately without waiting for the command to complete.
-     * If the command has already exited, the exit status is included in the response.
-     *
-     * See protocol docs: [Getting Terminal Output](https://agentclientprotocol.com/protocol/terminals#getting-output)
-     *
-     * @param request The terminal output request with terminal ID
-     * @return The terminal output, truncation status, and optional exit status
-     */
-    public suspend fun terminalOutput(request: TerminalOutputRequest): TerminalOutputResponse
+    public suspend fun newSession(sessionParameters: SessionParameters): ClientSession {
+        val newSessionResponse = AcpMethod.AgentMethods.SessionNew(protocol,
+            NewSessionRequest(
+                sessionParameters.cwd,
+                sessionParameters.mcpServers,
+                sessionParameters._meta
+            )
+        )
 
-    /**
-     * Releases a terminal and frees all associated resources.
-     *
-     * The command is killed if it hasn't exited yet. After release, the terminal ID
-     * becomes invalid for all other terminal methods. Tool calls that already contain
-     * the terminal ID continue to display its output.
-     *
-     * See protocol docs: [Releasing Terminals](https://agentclientprotocol.com/protocol/terminals#releasing-terminals)
-     *
-     * @param request The release terminal request with terminal ID
-     * @return Release terminal response
-     */
-    public suspend fun terminalRelease(request: ReleaseTerminalRequest): ReleaseTerminalResponse
+        val session = createSessionImpl(newSessionResponse.sessionId, sessionParameters, newSessionResponse.modes, newSessionResponse.models)
+        val sessionApi = clientSupport.createClientSessionApi(session, newSessionResponse._meta)
+        session.setApi(sessionApi)
+        _sessions.update { it.put(newSessionResponse.sessionId, session) }
+        return session
+    }
 
-    /**
-     * Waits for a terminal command to exit and returns its exit status.
-     *
-     * This method blocks until the command completes, providing the exit code
-     * and/or signal that terminated the process.
-     *
-     * See protocol docs: [Waiting for Exit](https://agentclientprotocol.com/protocol/terminals#waiting-for-exit)
-     *
-     * @param request The wait for exit request with terminal ID
-     * @return The exit code and/or signal
-     */
-    public suspend fun terminalWaitForExit(request: WaitForTerminalExitRequest): WaitForTerminalExitResponse
+    public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionParameters): ClientSession {
+        val loadSessionResponse = AcpMethod.AgentMethods.SessionLoad(protocol,
+            LoadSessionRequest(
+                sessionId,
+                sessionParameters.cwd,
+                sessionParameters.mcpServers,
+                sessionParameters._meta
+            ))
+        val session = createSessionImpl(sessionId, sessionParameters, loadSessionResponse.modes, loadSessionResponse.models)
 
-    /**
-     * Kills a terminal command without releasing the terminal.
-     *
-     * While [terminalRelease] also kills the command, this method keeps the terminal ID
-     * valid so it can be used with other methods. Useful for implementing command timeouts
-     * that terminate the command and then retrieve the final output.
-     *
-     * Note: Call [terminalRelease] when the terminal is no longer needed.
-     *
-     * See protocol docs: [Killing Commands](https://agentclientprotocol.com/protocol/terminals#killing-commands)
-     *
-     * @param request The kill terminal request with terminal ID
-     * @return Kill terminal response
-     */
-    public suspend fun terminalKill(request: KillTerminalCommandRequest): KillTerminalCommandResponse
+        val sessionApi = clientSupport.createClientSessionApi(session, loadSessionResponse._meta)
+        session.setApi(sessionApi)
+        _sessions.update { it.put(sessionId, session) }
+        return session
+    }
+
+    private fun createSessionImpl(
+        sessionId: SessionId,
+        sessionParameters: SessionParameters,
+        modeState: SessionModeState?,
+        modelState: SessionModelState?
+    ): ClientSessionImpl {
+        return ClientSessionImpl(sessionId, sessionParameters, protocol/*, modeState, modelState*/)
+    }
+
+    public fun getSession(sessionId: SessionId): ClientSession? = _sessions.value[sessionId]
+
+    private fun getSessionOrThrow(sessionId: SessionId): ClientSessionImpl = _sessions.value[sessionId] ?: acpFail("Session $sessionId not found")
 }

@@ -19,6 +19,8 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -212,9 +214,16 @@ public class Protocol(
      */
     public fun setRequestHandlerRaw(
         method: AcpMethod.AcpRequestResponseMethod<*, *>,
+        additionalContext: CoroutineContext = EmptyCoroutineContext,
         handler: suspend (JsonRpcRequest) -> JsonElement?
     ) {
-        requestHandlers.update { it.put(method.methodName, handler) }
+        requestHandlers.update {
+            it.put(method.methodName) { params ->
+                withContext(additionalContext) {
+                    handler(params)
+                }
+            }
+        }
     }
 
     /**
@@ -224,9 +233,16 @@ public class Protocol(
      */
     public fun setNotificationHandlerRaw(
         method: AcpMethod.AcpNotificationMethod<*>,
+        additionalContext: CoroutineContext = EmptyCoroutineContext,
         handler: suspend (JsonRpcNotification) -> Unit
     ) {
-        notificationHandlers.update { it.put(method.methodName, handler) }
+        notificationHandlers.update {
+            it.put(method.methodName) { params ->
+                withContext(additionalContext) {
+                    handler(params)
+                }
+            }
+        }
     }
 
     /**

@@ -1,8 +1,9 @@
-package com.agentclientprotocol.samples.client
+package com.agentclientprotocol.samples
 
 import com.agentclientprotocol.transport.StdioTransport
 import com.agentclientprotocol.transport.Transport
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.io.asSink
 import kotlinx.io.asSource
 import kotlinx.io.buffered
@@ -25,7 +26,7 @@ fun createProcessStdioTransport(coroutineScope: CoroutineScope, vararg command: 
     val stdout = process.inputStream.asSource().buffered()
     return StdioTransport(
         parentScope = coroutineScope,
-        ioDispatcher = kotlinx.coroutines.Dispatchers.IO,
+        ioDispatcher = Dispatchers.IO,
         input = stdout,
         output = stdin
     )

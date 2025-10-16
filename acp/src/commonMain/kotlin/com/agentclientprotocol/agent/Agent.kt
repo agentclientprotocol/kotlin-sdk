@@ -1,134 +1,129 @@
 package com.agentclientprotocol.agent
 
-import com.agentclientprotocol.model.AuthenticateRequest
-import com.agentclientprotocol.model.AuthenticateResponse
-import com.agentclientprotocol.model.CancelNotification
-import com.agentclientprotocol.model.InitializeRequest
-import com.agentclientprotocol.model.InitializeResponse
-import com.agentclientprotocol.model.LoadSessionRequest
-import com.agentclientprotocol.model.LoadSessionResponse
-import com.agentclientprotocol.model.NewSessionRequest
-import com.agentclientprotocol.model.NewSessionResponse
-import com.agentclientprotocol.model.PromptRequest
-import com.agentclientprotocol.model.PromptResponse
-import com.agentclientprotocol.model.SetSessionModeRequest
-import com.agentclientprotocol.model.SetSessionModeResponse
+import com.agentclientprotocol.client.ClientInfo
+import com.agentclientprotocol.common.ClientSessionOperations
+import com.agentclientprotocol.common.Event
+import com.agentclientprotocol.common.SessionParameters
+import com.agentclientprotocol.common.asContextElement
+import com.agentclientprotocol.model.*
+import com.agentclientprotocol.protocol.Protocol
+import com.agentclientprotocol.protocol.acpFail
+import com.agentclientprotocol.protocol.setNotificationHandler
+import com.agentclientprotocol.protocol.setRequestHandler
+import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.update
+import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withContext
+
+private val logger = KotlinLogging.logger {}
 
 /**
- * Interface that agents must implement to handle client requests.
+ * Represents an Agent that handles protocol requests and manages sessions.
  *
- * This interface defines the contract for agent implementations,
- * covering the full agent lifecycle from initialization through
- * session management and prompt processing.
+ * The `Agent` class is responsible for setting up request and notification handlers
+ * using the provided `protocol`. It handles session creation, loading, and operations
+ * based on client requests. Additionally, it manages client-specific information and
+ * ensures proper session lifecycle management.
  *
- * See protocol docs: [Agent](https://agentclientprotocol.com/protocol/overview#agent)
+ * @property protocol The protocol instance used to set up communication handlers.
+ * @property agentSupport An `AgentSupport` instance used for executing core agent operations such as session creation and authentication.
  */
-public interface Agent {
-    /**
-     * Initialize the agent with client capabilities and protocol version.
-     *
-     * This is the first method called when a client connects to the agent.
-     * The agent should validate the protocol version and store client capabilities.
-     *
-     * See protocol docs: [Initialization](https://agentclientprotocol.com/protocol/initialization)
-     */
-    public suspend fun initialize(request: InitializeRequest): InitializeResponse
+public class Agent(
+    public val protocol: Protocol,
+    private val agentSupport: AgentSupport
+) {
+    private class SessionHolder(val agentSession: AgentSession, val clientApi: ClientSessionOperations)
 
-    /**
-     * Authenticate using the specified authentication method.
-     *
-     * Called when the agent requires authentication before allowing session creation.
-     * The client provides the authentication method ID that was advertised during initialization.
-     * After successful authentication, the client can proceed to create sessions without
-     * receiving an `auth_required` error.
-     *
-     * See protocol docs: [Initialization](https://agentclientprotocol.com/protocol/initialization)
-     *
-     * @param request The authentication request containing the method ID
-     * @return Authentication response
-     */
-    public suspend fun authenticate(request: AuthenticateRequest): AuthenticateResponse
+    private val _clientInfo = CompletableDeferred<ClientInfo>()
+    private val _sessions = atomic(persistentMapOf<SessionId, SessionHolder>())
 
-    /**
-     * Create a new conversation session.
-     *
-     * Sessions represent independent conversation contexts with their own history and state.
-     * The agent should create a new session context, connect to any specified MCP servers,
-     * and return a unique session ID for future requests.
-     *
-     * May return an `auth_required` error if the agent requires authentication.
-     *
-     * See protocol docs: [Creating a Session](https://agentclientprotocol.com/protocol/session-setup#creating-a-session)
-     *
-     * @param request The session creation request with working directory and MCP servers
-     * @return The session ID and optional mode/model state
-     */
-    public suspend fun sessionNew(request: NewSessionRequest): NewSessionResponse
+    init {
+        setHandlers(protocol)
+    }
 
-    /**
-     * Load an existing conversation session to resume a previous conversation.
-     *
-     * Only called if the agent advertises the `loadSession` capability.
-     * The agent should restore the session context and conversation history, connect to
-     * the specified MCP servers, and stream the entire conversation history back to the
-     * client via notifications.
-     *
-     * See protocol docs: [Loading Sessions](https://agentclientprotocol.com/protocol/session-setup#loading-sessions)
-     *
-     * @param request The session load request with session ID, working directory, and MCP servers
-     * @return Optional mode/model state for the loaded session
-     */
-    public suspend fun sessionLoad(request: LoadSessionRequest): LoadSessionResponse
+    private fun setHandlers(protocol: Protocol) {
+        // Set up request handlers for incoming client requests
+        protocol.setRequestHandler(AcpMethod.AgentMethods.Initialize) { params: InitializeRequest ->
+            val clientInfo = ClientInfo(params.protocolVersion, params.clientCapabilities, params._meta)
+            _clientInfo.complete(clientInfo)
+            val agentInfo = agentSupport.initialize(clientInfo)
+            return@setRequestHandler InitializeResponse(agentInfo.protocolVersion, agentInfo.capabilities, agentInfo.authMethods, agentInfo._meta)
+        }
 
-    /**
-     * Sets the operational mode for a session.
-     *
-     * Allows switching between different agent modes (e.g., "ask", "architect", "code")
-     * that affect system prompts, tool availability, and permission behaviors. The mode
-     * must be one of the modes advertised in `availableModes` during session creation or loading.
-     *
-     * This method can be called at any time during a session, whether the agent is idle or
-     * actively generating a turn. Agents may also change modes autonomously and notify the
-     * client via `current_mode_update` notifications.
-     *
-     * See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
-     *
-     * @param request The set mode request with session ID and mode ID
-     * @return Set session mode response
-     */
-    public suspend fun sessionSetMode(request: SetSessionModeRequest): SetSessionModeResponse
+        protocol.setRequestHandler(AcpMethod.AgentMethods.Authenticate) { params: AuthenticateRequest ->
+            return@setRequestHandler agentSupport.authenticate(params.methodId, params._meta)
+        }
 
-    /**
-     * Process a user prompt within a session.
-     *
-     * This method handles the full lifecycle of a prompt turn:
-     * 1. Receives user messages with optional context (files, images, etc.)
-     * 2. Processes the prompt using language models
-     * 3. Reports language model content and tool calls to the client via [sessionUpdate]
-     * 4. Requests permission to run tools via client's [sessionRequestPermission]
-     * 5. Executes approved tool calls
-     * 6. Returns when the turn is complete with a stop reason
-     *
-     * See protocol docs: [Prompt Turn](https://agentclientprotocol.com/protocol/prompt-turn)
-     *
-     * @param request The prompt request with session ID and content blocks
-     * @return The stop reason (end_turn, max_tokens, max_turn_requests, refusal, or cancelled)
-     */
-    public suspend fun sessionPrompt(request: PromptRequest): PromptResponse
+        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionNew) { params: NewSessionRequest ->
+            val session = createSession(SessionParameters(params.cwd, params.mcpServers, params._meta))
 
-    /**
-     * Cancel ongoing operations for a session.
-     *
-     * This is a notification sent by the client to cancel an ongoing prompt turn.
-     * Upon receiving this notification, the agent should:
-     * - Stop all language model requests as soon as possible
-     * - Abort all tool call invocations in progress
-     * - Send any pending session update notifications
-     * - Respond to the original [sessionPrompt] request with `StopReason.CANCELLED`
-     *
-     * See protocol docs: [Cancellation](https://agentclientprotocol.com/protocol/prompt-turn#cancellation)
-     *
-     * @param notification The cancellation notification with session ID
-     */
-    public suspend fun sessionCancel(notification: CancelNotification)
+            return@setRequestHandler NewSessionResponse(
+                sessionId = session.sessionId,
+                modes = null,//session.currentMode.value?.let { SessionModeState(it, session.availableModes) },
+                models = null//session.currentModel.value?.let { SessionModelState(it, session.availableModels) }
+            )
+        }
+
+        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionLoad) { params: LoadSessionRequest ->
+            val session = loadSession(params.sessionId, SessionParameters(params.cwd, params.mcpServers, params._meta))
+            return@setRequestHandler LoadSessionResponse(
+                // maybe unify result of these two methods to have sessionId in both
+//                sessionId = session.sessionId,
+                modes = null,//session.currentMode.value?.let { SessionModeState(it, session.availableModes) },
+                models = null//session.currentModel.value?.let { SessionModelState(it, session.availableModels) }
+            )
+        }
+        // TODO: to extensions
+//
+//        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionSetMode) { params: SetSessionModeRequest ->
+//            val session = getSessionOrThrow(params.sessionId)
+//            session.changeMode(params.modeId)
+//            return@setRequestHandler SetSessionModeResponse()
+//        }
+
+        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionPrompt) { params: PromptRequest ->
+            val session = getSessionOrThrow(params.sessionId)
+            return@setRequestHandler withContext(session.clientApi.asContextElement()) {
+                var response: PromptResponse? = null
+                session.agentSession.prompt(params.prompt, params._meta).collect { event ->
+                    when (event) {
+                        is Event.PromptResponseEvent -> {
+                            if (response != null) {
+                                logger.error { "Received repeated prompt response: ${event.response} (previous: $response). The last is used" }
+                            }
+                            response = event.response
+                        }
+
+                        is Event.SessionUpdateEvent -> {
+                            session.clientApi.notify(event.update, params._meta)
+                        }
+                    }
+                }
+                return@withContext response ?: PromptResponse(StopReason.END_TURN)
+            }
+        }
+
+        protocol.setNotificationHandler(AcpMethod.AgentMethods.SessionCancel) { params: CancelNotification ->
+            val session = getSessionOrThrow(params.sessionId)
+            withContext(session.clientApi.asContextElement()) {
+                session.agentSession.cancel()
+            }
+        }
+    }
+
+    private suspend fun createSession(sessionParameters: SessionParameters): AgentSession {
+        val session = agentSupport.createSession(sessionParameters)
+        _sessions.update { it.put(session.sessionId, SessionHolder(session, RemoteClientSessionOperations(protocol, session.sessionId))) }
+        return session
+    }
+
+    private suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionParameters): AgentSession {
+        val session = agentSupport.loadSession(sessionId, sessionParameters)
+        _sessions.update { it.put(session.sessionId, SessionHolder(session, RemoteClientSessionOperations(protocol, session.sessionId))) }
+        return session
+    }
+
+    private fun getSessionOrThrow(sessionId: SessionId): SessionHolder = _sessions.value[sessionId] ?: acpFail("Session $sessionId not found")
 }

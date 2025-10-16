@@ -40,10 +40,10 @@ public inline fun <reified TNotification: AcpNotification> Protocol.sendNotifica
  */
 public inline fun<reified TRequest : AcpRequest, reified TResponse : AcpResponse> Protocol.setRequestHandler(
     method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
-    coroutineContext: CoroutineContext = EmptyCoroutineContext,
+    additionalContext: CoroutineContext = EmptyCoroutineContext,
     noinline handler: suspend (TRequest) -> TResponse
 ) {
-    this.setRequestHandlerRaw(method) { request ->
+    this.setRequestHandlerRaw(method, additionalContext) { request ->
         val requestParams = ACPJson.decodeFromJsonElement<TRequest>(request.params ?: JsonNull)
         val responseObject = handler(requestParams)
         ACPJson.encodeToJsonElement(responseObject)
@@ -55,10 +55,10 @@ public inline fun<reified TRequest : AcpRequest, reified TResponse : AcpResponse
  */
 public inline fun<reified TNotification : AcpNotification> Protocol.setNotificationHandler(
     method: AcpMethod.AcpNotificationMethod<TNotification>,
-    coroutineContext: CoroutineContext = EmptyCoroutineContext,
+    additionalContext: CoroutineContext = EmptyCoroutineContext,
     noinline handler: suspend (TNotification) -> Unit
 ) {
-    this.setNotificationHandlerRaw(method) { notification ->
+    this.setNotificationHandlerRaw(method, additionalContext) { notification ->
         val notificationParams = ACPJson.decodeFromJsonElement<TNotification>(notification.params ?: JsonNull)
         handler(notificationParams)
     }
