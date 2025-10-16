@@ -16,6 +16,7 @@ import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withContext
+import kotlin.math.min
 
 private val logger = KotlinLogging.logger {}
 
@@ -49,7 +50,9 @@ public class Agent(
             val clientInfo = ClientInfo(params.protocolVersion, params.clientCapabilities, params._meta)
             _clientInfo.complete(clientInfo)
             val agentInfo = agentSupport.initialize(clientInfo)
-            return@setRequestHandler InitializeResponse(agentInfo.protocolVersion, agentInfo.capabilities, agentInfo.authMethods, agentInfo._meta)
+            // see https://agentclientprotocol.com/protocol/initialization#version-negotiation
+            val negotiatedVersion = min(params.protocolVersion, agentInfo.protocolVersion)
+            return@setRequestHandler InitializeResponse(negotiatedVersion, agentInfo.capabilities, agentInfo.authMethods, agentInfo._meta)
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.Authenticate) { params: AuthenticateRequest ->
