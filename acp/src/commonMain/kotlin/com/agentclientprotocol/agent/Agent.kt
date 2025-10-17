@@ -8,14 +8,19 @@ import com.agentclientprotocol.common.asContextElement
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.acpFail
+import com.agentclientprotocol.protocol.jsonRpcRequest
 import com.agentclientprotocol.protocol.setNotificationHandler
 import com.agentclientprotocol.protocol.setRequestHandler
+import com.agentclientprotocol.rpc.RequestId
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonElement
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.min
 
 private val logger = KotlinLogging.logger {}
@@ -35,10 +40,63 @@ public class Agent(
     public val protocol: Protocol,
     private val agentSupport: AgentSupport
 ) {
-    private class SessionHolder(val agentSession: AgentSession, val clientApi: ClientSessionOperations)
+    private class SessionWrapper(val agentSession: AgentSession, val clientOperations: ClientSessionOperations, val protocol: Protocol) {
+        private class PromptSession(val currentRequestId: RequestId)
+        private val _activePrompt = atomic<PromptSession?>(null)
+
+        suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): PromptResponse {
+            val currentRpcRequest = currentCoroutineContext().jsonRpcRequest
+            if (!_activePrompt.compareAndSet(null, PromptSession(currentRpcRequest.id))) error("There is already active prompt execution")
+            try {
+                var response: PromptResponse? = null
+                withContext(clientOperations.asContextElement()) {
+                    agentSession.prompt(content, _meta).collect { event ->
+                        when (event) {
+                            is Event.PromptResponseEvent -> {
+                                if (response != null) {
+                                    logger.error { "Received repeated prompt response: ${event.response} (previous: $response). The last is used" }
+                                }
+                                response = event.response
+                            }
+
+                            is Event.SessionUpdateEvent -> {
+                                clientOperations.notify(event.update, _meta)
+                            }
+                        }
+                    }
+                }
+                return response ?: PromptResponse(StopReason.END_TURN)
+            }
+            catch (ce: CancellationException) {
+                logger.trace(ce) { "Prompt job cancelled" }
+                return PromptResponse(StopReason.CANCELLED)
+            }
+            finally {
+                _activePrompt.getAndSet(null)
+            }
+        }
+
+        suspend fun cancel() {
+            withContext(clientOperations.asContextElement()) {
+                // TODO do we need it while the cancellation can be handled by coroutine mechanism (catching CE inside `prompt`)
+                agentSession.cancel()
+            }
+            val activePrompt = _activePrompt.getAndSet(null)
+            if (activePrompt != null) {
+                // we expect that all nested outgoing jobs will be cancelled automatically due to structured concurrency
+                // -> prompt task
+                //   <- [request] read file
+                //   -> [response] read file
+                //   <- [request] permissions
+                //   |suspended|
+                // cancelling the whole prompt should cancel all nested outgoing requests. These requests on CE will propagate cancellation to the other side
+                protocol.cancelPendingIncomingRequest(activePrompt.currentRequestId)
+            }
+        }
+    }
 
     private val _clientInfo = CompletableDeferred<ClientInfo>()
-    private val _sessions = atomic(persistentMapOf<SessionId, SessionHolder>())
+    private val _sessions = atomic(persistentMapOf<SessionId, SessionWrapper>())
 
     init {
         setHandlers(protocol)
@@ -88,45 +146,26 @@ public class Agent(
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionPrompt) { params: PromptRequest ->
             val session = getSessionOrThrow(params.sessionId)
-            return@setRequestHandler withContext(session.clientApi.asContextElement()) {
-                var response: PromptResponse? = null
-                session.agentSession.prompt(params.prompt, params._meta).collect { event ->
-                    when (event) {
-                        is Event.PromptResponseEvent -> {
-                            if (response != null) {
-                                logger.error { "Received repeated prompt response: ${event.response} (previous: $response). The last is used" }
-                            }
-                            response = event.response
-                        }
-
-                        is Event.SessionUpdateEvent -> {
-                            session.clientApi.notify(event.update, params._meta)
-                        }
-                    }
-                }
-                return@withContext response ?: PromptResponse(StopReason.END_TURN)
-            }
+            return@setRequestHandler session.prompt(params.prompt, params._meta)
         }
 
         protocol.setNotificationHandler(AcpMethod.AgentMethods.SessionCancel) { params: CancelNotification ->
             val session = getSessionOrThrow(params.sessionId)
-            withContext(session.clientApi.asContextElement()) {
-                session.agentSession.cancel()
-            }
+            session.cancel()
         }
     }
 
     private suspend fun createSession(sessionParameters: SessionParameters): AgentSession {
         val session = agentSupport.createSession(sessionParameters)
-        _sessions.update { it.put(session.sessionId, SessionHolder(session, RemoteClientSessionOperations(protocol, session.sessionId))) }
+        _sessions.update { it.put(session.sessionId, SessionWrapper(session, RemoteClientSessionOperations(protocol, session.sessionId), protocol)) }
         return session
     }
 
     private suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionParameters): AgentSession {
         val session = agentSupport.loadSession(sessionId, sessionParameters)
-        _sessions.update { it.put(session.sessionId, SessionHolder(session, RemoteClientSessionOperations(protocol, session.sessionId))) }
+        _sessions.update { it.put(session.sessionId, SessionWrapper(session, RemoteClientSessionOperations(protocol, session.sessionId), protocol)) }
         return session
     }
 
-    private fun getSessionOrThrow(sessionId: SessionId): SessionHolder = _sessions.value[sessionId] ?: acpFail("Session $sessionId not found")
+    private fun getSessionOrThrow(sessionId: SessionId): SessionWrapper = _sessions.value[sessionId] ?: acpFail("Session $sessionId not found")
 }

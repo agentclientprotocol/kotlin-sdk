@@ -14,7 +14,7 @@ public interface ClientSessionOperations {
     public suspend fun requestPermissions(
         toolCall: SessionUpdate.ToolCallUpdate,
         permissions: List<PermissionOption>,
-        _meta: JsonElement?,
+        _meta: JsonElement? = null,
     ): RequestPermissionResponse
 
     /**

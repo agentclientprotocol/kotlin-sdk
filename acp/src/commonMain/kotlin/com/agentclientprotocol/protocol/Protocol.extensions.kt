@@ -5,9 +5,11 @@ import com.agentclientprotocol.model.AcpNotification
 import com.agentclientprotocol.model.AcpRequest
 import com.agentclientprotocol.model.AcpResponse
 import com.agentclientprotocol.rpc.ACPJson
+import com.agentclientprotocol.rpc.JsonRpcRequest
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
+import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 
@@ -71,3 +73,12 @@ public suspend inline operator fun <reified TRequest: AcpRequest, reified TRespo
 public inline operator fun <reified TNotification : AcpNotification> AcpMethod.AcpNotificationMethod<TNotification>.invoke(protocol: Protocol, notification: TNotification) {
     return protocol.sendNotification(this, notification)
 }
+
+internal class JsonRpcRequestContextElement(val jsonRpcRequest: JsonRpcRequest) : AbstractCoroutineContextElement(Key) {
+    object Key : CoroutineContext.Key<JsonRpcRequestContextElement>
+}
+
+public val CoroutineContext.jsonRpcRequest: JsonRpcRequest
+    get() = this[JsonRpcRequestContextElement.Key]?.jsonRpcRequest ?: error("No JsonRpcRequest found in context")
+
+internal fun JsonRpcRequest.asContextElement() = JsonRpcRequestContextElement(this)

@@ -8,11 +8,7 @@ import com.agentclientprotocol.rpc.*
 import com.agentclientprotocol.transport.Transport
 import com.agentclientprotocol.transport.asMessageChannel
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.atomicfu.AtomicInt
-import kotlinx.atomicfu.AtomicRef
-import kotlinx.atomicfu.atomic
-import kotlinx.atomicfu.getAndUpdate
-import kotlinx.atomicfu.update
+import kotlinx.atomicfu.*
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.*
@@ -66,7 +62,8 @@ public open class ProtocolOptions(
      * Default timeout for requests.
      */
     @Deprecated("Use coroutine timeouts")
-    public val requestTimeout: Duration = 60.seconds
+    public val requestTimeout: Duration = 60.seconds,
+    public val protocolDebugName: String = Protocol::class.simpleName!!
 )
 
 /**
@@ -77,12 +74,13 @@ public open class ProtocolOptions(
 public class Protocol(
     parentScope: CoroutineScope,
     private val transport: Transport,
-    public val options: ProtocolOptions = ProtocolOptions(),
+    public val options: ProtocolOptions = ProtocolOptions()
 ) {
-    private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
+    private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]) + CoroutineName(options.protocolDebugName))
     // a scope and dispatcher that executes requests to avoid blocking of message processing
     private val requestsScope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job])
-            + Dispatchers.Default.limitedParallelism(parallelism = 1, name = "MessageProcessor"))
+            + Dispatchers.Default.limitedParallelism(parallelism = 1, name = "MessageProcessor") + CoroutineName(options.protocolDebugName))
+    // now the incoming and outgoing requests can clash by ids, but it should not be a problem
     private val requestIdCounter: AtomicInt = atomic(0)
     private val pendingOutgoingRequests: AtomicRef<PersistentMap<RequestId, CompletableDeferred<JsonElement>>> =
         atomic(persistentMapOf())
@@ -180,6 +178,8 @@ public class Protocol(
             // when ce is JsonRpcCanceledException it means that the cancellation is done on the counterpart side
             // no need to send CancelRequest notification in this case
             // actually, this kind of exception should not happen here because it's used only for incoming requests cancellation
+            // TODO: compare request ids here, because otherwise nested outgoing requests are not cancelled when the outer request is cancelled remotely
+            // see com.agentclientprotocol.SimpleAgentTest.permission request should be cancelled by prompt cancellation on client
             if (ce !is JsonRpcRequestCanceledException) {
                 logger.trace(ce) { "Request cancelled on this side. Sending CancelRequest notification." }
                 withContext(NonCancellable) {
@@ -269,6 +269,18 @@ public class Protocol(
         }
     }
 
+    public fun cancelPendingIncomingRequest(requestId: RequestId, ce: CancellationException? = null) {
+        var job: Job? = null
+        pendingIncomingRequests.getAndUpdate {
+            job = it[requestId]
+            it.remove(requestId)
+        }
+        if (job != null) {
+            logger.trace { "Canceling pending incoming request: $requestId" }
+            job.cancel(ce)
+        }
+    }
+
     /**
      * Cancels all requests that are currently awaited for a response from the counterpart.
      *
@@ -310,7 +322,9 @@ public class Protocol(
         val handler = requestHandlers.value[request.method]
         if (handler != null) {
             try {
-                val result = handler(request)
+                val result = withContext(request.asContextElement()) {
+                    handler(request)
+                }
                 sendResponse(request.id, result, null)
             } catch (e: AcpExpectedError) {
                 logger.trace(e) { "Expected error on '${request.method}'" }
@@ -402,5 +416,9 @@ public class Protocol(
             error = error
         )
         transport.send(response)
+    }
+
+    override fun toString(): String {
+        return "Protocol(${options.protocolDebugName})"
     }
 }

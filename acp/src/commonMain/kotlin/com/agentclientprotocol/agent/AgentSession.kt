@@ -21,5 +21,5 @@ public interface AgentSession {
      *
      * Corresponds to the [com.agentclientprotocol.model.AcpMethod.AgentMethods.SessionCancel]
      */
-    public suspend fun cancel()
+    public suspend fun cancel() {}
 }

@@ -1,6 +1,7 @@
 package com.agentclientprotocol.framework
 
 import com.agentclientprotocol.protocol.Protocol
+import com.agentclientprotocol.protocol.ProtocolOptions
 import com.agentclientprotocol.transport.StdioTransport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,8 +37,8 @@ class StdioProtocolDriver : ProtocolDriver {
                     "agent"
                 )
 
-                val clientProtocol = Protocol(this, clientTransport)
-                val agentProtocol = Protocol(this, agentTransport)
+                val clientProtocol = Protocol(this, clientTransport, options = ProtocolOptions(protocolDebugName = "client protocol"))
+                val agentProtocol = Protocol(this, agentTransport, options = ProtocolOptions(protocolDebugName = "agent protocol"))
 
                 clientProtocol.start()
                 agentProtocol.start()

@@ -18,7 +18,7 @@ class WebSocketKtorProtocolDriver : ProtocolDriver {
 
             install(WebSockets)
             routing {
-                acpProtocolOnServerWebSocket("acp", ProtocolOptions()) { protocol ->
+                acpProtocolOnServerWebSocket("acp", ProtocolOptions(protocolDebugName = "agent protocol")) { protocol ->
                     agentProtocolDeferred.complete(protocol)
                     awaitCancellation()
                 }
@@ -27,7 +27,7 @@ class WebSocketKtorProtocolDriver : ProtocolDriver {
             val httpClient = createClient {
                 install(io.ktor.client.plugins.websocket.WebSockets.Plugin)
             }
-            val clientProtocol = httpClient.acpProtocolOnClientWebSocket("acp", ProtocolOptions())
+            val clientProtocol = httpClient.acpProtocolOnClientWebSocket("acp", ProtocolOptions(protocolDebugName = "client protocol"))
             val agentProtocol = agentProtocolDeferred.await()
             agentProtocol.start()
             clientProtocol.start()
