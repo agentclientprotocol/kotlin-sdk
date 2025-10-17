@@ -488,4 +488,102 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
     }
 
 
+    @Test
+    fun `permission request should be cancelled by prompt cancellation on client and wait for graceful cancellation`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val permissionResponseCeDeferred = CompletableDeferred<CancellationException>()
+        val client = Client(protocol = clientProtocol, clientSupport = object : ClientSupport {
+            override suspend fun createClientSession(
+                session: ClientSession,
+                _sessionResponseMeta: JsonElement?,
+            ): ClientSessionOperations {
+                return object : ClientSessionOperations {
+                    override suspend fun requestPermissions(
+                        toolCall: SessionUpdate.ToolCallUpdate,
+                        permissions: List<PermissionOption>,
+                        _meta: JsonElement?,
+                    ): RequestPermissionResponse {
+                        try {
+                            // wait forever
+                            awaitCancellation()
+                        }
+                        catch (ce: CancellationException) {
+                            permissionResponseCeDeferred.complete(ce)
+                            throw ce
+                        }
+                        catch (e: Exception) {
+                            permissionResponseCeDeferred.completeExceptionally(e)
+                            throw e
+                        }
+                    }
+
+                    override suspend fun notify(
+                        notification: SessionUpdate,
+                        _meta: JsonElement?,
+                    ) {
+                        TODO("Not yet implemented")
+                    }
+                }
+            }
+        })
+
+        val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(clientInfo.protocolVersion)
+            }
+
+            override suspend fun createSession(sessionParameters: SessionParameters): AgentSession {
+                return object : AgentSession {
+                    override val sessionId: SessionId = SessionId("test-session-id")
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = flow {
+                        try {
+                            val permissionResponse = currentCoroutineContext().client.requestPermissions(
+                                SessionUpdate.ToolCallUpdate(toolCallId = ToolCallId("tool-id")), listOf(
+                                    PermissionOption(
+                                        optionId = PermissionOptionId("approve"),
+                                        name = "Approve",
+                                        kind = PermissionOptionKind.ALLOW_ONCE
+                                    ),
+                                    PermissionOption(
+                                        optionId = PermissionOptionId("reject"),
+                                        name = "Reject",
+                                        kind = PermissionOptionKind.REJECT_ONCE
+                                    )
+                                )
+                            )
+                            emit(Event.SessionUpdateEvent(SessionUpdate.AgentMessageChunk(ContentBlock.Text("Permission response: ${permissionResponse.outcome}"))))
+                        }
+                        catch (ce: CancellationException) {
+                            println("Client cancellation exception caught")
+                            throw ce
+                        }
+                    }
+                }
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionParameters,
+            ): AgentSession {
+                TODO("Not yet implemented")
+            }
+        })
+        val responses = mutableListOf<String>()
+        val session = client.newSession(SessionParameters("/test/path", emptyList()))
+
+        val promptJob = launch {
+            session.prompt(listOf(ContentBlock.Text("Test message"))).collect()
+        }
+
+        delay(500)
+        promptJob.cancel(CancellationException("Test cancellation"))
+//        val permissionResponseCe = withTimeout(100000) { permissionResponseCeDeferred.await() }
+        val permissionResponseCe = permissionResponseCeDeferred.await()
+        assertEquals("Test cancellation", permissionResponseCe.message, "Cancellation exception should be propagated to agent")
+    }
+
+
 }

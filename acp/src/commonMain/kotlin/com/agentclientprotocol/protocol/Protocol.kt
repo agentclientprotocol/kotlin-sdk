@@ -17,10 +17,17 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.jvm.JvmInline
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 private val logger = KotlinLogging.logger {}
+
+// these types added to distinct request and response ids and not to clash between them
+@JvmInline
+internal value class IncomingRequestId(val id: RequestId)
+@JvmInline
+internal value class OutgoingRequestId(val id: RequestId)
 
 /**
  * An exception that gracefully handled and passed to the counterpart.
@@ -49,9 +56,10 @@ public class JsonRpcException(
 /**
  * Exception thrown when a request is cancelled explicitly by invoking [AcpMethod.MetaMethods.CancelRequest] from the calling site
  */
-public class JsonRpcRequestCanceledException(
+internal class JsonRpcIncomingRequestCanceledException(
     message: String,
-    public val data: JsonElement? = null
+    internal val requestId: IncomingRequestId,
+    val data: JsonElement? = null
 ) : CancellationException(message)
 
 /**
@@ -63,6 +71,7 @@ public open class ProtocolOptions(
      */
     @Deprecated("Use coroutine timeouts")
     public val requestTimeout: Duration = 60.seconds,
+    public val gracefulRequestCancellationTimeout: Duration = 1.seconds,
     public val protocolDebugName: String = Protocol::class.simpleName!!
 )
 
@@ -82,9 +91,9 @@ public class Protocol(
             + Dispatchers.Default.limitedParallelism(parallelism = 1, name = "MessageProcessor") + CoroutineName(options.protocolDebugName))
     // now the incoming and outgoing requests can clash by ids, but it should not be a problem
     private val requestIdCounter: AtomicInt = atomic(0)
-    private val pendingOutgoingRequests: AtomicRef<PersistentMap<RequestId, CompletableDeferred<JsonElement>>> =
+    private val pendingOutgoingRequests: AtomicRef<PersistentMap<OutgoingRequestId, CompletableDeferred<JsonElement>>> =
         atomic(persistentMapOf())
-    private val pendingIncomingRequests: AtomicRef<PersistentMap<RequestId, Job>> =
+    private val pendingIncomingRequests: AtomicRef<PersistentMap<IncomingRequestId, Job>> =
         atomic(persistentMapOf())
 
     /**
@@ -105,15 +114,16 @@ public class Protocol(
     public fun start() {
         setNotificationHandler(AcpMethod.MetaMethods.CancelRequest) { request ->
             var requestJob: Job? = null
+            val incomingRequestId = IncomingRequestId(request.requestId)
             pendingIncomingRequests.update { map ->
-                requestJob = map[request.requestId]
-                map.remove(request.requestId)
+                requestJob = map[incomingRequestId]
+                map.remove(incomingRequestId)
             }
             if (requestJob == null) {
                 logger.warn { "Received CancelRequest for unknown request: ${request.requestId}" }
                 return@setNotificationHandler
             }
-            requestJob.cancel(JsonRpcRequestCanceledException(request.message ?: "Cancelled by the counterpart"))
+            requestJob.cancel(JsonRpcIncomingRequestCanceledException(request.message ?: "Cancelled by the counterpart", incomingRequestId))
         }
 
         // Start processing incoming messages
@@ -143,14 +153,14 @@ public class Protocol(
         method: MethodName,
         params: JsonElement? = null
     ): JsonElement {
-        val requestId = RequestId(requestIdCounter.incrementAndGet())
+        val requestId = OutgoingRequestId(RequestId(requestIdCounter.incrementAndGet()))
         val deferred = CompletableDeferred<JsonElement>()
 
         pendingOutgoingRequests.update { it.put(requestId, deferred) }
 
         try {
             val request = JsonRpcRequest(
-                id = requestId,
+                id = requestId.id,
                 method = method,
                 params = params
             )
@@ -159,31 +169,38 @@ public class Protocol(
             return deferred.await()
         }
         catch (jsonRpcException: JsonRpcException) {
-            when (jsonRpcException.code) {
-                JsonRpcErrorCode.PARSE_ERROR -> {
-                    throw SerializationException(jsonRpcException.message, jsonRpcException)
-                }
-                JsonRpcErrorCode.INVALID_PARAMS -> {
-                    throw AcpExpectedError(jsonRpcException.message ?: "Invalid params")
-                }
-                JsonRpcErrorCode.CANCELLED -> {
-                    throw CancellationException(jsonRpcException.message ?: "Cancelled on the counterpart side", jsonRpcException)
-                }
-                else -> {
-                    throw jsonRpcException
-                }
-            }
+            throw convertJsonRpcExceptionIfPossible(jsonRpcException)
         }
         catch (ce: CancellationException) {
-            // when ce is JsonRpcCanceledException it means that the cancellation is done on the counterpart side
-            // no need to send CancelRequest notification in this case
-            // actually, this kind of exception should not happen here because it's used only for incoming requests cancellation
-            // TODO: compare request ids here, because otherwise nested outgoing requests are not cancelled when the outer request is cancelled remotely
-            // see com.agentclientprotocol.SimpleAgentTest.permission request should be cancelled by prompt cancellation on client
-            if (ce !is JsonRpcRequestCanceledException) {
-                logger.trace(ce) { "Request cancelled on this side. Sending CancelRequest notification." }
-                withContext(NonCancellable) {
-                    AcpMethod.MetaMethods.CancelRequest(this@Protocol, CancelRequestNotification(requestId, ce.message))
+            logger.trace(ce) { "Request cancelled on this side. Sending CancelRequest notification." }
+            withContext(NonCancellable) {
+                AcpMethod.MetaMethods.CancelRequest(this@Protocol, CancelRequestNotification(requestId.id, ce.message))
+                // here we have to try waiting for graceful CANCELLED response from the other side, do it with timeout
+                if (!deferred.isCancelled) {
+                    try {
+                        withTimeout(options.gracefulRequestCancellationTimeout) {
+                            deferred.await()
+                        }
+                    }
+                    catch (e: TimeoutCancellationException) {
+                        logger.trace(e) { "Timed out waiting for graceful cancellation response for request: $requestId" }
+                    }
+                    catch (ce: CancellationException) {
+                        // actually should not happen
+                        logger.trace(ce) { "Graceful cancellation response received for request: $requestId" }
+                    }
+                    catch (e: JsonRpcException) {
+                        val convertedException = convertJsonRpcExceptionIfPossible(e)
+                        if (convertedException is CancellationException) {
+                            logger.trace(convertedException) { "Graceful cancellation response received for request: $requestId" }
+                        }
+                        else {
+                            logger.warn(convertedException) { "Unexpected error while waiting for graceful cancellation response for request: $requestId" }
+                        }
+                    }
+                    catch (e: Exception) {
+                        logger.warn(e) { "Unexpected error while waiting for graceful cancellation response for request: $requestId" }
+                    }
                     deferred.cancel()
                 }
             }
@@ -271,9 +288,10 @@ public class Protocol(
 
     public fun cancelPendingIncomingRequest(requestId: RequestId, ce: CancellationException? = null) {
         var job: Job? = null
+        val incomingRequestId = IncomingRequestId(requestId)
         pendingIncomingRequests.getAndUpdate {
-            job = it[requestId]
-            it.remove(requestId)
+            job = it[incomingRequestId]
+            it.remove(incomingRequestId)
         }
         if (job != null) {
             logger.trace { "Canceling pending incoming request: $requestId" }
@@ -301,12 +319,13 @@ public class Protocol(
                     handleNotification(message)
                 }
                 is JsonRpcRequest -> {
+                    val requestId = IncomingRequestId(message.id)
                     requestsScope.launch {
                         handleRequest(message)
                     }.also { job ->
-                        pendingIncomingRequests.update { map -> map.put(message.id, job) }
+                        pendingIncomingRequests.update { map -> map.put(requestId, job) }
                     }.invokeOnCompletion {
-                        pendingIncomingRequests.update { it.remove(message.id) }
+                        pendingIncomingRequests.update { it.remove(requestId) }
                     }
                 }
                 is JsonRpcResponse -> {
@@ -342,7 +361,7 @@ public class Protocol(
                 )
             } catch (ce: CancellationException) {
                 logger.trace(ce) { "Incoming request cancelled: ${request.method}" }
-                if (ce !is JsonRpcRequestCanceledException) { // JsonRpcCanceledException already means that the request was cancelled on the counterpart side
+                if (ce !is JsonRpcIncomingRequestCanceledException) { // JsonRpcIncomingRequestCanceledException already means that the request was cancelled on the counterpart side
                     sendResponse(
                         request.id, null,
                         JsonRpcError(
@@ -381,10 +400,11 @@ public class Protocol(
     }
 
     private fun handleResponse(response: JsonRpcResponse) {
+        val outgoingRequestId = OutgoingRequestId(response.id)
         var deferred: CompletableDeferred<JsonElement>? = null
         pendingOutgoingRequests.update { currentRequests ->
-            deferred = currentRequests[response.id]
-            currentRequests.remove(response.id)
+            deferred = currentRequests[outgoingRequestId]
+            currentRequests.remove(outgoingRequestId)
         }
         if (deferred != null) {
             val responseError = response.error
@@ -420,5 +440,28 @@ public class Protocol(
 
     override fun toString(): String {
         return "Protocol(${options.protocolDebugName})"
+    }
+}
+
+private fun convertJsonRpcExceptionIfPossible(jsonRpcException: JsonRpcException): Exception {
+    when (jsonRpcException.code) {
+        JsonRpcErrorCode.PARSE_ERROR -> {
+            return SerializationException(jsonRpcException.message, jsonRpcException)
+        }
+
+        JsonRpcErrorCode.INVALID_PARAMS -> {
+            return AcpExpectedError(jsonRpcException.message ?: "Invalid params")
+        }
+
+        JsonRpcErrorCode.CANCELLED -> {
+            return CancellationException(
+                jsonRpcException.message ?: "Cancelled on the counterpart side",
+                jsonRpcException
+            )
+        }
+
+        else -> {
+            return jsonRpcException
+        }
     }
 }

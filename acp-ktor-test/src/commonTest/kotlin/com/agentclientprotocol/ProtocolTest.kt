@@ -11,11 +11,13 @@ import com.agentclientprotocol.protocol.sendRequest
 import com.agentclientprotocol.protocol.setRequestHandler
 import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestResult
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
@@ -26,7 +28,10 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import kotlin.test.fail
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.measureTimedValue
 
 @Serializable
 data class TestRequest(val message: String, override val _meta: JsonElement? = null) : AcpRequest
@@ -112,6 +117,45 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         val agentCe = withTimeoutOrNull(1000) { agentCeDeferred.await() }
         assertNotNull(agentCe, "Cancellation exception should be propagated to agent")
         assertEquals(cancellationMessage, agentCe.message, "Cancellation exception should be propagated to agent")
+    }
+
+    @Test
+    fun `request cancelled from client by coroutine cancel should wait for graceful cancellation`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val agentCeDeferred = CompletableDeferred<CancellationException>()
+        agentProtocol.setRequestHandler(TestMethod) { request ->
+            try {
+                awaitCancellation()
+            }
+            catch (ce: CancellationException) {
+                withContext(NonCancellable) {
+                    // Wait for graceful cancellation
+                    delay(900) // less than protocol graceful cancellation timeout
+                    agentCeDeferred.complete(ce)
+                }
+                throw ce
+            }
+        }
+
+        val clientRequestCeDeferred = CompletableDeferred<CancellationException>()
+        val requestJob = launch {
+            try {
+                clientProtocol.sendRequest(TestMethod, TestRequest("Test"))
+            }
+            catch (ce: CancellationException) {
+                clientRequestCeDeferred.complete(ce)
+                throw ce
+            }
+        }
+
+        delay(500)
+        requestJob.cancel(kotlinx.coroutines.CancellationException(cancellationMessage))
+
+        withTimeout(5000) {
+            val cancellationException = measureTimedValue { clientRequestCeDeferred.await() }
+            assertEquals(cancellationMessage, cancellationException.value.message, "Cancellation exception should be propagated to client")
+            assertTrue(cancellationException.duration > 900.milliseconds, "Graceful cancellation should be performed")
+
+        }
     }
 
     @Test
