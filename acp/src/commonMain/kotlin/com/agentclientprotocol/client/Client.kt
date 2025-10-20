@@ -86,6 +86,10 @@ public class Client(
         return agentInfo
     }
 
+    public suspend fun authenticate(methodId: AuthMethodId, _meta: JsonElement? = null): AuthenticateResponse {
+        return AcpMethod.AgentMethods.Authenticate(protocol, AuthenticateRequest(methodId, _meta))
+    }
+
     public suspend fun newSession(sessionParameters: SessionParameters): ClientSession {
         val newSessionResponse = AcpMethod.AgentMethods.SessionNew(protocol,
             NewSessionRequest(
