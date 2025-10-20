@@ -6,6 +6,8 @@ import com.agentclientprotocol.rpc.MethodName
 
 /**
  * Base interface for ACP method enums.
+ *
+ * Method calling DSL is defined in `Protocol.extensions.kt`
  */
 public open class AcpMethod(public val methodName: MethodName) {
 
