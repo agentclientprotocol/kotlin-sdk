@@ -44,6 +44,8 @@ public final class com/agentclientprotocol/agent/AgentSupport$DefaultImpls {
 
 public final class com/agentclientprotocol/client/Client {
 	public fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/ClientSupport;)V
+	public final fun authenticate-fMnwWJU (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun authenticate-fMnwWJU$default (Lcom/agentclientprotocol/client/Client;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun getProtocol ()Lcom/agentclientprotocol/protocol/Protocol;
 	public final fun getSession-0izbxq0 (Ljava/lang/String;)Lcom/agentclientprotocol/client/ClientSession;
 	public final fun initialize (Lcom/agentclientprotocol/client/ClientInfo;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
