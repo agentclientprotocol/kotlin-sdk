@@ -1,0 +1,11 @@
+public final class com/agentclientprotocol/LibVersionKt {
+	public static final field LIB_VERSION Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/transport/AcpKtorServerExtensionsKt {
+	public static final fun acpProtocolOnServerWebSocket (Lio/ktor/server/application/Application;Ljava/lang/String;Lcom/agentclientprotocol/protocol/ProtocolOptions;Lkotlin/jvm/functions/Function2;)V
+	public static final fun acpProtocolOnServerWebSocket (Lio/ktor/server/routing/Route;Ljava/lang/String;Lcom/agentclientprotocol/protocol/ProtocolOptions;Lkotlin/jvm/functions/Function2;)V
+	public static synthetic fun acpProtocolOnServerWebSocket$default (Lio/ktor/server/application/Application;Ljava/lang/String;Lcom/agentclientprotocol/protocol/ProtocolOptions;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
+	public static synthetic fun acpProtocolOnServerWebSocket$default (Lio/ktor/server/routing/Route;Ljava/lang/String;Lcom/agentclientprotocol/protocol/ProtocolOptions;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
+}
+

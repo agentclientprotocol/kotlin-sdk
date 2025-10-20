@@ -1,0 +1,15 @@
+public final class com/agentclientprotocol/LibVersionKt {
+	public static final field LIB_VERSION Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/transport/WebSocketTransport : com/agentclientprotocol/transport/BaseTransport {
+	public fun <init> (Lkotlinx/coroutines/CoroutineScope;Lio/ktor/websocket/WebSocketSession;)V
+	public fun close ()V
+	public fun send (Lcom/agentclientprotocol/rpc/JsonRpcMessage;)V
+	public fun start ()V
+}
+
+public final class com/agentclientprotocol/transport/WebSocketTransportKt {
+	public static final field ACP_PATH Ljava/lang/String;
+}
+
