@@ -39,10 +39,11 @@ public fun Route.acpProtocolOnServerWebSocket(
 public fun Application.acpProtocolOnServerWebSocket(
     path: String = ACP_PATH,
     protocolOptions: ProtocolOptions,
+    withAuth: Route.(Route.() -> Unit) -> Unit,
     block: suspend (Protocol) -> Unit
 ) {
     routing {
-        acpProtocolOnServerWebSocket(path, protocolOptions) { protocol ->
+        acpProtocolOnServerWebSocket(path, protocolOptions, withAuth) { protocol ->
             block(protocol)
         }
     }
