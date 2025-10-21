@@ -56,4 +56,6 @@ public open class AcpMethod(public val methodName: MethodName) {
 
 
     public class UnknownMethod(methodName: String) : AcpMethod(MethodName(methodName))
+
+    override fun toString(): String = methodName.name
 }

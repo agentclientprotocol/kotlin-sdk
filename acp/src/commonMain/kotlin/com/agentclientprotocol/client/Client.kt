@@ -5,16 +5,15 @@ package com.agentclientprotocol.client
 import com.agentclientprotocol.agent.AgentInfo
 import com.agentclientprotocol.common.SessionParameters
 import com.agentclientprotocol.model.*
-import com.agentclientprotocol.protocol.Protocol
-import com.agentclientprotocol.protocol.acpFail
-import com.agentclientprotocol.protocol.invoke
-import com.agentclientprotocol.protocol.setNotificationHandler
-import com.agentclientprotocol.protocol.setRequestHandler
+import com.agentclientprotocol.protocol.*
+import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.serialization.json.JsonElement
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 
 private val logger = KotlinLogging.logger {}
 
@@ -33,7 +32,8 @@ public typealias ClientInstance = Client
  */
 public class Client(
     public val protocol: Protocol,
-    private val clientSupport: ClientSupport
+    private val clientSupport: ClientSupport,
+    private val extensions: List<HandlerExtension<*>> = emptyList()
 ) {
     private val _sessions = atomic(persistentMapOf<SessionId, ClientSessionImpl>())
 
@@ -47,6 +47,19 @@ public class Client(
         protocol.setNotificationHandler(AcpMethod.ClientMethods.SessionUpdate) { params: SessionNotification ->
             val session = getSessionOrThrow(params.sessionId)
             session.handleNotification(params.update, params._meta)
+        }
+
+        val registrarContext = object : RegistrarContext<Any> {
+            override val handlers: HandlersOwner
+                get() = protocol
+
+            override fun getSessionExtensibleObject(sessionId: SessionId): Any? {
+                return getSessionOrThrow(sessionId).operations
+            }
+        }
+
+        for (ex in extensions) {
+            ex.doRegister(registrarContext)
         }
 
         // should be handled by extensions
@@ -99,7 +112,7 @@ public class Client(
             )
         )
 
-        val session = createSessionImpl(newSessionResponse.sessionId, sessionParameters, newSessionResponse.modes, newSessionResponse.models)
+        val session = ClientSessionImpl(newSessionResponse.sessionId, sessionParameters, protocol/*, modeState, modelState*/)
         val sessionApi = clientSupport.createClientSession(session, newSessionResponse._meta)
         session.setApi(sessionApi)
         _sessions.update { it.put(newSessionResponse.sessionId, session) }
@@ -114,7 +127,7 @@ public class Client(
                 sessionParameters.mcpServers,
                 sessionParameters._meta
             ))
-        val session = createSessionImpl(sessionId, sessionParameters, loadSessionResponse.modes, loadSessionResponse.models)
+        val session = ClientSessionImpl(sessionId, sessionParameters, protocol/*, modeState, modelState*/)
 
         val sessionApi = clientSupport.createClientSession(session, loadSessionResponse._meta)
         session.setApi(sessionApi)
@@ -122,16 +135,39 @@ public class Client(
         return session
     }
 
-    private fun createSessionImpl(
-        sessionId: SessionId,
-        sessionParameters: SessionParameters,
-        modeState: SessionModeState?,
-        modelState: SessionModelState?
-    ): ClientSessionImpl {
-        return ClientSessionImpl(sessionId, sessionParameters, protocol/*, modeState, modelState*/)
-    }
-
     public fun getSession(sessionId: SessionId): ClientSession? = _sessions.value[sessionId]
 
     private fun getSessionOrThrow(sessionId: SessionId): ClientSessionImpl = _sessions.value[sessionId] ?: acpFail("Session $sessionId not found")
+
+}
+
+// TODO: remove?
+
+public inline fun<reified TRequest, reified TResponse : AcpResponse> Client.setSessionRequestHandler(
+    method: AcpMethod.AcpSessionRequestResponseMethod<TRequest, TResponse>,
+    additionalContext: CoroutineContext = EmptyCoroutineContext,
+    noinline handler: suspend (ClientSession, TRequest) -> TResponse
+) where TRequest : AcpRequest, TRequest : AcpWithSessionId {
+    this.protocol.setRequestHandler(method, additionalContext) { request ->
+        val sessionId = request.sessionId
+        val session = getSession(sessionId) ?: acpFail("Session $sessionId not found")
+        return@setRequestHandler handler(session, request)
+    }
+}
+
+// TODO: remove?
+public inline fun<reified TRequest, reified TResponse : AcpResponse, reified TInterface> Client.setSessionExtensionRequestHandler(
+    method: AcpMethod.AcpSessionRequestResponseMethod<TRequest, TResponse>,
+    additionalContext: CoroutineContext = EmptyCoroutineContext,
+    noinline handler: suspend (operations: TInterface, params: TRequest) -> TResponse
+) where TRequest : AcpRequest, TRequest : AcpWithSessionId {
+    this.protocol.setRequestHandler(method, additionalContext) { request ->
+        val sessionId = request.sessionId
+        val session = getSession(sessionId) ?: acpFail("Session $sessionId not found")
+        val operations = session.operations as? TInterface ?: throw JsonRpcException(
+            code = JsonRpcErrorCode.METHOD_NOT_FOUND,
+            message = "Session $sessionId does not implement extension type ${TInterface::class.simpleName} to handle method '$method'"
+        )
+        return@setRequestHandler handler(operations, request)
+    }
 }

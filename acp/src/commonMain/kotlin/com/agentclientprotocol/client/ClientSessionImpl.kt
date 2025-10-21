@@ -36,6 +36,9 @@ internal class ClientSessionImpl(
         if (::_clientApi.isInitialized) error("Api already initialized")
         _clientApi = api
     }
+
+    override val operations: ClientSessionOperations
+        get() = _clientApi
 //    private val _currentMode = MutableStateFlow(modeState?.currentModeId)
 //    private val _currentModel = MutableStateFlow(modelState?.currentModelId)
 

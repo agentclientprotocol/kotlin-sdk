@@ -1,5 +1,6 @@
 package com.agentclientprotocol.client
 
+import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionParameters
 import com.agentclientprotocol.model.ContentBlock
@@ -10,6 +11,8 @@ import kotlinx.serialization.json.JsonElement
 public interface ClientSession {
     public val sessionId: SessionId
     public val parameters: SessionParameters
+
+    public val operations: ClientSessionOperations
 
 //    public val availableModes: List<SessionMode>
 //    public val currentMode: StateFlow<SessionModeId?>

@@ -40,7 +40,7 @@ public inline fun <reified TNotification: AcpNotification> Protocol.sendNotifica
 /**
  * Register a handler for incoming requests.
  */
-public inline fun<reified TRequest : AcpRequest, reified TResponse : AcpResponse> Protocol.setRequestHandler(
+public inline fun<reified TRequest : AcpRequest, reified TResponse : AcpResponse> HandlersOwner.setRequestHandler(
     method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
     additionalContext: CoroutineContext = EmptyCoroutineContext,
     noinline handler: suspend (TRequest) -> TResponse
@@ -51,11 +51,10 @@ public inline fun<reified TRequest : AcpRequest, reified TResponse : AcpResponse
         ACPJson.encodeToJsonElement(responseObject)
     }
 }
-
 /**
  * Register a handler for incoming notifications.
  */
-public inline fun<reified TNotification : AcpNotification> Protocol.setNotificationHandler(
+public inline fun<reified TNotification : AcpNotification> HandlersOwner.setNotificationHandler(
     method: AcpMethod.AcpNotificationMethod<TNotification>,
     additionalContext: CoroutineContext = EmptyCoroutineContext,
     noinline handler: suspend (TNotification) -> Unit
