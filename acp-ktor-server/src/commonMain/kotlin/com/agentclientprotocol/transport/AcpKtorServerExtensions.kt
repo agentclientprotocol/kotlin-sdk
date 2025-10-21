@@ -14,19 +14,12 @@ import kotlinx.coroutines.awaitCancellation
  * When [block] exits the websocket connection is closed.
  */
 @KtorDsl
-public fun Route.acpProtocolOnServerWebSocket(
-    path: String = ACP_PATH,
-    protocolOptions: ProtocolOptions,
-    withAuth: Route.(Route.() -> Unit) -> Unit,
-    block: suspend (Protocol) -> Unit
-) {
-    withAuth {
-        webSocket(path) {
-            val webSocketTransport = WebSocketTransport(parentScope = this, wss = this)
-            val protocol = Protocol(parentScope = this, transport = webSocketTransport, options = protocolOptions)
-            block(protocol)
-            awaitCancellation()
-        }
+public fun Route.acpProtocolOnServerWebSocket(path: String = ACP_PATH, protocolOptions: ProtocolOptions, block: suspend (Protocol) -> Unit) {
+    webSocket(path) {
+        val webSocketTransport = WebSocketTransport(parentScope = this, wss = this)
+        val protocol = Protocol(parentScope = this, transport = webSocketTransport, options = protocolOptions)
+        block(protocol)
+        awaitCancellation()
     }
 }
 
@@ -36,11 +29,7 @@ public fun Route.acpProtocolOnServerWebSocket(
  * When [block] exits the websocket connection is closed.
  */
 @KtorDsl
-public fun Application.acpProtocolOnServerWebSocket(
-    path: String = ACP_PATH,
-    protocolOptions: ProtocolOptions,
-    block: suspend (Protocol) -> Unit
-) {
+public fun Application.acpProtocolOnServerWebSocket(path: String = ACP_PATH, protocolOptions: ProtocolOptions, block: suspend (Protocol) -> Unit) {
     routing {
         acpProtocolOnServerWebSocket(path, protocolOptions) { protocol ->
             block(protocol)

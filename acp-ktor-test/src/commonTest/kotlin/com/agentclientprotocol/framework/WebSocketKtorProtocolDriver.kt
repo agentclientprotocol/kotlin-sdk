@@ -18,7 +18,7 @@ class WebSocketKtorProtocolDriver : ProtocolDriver {
 
             install(WebSockets)
             routing {
-                acpProtocolOnServerWebSocket("acp", ProtocolOptions(protocolDebugName = "agent protocol"), withAuth = {}) { protocol ->
+                acpProtocolOnServerWebSocket("acp", ProtocolOptions(protocolDebugName = "agent protocol")) { protocol ->
                     agentProtocolDeferred.complete(protocol)
                     awaitCancellation()
                 }
