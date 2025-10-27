@@ -3,17 +3,20 @@
 package com.agentclientprotocol.client
 
 import com.agentclientprotocol.agent.AgentInfo
+import com.agentclientprotocol.common.HandlerSideExtension
+import com.agentclientprotocol.common.RegistrarContext
+import com.agentclientprotocol.common.RemoteSideExtension
+import com.agentclientprotocol.common.RemoteSideExtensionInstantiation
 import com.agentclientprotocol.common.SessionParameters
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.*
-import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.serialization.json.JsonElement
-import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.EmptyCoroutineContext
 
 private val logger = KotlinLogging.logger {}
 
@@ -33,69 +36,60 @@ public typealias ClientInstance = Client
 public class Client(
     public val protocol: Protocol,
     private val clientSupport: ClientSupport,
-    private val extensions: List<HandlerExtension<*>> = emptyList()
+    private val handlerSideExtensions: List<HandlerSideExtension<*>> = emptyList(),
+    private val remoteSideExtensions: List<RemoteSideExtension<*>> = emptyList(),
 ) {
     private val _sessions = atomic(persistentMapOf<SessionId, ClientSessionImpl>())
+    private val _clientInfo = CompletableDeferred<ClientInfo>()
+    private val _agentInfo = CompletableDeferred<AgentInfo>()
 
     init {
         // Set up request handlers for incoming agent requests
         protocol.setRequestHandler(AcpMethod.ClientMethods.SessionRequestPermission) { params: RequestPermissionRequest ->
             val session = getSessionOrThrow(params.sessionId)
-            return@setRequestHandler session.handlePermissionResponse(params.toolCall, params.options, params._meta)
+            return@setRequestHandler session.executeWithSession {
+                session.handlePermissionResponse(params.toolCall, params.options, params._meta)
+            }
         }
 
         protocol.setNotificationHandler(AcpMethod.ClientMethods.SessionUpdate) { params: SessionNotification ->
             val session = getSessionOrThrow(params.sessionId)
-            session.handleNotification(params.update, params._meta)
-        }
-
-        val registrarContext = object : RegistrarContext<Any> {
-            override val handlers: HandlersOwner
-                get() = protocol
-
-            override fun getSessionExtensibleObject(sessionId: SessionId): Any? {
-                return getSessionOrThrow(sessionId).operations
+            session.executeWithSession {
+                session.handleNotification(params.update, params._meta)
             }
         }
 
-        for (ex in extensions) {
-            ex.doRegister(registrarContext)
+        val registrarContext = object : RegistrarContext<Any> {
+            override val rpc: RpcMethodsOperations
+                get() = protocol
+
+            override suspend fun <TResult> executeWithSession(
+                sessionId: SessionId,
+                block: suspend (operations: Any) -> TResult,
+            ): TResult {
+                val session = getSessionOrThrow(sessionId)
+                return session.executeWithSession {
+                    block(session.operations)
+                }
+            }
         }
 
-        // should be handled by extensions
-//        protocol.setRequestHandler(AcpMethod.ClientMethods.FsReadTextFile, coroutineContext = remoteAgent.asContextElement()) { params: ReadTextFileRequest ->
-//            client.fsReadTextFile(params)
-//        }
-//
-//        protocol.setRequestHandler(AcpMethod.ClientMethods.FsWriteTextFile, coroutineContext = remoteAgent.asContextElement()) { params: WriteTextFileRequest ->
-//            client.fsWriteTextFile(params)
-//        }
-//
-//
-//        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalCreate, coroutineContext = remoteAgent.asContextElement()) { params: CreateTerminalRequest ->
-//            client.terminalCreate(params)
-//        }
-//
-//        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalOutput, coroutineContext = remoteAgent.asContextElement()) { params: TerminalOutputRequest ->
-//            client.terminalOutput(params)
-//        }
-//
-//        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalRelease, coroutineContext = remoteAgent.asContextElement()) { params: ReleaseTerminalRequest ->
-//            client.terminalRelease(params)
-//        }
-//
-//        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalWaitForExit, coroutineContext = remoteAgent.asContextElement()) { params: WaitForTerminalExitRequest ->
-//            client.terminalWaitForExit(params)
-//        }
-//
-//        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalKill, coroutineContext = remoteAgent.asContextElement()) { params: KillTerminalCommandRequest ->
-//            client.terminalKill(params)
-//        }
+        for (ex in handlerSideExtensions) {
+            ex.doRegister(registrarContext)
+        }
+    }
+
+    internal fun getAgentInfoOrThrow(): AgentInfo {
+        if (!_agentInfo.isCompleted) error("Agent is not initialized yet")
+        @OptIn(ExperimentalCoroutinesApi::class)
+        return _agentInfo.getCompleted()
     }
 
     public suspend fun initialize(clientInfo: ClientInfo, _meta: JsonElement? = null): AgentInfo {
+        _clientInfo.complete(clientInfo)
         val initializeResponse = AcpMethod.AgentMethods.Initialize(protocol, InitializeRequest(clientInfo.protocolVersion, clientInfo.capabilities, _meta))
         val agentInfo = AgentInfo(initializeResponse.protocolVersion, initializeResponse.agentCapabilities, initializeResponse.authMethods, initializeResponse._meta)
+        _agentInfo.complete(agentInfo)
         return agentInfo
     }
 
@@ -111,12 +105,8 @@ public class Client(
                 sessionParameters._meta
             )
         )
-
-        val session = ClientSessionImpl(newSessionResponse.sessionId, sessionParameters, protocol/*, modeState, modelState*/)
-        val sessionApi = clientSupport.createClientSession(session, newSessionResponse._meta)
-        session.setApi(sessionApi)
-        _sessions.update { it.put(newSessionResponse.sessionId, session) }
-        return session
+        val sessionId = newSessionResponse.sessionId
+        return createSession(sessionId, sessionParameters, newSessionResponse._meta)
     }
 
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionParameters): ClientSession {
@@ -127,9 +117,22 @@ public class Client(
                 sessionParameters.mcpServers,
                 sessionParameters._meta
             ))
-        val session = ClientSessionImpl(sessionId, sessionParameters, protocol/*, modeState, modelState*/)
 
-        val sessionApi = clientSupport.createClientSession(session, loadSessionResponse._meta)
+        return createSession(sessionId, sessionParameters, loadSessionResponse._meta)
+    }
+
+    private suspend fun createSession(sessionId: SessionId, sessionParameters: SessionParameters, _meta: JsonElement?): ClientSession {
+        val agentInfo = getAgentInfoOrThrow()
+        val extensionsMap =
+            remoteSideExtensions.filter { it.isSupported(agentInfo.capabilities) }.associateBy(keySelector = { it }) {
+                it.createSessionRemote(
+                    rpc = protocol,
+                    capabilities = agentInfo.capabilities,
+                    sessionId = sessionId
+                )
+            }
+        val session = ClientSessionImpl(sessionId, sessionParameters, protocol, RemoteSideExtensionInstantiation(extensionsMap)/*, modeState, modelState*/)
+        val sessionApi = clientSupport.createClientSession(session, _meta)
         session.setApi(sessionApi)
         _sessions.update { it.put(sessionId, session) }
         return session
@@ -138,36 +141,4 @@ public class Client(
     public fun getSession(sessionId: SessionId): ClientSession? = _sessions.value[sessionId]
 
     private fun getSessionOrThrow(sessionId: SessionId): ClientSessionImpl = _sessions.value[sessionId] ?: acpFail("Session $sessionId not found")
-
-}
-
-// TODO: remove?
-
-public inline fun<reified TRequest, reified TResponse : AcpResponse> Client.setSessionRequestHandler(
-    method: AcpMethod.AcpSessionRequestResponseMethod<TRequest, TResponse>,
-    additionalContext: CoroutineContext = EmptyCoroutineContext,
-    noinline handler: suspend (ClientSession, TRequest) -> TResponse
-) where TRequest : AcpRequest, TRequest : AcpWithSessionId {
-    this.protocol.setRequestHandler(method, additionalContext) { request ->
-        val sessionId = request.sessionId
-        val session = getSession(sessionId) ?: acpFail("Session $sessionId not found")
-        return@setRequestHandler handler(session, request)
-    }
-}
-
-// TODO: remove?
-public inline fun<reified TRequest, reified TResponse : AcpResponse, reified TInterface> Client.setSessionExtensionRequestHandler(
-    method: AcpMethod.AcpSessionRequestResponseMethod<TRequest, TResponse>,
-    additionalContext: CoroutineContext = EmptyCoroutineContext,
-    noinline handler: suspend (operations: TInterface, params: TRequest) -> TResponse
-) where TRequest : AcpRequest, TRequest : AcpWithSessionId {
-    this.protocol.setRequestHandler(method, additionalContext) { request ->
-        val sessionId = request.sessionId
-        val session = getSession(sessionId) ?: acpFail("Session $sessionId not found")
-        val operations = session.operations as? TInterface ?: throw JsonRpcException(
-            code = JsonRpcErrorCode.METHOD_NOT_FOUND,
-            message = "Session $sessionId does not implement extension type ${TInterface::class.simpleName} to handle method '$method'"
-        )
-        return@setRequestHandler handler(operations, request)
-    }
 }

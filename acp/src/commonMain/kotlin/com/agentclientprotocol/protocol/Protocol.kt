@@ -39,6 +39,9 @@ public class AcpExpectedError(message: String) : Exception(message)
  */
 public fun acpFail(message: String): Nothing = throw AcpExpectedError(message)
 
+public fun jsonRpcMethodNotFound(message: String): Nothing =
+    throw JsonRpcException(JsonRpcErrorCode.METHOD_NOT_FOUND, message)
+
 /**
  * Exception thrown when a request times out.
  */
@@ -75,7 +78,7 @@ public open class ProtocolOptions(
     public val protocolDebugName: String = Protocol::class.simpleName!!
 )
 
-public interface HandlersOwner {
+public interface RpcMethodsOperations {
     public fun setRequestHandlerRaw(
         method: AcpMethod.AcpRequestResponseMethod<*, *>,
         additionalContext: CoroutineContext = EmptyCoroutineContext,
@@ -87,6 +90,23 @@ public interface HandlersOwner {
         additionalContext: CoroutineContext = EmptyCoroutineContext,
         handler: suspend (JsonRpcNotification) -> Unit
     )
+
+    /**
+     * Send a request and wait for the response.
+     *
+     * Prefer typed [sendRequest] over this method.
+     */
+    public suspend fun sendRequestRaw(
+        method: MethodName,
+        params: JsonElement? = null
+    ): JsonElement
+
+    /**
+     * Send a notification (no response expected).
+     *
+     * Prefer typed [sendNotification] over this method.
+     */
+    public fun sendNotificationRaw(method: AcpMethod.AcpNotificationMethod<*>, params: JsonElement? = null)
 }
 
 /**
@@ -98,7 +118,7 @@ public class Protocol(
     parentScope: CoroutineScope,
     private val transport: Transport,
     public val options: ProtocolOptions = ProtocolOptions()
-) : HandlersOwner {
+) : RpcMethodsOperations {
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]) + CoroutineName(options.protocolDebugName))
     // a scope and dispatcher that executes requests to avoid blocking of message processing
     private val requestsScope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job])
@@ -163,9 +183,9 @@ public class Protocol(
      *
      * Prefer typed [sendRequest] over this method.
      */
-    public suspend fun sendRequestRaw(
+    public override suspend fun sendRequestRaw(
         method: MethodName,
-        params: JsonElement? = null
+        params: JsonElement?
     ): JsonElement {
         val requestId = OutgoingRequestId(RequestId(requestIdCounter.incrementAndGet()))
         val deferred = CompletableDeferred<JsonElement>()
@@ -230,7 +250,7 @@ public class Protocol(
      *
      * Prefer typed [sendNotification] over this method.
      */
-    public fun sendNotificationRaw(method: AcpMethod.AcpNotificationMethod<*>, params: JsonElement? = null) {
+    override fun sendNotificationRaw(method: AcpMethod.AcpNotificationMethod<*>, params: JsonElement?) {
         val notification = JsonRpcNotification(
             method = method.methodName,
             params = params

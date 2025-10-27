@@ -2,7 +2,9 @@ package com.agentclientprotocol.client
 
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
+import com.agentclientprotocol.common.RemoteSideExtensionInstantiation
 import com.agentclientprotocol.common.SessionParameters
+import com.agentclientprotocol.common.asContextElement
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.invoke
@@ -10,9 +12,9 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 
 private val logger = KotlinLogging.logger {}
@@ -21,6 +23,7 @@ internal class ClientSessionImpl(
     override val sessionId: SessionId,
     override val parameters: SessionParameters,
     private val protocol: Protocol,
+    val extensions: RemoteSideExtensionInstantiation,
 //    private val modeState: SessionModeState?,
 //    private val modelState: SessionModelState?,
 ) : ClientSession {
@@ -87,6 +90,11 @@ internal class ClientSessionImpl(
     }
 
 
+    internal suspend fun <T> executeWithSession(block: suspend () -> T): T {
+        return withContext(extensions.asContextElement()) {
+            block()
+        }
+    }
     /**
      * Routes notification to either active prompt or global notification channel
      */
