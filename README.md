@@ -2,270 +2,362 @@
 
 [![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-blueviolet?logo=kotlin)](https://kotlinlang.org/docs/multiplatform.html)
 [![JVM](https://img.shields.io/badge/Platform-JVM-orange?logo=kotlin)](https://kotlinlang.org/docs/multiplatform.html)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.txt)
 
-Kotlin implementation of the [Agent Client Protocol](https://agentclientprotocol.com) (ACP), providing both client and agent capabilities for integrating with AI agents across various platforms.
+Modern Kotlin toolkit for building software that speaks the [Agent Client Protocol (ACP)](https://agentclientprotocol.com). Ship ACP-compliant agents, clients, and transports for IDE plugins, CLIs, backend services, or any JVM host—all with one cohesive SDK.
 
-## Overview
+## What is ACP Kotlin SDK?
 
-The Agent Client Protocol allows applications to provide a standardized interface for AI agents, enabling seamless communication between clients (like code editors) and agents (AI assistants). This SDK implements the ACP specification for Kotlin, currently targeting JVM with future multiplatform support planned.
+ACP standardises how AI agents and clients exchange messages, negotiate capabilities, and move files. This SDK provides a Kotlin implementation of that spec:
 
-- Build ACP clients that can connect to any ACP agent
-- Create ACP agents that expose capabilities to clients  
-- Use STDIO transport for process communication
-- Handle all ACP protocol messages and lifecycle events
-- Full support for sessions, tool calls, permissions, and file system operations
+- Type-safe models for every ACP message and capability
+- Agent and client connection stacks (JSON-RPC over STDIO)
+- Ktor utilities for HTTP/WebSocket transports (optional modules)
+- Comprehensive samples demonstrating end-to-end sessions and tool calls
 
-## Project Structure
+### Common scenarios
 
-- **acp**: Core ACP functionality module
-  - `agent/`: Agent-side implementation (`Agent.kt`, `AgentSideConnection.kt`)
-  - `client/`: Client-side implementation (`Client.kt`, `ClientSideConnection.kt`)
-  - `protocol/`: Core protocol handling
-  - `rpc/`: JSON-RPC implementation
-  - `transport/`: Transport layer implementation (STDIO)
-- **acp-model**: Protocol data models and types
-- **samples/**: Example implementations demonstrating usage
+- Embed an ACP client in your IDE/plugin to talk to external agents
+- Build a headless automation agent that serves ACP prompts and tools
+- Prototype new transports with the connection layer and model modules
+- Validate your ACP integration using the supplied test utilities
+
+## Modules at a glance
+
+| Module                              | Description                                               | Main packages                              |
+|-------------------------------------|-----------------------------------------------------------|--------------------------------------------|
+| `:acp-model`                        | Pure data model for ACP messages, capabilities, and enums | `com.agentclientprotocol.model.*`          |
+| `:acp`                              | Core agent/client runtime with STDIO transport            | `agent`, `client`, `protocol`, `transport` |
+| `:acp-ktor`                         | Shared infrastructure for Ktor-based transports           | `ktor`                                     |
+| `:acp-ktor-client`                  | Ktor HTTP/WebSocket client helper                         | `ktor.client`                              |
+| `:acp-ktor-server`                  | Ktor server-side transport utilities                      | `ktor.server`                              |
+| `:acp-ktor-test`                    | Test fixtures and fake transports for ACP flows           | `ktor.test`                                |
+| `:samples:kotlin-acp-client-sample` | Complete runnable client + agent reference implementation | `samples`                                  |
+
+## Requirements
+
+- JDK 21 (toolchain configured through Gradle)
+- Kotlin 2.2.20 or newer (Gradle Kotlin DSL plugin)
+- Gradle 8.6+ (wrapper included)
+- JVM target today; additional targets (JS, Native, Wasm) are on the roadmap
 
 ## Installation
 
-Add the repository to your build file:
+Artifacts are published under `com.agentclientprotocol`. The default build version is `0.3.0-SNAPSHOT`; release builds use `0.3.0`.
 
 ```kotlin
 repositories {
     mavenCentral()
 }
-```
 
-Add the dependency:
-
-```kotlin
 dependencies {
-    implementation("com.agentclientprotocol:acp:0.1.0-SNAPSHOT")
+    implementation("com.agentclientprotocol:acp:0.3.0-SNAPSHOT")
+    // Optional extras:
+    // implementation("com.agentclientprotocol:acp-ktor-client:0.3.0-SNAPSHOT")
+    // implementation("com.agentclientprotocol:acp-ktor-server:0.3.0-SNAPSHOT")
 }
 ```
 
-## Quick Start
+> **Snapshot builds:** When consuming the `-SNAPSHOT` artifacts outside Maven Central, add the repository that hosts your snapshot (e.g. GitHub Packages or an internal mirror).
 
-### Creating an Agent
+## Quick start
+
+### Write your first agent
+
+Set up an `AgentSupport`, wire the standard STDIO transport, and stream responses. The example below also shows how to call the optional `FileSystemOperations` extension so the agent can read files through the client.
 
 ```kotlin
-import com.agentclientprotocol.agent.*
-import com.agentclientprotocol.model.*
+import com.agentclientprotocol.agent.Agent
+import com.agentclientprotocol.agent.AgentInfo
+import com.agentclientprotocol.agent.AgentSession
+import com.agentclientprotocol.agent.AgentSupport
+import com.agentclientprotocol.agent.clientInfo
+import com.agentclientprotocol.client.ClientInfo
+import com.agentclientprotocol.client.FileSystemOperations
+import com.agentclientprotocol.common.Event
+import com.agentclientprotocol.common.SessionParameters
+import com.agentclientprotocol.common.remoteSessionOperations
+import com.agentclientprotocol.model.AgentCapabilities
+import com.agentclientprotocol.model.ContentBlock
+import com.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
+import com.agentclientprotocol.model.PromptResponse
+import com.agentclientprotocol.model.SessionId
+import com.agentclientprotocol.model.SessionUpdate
+import com.agentclientprotocol.model.StopReason
+import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.transport.StdioTransport
-import kotlinx.coroutines.coroutineScope
-import kotlinx.io.*
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonElement
+import kotlinx.io.asSink
+import kotlinx.io.asSource
+import kotlinx.io.buffered
 
-class MyAgent : Agent {
-    override suspend fun initialize(request: InitializeRequest): InitializeResponse {
-        return InitializeResponse(
-            protocolVersion = LATEST_PROTOCOL_VERSION,
-            agentCapabilities = AgentCapabilities(
-                promptCapabilities = PromptCapabilities(
-                    image = true,
-                    embeddedContext = true
-                )
+// 1. Build a dedicated AgentSession implementation for each connection.
+private class TerminalAgentSession(
+    override val sessionId: SessionId
+) : AgentSession {
+    override suspend fun prompt(
+        content: List<ContentBlock>,
+        _meta: JsonElement?
+    ): Flow<Event> = flow {
+        // Echo back what the user typed.
+        val userText = content.filterIsInstance<ContentBlock.Text>().joinToString(" ") { it.text }
+        emit(
+            Event.SessionUpdateEvent(
+                SessionUpdate.AgentMessageChunk(ContentBlock.Text("Agent heard: $userText"))
             )
         )
+
+        // Optional extension call via the coroutine context.
+        val context = currentCoroutineContext()
+        val clientCapabilities = context.clientInfo.capabilities
+        if (clientCapabilities.fs?.readTextFile == true) {
+            val fs = context.remoteSessionOperations(FileSystemOperations)
+            val readmeSnippet = fs.fsReadTextFile("README.md").content.take(120)
+            emit(
+                Event.SessionUpdateEvent(
+                    SessionUpdate.AgentMessageChunk(ContentBlock.Text("README preview: $readmeSnippet…"))
+                )
+            )
+        }
+
+        // Finish the turn once updates are sent.
+        emit(Event.PromptResponseEvent(PromptResponse(StopReason.END_TURN)))
     }
 
-    override suspend fun sessionNew(request: NewSessionRequest): NewSessionResponse {
-        val sessionId = SessionId("session-${System.currentTimeMillis()}")
-        return NewSessionResponse(sessionId)
+    override suspend fun cancel() {
+        // No long-running work in this demo, so nothing to clean up yet.
     }
-
-    override suspend fun sessionPrompt(request: PromptRequest): PromptResponse {
-        // Process the user's prompt and send updates via client connection
-        return PromptResponse(StopReason.END_TURN)
-    }
-
-    // Implement other required methods...
 }
 
-// Set up agent with STDIO transport
-suspend fun main() = coroutineScope {
-    val agent = MyAgent()
+// 2. Implement AgentSupport: negotiate capabilities and build per-session handlers.
+private class TerminalAgentSupport : AgentSupport {
+    override suspend fun initialize(clientInfo: ClientInfo) = AgentInfo(
+        protocolVersion = LATEST_PROTOCOL_VERSION,
+        capabilities = AgentCapabilities() // advertise baseline agent features
+    )
 
-    // Create transport with parent scope
+    override suspend fun createSession(sessionParameters: SessionParameters): AgentSession {
+        // 3. Instantiate the session implementation defined above.
+        val sessionId = SessionId("session-${System.currentTimeMillis()}")
+        return TerminalAgentSession(sessionId)
+    }
+
+    override suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionParameters): AgentSession =
+        // Rehydrate existing sessions with the provided identifier.
+        TerminalAgentSession(sessionId)
+}
+
+fun main(): Unit = runBlocking {
+    // 4. Bridge STDIO to the Protocol so the agent can speak ACP over stdin/stdout.
     val transport = StdioTransport(
         parentScope = this,
         input = System.`in`.asSource().buffered(),
         output = System.out.asSink().buffered()
     )
+    val protocol = Protocol(this, transport)
 
-    // Create connection with parent scope and transport
-    val connection = AgentSideConnection(
-        parentScope = this,
-        agent = agent,
-        transport = transport
+    // 5. Register the agent and declare which remote extensions it will use.
+    Agent(
+        protocol = protocol,
+        agentSupport = TerminalAgentSupport(),
+        remoteSideExtensions = listOf(FileSystemOperations)
     )
 
-    // Start the connection
-    connection.start()
+    // 6. Start listening for messages from the client.
+    protocol.start()
 }
 ```
 
-### Creating a Client
+### Write your first client
+
+Create a `Client` with your own `ClientSessionOperations` implementation. This sample exposes `FileSystemOperations`, grants tool-call permissions, and prints streamed updates from the agent.
 
 ```kotlin
 import com.agentclientprotocol.client.*
+import com.agentclientprotocol.common.ClientSessionOperations
+import com.agentclientprotocol.common.Event
+import com.agentclientprotocol.common.SessionParameters
 import com.agentclientprotocol.model.*
+import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.transport.StdioTransport
-import kotlinx.coroutines.coroutineScope
-import kotlinx.io.*
-import java.io.File
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonElement
+import kotlinx.io.asSink
+import kotlinx.io.asSource
+import kotlinx.io.buffered
+import java.nio.file.Path
+import java.nio.file.Paths
+import kotlin.io.path.readText
+import kotlin.io.path.writeText
 
-class MyClient : Client {
-    override suspend fun fsReadTextFile(request: ReadTextFileRequest): ReadTextFileResponse {
-        val content = File(request.path).readText()
-        return ReadTextFileResponse(content)
-    }
-
-    override suspend fun fsWriteTextFile(request: WriteTextFileRequest): WriteTextFileResponse {
-        File(request.path).writeText(request.content)
-        return WriteTextFileResponse()
-    }
-
-    override suspend fun sessionRequestPermission(request: RequestPermissionRequest): RequestPermissionResponse {
-        // Present options to user and return their choice
-        val selectedOption = request.options.first()
-        return RequestPermissionResponse(
-            RequestPermissionOutcome.Selected(selectedOption.optionId)
-        )
-    }
-
-    override suspend fun sessionUpdate(notification: SessionNotification) {
-        // Handle real-time updates from agent
-        println("Agent update: ${notification.update}")
-    }
-
-    // Implement other required methods...
+// 1. Describe how the client should create session handlers for each connection.
+private class TerminalClientSupport(private val projectDir: Path) : ClientSupport {
+    override suspend fun createClientSession(
+        session: ClientSession,
+        _sessionResponseMeta: JsonElement?
+    ): ClientSessionOperations = TerminalSession(projectDir)
 }
 
-// Set up client
-suspend fun main() = coroutineScope {
-    val client = MyClient()
+private class TerminalSession(
+    private val projectDir: Path
+) : ClientSessionOperations, FileSystemOperations {
+    override suspend fun requestPermissions(
+        toolCall: SessionUpdate.ToolCallUpdate,
+        permissions: List<PermissionOption>,
+        _meta: JsonElement?
+    ): RequestPermissionResponse =
+        // Grant whichever option was first in the list (swap for real UX).
+        RequestPermissionResponse(RequestPermissionOutcome.Selected(permissions.first().optionId))
 
-    // Create transport from external process (agent)
-    val agentProcess = ProcessBuilder("gemini", "--experimental-acp").start()
+    override suspend fun notify(notification: SessionUpdate, _meta: JsonElement?) {
+        // Surface streaming updates back to the host application.
+        println("Agent update: $notification")
+    }
+
+    override suspend fun fsReadTextFile(
+        path: String,
+        line: UInt?,
+        limit: UInt?,
+        _meta: JsonElement?
+    ): ReadTextFileResponse =
+        // Resolve file paths relative to the workspace root the client chose.
+        ReadTextFileResponse(projectDir.resolve(path).readText())
+
+    override suspend fun fsWriteTextFile(
+        path: String,
+        content: String,
+        _meta: JsonElement?
+    ): WriteTextFileResponse {
+        // Allow the agent to write files through the same extension API.
+        projectDir.resolve(path).writeText(content)
+        return WriteTextFileResponse()
+    }
+}
+
+fun main(): Unit = runBlocking {
     val transport = StdioTransport(
         parentScope = this,
-        input = agentProcess.inputStream.asSource().buffered(),
-        output = agentProcess.outputStream.asSink().buffered()
+        input = System.`in`.asSource().buffered(),
+        output = System.out.asSink().buffered()
+    )
+    val protocol = Protocol(this, transport)
+
+    val projectRoot = Paths.get("").toAbsolutePath()
+
+    val client = Client(
+        // 2. Register the client support and advertise which extensions you implement.
+        protocol = protocol,
+        clientSupport = TerminalClientSupport(projectRoot),
+        handlerSideExtensions = listOf(FileSystemOperations)
     )
 
-    // Create connection with parent scope
-    val connection = ClientSideConnection(
-        parentScope = this,
-        transport = transport,
-        client = client
-    )
+    protocol.start()
 
-    // Start the connection
-    connection.start()
-
-    // Initialize agent
-    val initResponse = connection.initialize(
-        InitializeRequest(
-            protocolVersion = LATEST_PROTOCOL_VERSION,
-            clientCapabilities = ClientCapabilities(
-                fs = FileSystemCapability(
-                    readTextFile = true,
-                    writeTextFile = true
-                )
+    client.initialize(
+        // 3. Negotiate capabilities so the agent knows extensions are available.
+        ClientInfo(
+            capabilities = ClientCapabilities(
+                fs = FileSystemCapability(readTextFile = true, writeTextFile = true)
             )
         )
     )
 
-    // Create session and send prompts
-    val sessionResponse = connection.sessionNew(
-        NewSessionRequest(
-            cwd = "/path/to/working/directory",
+    val session = client.newSession(
+        // 4. Launch a session pointing at the project workspace.
+        SessionParameters(
+            cwd = projectRoot.toString(),
             mcpServers = emptyList()
         )
     )
 
-    val promptResponse = connection.sessionPrompt(
-        PromptRequest(
-            sessionId = sessionResponse.sessionId,
-            prompt = listOf(ContentBlock.Text("Hello, agent!"))
-        )
-    )
+    session.prompt(listOf(ContentBlock.Text("Hello agent!"))).collect { event ->
+        when (event) {
+            // 5. React to streaming updates and final responses.
+            is Event.SessionUpdateEvent -> println("Agent update: ${event.update}")
+            is Event.PromptResponseEvent -> println("Prompt finished: ${event.response.stopReason}")
+        }
+    }
 }
 ```
 
-## Samples
+### Run the reference sample
 
-The `samples/` directory contains complete working examples:
-
-- **kotlin-acp-client-sample**: Contains both agent and client examples
-  - `SimpleAgent.kt`: A basic agent implementation that echoes messages
-  - `SimpleClient.kt`: A client implementation with file operations and permissions
-  - `GeminiClientApp.kt`: Interactive chat application that connects to Gemini agent
-  - `AgentSample.kt` & `ClientSample.kt`: Sample runners
-
-Run the samples:
+Prefer a fully wired example? Launch the repository sample that pairs the agent and client shown above:
 
 ```bash
-# Run the default client sample
 ./gradlew :samples:kotlin-acp-client-sample:run
 
-# Run the Gemini interactive chat client
-./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=com.agentclientprotocol.samples.client.GeminiClientAppKt
+# Gemini interactive client (requires external Gemini ACP agent)
+./gradlew :samples:kotlin-acp-client-sample:run \
+    -PmainClass=com.agentclientprotocol.samples.client.GeminiClientAppKt
 ```
 
-## Features
+## Sample projects
 
-### Protocol Support
-- ✅ Full ACP v1 protocol implementation
-- ✅ JSON-RPC message handling with request/response correlation
-- ✅ Support for all ACP message types (requests, responses, notifications)
-- ✅ Type-safe method enums (`AcpMethod.AgentMethods` and `AcpMethod.ClientMethods`)
-- ✅ Structured request/response interfaces (`AcpRequest`, `AcpResponse`, `AcpWithMeta`)
+| Project | Shows | Command |
+| --- | --- | --- |
+| `samples:kotlin-acp-client-sample` | End-to-end agent + client with STDIO transport | `./gradlew :samples:kotlin-acp-client-sample:run` |
+| `samples/client/GeminiClientApp.kt` | Interactive CLI client that talks to an external Gemini ACP agent | `./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=...GeminiClientAppKt` |
 
-### Agent Features
-- ✅ Agent initialization and capability negotiation
-- ✅ Session management (create, load, cancel)
-- ✅ Prompt processing with real-time updates
-- ✅ Tool call reporting and progress updates
-- ✅ Execution plan reporting
-- ✅ File system operations (via client)
-- ✅ Permission requests
+Each sample includes comments that explain the protocol lifecycle and can be used as templates for real applications.
 
-### Client Features  
-- ✅ Client initialization and capability advertising
-- ✅ File system operations (read/write text files)
-- ✅ Permission handling and user prompts
-- ✅ Real-time session update processing
-- ✅ Agent lifecycle management
+## Capabilities
 
-### Transport Support
-- ✅ STDIO transport for process communication
-
-### Multiplatform Support
-- ✅ JVM target
-- 🚧 JavaScript/Node.js (planned)
-- 🚧 Native targets (planned)
-- 🚧 WebAssembly (planned)
+- **Protocol**
+  - ✅ Full ACP v1 coverage with JSON-RPC framing
+  - ✅ Typed request/response wrappers (`AcpRequest`, `AcpResponse`, `AcpWithMeta`)
+  - ✅ Message correlation, error propagation, and structured logging hooks
+- **Agent runtime**
+  - ✅ Capability negotiation, session lifecycle, prompt streaming
+  - ✅ Tool-call progress, execution plans, permission requests routed to clients
+  - ✅ File-system operations executed via client callbacks
+- **Client runtime**
+  - ✅ Capability advertising and lifecycle management
+  - ✅ File-system helpers, permission handling, and session update listeners
+  - ✅ Utilities for embedding ACP into desktop/CLI experiences
+- **Transports**
+  - ✅ STDIO binding out of the box
+  - ✅ Ktor-based HTTP/WebSocket helpers (`acp-ktor*` modules)
+  - 🚧 Additional transports (Node.js, Native, Wasm) planned
 
 ## Architecture
-
-The SDK follows a clean architecture with clear separation of concerns:
 
 ```
 ┌─────────────────┐    ┌─────────────────┐
 │   Agent App     │    │   Client App    │
+│ (AgentSupport & │    │ (ClientSupport &│
+│ AgentSession)   │    │ ClientSessionOps│
 ├─────────────────┤    ├─────────────────┤
-│ AgentSideConn   │    │ ClientSideConn  │
+│   Agent runtime │    │  Client runtime │
+│     (`Agent`)   │    │     (`Client`)  │
 ├─────────────────┤    ├─────────────────┤
 │    Protocol     │    │    Protocol     │
 ├─────────────────┤    ├─────────────────┤
 │   Transport     │    │   Transport     │
-│     (STDIO)     │◄──►│     (STDIO)     │
+│  (STDIO, Ktor)  │◄──►│  (STDIO, Ktor)  │
 └─────────────────┘    └─────────────────┘
 ```
 
-- **Transport Layer**: Handles raw message transmission via STDIO
-- **Protocol Layer**: Manages JSON-RPC framing, request correlation, error handling, and type-safe method dispatch using `AcpMethod` enums
-- **Connection Layer**: Provides type-safe ACP method calls and handles serialization with structured `AcpRequest`/`AcpResponse` interfaces
-- **Application Layer**: Your agent or client implementation
+**Lifecycle overview:** clients establish a transport, call `initialize` to negotiate capabilities, open sessions (`session.new`), send prompts (`session.prompt`), and react to streamed updates (tool calls, permissions, status). Agents implement the mirrors of these methods, delegating file and permission requests back to the client when required. The `Agent` and `Client` runtime classes sit between your business logic (AgentSupport/AgentSession or ClientSupport/ClientSessionOperations) and the lower-level `Protocol`/transport layers.
+
+## Contributing
+
+Contributions are welcome! Please open an issue to discuss significant changes before submitting a PR.
+
+1. Fork and clone the repo.
+2. Run `./gradlew check` to execute the test suite.
+3. Use the supplied GitHub Actions workflows to verify compatibility.
+
+## Support
+
+- File bugs and feature requests through GitHub Issues.
+- For questions or integration help, start a discussion or reach out to the maintainers through the issue tracker.
+
+## License
+
+Distributed under the MIT License. See [`LICENSE.txt`](LICENSE.txt) for details.
