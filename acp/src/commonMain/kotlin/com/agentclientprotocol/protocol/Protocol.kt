@@ -39,6 +39,9 @@ public class AcpExpectedError(message: String) : Exception(message)
  */
 public fun acpFail(message: String): Nothing = throw AcpExpectedError(message)
 
+public fun jsonRpcMethodNotFound(message: String): Nothing =
+    throw JsonRpcException(JsonRpcErrorCode.METHOD_NOT_FOUND, message)
+
 /**
  * Exception thrown when a request times out.
  */
@@ -75,6 +78,37 @@ public open class ProtocolOptions(
     public val protocolDebugName: String = Protocol::class.simpleName!!
 )
 
+public interface RpcMethodsOperations {
+    public fun setRequestHandlerRaw(
+        method: AcpMethod.AcpRequestResponseMethod<*, *>,
+        additionalContext: CoroutineContext = EmptyCoroutineContext,
+        handler: suspend (JsonRpcRequest) -> JsonElement?
+    )
+
+    public fun setNotificationHandlerRaw(
+        method: AcpMethod.AcpNotificationMethod<*>,
+        additionalContext: CoroutineContext = EmptyCoroutineContext,
+        handler: suspend (JsonRpcNotification) -> Unit
+    )
+
+    /**
+     * Send a request and wait for the response.
+     *
+     * Prefer typed [sendRequest] over this method.
+     */
+    public suspend fun sendRequestRaw(
+        method: MethodName,
+        params: JsonElement? = null
+    ): JsonElement
+
+    /**
+     * Send a notification (no response expected).
+     *
+     * Prefer typed [sendNotification] over this method.
+     */
+    public fun sendNotificationRaw(method: AcpMethod.AcpNotificationMethod<*>, params: JsonElement? = null)
+}
+
 /**
  * Base protocol implementation handling JSON-RPC communication over a transport.
  *
@@ -84,7 +118,7 @@ public class Protocol(
     parentScope: CoroutineScope,
     private val transport: Transport,
     public val options: ProtocolOptions = ProtocolOptions()
-) {
+) : RpcMethodsOperations {
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]) + CoroutineName(options.protocolDebugName))
     // a scope and dispatcher that executes requests to avoid blocking of message processing
     private val requestsScope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job])
@@ -149,9 +183,9 @@ public class Protocol(
      *
      * Prefer typed [sendRequest] over this method.
      */
-    public suspend fun sendRequestRaw(
+    public override suspend fun sendRequestRaw(
         method: MethodName,
-        params: JsonElement? = null
+        params: JsonElement?
     ): JsonElement {
         val requestId = OutgoingRequestId(RequestId(requestIdCounter.incrementAndGet()))
         val deferred = CompletableDeferred<JsonElement>()
@@ -216,7 +250,7 @@ public class Protocol(
      *
      * Prefer typed [sendNotification] over this method.
      */
-    public fun sendNotificationRaw(method: AcpMethod.AcpNotificationMethod<*>, params: JsonElement? = null) {
+    override fun sendNotificationRaw(method: AcpMethod.AcpNotificationMethod<*>, params: JsonElement?) {
         val notification = JsonRpcNotification(
             method = method.methodName,
             params = params
@@ -229,9 +263,9 @@ public class Protocol(
      *
      * Prefer typed [setRequestHandler] over this method.
      */
-    public fun setRequestHandlerRaw(
+    public override fun setRequestHandlerRaw(
         method: AcpMethod.AcpRequestResponseMethod<*, *>,
-        additionalContext: CoroutineContext = EmptyCoroutineContext,
+        additionalContext: CoroutineContext,
         handler: suspend (JsonRpcRequest) -> JsonElement?
     ) {
         requestHandlers.update {
@@ -248,9 +282,9 @@ public class Protocol(
      *
      * Prefer typed [setNotificationHandler] over this method.
      */
-    public fun setNotificationHandlerRaw(
+    public override fun setNotificationHandlerRaw(
         method: AcpMethod.AcpNotificationMethod<*>,
-        additionalContext: CoroutineContext = EmptyCoroutineContext,
+        additionalContext: CoroutineContext,
         handler: suspend (JsonRpcNotification) -> Unit
     ) {
         notificationHandlers.update {
@@ -352,6 +386,9 @@ public class Protocol(
                         code = JsonRpcErrorCode.INVALID_PARAMS, message = e.message ?: "Invalid params"
                     )
                 )
+            } catch (e: JsonRpcException) {
+                logger.trace(e) { "JsonRpcException on '${request.method}'" }
+                sendResponse(request.id, null, JsonRpcError(code = e.code, message = e.message ?: "Internal error", data = e.data))
             } catch (e: SerializationException) {
                 logger.trace(e) { "Serialization error on ${request.method}" }
                 sendResponse(

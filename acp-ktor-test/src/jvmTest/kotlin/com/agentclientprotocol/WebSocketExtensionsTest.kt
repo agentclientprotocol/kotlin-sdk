@@ -1,0 +1,5 @@
+package com.agentclientprotocol
+
+import com.agentclientprotocol.framework.WebSocketKtorProtocolDriver
+
+class WebSocketExtensionsTest : ExtensionsTest(WebSocketKtorProtocolDriver())

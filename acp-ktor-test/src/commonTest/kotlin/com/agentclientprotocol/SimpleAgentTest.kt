@@ -4,6 +4,7 @@ import com.agentclientprotocol.agent.Agent
 import com.agentclientprotocol.agent.AgentInfo
 import com.agentclientprotocol.agent.AgentSession
 import com.agentclientprotocol.agent.AgentSupport
+import com.agentclientprotocol.agent.client
 import com.agentclientprotocol.client.Client
 import com.agentclientprotocol.client.ClientInfo
 import com.agentclientprotocol.client.ClientSession
@@ -11,9 +12,9 @@ import com.agentclientprotocol.client.ClientSupport
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionParameters
-import com.agentclientprotocol.common.client
 import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.ContentBlock
+import com.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
 import com.agentclientprotocol.model.PermissionOption
 import com.agentclientprotocol.model.PermissionOptionId
 import com.agentclientprotocol.model.PermissionOptionKind
@@ -226,6 +227,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 TODO("Not yet implemented")
             }
         })
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
         val session = client.newSession(SessionParameters("/test/path", emptyList()))
         val promptJob = launch {
             session.prompt(listOf(ContentBlock.Text("Test message"))).collect()
@@ -300,6 +302,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 TODO("Not yet implemented")
             }
         })
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
         val session = client.newSession(SessionParameters("/test/path", emptyList()))
         val promptJob = launch {
             session.prompt(listOf(ContentBlock.Text("Test message"))).collect()
@@ -376,6 +379,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 TODO("Not yet implemented")
             }
         })
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
         val responses = mutableListOf<String>()
         val session = client.newSession(SessionParameters("/test/path", emptyList()))
         session.prompt(listOf(ContentBlock.Text("Test message"))).collect { event ->
@@ -473,6 +477,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 TODO("Not yet implemented")
             }
         })
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
         val responses = mutableListOf<String>()
         val session = client.newSession(SessionParameters("/test/path", emptyList()))
 
@@ -571,6 +576,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 TODO("Not yet implemented")
             }
         })
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
         val responses = mutableListOf<String>()
         val session = client.newSession(SessionParameters("/test/path", emptyList()))
 

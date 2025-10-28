@@ -46,10 +46,10 @@ public data class PromptCapabilities(
  */
 @Serializable
 public data class ClientCapabilities(
-    @EncodeDefault val fs: FileSystemCapability = FileSystemCapability(),
+    @EncodeDefault val fs: FileSystemCapability? = null,
     @EncodeDefault val terminal: Boolean = false,
     override val _meta: JsonElement? = null
-) : AcpWithMeta
+) : AcpCapabilities, AcpWithMeta
 
 /**
  * MCP capabilities supported by the agent
@@ -75,4 +75,4 @@ public data class AgentCapabilities(
     @EncodeDefault val promptCapabilities: PromptCapabilities = PromptCapabilities(),
     @EncodeDefault val mcpCapabilities: McpCapabilities = McpCapabilities(),
     override val _meta: JsonElement? = null
-) : AcpWithMeta
+) : AcpCapabilities, AcpWithMeta

@@ -17,7 +17,7 @@ import kotlin.coroutines.EmptyCoroutineContext
 /**
  *  Send a request and wait for the response.
  */
-public suspend inline fun <reified TRequest : AcpRequest, reified TResponse : AcpResponse> Protocol.sendRequest(
+public suspend inline fun <reified TRequest : AcpRequest, reified TResponse : AcpResponse> RpcMethodsOperations.sendRequest(
     method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
     request: TRequest?
 ): TResponse {
@@ -29,7 +29,7 @@ public suspend inline fun <reified TRequest : AcpRequest, reified TResponse : Ac
 /**
  * Send a notification (no response expected).
  */
-public inline fun <reified TNotification: AcpNotification> Protocol.sendNotification(
+public inline fun <reified TNotification: AcpNotification> RpcMethodsOperations.sendNotification(
     method: AcpMethod.AcpNotificationMethod<TNotification>,
     notification: TNotification? = null,
 ) {
@@ -40,7 +40,7 @@ public inline fun <reified TNotification: AcpNotification> Protocol.sendNotifica
 /**
  * Register a handler for incoming requests.
  */
-public inline fun<reified TRequest : AcpRequest, reified TResponse : AcpResponse> Protocol.setRequestHandler(
+public inline fun<reified TRequest : AcpRequest, reified TResponse : AcpResponse> RpcMethodsOperations.setRequestHandler(
     method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
     additionalContext: CoroutineContext = EmptyCoroutineContext,
     noinline handler: suspend (TRequest) -> TResponse
@@ -51,11 +51,10 @@ public inline fun<reified TRequest : AcpRequest, reified TResponse : AcpResponse
         ACPJson.encodeToJsonElement(responseObject)
     }
 }
-
 /**
  * Register a handler for incoming notifications.
  */
-public inline fun<reified TNotification : AcpNotification> Protocol.setNotificationHandler(
+public inline fun<reified TNotification : AcpNotification> RpcMethodsOperations.setNotificationHandler(
     method: AcpMethod.AcpNotificationMethod<TNotification>,
     additionalContext: CoroutineContext = EmptyCoroutineContext,
     noinline handler: suspend (TNotification) -> Unit
@@ -66,12 +65,12 @@ public inline fun<reified TNotification : AcpNotification> Protocol.setNotificat
     }
 }
 
-public suspend inline operator fun <reified TRequest: AcpRequest, reified TResponse: AcpResponse> AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>.invoke(protocol: Protocol, request: TRequest): TResponse {
-    return protocol.sendRequest(this, request)
+public suspend inline operator fun <reified TRequest: AcpRequest, reified TResponse: AcpResponse> AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>.invoke(rpc: RpcMethodsOperations, request: TRequest): TResponse {
+    return rpc.sendRequest(this, request)
 }
 
-public inline operator fun <reified TNotification : AcpNotification> AcpMethod.AcpNotificationMethod<TNotification>.invoke(protocol: Protocol, notification: TNotification) {
-    return protocol.sendNotification(this, notification)
+public inline operator fun <reified TNotification : AcpNotification> AcpMethod.AcpNotificationMethod<TNotification>.invoke(rpc: RpcMethodsOperations, notification: TNotification) {
+    return rpc.sendNotification(this, notification)
 }
 
 internal class JsonRpcRequestContextElement(val jsonRpcRequest: JsonRpcRequest) : AbstractCoroutineContextElement(Key) {
