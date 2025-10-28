@@ -4,36 +4,18 @@ import com.agentclientprotocol.agent.Agent
 import com.agentclientprotocol.agent.AgentInfo
 import com.agentclientprotocol.agent.AgentSession
 import com.agentclientprotocol.agent.AgentSupport
-import com.agentclientprotocol.client.Client
-import com.agentclientprotocol.client.ClientInfo
-import com.agentclientprotocol.client.ClientSession
-import com.agentclientprotocol.client.ClientSupport
-import com.agentclientprotocol.client.FileSystemOperations
-import com.agentclientprotocol.common.ClientSessionOperations
-import com.agentclientprotocol.common.Event
-import com.agentclientprotocol.common.SessionParameters
-import com.agentclientprotocol.common.remoteSessionOperations
+import com.agentclientprotocol.client.*
+import com.agentclientprotocol.common.*
 import com.agentclientprotocol.framework.ProtocolDriver
-import com.agentclientprotocol.model.AgentCapabilities
-import com.agentclientprotocol.model.ClientCapabilities
-import com.agentclientprotocol.model.ContentBlock
-import com.agentclientprotocol.model.FileSystemCapability
-import com.agentclientprotocol.model.PermissionOption
-import com.agentclientprotocol.model.ReadTextFileResponse
-import com.agentclientprotocol.model.RequestPermissionResponse
-import com.agentclientprotocol.model.SessionId
-import com.agentclientprotocol.model.SessionUpdate
-import com.agentclientprotocol.model.WriteTextFileResponse
+import com.agentclientprotocol.model.*
+import com.agentclientprotocol.protocol.RpcMethodsOperations
+import com.agentclientprotocol.protocol.invoke
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.test.TestResult
 import kotlinx.serialization.json.JsonElement
-import kotlin.test.Test
-import kotlin.test.assertContains
-import kotlin.test.assertContentEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 open class TestClientSessionOperations(): ClientSessionOperations {
     override suspend fun requestPermissions(
@@ -278,6 +260,73 @@ abstract class ExtensionsTest(protocolDriver: ProtocolDriver) : ProtocolDriver b
         val result = session.promptToList("Test")
         assertContentEquals(listOf("Hello", "File content: test", "END_TURN"), result)
     }
+
+    interface TestAgentInterface {
+        suspend fun readTextFile(path: String): String
+
+        companion object : HandlerSideExtension<TestAgentInterface>, RemoteSideExtension<TestAgentInterface> {
+            override fun RegistrarContext<TestAgentInterface>.register() {
+                setSessionExtensionRequestHandler(AcpMethod.ClientMethods.FsReadTextFile) { ops, params ->
+                    return@setSessionExtensionRequestHandler ReadTextFileResponse(ops.readTextFile(params.path))
+                }
+            }
+
+            override val name: String
+                get() = TestAgentInterface::class.qualifiedName!!
+
+            override fun isSupported(remoteSideCapabilities: AcpCapabilities): Boolean {
+                return true
+            }
+
+            override fun createSessionRemote(
+                rpc: RpcMethodsOperations,
+                capabilities: AcpCapabilities,
+                sessionId: SessionId,
+            ): TestAgentInterface {
+                return object : TestAgentSession(), TestAgentInterface {
+                    override suspend fun readTextFile(path: String): String = AcpMethod.ClientMethods.FsReadTextFile(rpc,
+                        ReadTextFileRequest(sessionId, path)).content
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `call agent extension from client`(): TestResult = testWithProtocols { clientProtocol, agentProtocol ->
+
+        val clientSupport = TestClientSupport { session, _sessionResponseMeta ->
+            return@TestClientSupport object : TestClientSessionOperations() {
+            }
+        }
+        val client = Client(
+            protocol = clientProtocol, clientSupport = clientSupport, remoteSideExtensions = listOf(
+                TestAgentInterface
+            )
+        )
+
+        val agentSupport = TestAgentSupport {
+            object : TestAgentSession(), TestAgentInterface {
+                override suspend fun readTextFile(path: String): String = "test content"
+            }
+        }
+        val agent = Agent(agentProtocol, agentSupport, handlerSideExtensions = listOf(TestAgentInterface))
+
+        client.initialize(
+            ClientInfo(
+                capabilities = ClientCapabilities(
+                    fs = FileSystemCapability(
+                        readTextFile = true,
+                        writeTextFile = true
+                    )
+                )
+            )
+        )
+        val session = client.newSession(SessionParameters("/test/path", emptyList()))
+        val fileSystemOperations = session.remoteOperations(TestAgentInterface)
+        val fileResponse = fileSystemOperations.readTextFile("/test/file/path")
+        assertEquals("test content", fileResponse)
+    }
+
 
 
 }

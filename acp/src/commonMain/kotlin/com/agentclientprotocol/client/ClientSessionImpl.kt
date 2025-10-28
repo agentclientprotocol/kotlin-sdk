@@ -2,9 +2,11 @@ package com.agentclientprotocol.client
 
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
+import com.agentclientprotocol.common.RemoteSideExtension
 import com.agentclientprotocol.common.RemoteSideExtensionInstantiation
 import com.agentclientprotocol.common.SessionParameters
 import com.agentclientprotocol.common.asContextElement
+import com.agentclientprotocol.common.remoteSessionOperations
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.invoke
@@ -42,7 +44,12 @@ internal class ClientSessionImpl(
 
     override val operations: ClientSessionOperations
         get() = _clientApi
-//    private val _currentMode = MutableStateFlow(modeState?.currentModeId)
+
+    override fun <T : Any> remoteOperations(extension: RemoteSideExtension<T>): T {
+        return extensions.remoteSessionOperations(extension)
+    }
+
+    //    private val _currentMode = MutableStateFlow(modeState?.currentModeId)
 //    private val _currentModel = MutableStateFlow(modelState?.currentModelId)
 
 //    override val availableModes: List<SessionMode> = modeState?.availableModes ?: emptyList()

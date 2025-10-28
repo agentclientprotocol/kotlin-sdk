@@ -2,6 +2,7 @@ package com.agentclientprotocol.client
 
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
+import com.agentclientprotocol.common.RemoteSideExtension
 import com.agentclientprotocol.common.SessionParameters
 import com.agentclientprotocol.model.ContentBlock
 import com.agentclientprotocol.model.SessionId
@@ -36,4 +37,9 @@ public interface ClientSession {
      * Corresponds to the [com.agentclientprotocol.model.AcpMethod.AgentMethods.SessionCancel]
      */
     public suspend fun cancel()
+
+    /**
+     * Returns extension implementation object to call remote side methods.
+     */
+    public fun <T : Any> remoteOperations(extension: RemoteSideExtension<T>): T
 }

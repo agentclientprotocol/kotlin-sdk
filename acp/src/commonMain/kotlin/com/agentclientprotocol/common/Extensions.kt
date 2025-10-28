@@ -83,8 +83,16 @@ internal fun RemoteSideExtensionInstantiation.asContextElement(): SessionExtensi
 
 public fun <T : Any> CoroutineContext.remoteSessionOperations(extension: RemoteSideExtension<T>): T {
     val extensionsContextElement = this[SessionExtensionsContextElement.Key] ?: error("No extensions context element found in context")
+    val extensions = extensionsContextElement.extensions
+
+    return extensions.remoteSessionOperations(extension)
+}
+
+internal fun <T : Any> RemoteSideExtensionInstantiation.remoteSessionOperations(
+    extension: RemoteSideExtension<T>,
+): T {
     @Suppress("UNCHECKED_CAST")
-    val operations = extensionsContextElement.extensions.extensionsMap[extension] as? T
+    val operations = extensionsMap[extension] as? T
         ?: error("Remote-side extension '${extension.name}' is either not registered or it's not supported by capabilities of the remote side")
     @Suppress("UNCHECKED_CAST")
     return operations
