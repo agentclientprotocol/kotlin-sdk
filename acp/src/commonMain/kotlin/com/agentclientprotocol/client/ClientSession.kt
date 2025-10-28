@@ -13,6 +13,7 @@ public interface ClientSession {
     public val sessionId: SessionId
     public val parameters: SessionParameters
 
+    public val client: Client
     public val operations: ClientSessionOperations
 
 //    public val availableModes: List<SessionMode>

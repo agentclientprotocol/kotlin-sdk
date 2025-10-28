@@ -59,7 +59,7 @@ public interface FileSystemOperations {
         }
 
         override val name: String
-            get() = FileSystemOperations::class.qualifiedName!!
+            get() = FileSystemOperations::class.simpleName!!
     }
 
     public suspend fun fsReadTextFile(path: String,

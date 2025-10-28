@@ -243,11 +243,13 @@ internal class SessionWrapperContextElement(val sessionWrapper: Agent.SessionWra
 
 internal fun Agent.SessionWrapper.asContextElement() = SessionWrapperContextElement(this)
 
+public val CoroutineContext.agent: Agent
+    get() = this[SessionWrapperContextElement.Key]?.sessionWrapper?.agent ?: error("No agent data found in context")
 /**
  * Returns client info associated with the current protocol. Throws an exception if the agent is still not initialized from the client side.
  */
 public val CoroutineContext.clientInfo: ClientInfo
-    get() = (this[SessionWrapperContextElement.Key]?.sessionWrapper?.agent ?: error("No agent data found in context")).getClientInfoOrThrow()
+    get() = agent.getClientInfoOrThrow()
 
 /**
  * Returns a remote client connected to the counterpart via the current protocol

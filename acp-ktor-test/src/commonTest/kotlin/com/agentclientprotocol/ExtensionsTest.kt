@@ -272,7 +272,7 @@ abstract class ExtensionsTest(protocolDriver: ProtocolDriver) : ProtocolDriver b
             }
 
             override val name: String
-                get() = TestAgentInterface::class.qualifiedName!!
+                get() = TestAgentInterface::class.simpleName!!
 
             override fun isSupported(remoteSideCapabilities: AcpCapabilities): Boolean {
                 return true

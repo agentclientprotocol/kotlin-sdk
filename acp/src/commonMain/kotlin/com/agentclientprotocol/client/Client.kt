@@ -79,11 +79,12 @@ public class Client(
         }
     }
 
-    internal fun getAgentInfoOrThrow(): AgentInfo {
-        if (!_agentInfo.isCompleted) error("Agent is not initialized yet")
-        @OptIn(ExperimentalCoroutinesApi::class)
-        return _agentInfo.getCompleted()
-    }
+    public val agentInfo: AgentInfo
+        get() {
+            if (!_agentInfo.isCompleted) error("Agent is not initialized yet")
+            @OptIn(ExperimentalCoroutinesApi::class)
+            return _agentInfo.getCompleted()
+        }
 
     public suspend fun initialize(clientInfo: ClientInfo, _meta: JsonElement? = null): AgentInfo {
         _clientInfo.complete(clientInfo)
@@ -122,7 +123,7 @@ public class Client(
     }
 
     private suspend fun createSession(sessionId: SessionId, sessionParameters: SessionParameters, _meta: JsonElement?): ClientSession {
-        val agentInfo = getAgentInfoOrThrow()
+        val agentInfo = agentInfo
         val extensionsMap =
             remoteSideExtensions.filter { it.isSupported(agentInfo.capabilities) }.associateBy(keySelector = { it }) {
                 it.createSessionRemote(
@@ -131,7 +132,7 @@ public class Client(
                     sessionId = sessionId
                 )
             }
-        val session = ClientSessionImpl(sessionId, sessionParameters, protocol, RemoteSideExtensionInstantiation(extensionsMap)/*, modeState, modelState*/)
+        val session = ClientSessionImpl(this, sessionId, sessionParameters, protocol, RemoteSideExtensionInstantiation(extensionsMap)/*, modeState, modelState*/)
         val sessionApi = clientSupport.createClientSession(session, _meta)
         session.setApi(sessionApi)
         _sessions.update { it.put(sessionId, session) }

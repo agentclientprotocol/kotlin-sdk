@@ -81,7 +81,7 @@ public interface TerminalOperations {
         }
 
         override val name: String
-            get() = TerminalOperations::class.qualifiedName!!
+            get() = TerminalOperations::class.simpleName!!
     }
     public suspend fun terminalCreate(command: String,
                                       args: List<String> = emptyList(),

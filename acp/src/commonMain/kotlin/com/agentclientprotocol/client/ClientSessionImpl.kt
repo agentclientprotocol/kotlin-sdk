@@ -18,10 +18,13 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 
 private val logger = KotlinLogging.logger {}
 
 internal class ClientSessionImpl(
+    override val client: Client,
     override val sessionId: SessionId,
     override val parameters: SessionParameters,
     private val protocol: Protocol,
@@ -96,9 +99,8 @@ internal class ClientSessionImpl(
         AcpMethod.AgentMethods.SessionCancel(protocol, CancelNotification(sessionId))
     }
 
-
     internal suspend fun <T> executeWithSession(block: suspend () -> T): T {
-        return withContext(extensions.asContextElement()) {
+        return withContext(this.asContextElement() + extensions.asContextElement()) {
             block()
         }
     }
@@ -126,3 +128,12 @@ internal class ClientSessionImpl(
         return _clientApi.requestPermissions(toolCall,  permissions, _meta)
     }
 }
+
+internal class ClientSessionContextElement(val session: ClientSessionImpl) : AbstractCoroutineContextElement(Key) {
+    object Key : CoroutineContext.Key<ClientSessionContextElement>
+}
+
+internal fun ClientSessionImpl.asContextElement() = ClientSessionContextElement(this)
+
+public val CoroutineContext.clientSession: ClientSession
+    get() = this[ClientSessionContextElement.Key]?.session ?: error("No client session data found in context")
