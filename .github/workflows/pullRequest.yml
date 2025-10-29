@@ -1,0 +1,23 @@
+name: pullRequest.yml
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # tag: v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # tag: v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/gradle-build-action@a8f75513eafdebd8141bd1cd4e30fcd194af8dfa # tag: v2
+
+      - name: Clean Build with Gradle
+        run: ./gradlew clean build
