@@ -12,19 +12,22 @@ public class com/agentclientprotocol/model/AcpMethod {
 }
 
 public class com/agentclientprotocol/model/AcpMethod$AcpNotificationMethod : com/agentclientprotocol/model/AcpMethod {
-	public fun <init> (Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Lkotlinx/serialization/KSerializer;)V
+	public final fun getSerializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public class com/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod : com/agentclientprotocol/model/AcpMethod {
-	public fun <init> (Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Lkotlinx/serialization/KSerializer;Lkotlinx/serialization/KSerializer;)V
+	public final fun getRequestSerializer ()Lkotlinx/serialization/KSerializer;
+	public final fun getResponseSerializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public class com/agentclientprotocol/model/AcpMethod$AcpSessionNotificationMethod : com/agentclientprotocol/model/AcpMethod$AcpNotificationMethod {
-	public fun <init> (Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Lkotlinx/serialization/KSerializer;)V
 }
 
 public class com/agentclientprotocol/model/AcpMethod$AcpSessionRequestResponseMethod : com/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod {
-	public fun <init> (Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Lkotlinx/serialization/KSerializer;Lkotlinx/serialization/KSerializer;)V
 }
 
 public final class com/agentclientprotocol/model/AcpMethod$AgentMethods {
