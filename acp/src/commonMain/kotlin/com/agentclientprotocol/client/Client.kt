@@ -39,7 +39,7 @@ public class Client(
     private val handlerSideExtensions: List<HandlerSideExtension<*>> = emptyList(),
     private val remoteSideExtensions: List<RemoteSideExtension<*>> = emptyList(),
 ) {
-    private val _sessions = atomic(persistentMapOf<SessionId, ClientSessionImpl>())
+    private val _sessions = atomic(persistentMapOf<SessionId, CompletableDeferred<ClientSessionImpl>>())
     private val _clientInfo = CompletableDeferred<ClientInfo>()
     private val _agentInfo = CompletableDeferred<AgentInfo>()
 
@@ -123,6 +123,8 @@ public class Client(
     }
 
     private suspend fun createSession(sessionId: SessionId, sessionParameters: SessionParameters, _meta: JsonElement?): ClientSession {
+        val sessionDeferred = CompletableDeferred<ClientSessionImpl>()
+        _sessions.update { it.put(sessionId, sessionDeferred) }
         val agentInfo = agentInfo
         val extensionsMap =
             remoteSideExtensions.filter { it.isSupported(agentInfo.capabilities) }.associateBy(keySelector = { it }) {
@@ -135,11 +137,16 @@ public class Client(
         val session = ClientSessionImpl(this, sessionId, sessionParameters, protocol, RemoteSideExtensionInstantiation(extensionsMap)/*, modeState, modelState*/)
         val sessionApi = clientSupport.createClientSession(session, _meta)
         session.setApi(sessionApi)
-        _sessions.update { it.put(sessionId, session) }
+        sessionDeferred.complete(session)
         return session
     }
 
-    public fun getSession(sessionId: SessionId): ClientSession? = _sessions.value[sessionId]
+    public fun getSession(sessionId: SessionId): ClientSession {
+        val completableDeferred = _sessions.value[sessionId] ?: error("Session $sessionId not found")
+        if (!completableDeferred.isCompleted) error("Session $sessionId not initialized yet")
+        @OptIn(ExperimentalCoroutinesApi::class)
+        return completableDeferred.getCompleted()
+    }
 
-    private fun getSessionOrThrow(sessionId: SessionId): ClientSessionImpl = _sessions.value[sessionId] ?: acpFail("Session $sessionId not found")
+    private suspend fun getSessionOrThrow(sessionId: SessionId): ClientSessionImpl = (_sessions.value[sessionId] ?: acpFail("Session $sessionId not found")).await()
 }
