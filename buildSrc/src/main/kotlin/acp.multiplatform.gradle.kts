@@ -34,7 +34,7 @@ kotlin {
      wasmJs { nodejs() }
 //     linuxX64(); macosX64(); mingwX64()
 
-    explicitApi = ExplicitApiMode.Strict
+//    explicitApi = ExplicitApiMode.Strict
     jvmToolchain(21)
 
     sourceSets {
