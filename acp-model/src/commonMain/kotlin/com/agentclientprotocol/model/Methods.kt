@@ -3,6 +3,8 @@
 package com.agentclientprotocol.model
 
 import com.agentclientprotocol.rpc.MethodName
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.builtins.serializer
 
 /**
  * Base interface for ACP method enums.
@@ -11,47 +13,59 @@ import com.agentclientprotocol.rpc.MethodName
  */
 public open class AcpMethod(public val methodName: MethodName) {
 
-    public open class AcpRequestResponseMethod<TRequest: AcpRequest, TResponse: AcpResponse>(method: String) : AcpMethod(MethodName(method))
+    public open class AcpRequestResponseMethod<TRequest: AcpRequest, TResponse: AcpResponse>(
+        method: String,
+        public val requestSerializer: KSerializer<TRequest>,
+        public val responseSerializer: KSerializer<TResponse>
+    ) : AcpMethod(MethodName(method))
 
-    public open class AcpSessionRequestResponseMethod<TRequest, TResponse: AcpResponse>(method: String) : AcpRequestResponseMethod<TRequest, TResponse>(method)
+    public open class AcpSessionRequestResponseMethod<TRequest, TResponse: AcpResponse>(method: String,
+                                                                                        requestSerializer: KSerializer<TRequest>,
+                                                                                        responseSerializer: KSerializer<TResponse>
+    ) : AcpRequestResponseMethod<TRequest, TResponse>(method, requestSerializer, responseSerializer)
             where TRequest : AcpRequest, TRequest : AcpWithSessionId
 
-    public open class AcpNotificationMethod<TNotification: AcpNotification>(method: String) : AcpMethod(MethodName(method))
+    public open class AcpNotificationMethod<TNotification: AcpNotification>(
+        method: String,
+        public val serializer: KSerializer<TNotification>,
+    ) : AcpMethod(MethodName(method))
 
-    public open class AcpSessionNotificationMethod<TNotification>(method: String) : AcpNotificationMethod<TNotification>(method)
+    public open class AcpSessionNotificationMethod<TNotification>(method: String,
+                                                                  serializer: KSerializer<TNotification>
+    ) : AcpNotificationMethod<TNotification>(method, serializer)
             where TNotification : AcpNotification, TNotification : AcpWithSessionId
 
     public object MetaMethods {
-        public object CancelRequest : AcpNotificationMethod<CancelRequestNotification>("\$/cancelRequest")
+        public object CancelRequest : AcpNotificationMethod<CancelRequestNotification>("\$/cancelRequest", CancelRequestNotification.serializer())
     }
 
     public object AgentMethods {
         // Agent-side operations (methods that agents can call on clients)
-        public object Initialize : AcpRequestResponseMethod<InitializeRequest, InitializeResponse>("initialize")
-        public object Authenticate : AcpRequestResponseMethod<AuthenticateRequest, AuthenticateResponse>("authenticate")
-        public object SessionNew : AcpRequestResponseMethod<NewSessionRequest, NewSessionResponse>("session/new")
-        public object SessionLoad : AcpRequestResponseMethod<LoadSessionRequest, LoadSessionResponse>("session/load")
+        public object Initialize : AcpRequestResponseMethod<InitializeRequest, InitializeResponse>("initialize", InitializeRequest.serializer(), InitializeResponse.serializer())
+        public object Authenticate : AcpRequestResponseMethod<AuthenticateRequest, AuthenticateResponse>("authenticate", AuthenticateRequest.serializer(), AuthenticateResponse.serializer())
+        public object SessionNew : AcpRequestResponseMethod<NewSessionRequest, NewSessionResponse>("session/new", NewSessionRequest.serializer(), NewSessionResponse.serializer())
+        public object SessionLoad : AcpRequestResponseMethod<LoadSessionRequest, LoadSessionResponse>("session/load", LoadSessionRequest.serializer(), LoadSessionResponse.serializer())
 
         // session specific
-        public object SessionPrompt : AcpSessionRequestResponseMethod<PromptRequest, PromptResponse>("session/prompt")
-        public object SessionCancel : AcpSessionNotificationMethod<CancelNotification>("session/cancel")
-        public object SessionSetMode : AcpSessionRequestResponseMethod<SetSessionModeRequest, SetSessionModeResponse>("session/set_mode")
-        public object SessionSetModel : AcpSessionRequestResponseMethod<SetSessionModelRequest, SetSessionModelResponse>("session/set_model")
+        public object SessionPrompt : AcpSessionRequestResponseMethod<PromptRequest, PromptResponse>("session/prompt", PromptRequest.serializer(), PromptResponse.serializer())
+        public object SessionCancel : AcpSessionNotificationMethod<CancelNotification>("session/cancel", CancelNotification.serializer())
+        public object SessionSetMode : AcpSessionRequestResponseMethod<SetSessionModeRequest, SetSessionModeResponse>("session/set_mode", SetSessionModeRequest.serializer(), SetSessionModeResponse.serializer())
+        public object SessionSetModel : AcpSessionRequestResponseMethod<SetSessionModelRequest, SetSessionModelResponse>("session/set_model", SetSessionModelRequest.serializer(), SetSessionModelResponse.serializer())
     }
 
     public object ClientMethods {
         // Client-side operations (methods that clients can call on agents)
-        public object SessionRequestPermission : AcpSessionRequestResponseMethod<RequestPermissionRequest, RequestPermissionResponse>("session/request_permission")
-        public object SessionUpdate : AcpSessionNotificationMethod<SessionNotification>("session/update")
+        public object SessionRequestPermission : AcpSessionRequestResponseMethod<RequestPermissionRequest, RequestPermissionResponse>("session/request_permission", RequestPermissionRequest.serializer(), RequestPermissionResponse.serializer())
+        public object SessionUpdate : AcpSessionNotificationMethod<SessionNotification>("session/update", SessionNotification.serializer())
 
         // extensions
-        public object FsReadTextFile : AcpSessionRequestResponseMethod<ReadTextFileRequest, ReadTextFileResponse>("fs/read_text_file")
-        public object FsWriteTextFile : AcpSessionRequestResponseMethod<WriteTextFileRequest, WriteTextFileResponse>("fs/write_text_file")
-        public object TerminalCreate : AcpSessionRequestResponseMethod<CreateTerminalRequest, CreateTerminalResponse>("terminal/create")
-        public object TerminalOutput : AcpSessionRequestResponseMethod<TerminalOutputRequest, TerminalOutputResponse>("terminal/output")
-        public object TerminalRelease : AcpSessionRequestResponseMethod<ReleaseTerminalRequest, ReleaseTerminalResponse>("terminal/release")
-        public object TerminalWaitForExit : AcpSessionRequestResponseMethod<WaitForTerminalExitRequest, WaitForTerminalExitResponse>("terminal/wait_for_exit")
-        public object TerminalKill : AcpSessionRequestResponseMethod<KillTerminalCommandRequest, KillTerminalCommandResponse>("terminal/kill")
+        public object FsReadTextFile : AcpSessionRequestResponseMethod<ReadTextFileRequest, ReadTextFileResponse>("fs/read_text_file", ReadTextFileRequest.serializer(), ReadTextFileResponse.serializer())
+        public object FsWriteTextFile : AcpSessionRequestResponseMethod<WriteTextFileRequest, WriteTextFileResponse>("fs/write_text_file", WriteTextFileRequest.serializer(), WriteTextFileResponse.serializer())
+        public object TerminalCreate : AcpSessionRequestResponseMethod<CreateTerminalRequest, CreateTerminalResponse>("terminal/create", CreateTerminalRequest.serializer(), CreateTerminalResponse.serializer())
+        public object TerminalOutput : AcpSessionRequestResponseMethod<TerminalOutputRequest, TerminalOutputResponse>("terminal/output", TerminalOutputRequest.serializer(), TerminalOutputResponse.serializer())
+        public object TerminalRelease : AcpSessionRequestResponseMethod<ReleaseTerminalRequest, ReleaseTerminalResponse>("terminal/release", ReleaseTerminalRequest.serializer(), ReleaseTerminalResponse.serializer())
+        public object TerminalWaitForExit : AcpSessionRequestResponseMethod<WaitForTerminalExitRequest, WaitForTerminalExitResponse>("terminal/wait_for_exit", WaitForTerminalExitRequest.serializer(), WaitForTerminalExitResponse.serializer())
+        public object TerminalKill : AcpSessionRequestResponseMethod<KillTerminalCommandRequest, KillTerminalCommandResponse>("terminal/kill", KillTerminalCommandRequest.serializer(), KillTerminalCommandResponse.serializer())
     }
 
 
