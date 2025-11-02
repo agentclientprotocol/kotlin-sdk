@@ -1,9 +1,31 @@
+
 rootProject.name = "acp-kotlin-sdk"
+
 
 pluginManagement {
     repositories {
         mavenCentral()
         gradlePluginPortal()
+        maven {
+            val envFile = file(".env")
+            val envProps = java.util.Properties()
+            if (envFile.exists()) {
+                envFile.inputStream().use { envProps.load(it) }
+            }
+
+            fun getEnvProperty(name: String): String {
+                return envProps.getProperty(name)
+                    ?: System.getenv(name)
+                    ?: throw Exception("Space username is not defined" + envFile.absolutePath)
+            }
+
+            url = uri("https://packages.jetbrains.team/maven/p/jcp/github-mirror-public")
+//            credentials {
+//                username = getEnvProperty("SPACE_USERNAME")
+//                password = getEnvProperty("SPACE_TOKEN")
+//            }
+
+        }
     }
 
     plugins {
@@ -24,7 +46,8 @@ include(":acp-ktor-client")
 include(":acp-ktor-server")
 include(":acp-ktor-test")
 include(":acp-schema-generator")
-include(":acp-schema")
+include(":acp-schema-kmp")
 
 // Include sample projects
 include(":samples:kotlin-acp-client-sample")
+include("acp-schema-kmp")

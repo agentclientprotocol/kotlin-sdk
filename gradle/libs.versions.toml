@@ -37,3 +37,4 @@ kotest-assertions-json = { module = "io.kotest:kotest-assertions-json-jvm", vers
 
 [plugins]
 kotlinx-binary-compatibility-validator = { id = "org.jetbrains.kotlinx.binary-compatibility-validator", version = "0.16.3" }
+jcp-api-codegen-client = { id = "com.jetbrains.jcp.api.codegen.gradle.ktor-client", version = "0.17.5"}
