@@ -206,15 +206,21 @@ public final class com/agentclientprotocol/common/SessionParameters {
 	public final fun get_meta ()Lkotlinx/serialization/json/JsonElement;
 }
 
-public final class com/agentclientprotocol/protocol/AcpExpectedError : java/lang/Exception {
+public final class com/agentclientprotocol/protocol/AcpExpectedError : java/lang/Exception, kotlinx/coroutines/CopyableThrowable {
 	public fun <init> (Ljava/lang/String;)V
+	public fun createCopy ()Lcom/agentclientprotocol/protocol/AcpExpectedError;
+	public synthetic fun createCopy ()Ljava/lang/Throwable;
+	public fun getMessage ()Ljava/lang/String;
 }
 
-public final class com/agentclientprotocol/protocol/JsonRpcException : java/lang/Exception {
+public final class com/agentclientprotocol/protocol/JsonRpcException : java/lang/Exception, kotlinx/coroutines/CopyableThrowable {
 	public fun <init> (ILjava/lang/String;Lkotlinx/serialization/json/JsonElement;)V
 	public synthetic fun <init> (ILjava/lang/String;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun createCopy ()Lcom/agentclientprotocol/protocol/JsonRpcException;
+	public synthetic fun createCopy ()Ljava/lang/Throwable;
 	public final fun getCode ()I
 	public final fun getData ()Lkotlinx/serialization/json/JsonElement;
+	public fun getMessage ()Ljava/lang/String;
 }
 
 public final class com/agentclientprotocol/protocol/Protocol : com/agentclientprotocol/protocol/RpcMethodsOperations {
@@ -260,10 +266,6 @@ public final class com/agentclientprotocol/protocol/Protocol_extensionsKt {
 	public static synthetic fun setNotificationHandler$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
 	public static final fun setRequestHandler (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
 	public static synthetic fun setRequestHandler$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
-}
-
-public final class com/agentclientprotocol/protocol/RequestTimeoutException : java/lang/Exception {
-	public fun <init> (Ljava/lang/String;)V
 }
 
 public abstract interface class com/agentclientprotocol/protocol/RpcMethodsOperations {

@@ -32,7 +32,10 @@ internal value class OutgoingRequestId(val id: RequestId)
 /**
  * An exception that gracefully handled and passed to the counterpart.
  */
-public class AcpExpectedError(message: String) : Exception(message)
+@OptIn(ExperimentalCoroutinesApi::class)
+public class AcpExpectedError(override val message: String) : Exception(message), CopyableThrowable<AcpExpectedError> {
+    override fun createCopy(): AcpExpectedError = AcpExpectedError(message).also { it.addSuppressed(this) }
+}
 
 /**
  * Throws [AcpExpectedError] that gracefully handled and passed to the counterpart.
@@ -43,18 +46,16 @@ public fun jsonRpcMethodNotFound(message: String): Nothing =
     throw JsonRpcException(JsonRpcErrorCode.METHOD_NOT_FOUND, message)
 
 /**
- * Exception thrown when a request times out.
- */
-public class RequestTimeoutException(message: String) : Exception(message)
-
-/**
  * Exception thrown for JSON-RPC protocol errors.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 public class JsonRpcException(
     public val code: Int,
-    message: String,
+    public override val message: String,
     public val data: JsonElement? = null
-) : Exception(message)
+) : Exception(message), CopyableThrowable<JsonRpcException> {
+    override fun createCopy(): JsonRpcException = JsonRpcException(code, message, data).also { it.addSuppressed(this) }
+}
 
 /**
  * Exception thrown when a request is cancelled explicitly by invoking [AcpMethod.MetaMethods.CancelRequest] from the calling site
@@ -498,7 +499,7 @@ private fun convertJsonRpcExceptionIfPossible(jsonRpcException: JsonRpcException
         }
 
         else -> {
-            return IllegalStateException(jsonRpcException.message, jsonRpcException)
+            return jsonRpcException
         }
     }
 }
