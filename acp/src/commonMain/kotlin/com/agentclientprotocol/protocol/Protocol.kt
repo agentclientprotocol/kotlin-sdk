@@ -498,7 +498,7 @@ private fun convertJsonRpcExceptionIfPossible(jsonRpcException: JsonRpcException
         }
 
         else -> {
-            return jsonRpcException
+            return IllegalStateException(jsonRpcException.message, jsonRpcException)
         }
     }
 }
