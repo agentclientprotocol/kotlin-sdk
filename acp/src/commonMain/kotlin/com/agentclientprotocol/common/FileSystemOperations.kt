@@ -1,9 +1,5 @@
-package com.agentclientprotocol.client
+package com.agentclientprotocol.common
 
-import com.agentclientprotocol.common.HandlerSideExtension
-import com.agentclientprotocol.common.RegistrarContext
-import com.agentclientprotocol.common.RemoteSideExtension
-import com.agentclientprotocol.common.setSessionExtensionRequestHandler
 import com.agentclientprotocol.model.AcpCapabilities
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.ClientCapabilities

@@ -7,9 +7,6 @@ import com.agentclientprotocol.agent.AgentSupport
 import com.agentclientprotocol.agent.client
 import com.agentclientprotocol.client.Client
 import com.agentclientprotocol.client.ClientInfo
-import com.agentclientprotocol.client.ClientSession
-import com.agentclientprotocol.client.ClientSupport
-import com.agentclientprotocol.client.FileSystemOperations
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
@@ -21,7 +18,6 @@ import com.agentclientprotocol.model.PermissionOption
 import com.agentclientprotocol.model.PermissionOptionId
 import com.agentclientprotocol.model.PermissionOptionKind
 import com.agentclientprotocol.model.PromptResponse
-import com.agentclientprotocol.model.ReadTextFileResponse
 import com.agentclientprotocol.model.RequestPermissionOutcome
 import com.agentclientprotocol.model.RequestPermissionResponse
 import com.agentclientprotocol.model.SessionId
@@ -29,7 +25,6 @@ import com.agentclientprotocol.model.SessionNotification
 import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.model.StopReason
 import com.agentclientprotocol.model.ToolCallId
-import com.agentclientprotocol.model.WriteTextFileResponse
 import com.agentclientprotocol.protocol.invoke
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred

@@ -5,8 +5,8 @@ import com.agentclientprotocol.agent.AgentSession
 import com.agentclientprotocol.agent.AgentSupport
 import com.agentclientprotocol.agent.clientInfo
 import com.agentclientprotocol.client.ClientInfo
-import com.agentclientprotocol.client.FileSystemOperations
-import com.agentclientprotocol.client.TerminalOperations
+import com.agentclientprotocol.common.FileSystemOperations
+import com.agentclientprotocol.common.TerminalOperations
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.common.remoteSessionOperations

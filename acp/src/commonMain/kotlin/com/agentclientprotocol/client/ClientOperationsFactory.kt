@@ -10,7 +10,7 @@ public typealias ClientSupport = ClientOperationsFactory
 public fun interface ClientOperationsFactory {
     /**
      * This method should return an implementation of [ClientSessionOperations] that provides basic features on the client side.
-     * If you need to provide additional features like file system or terminal support, you have to implement [FileSystemOperations] and [TerminalOperations] on this object as well.
+     * If you need to provide additional features like file system or terminal support, you have to implement [com.agentclientprotocol.common.FileSystemOperations] and [com.agentclientprotocol.common.TerminalOperations] on this object as well.
      * Remember to specify a corresponding capability when initializing an agent.
      *
      * [sessionId] an existing id in the case when the session is being loaded or a new id when the session is newly created (id is returned from the agent)

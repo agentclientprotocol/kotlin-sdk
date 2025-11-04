@@ -1,9 +1,5 @@
-package com.agentclientprotocol.client
+package com.agentclientprotocol.common
 
-import com.agentclientprotocol.common.HandlerSideExtension
-import com.agentclientprotocol.common.RegistrarContext
-import com.agentclientprotocol.common.RemoteSideExtension
-import com.agentclientprotocol.common.setSessionExtensionRequestHandler
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.RpcMethodsOperations
 import com.agentclientprotocol.protocol.invoke

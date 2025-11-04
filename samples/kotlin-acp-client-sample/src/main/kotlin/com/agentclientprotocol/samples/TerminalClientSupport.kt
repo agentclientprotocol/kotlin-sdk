@@ -3,7 +3,9 @@ package com.agentclientprotocol.samples
 import com.agentclientprotocol.client.*
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
+import com.agentclientprotocol.common.FileSystemOperations
 import com.agentclientprotocol.common.SessionCreationParameters
+import com.agentclientprotocol.common.TerminalOperations
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.transport.Transport

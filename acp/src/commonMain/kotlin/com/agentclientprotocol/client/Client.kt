@@ -3,8 +3,10 @@
 package com.agentclientprotocol.client
 
 import com.agentclientprotocol.agent.AgentInfo
+import com.agentclientprotocol.common.FileSystemOperations
 import com.agentclientprotocol.common.RegistrarContext
 import com.agentclientprotocol.common.SessionCreationParameters
+import com.agentclientprotocol.common.TerminalOperations
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.*
 import io.github.oshai.kotlinlogging.KotlinLogging

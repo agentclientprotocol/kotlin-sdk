@@ -1,8 +1,8 @@
 package com.agentclientprotocol.samples
 
 import com.agentclientprotocol.agent.Agent
-import com.agentclientprotocol.client.FileSystemOperations
-import com.agentclientprotocol.client.TerminalOperations
+import com.agentclientprotocol.common.FileSystemOperations
+import com.agentclientprotocol.common.TerminalOperations
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.transport.StdioTransport
 import kotlinx.coroutines.Dispatchers
