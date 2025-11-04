@@ -366,10 +366,10 @@ public data class SessionModelState(
 @Serializable
 public data class NewSessionResponse(
     override val sessionId: SessionId,
-    val modes: SessionModeState? = null,
-    val models: SessionModelState? = null,
+    override val modes: SessionModeState? = null,
+    override val models: SessionModelState? = null,
     override val _meta: JsonElement? = null
-) : AcpResponse, AcpWithSessionId
+) : AcpCreatedSessionResponse, AcpResponse, AcpWithSessionId
 
 /**
  * Response from processing a user prompt.
@@ -387,10 +387,10 @@ public data class PromptResponse(
  */
 @Serializable
 public data class LoadSessionResponse(
-    val modes: SessionModeState? = null,
-    val models: SessionModelState? = null,
+    override val modes: SessionModeState? = null,
+    override val models: SessionModelState? = null,
     override val _meta: JsonElement? = null
-) : AcpResponse
+) : AcpCreatedSessionResponse, AcpResponse
 
 /**
  * Response containing the contents of a text file.

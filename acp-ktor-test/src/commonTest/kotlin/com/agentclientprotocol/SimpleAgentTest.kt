@@ -9,9 +9,10 @@ import com.agentclientprotocol.client.Client
 import com.agentclientprotocol.client.ClientInfo
 import com.agentclientprotocol.client.ClientSession
 import com.agentclientprotocol.client.ClientSupport
+import com.agentclientprotocol.client.FileSystemOperations
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
-import com.agentclientprotocol.common.SessionParameters
+import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.ContentBlock
@@ -20,6 +21,7 @@ import com.agentclientprotocol.model.PermissionOption
 import com.agentclientprotocol.model.PermissionOptionId
 import com.agentclientprotocol.model.PermissionOptionKind
 import com.agentclientprotocol.model.PromptResponse
+import com.agentclientprotocol.model.ReadTextFileResponse
 import com.agentclientprotocol.model.RequestPermissionOutcome
 import com.agentclientprotocol.model.RequestPermissionResponse
 import com.agentclientprotocol.model.SessionId
@@ -27,6 +29,7 @@ import com.agentclientprotocol.model.SessionNotification
 import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.model.StopReason
 import com.agentclientprotocol.model.ToolCallId
+import com.agentclientprotocol.model.WriteTextFileResponse
 import com.agentclientprotocol.protocol.invoke
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -49,42 +52,20 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
     @Test
     fun initialization() = testWithProtocols { clientProtocol, agentProtocol ->
         val agentInitialized = CompletableDeferred<ClientInfo>()
-        val client = Client(protocol = clientProtocol, clientSupport = object : ClientSupport {
-            override suspend fun createClientSession(
-                session: ClientSession,
-                _sessionResponseMeta: JsonElement?,
-            ): ClientSessionOperations {
-                return object : ClientSessionOperations {
-                    override suspend fun requestPermissions(
-                        toolCall: SessionUpdate.ToolCallUpdate,
-                        permissions: List<PermissionOption>,
-                        _meta: JsonElement?,
-                    ): RequestPermissionResponse {
-                        TODO("Not yet implemented")
-                    }
-
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
-                        TODO("Not yet implemented")
-                    }
-                }
-            }
-        })
+        val client = Client(protocol = clientProtocol)
         val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
             override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
                 agentInitialized.complete(clientInfo)
                 return AgentInfo(clientInfo.protocolVersion)
             }
 
-            override suspend fun createSession(sessionParameters: SessionParameters): AgentSession {
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
                 TODO("Not yet implemented")
             }
 
             override suspend fun loadSession(
                 sessionId: SessionId,
-                sessionParameters: SessionParameters,
+                sessionParameters: SessionCreationParameters,
             ): AgentSession {
                 TODO("Not yet implemented")
             }
@@ -97,35 +78,13 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
     @Test
     fun `simple prompt`() = testWithProtocols { clientProtocol, agentProtocol ->
-        val client = Client(protocol = clientProtocol, clientSupport = object : ClientSupport {
-            override suspend fun createClientSession(
-                session: ClientSession,
-                _sessionResponseMeta: JsonElement?,
-            ): ClientSessionOperations {
-                return object : ClientSessionOperations {
-                    override suspend fun requestPermissions(
-                        toolCall: SessionUpdate.ToolCallUpdate,
-                        permissions: List<PermissionOption>,
-                        _meta: JsonElement?,
-                    ): RequestPermissionResponse {
-                        TODO("Not yet implemented")
-                    }
-
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
-                        TODO("Not yet implemented")
-                    }
-                }
-            }
-        })
+        val client = Client(protocol = clientProtocol)
         val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
             override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
                 return AgentInfo(clientInfo.protocolVersion)
             }
 
-            override suspend fun createSession(sessionParameters: SessionParameters): AgentSession {
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
                 return object : AgentSession {
                     override val sessionId: SessionId = SessionId("test-session-id")
 
@@ -145,7 +104,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
             override suspend fun loadSession(
                 sessionId: SessionId,
-                sessionParameters: SessionParameters,
+                sessionParameters: SessionCreationParameters,
             ): AgentSession {
                 TODO("Not yet implemented")
             }
@@ -154,7 +113,24 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
         val clientInfo = ClientInfo(protocolVersion = testVersion)
         val agentInfo = client.initialize(clientInfo)
         val cwd = "/test/path"
-        val newSession = client.newSession(SessionParameters(cwd, emptyList()))
+        val newSession = client.newSession(SessionCreationParameters(cwd, emptyList())) { _, _ ->
+            object : ClientSessionOperations {
+                override suspend fun requestPermissions(
+                    toolCall: SessionUpdate.ToolCallUpdate,
+                    permissions: List<PermissionOption>,
+                    _meta: JsonElement?,
+                ): RequestPermissionResponse {
+                    TODO("Not yet implemented")
+                }
+
+                override suspend fun notify(
+                    notification: SessionUpdate,
+                    _meta: JsonElement?,
+                ) {
+                    TODO("Not yet implemented")
+                }
+            }
+        }
         val responses = mutableListOf<String>()
         var result: PromptResponse? = null
         withTimeout(1000) {
@@ -171,29 +147,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
     @Test
     fun `cancel simple prompt from client`() = testWithProtocols { clientProtocol, agentProtocol ->
-        val client = Client(protocol = clientProtocol, clientSupport = object : ClientSupport {
-            override suspend fun createClientSession(
-                session: ClientSession,
-                _sessionResponseMeta: JsonElement?,
-            ): ClientSessionOperations {
-                return object : ClientSessionOperations {
-                    override suspend fun requestPermissions(
-                        toolCall: SessionUpdate.ToolCallUpdate,
-                        permissions: List<PermissionOption>,
-                        _meta: JsonElement?,
-                    ): RequestPermissionResponse {
-                        TODO("Not yet implemented")
-                    }
-
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
-                        TODO("Not yet implemented")
-                    }
-                }
-            }
-        })
+        val client = Client(protocol = clientProtocol)
 
         val agentSideCeDeferred = CompletableDeferred<CancellationException>()
         val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
@@ -201,7 +155,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 return AgentInfo(clientInfo.protocolVersion)
             }
 
-            override suspend fun createSession(sessionParameters: SessionParameters): AgentSession {
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
                 return object : AgentSession {
                     override val sessionId: SessionId = SessionId("test-session-id")
 
@@ -227,13 +181,30 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
             override suspend fun loadSession(
                 sessionId: SessionId,
-                sessionParameters: SessionParameters,
+                sessionParameters: SessionCreationParameters,
             ): AgentSession {
                 TODO("Not yet implemented")
             }
         })
         client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
-        val session = client.newSession(SessionParameters("/test/path", emptyList()))
+        val session = client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+            object : ClientSessionOperations {
+                override suspend fun requestPermissions(
+                    toolCall: SessionUpdate.ToolCallUpdate,
+                    permissions: List<PermissionOption>,
+                    _meta: JsonElement?,
+                ): RequestPermissionResponse {
+                    TODO("Not yet implemented")
+                }
+
+                override suspend fun notify(
+                    notification: SessionUpdate,
+                    _meta: JsonElement?,
+                ) {
+                    TODO("Not yet implemented")
+                }
+            }
+        }
         val promptJob = launch {
             session.prompt(listOf(ContentBlock.Text("Test message"))).collect()
         }
@@ -246,29 +217,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
     @Test
     fun `cancel simple prompt from client (in flow)`() = testWithProtocols { clientProtocol, agentProtocol ->
-        val client = Client(protocol = clientProtocol, clientSupport = object : ClientSupport {
-            override suspend fun createClientSession(
-                session: ClientSession,
-                _sessionResponseMeta: JsonElement?,
-            ): ClientSessionOperations {
-                return object : ClientSessionOperations {
-                    override suspend fun requestPermissions(
-                        toolCall: SessionUpdate.ToolCallUpdate,
-                        permissions: List<PermissionOption>,
-                        _meta: JsonElement?,
-                    ): RequestPermissionResponse {
-                        TODO("Not yet implemented")
-                    }
-
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
-                        TODO("Not yet implemented")
-                    }
-                }
-            }
-        })
+        val client = Client(protocol = clientProtocol)
 
         val agentSideCeDeferred = CompletableDeferred<CancellationException>()
         val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
@@ -276,7 +225,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 return AgentInfo(clientInfo.protocolVersion)
             }
 
-            override suspend fun createSession(sessionParameters: SessionParameters): AgentSession {
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
                 return object : AgentSession {
                     override val sessionId: SessionId = SessionId("test-session-id")
 
@@ -302,13 +251,29 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
             override suspend fun loadSession(
                 sessionId: SessionId,
-                sessionParameters: SessionParameters,
+                sessionParameters: SessionCreationParameters,
             ): AgentSession {
                 TODO("Not yet implemented")
             }
         })
         client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
-        val session = client.newSession(SessionParameters("/test/path", emptyList()))
+        val session = client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ -> object : ClientSessionOperations {
+            override suspend fun requestPermissions(
+                toolCall: SessionUpdate.ToolCallUpdate,
+                permissions: List<PermissionOption>,
+                _meta: JsonElement?,
+            ): RequestPermissionResponse {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun notify(
+                notification: SessionUpdate,
+                _meta: JsonElement?,
+            ) {
+                TODO("Not yet implemented")
+            }
+        }
+        }
         val promptJob = launch {
             session.prompt(listOf(ContentBlock.Text("Test message"))).collect()
         }
@@ -321,36 +286,14 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
     @Test
     fun `permission request in prompt`() = testWithProtocols { clientProtocol, agentProtocol ->
-        val client = Client(protocol = clientProtocol, clientSupport = object : ClientSupport {
-            override suspend fun createClientSession(
-                session: ClientSession,
-                _sessionResponseMeta: JsonElement?,
-            ): ClientSessionOperations {
-                return object : ClientSessionOperations {
-                    override suspend fun requestPermissions(
-                        toolCall: SessionUpdate.ToolCallUpdate,
-                        permissions: List<PermissionOption>,
-                        _meta: JsonElement?,
-                    ): RequestPermissionResponse {
-                        return RequestPermissionResponse(RequestPermissionOutcome.Selected(permissions.first().optionId), _meta)
-                    }
-
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
-                        TODO("Not yet implemented")
-                    }
-                }
-            }
-        })
+        val client = Client(protocol = clientProtocol)
 
         val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
             override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
                 return AgentInfo(clientInfo.protocolVersion)
             }
 
-            override suspend fun createSession(sessionParameters: SessionParameters): AgentSession {
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
                 return object : AgentSession {
                     override val sessionId: SessionId = SessionId("test-session-id")
 
@@ -379,14 +322,34 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
             override suspend fun loadSession(
                 sessionId: SessionId,
-                sessionParameters: SessionParameters,
+                sessionParameters: SessionCreationParameters,
             ): AgentSession {
                 TODO("Not yet implemented")
             }
         })
         client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
         val responses = mutableListOf<String>()
-        val session = client.newSession(SessionParameters("/test/path", emptyList()))
+        val session = client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+            object : ClientSessionOperations {
+                override suspend fun requestPermissions(
+                    toolCall: SessionUpdate.ToolCallUpdate,
+                    permissions: List<PermissionOption>,
+                    _meta: JsonElement?,
+                ): RequestPermissionResponse {
+                    return RequestPermissionResponse(
+                        RequestPermissionOutcome.Selected(permissions.first().optionId),
+                        _meta
+                    )
+                }
+
+                override suspend fun notify(
+                    notification: SessionUpdate,
+                    _meta: JsonElement?,
+                ) {
+                    TODO("Not yet implemented")
+                }
+            }
+        }
         session.prompt(listOf(ContentBlock.Text("Test message"))).collect { event ->
             when (event) {
                 is Event.PromptResponseEvent -> {
@@ -402,47 +365,14 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
     @Test
     fun `permission request should be cancelled by prompt cancellation on client`() = testWithProtocols { clientProtocol, agentProtocol ->
         val permissionResponseCeDeferred = CompletableDeferred<CancellationException>()
-        val client = Client(protocol = clientProtocol, clientSupport = object : ClientSupport {
-            override suspend fun createClientSession(
-                session: ClientSession,
-                _sessionResponseMeta: JsonElement?,
-            ): ClientSessionOperations {
-                return object : ClientSessionOperations {
-                    override suspend fun requestPermissions(
-                        toolCall: SessionUpdate.ToolCallUpdate,
-                        permissions: List<PermissionOption>,
-                        _meta: JsonElement?,
-                    ): RequestPermissionResponse {
-                        try {
-                            // wait forever
-                            awaitCancellation()
-                        }
-                        catch (ce: CancellationException) {
-                            permissionResponseCeDeferred.complete(ce)
-                            throw ce
-                        }
-                        catch (e: Exception) {
-                            permissionResponseCeDeferred.completeExceptionally(e)
-                            throw e
-                        }
-                    }
-
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
-                        TODO("Not yet implemented")
-                    }
-                }
-            }
-        })
+        val client = Client(protocol = clientProtocol)
 
         val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
             override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
                 return AgentInfo(clientInfo.protocolVersion)
             }
 
-            override suspend fun createSession(sessionParameters: SessionParameters): AgentSession {
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
                 return object : AgentSession {
                     override val sessionId: SessionId = SessionId("test-session-id")
 
@@ -477,14 +407,40 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
             override suspend fun loadSession(
                 sessionId: SessionId,
-                sessionParameters: SessionParameters,
+                sessionParameters: SessionCreationParameters,
             ): AgentSession {
                 TODO("Not yet implemented")
             }
         })
         client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
         val responses = mutableListOf<String>()
-        val session = client.newSession(SessionParameters("/test/path", emptyList()))
+        val session = client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+            object : ClientSessionOperations {
+                override suspend fun requestPermissions(
+                    toolCall: SessionUpdate.ToolCallUpdate,
+                    permissions: List<PermissionOption>,
+                    _meta: JsonElement?,
+                ): RequestPermissionResponse {
+                    try {
+                        // wait forever
+                        awaitCancellation()
+                    } catch (ce: CancellationException) {
+                        permissionResponseCeDeferred.complete(ce)
+                        throw ce
+                    } catch (e: Exception) {
+                        permissionResponseCeDeferred.completeExceptionally(e)
+                        throw e
+                    }
+                }
+
+                override suspend fun notify(
+                    notification: SessionUpdate,
+                    _meta: JsonElement?,
+                ) {
+                    TODO("Not yet implemented")
+                }
+            }
+        }
 
         val promptJob = launch {
             session.prompt(listOf(ContentBlock.Text("Test message"))).collect()
@@ -501,47 +457,14 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
     @Test
     fun `permission request should be cancelled by prompt cancellation on client and wait for graceful cancellation`() = testWithProtocols { clientProtocol, agentProtocol ->
         val permissionResponseCeDeferred = CompletableDeferred<CancellationException>()
-        val client = Client(protocol = clientProtocol, clientSupport = object : ClientSupport {
-            override suspend fun createClientSession(
-                session: ClientSession,
-                _sessionResponseMeta: JsonElement?,
-            ): ClientSessionOperations {
-                return object : ClientSessionOperations {
-                    override suspend fun requestPermissions(
-                        toolCall: SessionUpdate.ToolCallUpdate,
-                        permissions: List<PermissionOption>,
-                        _meta: JsonElement?,
-                    ): RequestPermissionResponse {
-                        try {
-                            // wait forever
-                            awaitCancellation()
-                        }
-                        catch (ce: CancellationException) {
-                            permissionResponseCeDeferred.complete(ce)
-                            throw ce
-                        }
-                        catch (e: Exception) {
-                            permissionResponseCeDeferred.completeExceptionally(e)
-                            throw e
-                        }
-                    }
-
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
-                        TODO("Not yet implemented")
-                    }
-                }
-            }
-        })
+        val client = Client(protocol = clientProtocol)
 
         val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
             override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
                 return AgentInfo(clientInfo.protocolVersion)
             }
 
-            override suspend fun createSession(sessionParameters: SessionParameters): AgentSession {
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
                 return object : AgentSession {
                     override val sessionId: SessionId = SessionId("test-session-id")
 
@@ -576,14 +499,40 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
             override suspend fun loadSession(
                 sessionId: SessionId,
-                sessionParameters: SessionParameters,
+                sessionParameters: SessionCreationParameters,
             ): AgentSession {
                 TODO("Not yet implemented")
             }
         })
         client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
         val responses = mutableListOf<String>()
-        val session = client.newSession(SessionParameters("/test/path", emptyList()))
+        val session = client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+            object : ClientSessionOperations {
+                override suspend fun requestPermissions(
+                    toolCall: SessionUpdate.ToolCallUpdate,
+                    permissions: List<PermissionOption>,
+                    _meta: JsonElement?,
+                ): RequestPermissionResponse {
+                    try {
+                        // wait forever
+                        awaitCancellation()
+                    } catch (ce: CancellationException) {
+                        permissionResponseCeDeferred.complete(ce)
+                        throw ce
+                    } catch (e: Exception) {
+                        permissionResponseCeDeferred.completeExceptionally(e)
+                        throw e
+                    }
+                }
+
+                override suspend fun notify(
+                    notification: SessionUpdate,
+                    _meta: JsonElement?,
+                ) {
+                    TODO("Not yet implemented")
+                }
+            }
+        }
 
         val promptJob = launch {
             session.prompt(listOf(ContentBlock.Text("Test message"))).collect()
@@ -600,38 +549,14 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
     fun `long session init on client and consequent session update should be properly handler`() = testWithProtocols { clientProtocol, agentProtocol ->
         val notificationDeferred = CompletableDeferred<SessionUpdate>()
 
-        val client = Client(protocol = clientProtocol, clientSupport = object : ClientSupport {
-            override suspend fun createClientSession(
-                session: ClientSession,
-                _sessionResponseMeta: JsonElement?,
-            ): ClientSessionOperations {
-                // long session init
-                delay(1000.milliseconds)
-                return object : ClientSessionOperations {
-                    override suspend fun requestPermissions(
-                        toolCall: SessionUpdate.ToolCallUpdate,
-                        permissions: List<PermissionOption>,
-                        _meta: JsonElement?,
-                    ): RequestPermissionResponse {
-                        TODO()
-                    }
-
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
-                        notificationDeferred.complete(notification)
-                    }
-                }
-            }
-        })
+        val client = Client(protocol = clientProtocol)
 
         val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
             override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
                 return AgentInfo(clientInfo.protocolVersion)
             }
 
-            override suspend fun createSession(sessionParameters: SessionParameters): AgentSession {
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
                 val id = SessionId("test-session-id")
                 this@testWithProtocols.launch {
                     delay(200.milliseconds)
@@ -652,14 +577,33 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
             override suspend fun loadSession(
                 sessionId: SessionId,
-                sessionParameters: SessionParameters,
+                sessionParameters: SessionCreationParameters,
             ): AgentSession {
                 TODO("Not yet implemented")
             }
         })
         client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
 
-        val session = client.newSession(SessionParameters("/test/path", emptyList()))
+        val session = client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+            // long session init
+            delay(1000.milliseconds)
+            return@newSession object : ClientSessionOperations {
+                override suspend fun requestPermissions(
+                    toolCall: SessionUpdate.ToolCallUpdate,
+                    permissions: List<PermissionOption>,
+                    _meta: JsonElement?,
+                ): RequestPermissionResponse {
+                    TODO()
+                }
+
+                override suspend fun notify(
+                    notification: SessionUpdate,
+                    _meta: JsonElement?,
+                ) {
+                    notificationDeferred.complete(notification)
+                }
+            }
+        }
 
         val notification = withTimeout(5000.milliseconds) {
             notificationDeferred.await()

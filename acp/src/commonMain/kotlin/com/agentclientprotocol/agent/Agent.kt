@@ -7,7 +7,7 @@ import com.agentclientprotocol.common.RemoteSideExtension
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.RemoteSideExtensionInstantiation
-import com.agentclientprotocol.common.SessionParameters
+import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.common.asContextElement
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.model.SessionId
@@ -147,7 +147,7 @@ public class Agent(
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionNew) { params: NewSessionRequest ->
-            val sessionParameters = SessionParameters(params.cwd, params.mcpServers, params._meta)
+            val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params._meta)
             val session = createSession(sessionParameters) { agentSupport.createSession(it) }
 
             return@setRequestHandler NewSessionResponse(
@@ -158,7 +158,7 @@ public class Agent(
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionLoad) { params: LoadSessionRequest ->
-            val sessionParameters = SessionParameters(params.cwd, params.mcpServers, params._meta)
+            val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params._meta)
             val session = createSession(sessionParameters) { agentSupport.loadSession(params.sessionId, sessionParameters) }
             return@setRequestHandler LoadSessionResponse(
                 // maybe unify result of these two methods to have sessionId in both
@@ -209,7 +209,7 @@ public class Agent(
         }
     }
 
-    private suspend fun createSession(sessionParameters: SessionParameters, sessionFactory: suspend (SessionParameters) -> AgentSession): AgentSession {
+    private suspend fun createSession(sessionParameters: SessionCreationParameters, sessionFactory: suspend (SessionCreationParameters) -> AgentSession): AgentSession {
         val session = sessionFactory(sessionParameters)
         val clientInfo = getClientInfoOrThrow()
         val extensionObjectsMap = remoteSideExtensions.filter { it.isSupported(clientInfo.capabilities) }.associateBy(keySelector = { it }) {

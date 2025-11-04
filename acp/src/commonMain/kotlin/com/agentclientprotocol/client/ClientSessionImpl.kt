@@ -2,11 +2,7 @@ package com.agentclientprotocol.client
 
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
-import com.agentclientprotocol.common.RemoteSideExtension
-import com.agentclientprotocol.common.RemoteSideExtensionInstantiation
-import com.agentclientprotocol.common.SessionParameters
-import com.agentclientprotocol.common.asContextElement
-import com.agentclientprotocol.common.remoteSessionOperations
+import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.invoke
@@ -26,9 +22,9 @@ private val logger = KotlinLogging.logger {}
 internal class ClientSessionImpl(
     override val client: Client,
     override val sessionId: SessionId,
-    override val parameters: SessionParameters,
+    override val parameters: SessionCreationParameters,
+    override val operations: ClientSessionOperations,
     private val protocol: Protocol,
-    val extensions: RemoteSideExtensionInstantiation,
 //    private val modeState: SessionModeState?,
 //    private val modelState: SessionModelState?,
 ) : ClientSession {
@@ -37,20 +33,6 @@ internal class ClientSessionImpl(
         val updateChannel: Channel<SessionUpdate>
     )
     private val activePrompt = atomic<PromptSession?>(null)
-
-    private lateinit var _clientApi: ClientSessionOperations
-
-    internal fun setApi(api: ClientSessionOperations) {
-        if (::_clientApi.isInitialized) error("Api already initialized")
-        _clientApi = api
-    }
-
-    override val operations: ClientSessionOperations
-        get() = _clientApi
-
-    override fun <T : Any> remoteOperations(extension: RemoteSideExtension<T>): T {
-        return extensions.remoteSessionOperations(extension)
-    }
 
     //    private val _currentMode = MutableStateFlow(modeState?.currentModeId)
 //    private val _currentModel = MutableStateFlow(modelState?.currentModelId)
@@ -99,8 +81,16 @@ internal class ClientSessionImpl(
         AcpMethod.AgentMethods.SessionCancel(protocol, CancelNotification(sessionId))
     }
 
+    override suspend fun setMode(modeId: SessionModeId, _meta: JsonElement?): SetSessionModeResponse {
+        return AcpMethod.AgentMethods.SessionSetMode(protocol, SetSessionModeRequest(sessionId, modeId, _meta))
+    }
+
+    override suspend fun setModel(modelId: ModelId, _meta: JsonElement?): SetSessionModelResponse {
+        return AcpMethod.AgentMethods.SessionSetModel(protocol, SetSessionModelRequest(sessionId, modelId, _meta))
+    }
+
     internal suspend fun <T> executeWithSession(block: suspend () -> T): T {
-        return withContext(this.asContextElement() + extensions.asContextElement()) {
+        return withContext(this.asContextElement()) {
             block()
         }
     }
@@ -118,14 +108,14 @@ internal class ClientSessionImpl(
         }
         else {
             logger.trace { "Notifying globally: $notification" }
-            _clientApi.notify(notification, _meta)
+            operations.notify(notification, _meta)
         }
     }
 
     internal suspend fun handlePermissionResponse(toolCall: SessionUpdate.ToolCallUpdate,
                                                   permissions: List<PermissionOption>,
                                                   _meta: JsonElement?,): RequestPermissionResponse {
-        return _clientApi.requestPermissions(toolCall,  permissions, _meta)
+        return operations.requestPermissions(toolCall,  permissions, _meta)
     }
 }
 

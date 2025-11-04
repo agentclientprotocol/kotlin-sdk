@@ -1,13 +1,9 @@
 package com.agentclientprotocol.common
 
-import com.agentclientprotocol.agent.Agent
-import com.agentclientprotocol.common.RemoteSideExtension
 import com.agentclientprotocol.model.PermissionOption
 import com.agentclientprotocol.model.RequestPermissionResponse
 import com.agentclientprotocol.model.SessionUpdate
 import kotlinx.serialization.json.JsonElement
-import kotlin.coroutines.AbstractCoroutineContextElement
-import kotlin.coroutines.CoroutineContext
 
 public interface ClientSessionOperations {
     /**

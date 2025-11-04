@@ -3,11 +3,8 @@
 package com.agentclientprotocol.client
 
 import com.agentclientprotocol.agent.AgentInfo
-import com.agentclientprotocol.common.HandlerSideExtension
 import com.agentclientprotocol.common.RegistrarContext
-import com.agentclientprotocol.common.RemoteSideExtension
-import com.agentclientprotocol.common.RemoteSideExtensionInstantiation
-import com.agentclientprotocol.common.SessionParameters
+import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.*
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -34,10 +31,7 @@ public typealias ClientInstance = Client
  * See protocol docs: [Client](https://agentclientprotocol.com/protocol/overview#client)
  */
 public class Client(
-    public val protocol: Protocol,
-    private val clientSupport: ClientSupport,
-    private val handlerSideExtensions: List<HandlerSideExtension<*>> = emptyList(),
-    private val remoteSideExtensions: List<RemoteSideExtension<*>> = emptyList(),
+    public val protocol: Protocol
 ) {
     private val _sessions = atomic(persistentMapOf<SessionId, CompletableDeferred<ClientSessionImpl>>())
     private val _clientInfo = CompletableDeferred<ClientInfo>()
@@ -49,6 +43,69 @@ public class Client(
             val session = getSessionOrThrow(params.sessionId)
             return@setRequestHandler session.executeWithSession {
                 session.handlePermissionResponse(params.toolCall, params.options, params._meta)
+            }
+        }
+
+        protocol.setRequestHandler(AcpMethod.ClientMethods.FsReadTextFile) { params ->
+            val session = getSessionOrThrow(params.sessionId)
+            val fs = session.operations as? FileSystemOperations
+                ?: sessionMethodNotFound<FileSystemOperations>(AcpMethod.ClientMethods.FsReadTextFile)
+            return@setRequestHandler session.executeWithSession {
+                return@executeWithSession fs.fsReadTextFile(params.path, params.line, params.limit, params._meta)
+            }
+        }
+
+        protocol.setRequestHandler(AcpMethod.ClientMethods.FsWriteTextFile) { params ->
+            val session = getSessionOrThrow(params.sessionId)
+            val fs = session.operations as? FileSystemOperations
+                ?: sessionMethodNotFound<FileSystemOperations>(AcpMethod.ClientMethods.FsWriteTextFile)
+            return@setRequestHandler session.executeWithSession {
+                return@executeWithSession fs.fsWriteTextFile(params.path, params.content, params._meta)
+            }
+        }
+
+        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalCreate) { params ->
+            val session = getSessionOrThrow(params.sessionId)
+            val terminal = session.operations as? TerminalOperations
+                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.TerminalCreate)
+            return@setRequestHandler session.executeWithSession {
+                return@executeWithSession terminal.terminalCreate(params.command, params.args, params.cwd, params.env, params.outputByteLimit, params._meta)
+            }
+        }
+
+        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalKill) { params ->
+            val session = getSessionOrThrow(params.sessionId)
+            val terminal = session.operations as? TerminalOperations
+                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.TerminalKill)
+            return@setRequestHandler session.executeWithSession {
+                return@executeWithSession terminal.terminalKill(params.terminalId, params._meta)
+            }
+        }
+
+        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalOutput) { params ->
+            val session = getSessionOrThrow(params.sessionId)
+            val terminal = session.operations as? TerminalOperations
+                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.TerminalOutput)
+            return@setRequestHandler session.executeWithSession {
+                return@executeWithSession terminal.terminalOutput(params.terminalId, params._meta)
+            }
+        }
+
+        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalRelease) { params ->
+            val session = getSessionOrThrow(params.sessionId)
+            val terminal = session.operations as? TerminalOperations
+                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.TerminalRelease)
+            return@setRequestHandler session.executeWithSession {
+                return@executeWithSession terminal.terminalRelease(params.terminalId, params._meta)
+            }
+        }
+
+        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalWaitForExit) { params ->
+            val session = getSessionOrThrow(params.sessionId)
+            val terminal = session.operations as? TerminalOperations
+                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.TerminalWaitForExit)
+            return@setRequestHandler session.executeWithSession {
+                return@executeWithSession terminal.terminalWaitForExit(params.terminalId, params._meta)
             }
         }
 
@@ -73,11 +130,14 @@ public class Client(
                 }
             }
         }
-
-        for (ex in handlerSideExtensions) {
-            ex.doRegister(registrarContext)
-        }
     }
+
+    public val clientInfo: ClientInfo
+        get() {
+            if (!_clientInfo.isCompleted) error("Client is not initialized yet")
+            @OptIn(ExperimentalCoroutinesApi::class)
+            return _clientInfo.getCompleted()
+        }
 
     public val agentInfo: AgentInfo
         get() {
@@ -94,11 +154,24 @@ public class Client(
         return agentInfo
     }
 
+    /**
+     * Performs authentication of the agent with the specified [methodId].
+     * The method may throw an exception if the authentication fails.
+     */
     public suspend fun authenticate(methodId: AuthMethodId, _meta: JsonElement? = null): AuthenticateResponse {
         return AcpMethod.AgentMethods.Authenticate(protocol, AuthenticateRequest(methodId, _meta))
     }
 
-    public suspend fun newSession(sessionParameters: SessionParameters): ClientSession {
+    /**
+     * Creates a new session with specified [sessionParameters].
+     *
+     * @param sessionParameters parameters for creating a new session
+     * @param operationsFactory a factory for creating [com.agentclientprotocol.common.ClientSessionOperations] for the new session.
+     * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
+     * See [ClientOperationsFactory.createClientOperations] for more details.
+     * @return a [ClientSession] instance for the new session
+     */
+    public suspend fun newSession(sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
         val newSessionResponse = AcpMethod.AgentMethods.SessionNew(protocol,
             NewSessionRequest(
                 sessionParameters.cwd,
@@ -107,10 +180,20 @@ public class Client(
             )
         )
         val sessionId = newSessionResponse.sessionId
-        return createSession(sessionId, sessionParameters, newSessionResponse._meta)
+        return createSession(sessionId, sessionParameters, newSessionResponse, operationsFactory)
     }
 
-    public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionParameters): ClientSession {
+    /**
+     * Load an existing session with specified [sessionId] and [sessionParameters].
+     *
+     * @param sessionId the id of the existing session to load
+     * @param sessionParameters parameters for creating a new session
+     * @param operationsFactory a factory for creating [com.agentclientprotocol.common.ClientSessionOperations] for the new session.
+     * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
+     * See [ClientOperationsFactory.createClientOperations] for more details.
+     * @return a [ClientSession] instance for the new session
+     */
+    public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
         val loadSessionResponse = AcpMethod.AgentMethods.SessionLoad(protocol,
             LoadSessionRequest(
                 sessionId,
@@ -119,26 +202,30 @@ public class Client(
                 sessionParameters._meta
             ))
 
-        return createSession(sessionId, sessionParameters, loadSessionResponse._meta)
+        return createSession(sessionId, sessionParameters, loadSessionResponse, operationsFactory)
     }
 
-    private suspend fun createSession(sessionId: SessionId, sessionParameters: SessionParameters, _meta: JsonElement?): ClientSession {
+    private suspend fun createSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, sessionResponse: AcpCreatedSessionResponse, factory: ClientOperationsFactory): ClientSession {
         val sessionDeferred = CompletableDeferred<ClientSessionImpl>()
-        _sessions.update { it.put(sessionId, sessionDeferred) }
-        val agentInfo = agentInfo
-        val extensionsMap =
-            remoteSideExtensions.filter { it.isSupported(agentInfo.capabilities) }.associateBy(keySelector = { it }) {
-                it.createSessionRemote(
-                    rpc = protocol,
-                    capabilities = agentInfo.capabilities,
-                    sessionId = sessionId
-                )
+        try {
+            _sessions.update { it.put(sessionId, sessionDeferred) }
+
+            val operations = factory.createClientOperations(sessionId, sessionResponse)
+            if (clientInfo.capabilities.fs != null) {
+                if (operations !is FileSystemOperations) error("ClientSessionOperations must implement FileSystemOperations because 'FileSystemCapability' was specified")
             }
-        val session = ClientSessionImpl(this, sessionId, sessionParameters, protocol, RemoteSideExtensionInstantiation(extensionsMap)/*, modeState, modelState*/)
-        val sessionApi = clientSupport.createClientSession(session, _meta)
-        session.setApi(sessionApi)
-        sessionDeferred.complete(session)
-        return session
+            if (clientInfo.capabilities.terminal) {
+                if (operations !is TerminalOperations) error("ClientSessionOperations must implement TerminalOperations because 'TerminalCapability' was specified")
+            }
+            val session = ClientSessionImpl(this, sessionId, sessionParameters, operations, protocol /*, modeState, modelState*/)
+            sessionDeferred.complete(session)
+            return session
+        }
+        catch (e: Exception) {
+            sessionDeferred.completeExceptionally(IllegalStateException("Failed to create session $sessionId", e))
+            _sessions.update { it.remove(sessionId) }
+            throw e
+        }
     }
 
     public fun getSession(sessionId: SessionId): ClientSession {
@@ -149,4 +236,8 @@ public class Client(
     }
 
     private suspend fun getSessionOrThrow(sessionId: SessionId): ClientSessionImpl = (_sessions.value[sessionId] ?: acpFail("Session $sessionId not found")).await()
+}
+
+private inline fun <reified TInterface> sessionMethodNotFound(method: AcpMethod): Nothing {
+    jsonRpcMethodNotFound("Session object does not implement ${TInterface::class.simpleName} to handle method $method")
 }

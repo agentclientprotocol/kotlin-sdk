@@ -2,16 +2,14 @@ package com.agentclientprotocol.client
 
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
-import com.agentclientprotocol.common.RemoteSideExtension
-import com.agentclientprotocol.common.SessionParameters
-import com.agentclientprotocol.model.ContentBlock
-import com.agentclientprotocol.model.SessionId
+import com.agentclientprotocol.common.SessionCreationParameters
+import com.agentclientprotocol.model.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonElement
 
 public interface ClientSession {
     public val sessionId: SessionId
-    public val parameters: SessionParameters
+    public val parameters: SessionCreationParameters
 
     public val client: Client
     public val operations: ClientSessionOperations
@@ -39,8 +37,7 @@ public interface ClientSession {
      */
     public suspend fun cancel()
 
-    /**
-     * Returns extension implementation object to call remote side methods.
-     */
-    public fun <T : Any> remoteOperations(extension: RemoteSideExtension<T>): T
+    public suspend fun setMode(modeId: SessionModeId, _meta: JsonElement?): SetSessionModeResponse
+
+    public suspend fun setModel(modelId: ModelId, _meta: JsonElement?): SetSessionModelResponse
 }

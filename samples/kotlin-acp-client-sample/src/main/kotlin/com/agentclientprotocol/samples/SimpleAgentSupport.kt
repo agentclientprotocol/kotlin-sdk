@@ -8,7 +8,7 @@ import com.agentclientprotocol.client.ClientInfo
 import com.agentclientprotocol.client.FileSystemOperations
 import com.agentclientprotocol.client.TerminalOperations
 import com.agentclientprotocol.common.Event
-import com.agentclientprotocol.common.SessionParameters
+import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.common.remoteSessionOperations
 import com.agentclientprotocol.model.*
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -229,14 +229,14 @@ class SimpleAgentSupport : AgentSupport {
         )
     }
 
-    override suspend fun createSession(sessionParameters: SessionParameters): AgentSession {
+    override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
         val sessionId = SessionId("session-${System.currentTimeMillis()}")
         return SimpleAgentSession(sessionId)
     }
 
     override suspend fun loadSession(
         sessionId: SessionId,
-        sessionParameters: SessionParameters,
+        sessionParameters: SessionCreationParameters,
     ): AgentSession {
         return SimpleAgentSession(sessionId)
     }
