@@ -9,9 +9,6 @@ import com.agentclientprotocol.client.*
 import com.agentclientprotocol.common.*
 import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.*
-import com.agentclientprotocol.protocol.RpcMethodsOperations
-import com.agentclientprotocol.protocol.invoke
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -70,91 +67,6 @@ class TestAgentSupport(val capabilities: AgentCapabilities = AgentCapabilities()
 abstract class ExtensionsTest(protocolDriver: ProtocolDriver) : ProtocolDriver by protocolDriver {
 
     @Test
-    fun `exception when extension interface not supported on client`() = testWithProtocols { clientProtocol, agentProtocol ->
-        val client = Client(protocol = clientProtocol)
-
-        val agentSupport = TestAgentSupport {
-            object : TestAgentSession() {
-                override suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement?): Flow<Event> = flow {
-                    emit(Event.SessionUpdateEvent(agentTextChunk("Hello")))
-                    val fileSystemOperations =
-                        currentCoroutineContext().remoteSessionOperations(FileSystemOperations)
-                    val readTextFileResponse = fileSystemOperations.fsReadTextFile("/test/path")
-                    emit(Event.SessionUpdateEvent(agentTextChunk("File content: ${readTextFileResponse.content}")))
-                }
-            }
-        }
-        val agent = Agent(agentProtocol, agentSupport, remoteSideExtensions = listOf(FileSystemOperations))
-
-        client.initialize(
-            ClientInfo(
-                capabilities = ClientCapabilities(
-                    fs = FileSystemCapability(
-                        readTextFile = true,
-                        writeTextFile = true
-                    )
-                )
-            )
-        )
-        val exception = runCatching { client.newSession(SessionCreationParameters("/test/path", emptyList())) { session, _ -> TestClientSessionOperations() } }.exceptionOrNull()
-        assertNotNull(exception, "Exception should be thrown")
-        assertContains(exception.message!!, "must implement")
-    }
-
-    @Test
-    fun `exception when extension not registered on agent`() = testWithProtocols { clientProtocol, agentProtocol ->
-
-        val client = Client(protocol = clientProtocol)
-
-        val agentSupport = TestAgentSupport {
-            object : TestAgentSession() {
-                override suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement?): Flow<Event> = flow {
-                    emit(Event.SessionUpdateEvent(agentTextChunk("Hello")))
-                    val fileSystemOperations =
-                        currentCoroutineContext().remoteSessionOperations(FileSystemOperations)
-                    val readTextFileResponse = fileSystemOperations.fsReadTextFile("/test/path")
-                    emit(Event.SessionUpdateEvent(agentTextChunk("File content: ${readTextFileResponse.content}")))
-                }
-            }
-        }
-        val agent = Agent(agentProtocol, agentSupport, /*remoteSideExtensions = listOf(FileSystemOperations)*/)
-
-        client.initialize(
-            ClientInfo(
-                capabilities = ClientCapabilities(
-                    fs = FileSystemCapability(
-                        readTextFile = true,
-                        writeTextFile = true
-                    )
-                )
-            )
-        )
-        val session = client.newSession(SessionCreationParameters("/test/path", emptyList())) { session, _ ->
-            object : TestClientSessionOperations(), FileSystemOperations {
-                override suspend fun fsReadTextFile(
-                    path: String,
-                    line: UInt?,
-                    limit: UInt?,
-                    _meta: JsonElement?,
-                ): ReadTextFileResponse {
-                    return ReadTextFileResponse("test")
-                }
-
-                override suspend fun fsWriteTextFile(
-                    path: String,
-                    content: String,
-                    _meta: JsonElement?,
-                ): WriteTextFileResponse {
-                    return WriteTextFileResponse()
-                }
-            }
-        }
-        val exception = runCatching { session.prompt(textBlocks("Test")).collect { } }.exceptionOrNull()
-        assertNotNull(exception, "Exception should be thrown")
-        assertContains(exception.message!!, "is either not registered")
-    }
-
-    @Test
     fun `call client extension from agent`() = testWithProtocols { clientProtocol, agentProtocol ->
         val client = Client(protocol = clientProtocol)
 
@@ -164,13 +76,13 @@ abstract class ExtensionsTest(protocolDriver: ProtocolDriver) : ProtocolDriver b
                 override suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement?): Flow<Event> = flow {
                     emit(Event.SessionUpdateEvent(agentTextChunk("Hello")))
                     val fileSystemOperations =
-                        currentCoroutineContext().remoteSessionOperations(FileSystemOperations)
+                        currentCoroutineContext().client
                     val readTextFileResponse = fileSystemOperations.fsReadTextFile("/test/path")
                     emit(Event.SessionUpdateEvent(agentTextChunk("File content: ${readTextFileResponse.content}")))
                 }
             }
         }
-        val agent = Agent(agentProtocol, agentSupport, remoteSideExtensions = listOf(FileSystemOperations))
+        Agent(agentProtocol, agentSupport)
 
         client.initialize(
             ClientInfo(
@@ -182,7 +94,7 @@ abstract class ExtensionsTest(protocolDriver: ProtocolDriver) : ProtocolDriver b
                 )
             )
         )
-        val session = client.newSession(SessionCreationParameters("/test/path", emptyList())) { sessionId, _ ->
+        val session = client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
             object : TestClientSessionOperations(), FileSystemOperations {
                 override suspend fun fsReadTextFile(
                     path: String,
@@ -206,36 +118,6 @@ abstract class ExtensionsTest(protocolDriver: ProtocolDriver) : ProtocolDriver b
         assertContentEquals(listOf("Hello", "File content: test", "END_TURN"), result)
     }
 
-    interface TestAgentInterface {
-        suspend fun readTextFile(path: String): String
-
-        companion object : HandlerSideExtension<TestAgentInterface>, RemoteSideExtension<TestAgentInterface> {
-            override fun RegistrarContext<TestAgentInterface>.register() {
-                setSessionExtensionRequestHandler(AcpMethod.ClientMethods.FsReadTextFile) { ops, params ->
-                    return@setSessionExtensionRequestHandler ReadTextFileResponse(ops.readTextFile(params.path))
-                }
-            }
-
-            override val name: String
-                get() = TestAgentInterface::class.simpleName!!
-
-            override fun isSupported(remoteSideCapabilities: AcpCapabilities): Boolean {
-                return true
-            }
-
-            override fun createSessionRemote(
-                rpc: RpcMethodsOperations,
-                capabilities: AcpCapabilities,
-                sessionId: SessionId,
-            ): TestAgentInterface {
-                return object : TestAgentSession(), TestAgentInterface {
-                    override suspend fun readTextFile(path: String): String = AcpMethod.ClientMethods.FsReadTextFile(rpc,
-                        ReadTextFileRequest(sessionId, path)).content
-                }
-            }
-        }
-    }
-
     @Test
     fun `test mode change from client`() = testWithProtocols { clientProtocol, agentProtocol ->
         val client = Client(protocol = clientProtocol)
@@ -248,9 +130,9 @@ abstract class ExtensionsTest(protocolDriver: ProtocolDriver) : ProtocolDriver b
 
                 override suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement?): Flow<Event> = flow {
                     emit(Event.SessionUpdateEvent(agentTextChunk("Hello")))
-                    val fileSystemOperations =
-                        currentCoroutineContext().remoteSessionOperations(FileSystemOperations)
-                    val readTextFileResponse = fileSystemOperations.fsReadTextFile("/test/path")
+                    val clientSessionOperations =
+                        currentCoroutineContext().client
+                    val readTextFileResponse = clientSessionOperations.fsReadTextFile("/test/path")
                     emit(Event.SessionUpdateEvent(agentTextChunk("File content: ${readTextFileResponse.content}")))
                 }
 
@@ -270,7 +152,7 @@ abstract class ExtensionsTest(protocolDriver: ProtocolDriver) : ProtocolDriver b
                 }
             }
         }
-        val agent = Agent(agentProtocol, agentSupport, remoteSideExtensions = listOf(FileSystemOperations))
+        Agent(agentProtocol, agentSupport)
 
         client.initialize(
             ClientInfo(
@@ -282,7 +164,7 @@ abstract class ExtensionsTest(protocolDriver: ProtocolDriver) : ProtocolDriver b
                 )
             )
         )
-        val session = client.newSession(SessionCreationParameters("/test/path", emptyList())) { sessionId, _ ->
+        val session = client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
             object : TestClientSessionOperations(), FileSystemOperations {
                 override suspend fun fsReadTextFile(
                     path: String,

@@ -4,7 +4,6 @@ package com.agentclientprotocol.client
 
 import com.agentclientprotocol.agent.AgentInfo
 import com.agentclientprotocol.common.FileSystemOperations
-import com.agentclientprotocol.common.RegistrarContext
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.common.TerminalOperations
 import com.agentclientprotocol.model.*
@@ -117,21 +116,6 @@ public class Client(
                 session.handleNotification(params.update, params._meta)
             }
         }
-
-        val registrarContext = object : RegistrarContext<Any> {
-            override val rpc: RpcMethodsOperations
-                get() = protocol
-
-            override suspend fun <TResult> executeWithSession(
-                sessionId: SessionId,
-                block: suspend (operations: Any) -> TResult,
-            ): TResult {
-                val session = getSessionOrThrow(sessionId)
-                return session.executeWithSession {
-                    block(session.operations)
-                }
-            }
-        }
     }
 
     public val clientInfo: ClientInfo
@@ -213,12 +197,7 @@ public class Client(
             _sessions.update { it.put(sessionId, sessionDeferred) }
 
             val operations = factory.createClientOperations(sessionId, sessionResponse)
-            if (clientInfo.capabilities.fs != null) {
-                if (operations !is FileSystemOperations) error("ClientSessionOperations must implement FileSystemOperations because 'FileSystemCapability' was specified")
-            }
-            if (clientInfo.capabilities.terminal) {
-                if (operations !is TerminalOperations) error("ClientSessionOperations must implement TerminalOperations because 'TerminalCapability' was specified")
-            }
+
             val session = ClientSessionImpl(this, sessionId, sessionParameters, operations, sessionResponse, protocol)
             sessionDeferred.complete(session)
             return session

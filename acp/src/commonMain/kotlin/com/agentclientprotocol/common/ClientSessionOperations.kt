@@ -5,7 +5,14 @@ import com.agentclientprotocol.model.RequestPermissionResponse
 import com.agentclientprotocol.model.SessionUpdate
 import kotlinx.serialization.json.JsonElement
 
-public interface ClientSessionOperations {
+/**
+ * Operations that the client side must provide to the agent. In the case of advertising capabilities like fs or terminal,
+ * the client must override the corresponding methods.
+ *
+ * @see FileSystemOperations
+ * @see TerminalOperations
+ */
+public interface ClientSessionOperations : FileSystemOperations, TerminalOperations {
     /**
      * Requests permissions
      */

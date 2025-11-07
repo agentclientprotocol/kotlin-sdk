@@ -1,15 +1,9 @@
 package com.agentclientprotocol.samples
 
-import com.agentclientprotocol.agent.AgentInfo
-import com.agentclientprotocol.agent.AgentSession
-import com.agentclientprotocol.agent.AgentSupport
-import com.agentclientprotocol.agent.clientInfo
+import com.agentclientprotocol.agent.*
 import com.agentclientprotocol.client.ClientInfo
-import com.agentclientprotocol.common.FileSystemOperations
-import com.agentclientprotocol.common.TerminalOperations
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
-import com.agentclientprotocol.common.remoteSessionOperations
 import com.agentclientprotocol.model.*
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.currentCoroutineContext
@@ -139,7 +133,7 @@ class SimpleAgentSession(
 
     private suspend fun FlowCollector<Event>.demonstrateFileSystemOperations() {
         try {
-            val fileSystemOps = currentCoroutineContext().remoteSessionOperations(FileSystemOperations)
+            val clientOperation = currentCoroutineContext().client
 
             // Example: Write a file
             emit(Event.SessionUpdateEvent(
@@ -149,10 +143,10 @@ class SimpleAgentSession(
             ))
 
             val testContent = "Hello from ACP agent!"
-            fileSystemOps.fsWriteTextFile("/tmp/acp_test.txt", testContent)
+            clientOperation.fsWriteTextFile("/tmp/acp_test.txt", testContent)
 
             // Example: Read the file back
-            val readResponse = fileSystemOps.fsReadTextFile("/tmp/acp_test.txt")
+            val readResponse = clientOperation.fsReadTextFile("/tmp/acp_test.txt")
 
             emit(Event.SessionUpdateEvent(
                 SessionUpdate.AgentMessageChunk(
@@ -170,7 +164,7 @@ class SimpleAgentSession(
 
     private suspend fun FlowCollector<Event>.demonstrateTerminalOperations() {
         try {
-            val terminalOps = currentCoroutineContext().remoteSessionOperations(TerminalOperations)
+            val terminalOps = currentCoroutineContext().client
 
             emit(Event.SessionUpdateEvent(
                 SessionUpdate.AgentMessageChunk(
@@ -209,7 +203,6 @@ class SimpleAgentSession(
  * - Plan reporting
  *
  * Note: This agent needs a way to send updates back to the client.
- * Use [withClient] to create a wrapper that can send updates.
  */
 class SimpleAgentSupport : AgentSupport {
     override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {

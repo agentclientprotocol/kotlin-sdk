@@ -1,22 +1,11 @@
 package com.agentclientprotocol.agent
 
 import com.agentclientprotocol.client.ClientInfo
-import com.agentclientprotocol.common.HandlerSideExtension
-import com.agentclientprotocol.common.RegistrarContext
-import com.agentclientprotocol.common.RemoteSideExtension
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
-import com.agentclientprotocol.common.RemoteSideExtensionInstantiation
 import com.agentclientprotocol.common.SessionCreationParameters
-import com.agentclientprotocol.common.asContextElement
 import com.agentclientprotocol.model.*
-import com.agentclientprotocol.model.SessionId
-import com.agentclientprotocol.protocol.RpcMethodsOperations
-import com.agentclientprotocol.protocol.Protocol
-import com.agentclientprotocol.protocol.acpFail
-import com.agentclientprotocol.protocol.jsonRpcRequest
-import com.agentclientprotocol.protocol.setNotificationHandler
-import com.agentclientprotocol.protocol.setRequestHandler
+import com.agentclientprotocol.protocol.*
 import com.agentclientprotocol.rpc.RequestId
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
@@ -47,23 +36,20 @@ private val logger = KotlinLogging.logger {}
  */
 public class Agent(
     public val protocol: Protocol,
-    private val agentSupport: AgentSupport,
-    private val handlerSideExtensions: List<HandlerSideExtension<*>> = emptyList(),
-    private val remoteSideExtensions: List<RemoteSideExtension<*>> = emptyList()
+    private val agentSupport: AgentSupport
     ) {
 
     internal class SessionWrapper(
         val agent: Agent,
         val agentSession: AgentSession,
         val clientOperations: ClientSessionOperations,
-        val extensions: RemoteSideExtensionInstantiation,
         val protocol: Protocol
     ) {
         private class PromptSession(val currentRequestId: RequestId)
         private val _activePrompt = atomic<PromptSession?>(null)
 
         internal suspend fun <T> executeWithSession(block: suspend () -> T): T {
-            return withContext(this.asContextElement() + extensions.asContextElement()) {
+            return withContext(this.asContextElement()) {
                 return@withContext block()
             }
         }
@@ -193,43 +179,16 @@ public class Agent(
                 session.cancel()
             }
         }
-
-        val registrarContext = object : RegistrarContext<Any> {
-            override val rpc: RpcMethodsOperations
-                get() = this@Agent.protocol
-
-            override suspend fun <TResult> executeWithSession(
-                sessionId: SessionId,
-                block: suspend (operationsExtensibleObject: Any) -> TResult,
-            ): TResult {
-                val sessionWrapper = getSessionOrThrow(sessionId)
-                return sessionWrapper.executeWithSession {
-                    block(sessionWrapper.agentSession)
-                }
-            }
-        }
-
-        for (ex in handlerSideExtensions) {
-            ex.doRegister(registrarContext)
-        }
     }
 
     private suspend fun createSession(sessionParameters: SessionCreationParameters, sessionFactory: suspend (SessionCreationParameters) -> AgentSession): AgentSession {
         val session = sessionFactory(sessionParameters)
         val clientInfo = getClientInfoOrThrow()
-        val extensionObjectsMap = remoteSideExtensions.filter { it.isSupported(clientInfo.capabilities) }.associateBy(keySelector = { it }) {
-            it.createSessionRemote(
-                rpc = protocol,
-                clientInfo.capabilities,
-                sessionId = session.sessionId
-            )
-        }
 
         val sessionWrapper = SessionWrapper(
             this,
             session,
-            RemoteClientSessionOperations(protocol, session.sessionId),
-            RemoteSideExtensionInstantiation(extensionObjectsMap),
+            RemoteClientSessionOperations(protocol, session.sessionId, clientInfo.capabilities),
             protocol
         )
 
