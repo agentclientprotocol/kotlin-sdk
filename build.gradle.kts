@@ -7,7 +7,7 @@ plugins {
 private val buildNumber: String? = System.getenv("GITHUB_RUN_NUMBER")
 private val isReleasePublication = System.getenv("RELEASE_PUBLICATION")?.toBoolean() ?: false
 
-private val baseVersion = "0.4.0"
+private val baseVersion = "0.5.0"
 
 allprojects {
     group = "com.agentclientprotocol"
