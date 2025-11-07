@@ -30,7 +30,6 @@ open class TestClientSessionOperations(): ClientSessionOperations {
         notification: SessionUpdate,
         _meta: JsonElement?,
     ) {
-
     }
 }
 
@@ -64,10 +63,10 @@ class TestAgentSupport(val capabilities: AgentCapabilities = AgentCapabilities()
 }
 
 
-abstract class ExtensionsTest(protocolDriver: ProtocolDriver) : ProtocolDriver by protocolDriver {
+abstract class FeaturesTest(protocolDriver: ProtocolDriver) : ProtocolDriver by protocolDriver {
 
     @Test
-    fun `call client extension from agent`() = testWithProtocols { clientProtocol, agentProtocol ->
+    fun `call file system from agent`() = testWithProtocols { clientProtocol, agentProtocol ->
         val client = Client(protocol = clientProtocol)
 
 
@@ -119,7 +118,7 @@ abstract class ExtensionsTest(protocolDriver: ProtocolDriver) : ProtocolDriver b
     }
 
     @Test
-    fun `test mode change from client`() = testWithProtocols { clientProtocol, agentProtocol ->
+    fun `change mode from client`() = testWithProtocols { clientProtocol, agentProtocol ->
         val client = Client(protocol = clientProtocol)
 
         val modes = listOf(SessionMode(SessionModeId("ask"), "Ask mode", "Only conversations"), SessionMode(SessionModeId("Code"), "Coding mode", "Writes code"))
