@@ -18,5 +18,5 @@ public interface ClientSessionOperations {
     /**
      * Handles notification from an agent that is not bound to any prompt
      */
-    public suspend fun notify(notification: SessionUpdate, _meta: JsonElement?)
+    public suspend fun notify(notification: SessionUpdate, _meta: JsonElement? = null)
 }

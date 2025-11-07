@@ -219,7 +219,7 @@ public class Client(
             if (clientInfo.capabilities.terminal) {
                 if (operations !is TerminalOperations) error("ClientSessionOperations must implement TerminalOperations because 'TerminalCapability' was specified")
             }
-            val session = ClientSessionImpl(this, sessionId, sessionParameters, operations, protocol /*, modeState, modelState*/)
+            val session = ClientSessionImpl(this, sessionId, sessionParameters, operations, sessionResponse, protocol)
             sessionDeferred.complete(session)
             return session
         }

@@ -4,14 +4,18 @@ import com.agentclientprotocol.agent.Agent
 import com.agentclientprotocol.agent.AgentInfo
 import com.agentclientprotocol.agent.AgentSession
 import com.agentclientprotocol.agent.AgentSupport
+import com.agentclientprotocol.agent.client
 import com.agentclientprotocol.client.*
 import com.agentclientprotocol.common.*
 import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.RpcMethodsOperations
 import com.agentclientprotocol.protocol.invoke
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.JsonElement
 import kotlin.test.*
@@ -29,7 +33,7 @@ open class TestClientSessionOperations(): ClientSessionOperations {
         notification: SessionUpdate,
         _meta: JsonElement?,
     ) {
-        TODO()
+
     }
 }
 
@@ -231,6 +235,81 @@ abstract class ExtensionsTest(protocolDriver: ProtocolDriver) : ProtocolDriver b
             }
         }
     }
+
+    @Test
+    fun `test mode change from client`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val client = Client(protocol = clientProtocol)
+
+        val modes = listOf(SessionMode(SessionModeId("ask"), "Ask mode", "Only conversations"), SessionMode(SessionModeId("Code"), "Coding mode", "Writes code"))
+
+        val agentSupport = TestAgentSupport {
+            object : TestAgentSession() {
+                private val mode = MutableStateFlow(modes[0].id)
+
+                override suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement?): Flow<Event> = flow {
+                    emit(Event.SessionUpdateEvent(agentTextChunk("Hello")))
+                    val fileSystemOperations =
+                        currentCoroutineContext().remoteSessionOperations(FileSystemOperations)
+                    val readTextFileResponse = fileSystemOperations.fsReadTextFile("/test/path")
+                    emit(Event.SessionUpdateEvent(agentTextChunk("File content: ${readTextFileResponse.content}")))
+                }
+
+                override val availableModes: List<SessionMode>
+                    get() = modes
+                override val defaultMode: SessionModeId
+                    get() = mode.value
+
+                override suspend fun setMode(
+                    modeId: SessionModeId,
+                    _meta: JsonElement?,
+                ): SetSessionModeResponse {
+                    delay(500)
+                    mode.value = modeId
+                    currentCoroutineContext().client.notify(SessionUpdate.CurrentModeUpdate(modeId))
+                    return SetSessionModeResponse()
+                }
+            }
+        }
+        val agent = Agent(agentProtocol, agentSupport, remoteSideExtensions = listOf(FileSystemOperations))
+
+        client.initialize(
+            ClientInfo(
+                capabilities = ClientCapabilities(
+                    fs = FileSystemCapability(
+                        readTextFile = true,
+                        writeTextFile = true
+                    )
+                )
+            )
+        )
+        val session = client.newSession(SessionCreationParameters("/test/path", emptyList())) { sessionId, _ ->
+            object : TestClientSessionOperations(), FileSystemOperations {
+                override suspend fun fsReadTextFile(
+                    path: String,
+                    line: UInt?,
+                    limit: UInt?,
+                    _meta: JsonElement?,
+                ): ReadTextFileResponse {
+                    return ReadTextFileResponse("test")
+                }
+
+                override suspend fun fsWriteTextFile(
+                    path: String,
+                    content: String,
+                    _meta: JsonElement?,
+                ): WriteTextFileResponse {
+                    return WriteTextFileResponse()
+                }
+            }
+        }
+        assertTrue(session.modesSupported, "Modes should be supported")
+        assertContentEquals(modes, session.availableModes)
+        session.setMode(modes[1].id)
+        delay(100)
+        assertEquals(modes[1].id, session.currentMode.value, "Current mode should be changed")
+    }
+
+
 
 //    @Test
 //    fun `call agent extension from client`(): TestResult = testWithProtocols { clientProtocol, agentProtocol ->

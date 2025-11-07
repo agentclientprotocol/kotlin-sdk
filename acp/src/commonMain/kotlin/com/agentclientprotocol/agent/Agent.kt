@@ -57,7 +57,7 @@ public class Agent(
         val agentSession: AgentSession,
         val clientOperations: ClientSessionOperations,
         val extensions: RemoteSideExtensionInstantiation,
-        val protocol: Protocol,
+        val protocol: Protocol
     ) {
         private class PromptSession(val currentRequestId: RequestId)
         private val _activePrompt = atomic<PromptSession?>(null)
@@ -152,8 +152,8 @@ public class Agent(
 
             return@setRequestHandler NewSessionResponse(
                 sessionId = session.sessionId,
-                modes = null,//session.currentMode.value?.let { SessionModeState(it, session.availableModes) },
-                models = null//session.currentModel.value?.let { SessionModelState(it, session.availableModels) }
+                modes = session.asModeState(),
+                models = session.asModelState()
             )
         }
 
@@ -163,17 +163,22 @@ public class Agent(
             return@setRequestHandler LoadSessionResponse(
                 // maybe unify result of these two methods to have sessionId in both
 //                sessionId = session.sessionId,
-                modes = null,//session.currentMode.value?.let { SessionModeState(it, session.availableModes) },
-                models = null//session.currentModel.value?.let { SessionModelState(it, session.availableModels) }
+                modes = session.asModeState(),
+                models = session.asModelState()
             )
         }
-        // TODO: to extensions
-//
-//        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionSetMode) { params: SetSessionModeRequest ->
-//            val session = getSessionOrThrow(params.sessionId)
-//            session.changeMode(params.modeId)
-//            return@setRequestHandler SetSessionModeResponse()
-//        }
+        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionSetMode) { params: SetSessionModeRequest ->
+            val session = getSessionOrThrow(params.sessionId)
+            return@setRequestHandler session.executeWithSession {
+                session.agentSession.setMode(params.modeId, params._meta)
+            }
+        }
+        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionSetModel) { params: SetSessionModelRequest ->
+            val session = getSessionOrThrow(params.sessionId)
+            return@setRequestHandler session.executeWithSession {
+                session.agentSession.setModel(params.modelId, params._meta)
+            }
+        }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionPrompt) { params: PromptRequest ->
             val session = getSessionOrThrow(params.sessionId)
@@ -219,16 +224,17 @@ public class Agent(
                 sessionId = session.sessionId
             )
         }
+
+        val sessionWrapper = SessionWrapper(
+            this,
+            session,
+            RemoteClientSessionOperations(protocol, session.sessionId),
+            RemoteSideExtensionInstantiation(extensionObjectsMap),
+            protocol
+        )
+
         _sessions.update {
-            it.put(
-                session.sessionId, SessionWrapper(
-                    this,
-                    session,
-                    RemoteClientSessionOperations(protocol, session.sessionId),
-                    RemoteSideExtensionInstantiation(extensionObjectsMap),
-                    protocol
-                )
-            )
+            it.put(session.sessionId, sessionWrapper)
         }
         return session
     }
