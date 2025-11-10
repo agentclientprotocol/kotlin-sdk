@@ -60,7 +60,6 @@ public class StdioTransport(
                             decodeJsonRpcMessage(line)
                         } catch (t: Throwable) {
                             logger.trace(t) { "Failed to decode JSON message: $line" }
-                            fireError(t)
                             continue
                         }
                         logger.trace { "Sending message to channel: $jsonRpcMessage" }

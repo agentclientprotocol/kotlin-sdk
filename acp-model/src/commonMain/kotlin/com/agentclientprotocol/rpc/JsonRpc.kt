@@ -4,6 +4,7 @@ package com.agentclientprotocol.rpc
 
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -103,7 +104,17 @@ public val ACPJson: Json by lazy {
  * - Notification: has "method" but no "id"
  */
 public fun decodeJsonRpcMessage(jsonString: String): JsonRpcMessage {
-    val element = ACPJson.parseToJsonElement(jsonString)
+    val element = try {
+        ACPJson.parseToJsonElement(jsonString)
+    } catch (e: SerializationException) {
+        // maybe there is some garbage output at the beginning of the like, try to find where JSON starts
+        val jsonStart = jsonString.indexOfFirst { it == '{' }
+        if (jsonStart == -1) {
+            throw e
+        }
+        val jsonStartTrimmed = jsonString.substring(jsonStart)
+        ACPJson.parseToJsonElement(jsonStartTrimmed)
+    }
     require(element is JsonObject) { "Expected JSON object" }
 
     val hasId = element.containsKey("id")

@@ -12,5 +12,13 @@ kotlin {
                 api(libs.kotlinx.collections.immutable)
             }
         }
+
+        commonTest {
+            dependencies {
+                implementation(kotlin("test"))
+                implementation(libs.kotlinx.coroutines.test)
+            }
+        }
+
     }
 }
