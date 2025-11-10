@@ -1,8 +1,6 @@
 package com.agentclientprotocol.samples
 
 import com.agentclientprotocol.agent.Agent
-import com.agentclientprotocol.client.FileSystemOperations
-import com.agentclientprotocol.client.TerminalOperations
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.transport.StdioTransport
 import kotlinx.coroutines.Dispatchers
@@ -36,10 +34,9 @@ suspend fun main() = coroutineScope {
 
     val agentProtocol = Protocol(this, agentTransport)
 
-    val agent = Agent(
+    Agent(
         agentProtocol,
-        SimpleAgentSupport(),
-        remoteSideExtensions = listOf(FileSystemOperations, TerminalOperations)
+        SimpleAgentSupport()
     )
     agentProtocol.start()
 

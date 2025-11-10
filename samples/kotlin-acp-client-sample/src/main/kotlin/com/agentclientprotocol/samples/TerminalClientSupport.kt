@@ -3,7 +3,9 @@ package com.agentclientprotocol.samples
 import com.agentclientprotocol.client.*
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
-import com.agentclientprotocol.common.SessionParameters
+import com.agentclientprotocol.common.FileSystemOperations
+import com.agentclientprotocol.common.SessionCreationParameters
+import com.agentclientprotocol.common.TerminalOperations
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.transport.Transport
@@ -18,15 +20,6 @@ import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
 private val logger = KotlinLogging.logger {}
-
-class TerminalClientSupport : ClientSupport {
-    override suspend fun createClientSession(
-        session: ClientSession,
-        _sessionResponseMeta: JsonElement?,
-    ): ClientSessionOperations {
-        return TerminalClientSessionOperations()
-    }
-}
 
 class TerminalClientSessionOperations : ClientSessionOperations, FileSystemOperations, TerminalOperations {
     private val activeTerminals = ConcurrentHashMap<String, Process>()
@@ -141,9 +134,7 @@ suspend fun CoroutineScope.runTerminalClient(transport: Transport) {
     // Create client-side connection
     val protocol = Protocol(this, transport)
     val client = Client(
-        protocol,
-        TerminalClientSupport(),
-        handlerSideExtensions = listOf(FileSystemOperations, TerminalOperations)
+        protocol
     )
 
     logger.info { "Starting Gemini agent process..." }
@@ -170,8 +161,8 @@ suspend fun CoroutineScope.runTerminalClient(transport: Transport) {
 
     // Create a session
     val session = client.newSession(
-        SessionParameters(Paths.get("").absolutePathString(), emptyList())
-    )
+        SessionCreationParameters(Paths.get("").absolutePathString(), emptyList())
+    ) { session, _ -> TerminalClientSessionOperations() }
 
     println("=== Session created: ${session.sessionId} ===")
     println("Type your messages below. Use 'exit', 'quit', or Ctrl+C to stop.")

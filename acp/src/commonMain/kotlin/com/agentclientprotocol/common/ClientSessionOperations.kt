@@ -1,15 +1,18 @@
 package com.agentclientprotocol.common
 
-import com.agentclientprotocol.agent.Agent
-import com.agentclientprotocol.common.RemoteSideExtension
 import com.agentclientprotocol.model.PermissionOption
 import com.agentclientprotocol.model.RequestPermissionResponse
 import com.agentclientprotocol.model.SessionUpdate
 import kotlinx.serialization.json.JsonElement
-import kotlin.coroutines.AbstractCoroutineContextElement
-import kotlin.coroutines.CoroutineContext
 
-public interface ClientSessionOperations {
+/**
+ * Operations that the client side must provide to the agent. In the case of advertising capabilities like fs or terminal,
+ * the client must override the corresponding methods.
+ *
+ * @see FileSystemOperations
+ * @see TerminalOperations
+ */
+public interface ClientSessionOperations : FileSystemOperations, TerminalOperations {
     /**
      * Requests permissions
      */
@@ -22,5 +25,5 @@ public interface ClientSessionOperations {
     /**
      * Handles notification from an agent that is not bound to any prompt
      */
-    public suspend fun notify(notification: SessionUpdate, _meta: JsonElement?)
+    public suspend fun notify(notification: SessionUpdate, _meta: JsonElement? = null)
 }

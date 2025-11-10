@@ -2,11 +2,7 @@ package com.agentclientprotocol.client
 
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
-import com.agentclientprotocol.common.RemoteSideExtension
-import com.agentclientprotocol.common.RemoteSideExtensionInstantiation
-import com.agentclientprotocol.common.SessionParameters
-import com.agentclientprotocol.common.asContextElement
-import com.agentclientprotocol.common.remoteSessionOperations
+import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.invoke
@@ -14,6 +10,8 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -26,11 +24,10 @@ private val logger = KotlinLogging.logger {}
 internal class ClientSessionImpl(
     override val client: Client,
     override val sessionId: SessionId,
-    override val parameters: SessionParameters,
+    override val parameters: SessionCreationParameters,
+    override val operations: ClientSessionOperations,
+    private val createdResponse: AcpCreatedSessionResponse,
     private val protocol: Protocol,
-    val extensions: RemoteSideExtensionInstantiation,
-//    private val modeState: SessionModeState?,
-//    private val modelState: SessionModelState?,
 ) : ClientSession {
 
     private class PromptSession(
@@ -38,36 +35,15 @@ internal class ClientSessionImpl(
     )
     private val activePrompt = atomic<PromptSession?>(null)
 
-    private lateinit var _clientApi: ClientSessionOperations
-
-    internal fun setApi(api: ClientSessionOperations) {
-        if (::_clientApi.isInitialized) error("Api already initialized")
-        _clientApi = api
+    private val _currentMode by lazy {
+        val modes = createdResponse.modes ?: error("Modes are not provided by the agent")
+        MutableStateFlow(modes.currentModeId)
     }
 
-    override val operations: ClientSessionOperations
-        get() = _clientApi
-
-    override fun <T : Any> remoteOperations(extension: RemoteSideExtension<T>): T {
-        return extensions.remoteSessionOperations(extension)
+    private val _currentModel by lazy {
+        val models = createdResponse.models ?: error("Models are not provided by the agent")
+        MutableStateFlow(models.currentModelId)
     }
-
-    //    private val _currentMode = MutableStateFlow(modeState?.currentModeId)
-//    private val _currentModel = MutableStateFlow(modelState?.currentModelId)
-
-//    override val availableModes: List<SessionMode> = modeState?.availableModes ?: emptyList()
-//    override val currentMode: StateFlow<SessionModeId?> = _currentMode.asStateFlow()
-//
-//    override suspend fun changeMode(modeId: SessionModeId) {
-//        AcpMethod.AgentMethods.SessionSetMode(protocol, SetSessionModeRequest(sessionId, modeId))
-//    }
-//
-//    override val availableModels: List<ModelInfo> = modelState?.availableModels ?: emptyList()
-//    override val currentModel: StateFlow<ModelId?> = _currentModel.asStateFlow()
-//
-//    override suspend fun changeModel(modelId: ModelId) {
-//        AcpMethod.AgentMethods.SessionSetModel(protocol, SetSessionModelRequest(sessionId, modelId))
-//    }
 
     override suspend fun prompt(
         content: List<ContentBlock>,
@@ -99,8 +75,35 @@ internal class ClientSessionImpl(
         AcpMethod.AgentMethods.SessionCancel(protocol, CancelNotification(sessionId))
     }
 
+    override val modesSupported: Boolean
+        get() = createdResponse.modes != null
+
+    override val availableModes: List<SessionMode>
+        get() = createdResponse.modes?.availableModes ?: emptyList()
+
+    override val currentMode: StateFlow<SessionModeId>
+        get() = _currentMode
+
+
+    override suspend fun setMode(modeId: SessionModeId, _meta: JsonElement?): SetSessionModeResponse {
+        return AcpMethod.AgentMethods.SessionSetMode(protocol, SetSessionModeRequest(sessionId, modeId, _meta))
+    }
+
+    override val modelsSupported: Boolean
+        get() = createdResponse.models != null
+
+    override val availableModels: List<ModelInfo>
+        get() = createdResponse.models?.availableModels ?: emptyList()
+
+    override val currentModel: StateFlow<ModelId>
+        get() = _currentModel
+
+    override suspend fun setModel(modelId: ModelId, _meta: JsonElement?): SetSessionModelResponse {
+        return AcpMethod.AgentMethods.SessionSetModel(protocol, SetSessionModelRequest(sessionId, modelId, _meta))
+    }
+
     internal suspend fun <T> executeWithSession(block: suspend () -> T): T {
-        return withContext(this.asContextElement() + extensions.asContextElement()) {
+        return withContext(this.asContextElement()) {
             block()
         }
     }
@@ -111,6 +114,14 @@ internal class ClientSessionImpl(
         notification: SessionUpdate,
         _meta: JsonElement?,
     ) {
+        if (notification is SessionUpdate.CurrentModeUpdate) {
+            _currentMode.value = notification.currentModeId
+        }
+        // TODO: add support for model updates, there is no type for it
+//        if (notification is SessionUpdate.CurrentModelUpdate) {
+//            _currentModel.value = notification.currentModelId
+//        }
+
         val promptSession = activePrompt.value
         if (promptSession != null) {
             logger.trace { "Sending update to active prompt: $notification" }
@@ -118,14 +129,14 @@ internal class ClientSessionImpl(
         }
         else {
             logger.trace { "Notifying globally: $notification" }
-            _clientApi.notify(notification, _meta)
+            operations.notify(notification, _meta)
         }
     }
 
     internal suspend fun handlePermissionResponse(toolCall: SessionUpdate.ToolCallUpdate,
                                                   permissions: List<PermissionOption>,
                                                   _meta: JsonElement?,): RequestPermissionResponse {
-        return _clientApi.requestPermissions(toolCall,  permissions, _meta)
+        return operations.requestPermissions(toolCall,  permissions, _meta)
     }
 }
 
