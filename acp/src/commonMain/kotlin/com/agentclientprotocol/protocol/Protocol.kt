@@ -7,6 +7,7 @@ import com.agentclientprotocol.model.CancelRequestNotification
 import com.agentclientprotocol.rpc.*
 import com.agentclientprotocol.transport.Transport
 import com.agentclientprotocol.transport.asMessageChannel
+import com.agentclientprotocol.util.catching
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.*
 import kotlinx.collections.immutable.PersistentMap
@@ -163,17 +164,14 @@ public class Protocol(
 
         // Start processing incoming messages
         scope.launch(CoroutineName("${Protocol::class.simpleName!!}.read-messages")) {
-            try {
+            catching {
                 for (message in transport.asMessageChannel()) {
-                    try {
-                        handleIncomingMessage(message)
-                    } catch (e: Exception) {
-                        logger.error(e) { "Error processing incoming message: $message" }
+                    catching { handleIncomingMessage(message) }.onFailure { logger.error(it) {
+                        "Error processing incoming message: $message" }
                     }
                 }
-            }
-            catch (e: Exception) {
-                logger.error(e) { "Error processing incoming messages" }
+            }.onFailure {
+                logger.error(it) { "Error processing incoming messages" }
             }
         }
         transport.start()
@@ -348,7 +346,7 @@ public class Protocol(
     }
 
     private suspend fun handleIncomingMessage(message: JsonRpcMessage) {
-        try {
+        runCatching {
             when (message) {
                 is JsonRpcNotification -> {
                     handleNotification(message)
@@ -367,8 +365,8 @@ public class Protocol(
                     handleResponse(message)
                 }
             }
-        } catch (e: Exception) {
-            logger.error(e) { "Failed to parse message: $message" }
+        }.onFailure {
+            logger.error(it) { "Failed to parse message: $message" }
         }
     }
 
@@ -427,10 +425,10 @@ public class Protocol(
     private suspend fun handleNotification(notification: JsonRpcNotification) {
         val handler = notificationHandlers.value[notification.method]
         if (handler != null) {
-            try {
+            runCatching {
                 handler(notification)
-            } catch (e: Exception) {
-                logger.error(e) { "Error handling notification ${notification.method}" }
+            }.onFailure {
+                logger.error(it) { "Error handling notification ${notification.method}" }
             }
         } else {
             logger.debug { "No handler for notification: ${notification.method}" }

@@ -193,19 +193,18 @@ public class Client(
 
     private suspend fun createSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, sessionResponse: AcpCreatedSessionResponse, factory: ClientOperationsFactory): ClientSession {
         val sessionDeferred = CompletableDeferred<ClientSessionImpl>()
-        try {
+        return runCatching {
             _sessions.update { it.put(sessionId, sessionDeferred) }
 
             val operations = factory.createClientOperations(sessionId, sessionResponse)
 
             val session = ClientSessionImpl(this, sessionId, sessionParameters, operations, sessionResponse, protocol)
             sessionDeferred.complete(session)
-            return session
-        }
-        catch (e: Exception) {
-            sessionDeferred.completeExceptionally(IllegalStateException("Failed to create session $sessionId", e))
+            session
+        }.getOrElse {
+            sessionDeferred.completeExceptionally(IllegalStateException("Failed to create session $sessionId", it))
             _sessions.update { it.remove(sessionId) }
-            throw e
+            throw it
         }
     }
 
