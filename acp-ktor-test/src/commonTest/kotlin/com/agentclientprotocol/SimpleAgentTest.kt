@@ -26,6 +26,7 @@ import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.model.StopReason
 import com.agentclientprotocol.model.ToolCallId
 import com.agentclientprotocol.protocol.invoke
+import io.github.oshai.kotlinlogging.KotlinLogging.logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
@@ -137,6 +138,80 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
             }
         }
         assertContentEquals(listOf("/test/path", "Message 1", "Message 2"), responses)
+        assertEquals(result!!.stopReason, StopReason.END_TURN)
+    }
+
+    @Test
+    fun `prompt response and update have proper order`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val client = Client(protocol = clientProtocol)
+        val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(clientInfo.protocolVersion)
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                return object : AgentSession {
+                    override val sessionId: SessionId = SessionId("test-session-id")
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = flow {
+                        emit(Event.SessionUpdateEvent(SessionUpdate.AgentMessageChunk(ContentBlock.Text(sessionParameters.cwd))))
+                        emit(Event.SessionUpdateEvent(SessionUpdate.AgentMessageChunk(ContentBlock.Text("text 1"))))
+                        emit(Event.SessionUpdateEvent(SessionUpdate.AgentMessageChunk(ContentBlock.Text("text 2"))))
+                        emit(Event.SessionUpdateEvent(SessionUpdate.AgentMessageChunk(ContentBlock.Text("text 3"))))
+                    }
+                }
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                TODO("Not yet implemented")
+            }
+        })
+        val testVersion = 10
+        val clientInfo = ClientInfo(protocolVersion = testVersion)
+        val agentInfo = client.initialize(clientInfo)
+        val cwd = "/test/path"
+        val newSession = client.newSession(SessionCreationParameters(cwd, emptyList())) { _, _ ->
+            object : ClientSessionOperations {
+                override suspend fun requestPermissions(
+                    toolCall: SessionUpdate.ToolCallUpdate,
+                    permissions: List<PermissionOption>,
+                    _meta: JsonElement?,
+                ): RequestPermissionResponse {
+                    TODO("Not yet implemented")
+                }
+
+                override suspend fun notify(
+                    notification: SessionUpdate,
+                    _meta: JsonElement?,
+                ) {
+                    TODO("Not yet implemented")
+                }
+            }
+        }
+        val responses = mutableListOf<String>()
+        var result: PromptResponse? = null
+        withTimeout(1000) {
+            newSession.prompt(listOf()).collect { event ->
+                when (event) {
+                    is Event.PromptResponseEvent -> {
+                        println( "Received prompt response: ${event.response}" )
+                        result = event.response
+                        responses.add(event.response.stopReason.toString())
+                    }
+                    is Event.SessionUpdateEvent -> {
+                        println( "Received session update: ${(event.update as SessionUpdate.AgentMessageChunk).content}" )
+                        responses.add(((event.update as SessionUpdate.AgentMessageChunk).content as ContentBlock.Text).text)
+                    }
+                }
+            }
+        }
+        assertContentEquals(listOf("/test/path", "text 1", "text 2", "text 3", "END_TURN"), responses)
         assertEquals(result!!.stopReason, StopReason.END_TURN)
     }
 
