@@ -8,6 +8,7 @@ import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.invoke
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -62,12 +63,20 @@ internal class ClientSessionImpl(
             logger.trace { "Sending prompt request: $content" }
             val promptResponse = AcpMethod.AgentMethods.SessionPrompt(protocol, PromptRequest(sessionId, content, _meta))
             logger.trace { "Received prompt response: $promptResponse" }
-            send(Event.PromptResponseEvent(promptResponse))
-        } finally {
+
+            // after receiving prompt response we immediately close the current prompt channel
+            // and then waiting for draining all the updates that were sent during prompt execution
+            // only after that we emit the PromptResponseEvent to the outbound flow
             logger.trace { "Closing prompt channel" }
             activePrompt.getAndSet(null)?.updateChannel?.close()
             logger.trace { "Waiting for prompt channel to close" }
             channelJob.join()
+
+            send(Event.PromptResponseEvent(promptResponse))
+            close()
+        } finally {
+            activePrompt.getAndSet(null)?.updateChannel?.close()
+            channelJob.cancel()
         }
     }
 
@@ -123,7 +132,9 @@ internal class ClientSessionImpl(
 //        }
 
         val promptSession = activePrompt.value
-        if (promptSession != null) {
+        @OptIn(DelicateCoroutinesApi::class)
+        // check for isClosedForSend because the prompt may exist, but the code is waiting for the updates drain
+        if (promptSession != null && !promptSession.updateChannel.isClosedForSend) {
             logger.trace { "Sending update to active prompt: $notification" }
             promptSession.updateChannel.send(notification)
         }
