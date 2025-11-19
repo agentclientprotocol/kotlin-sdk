@@ -2,12 +2,11 @@ package com.agentclientprotocol.util
 
 import kotlin.coroutines.cancellation.CancellationException
 
-/** Use instead of [runCatching] for KT-55480 fix. */
-public suspend fun <R> catching(body: suspend () -> R): Result<R> =
-    try {
-        Result.success(body())
-    } catch (c: CancellationException) {
-        throw c
-    } catch (t: Throwable) {
-        Result.failure(t)
-    }
+/**
+ * Rethrows [CancellationException] if the [Result] execution was cancelled. Use on [runCatching] to avoid swallowing of [CancellationException]
+ */
+internal fun <T> Result<T>.checkCancelled(): Result<T> {
+    val throwable = exceptionOrNull()
+    if (throwable is CancellationException) throw throwable
+    return this
+}

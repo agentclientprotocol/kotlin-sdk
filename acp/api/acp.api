@@ -330,7 +330,3 @@ public final class com/agentclientprotocol/transport/TransportKt {
 	public static final fun asMessageChannel (Lcom/agentclientprotocol/transport/Transport;)Lkotlinx/coroutines/channels/Channel;
 }
 
-public final class com/agentclientprotocol/util/CoroutinesUtilKt {
-	public static final fun catching (Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-}
-
