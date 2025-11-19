@@ -7,7 +7,7 @@ import com.agentclientprotocol.model.CancelRequestNotification
 import com.agentclientprotocol.rpc.*
 import com.agentclientprotocol.transport.Transport
 import com.agentclientprotocol.transport.asMessageChannel
-import com.agentclientprotocol.util.catching
+import com.agentclientprotocol.util.checkCancelled
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.*
 import kotlinx.collections.immutable.PersistentMap
@@ -164,13 +164,11 @@ public class Protocol(
 
         // Start processing incoming messages
         scope.launch(CoroutineName("${Protocol::class.simpleName!!}.read-messages")) {
-            catching {
+            runCatching {
                 for (message in transport.asMessageChannel()) {
-                    catching { handleIncomingMessage(message) }.onFailure { logger.error(it) {
-                        "Error processing incoming message: $message" }
-                    }
+                    handleIncomingMessage(message)
                 }
-            }.onFailure {
+            }.checkCancelled().onFailure {
                 logger.error(it) { "Error processing incoming messages" }
             }
         }
@@ -365,8 +363,8 @@ public class Protocol(
                     handleResponse(message)
                 }
             }
-        }.onFailure {
-            logger.error(it) { "Failed to parse message: $message" }
+        }.checkCancelled().onFailure {
+            logger.error(it) { "Exception while processing incoming message: $message" }
         }
     }
 
@@ -427,8 +425,12 @@ public class Protocol(
         if (handler != null) {
             runCatching {
                 handler(notification)
-            }.onFailure {
-                logger.error(it) { "Error handling notification ${notification.method}" }
+            }.onFailure { t ->
+                if (t is CancellationException) {
+                    logger.trace(t) { "Notification handler for '${notification.method}' cancelled" }
+                } else {
+                    logger.error(t) { "Error handling notification ${notification.method}" }
+                }
             }
         } else {
             logger.debug { "No handler for notification: ${notification.method}" }

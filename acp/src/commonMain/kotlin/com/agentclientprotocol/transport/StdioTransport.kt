@@ -4,6 +4,7 @@ import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.decodeJsonRpcMessage
 import com.agentclientprotocol.transport.Transport.State
+import com.agentclientprotocol.util.checkCancelled
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
