@@ -1,6 +1,7 @@
 package com.agentclientprotocol.transport
 
 import com.agentclientprotocol.rpc.ACPJson
+import com.agentclientprotocol.rpc.decodeJsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.websocket.*
@@ -59,7 +60,7 @@ public class WebSocketTransport(private val parentScope: CoroutineScope, private
                         is Frame.Text -> {
                             val text = message.readText()
                             val decodedMessage = try {
-                                ACPJson.decodeFromString<JsonRpcMessage>(text)
+                                decodeJsonRpcMessage(text)
                             } catch (e: SerializationException) {
                                 logger.trace(e) { "Failed to deserialize message: '$text'" }
                                 fireError(e)
