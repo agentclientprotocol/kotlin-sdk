@@ -1,4 +1,4 @@
-public final class com/agentclientprotocol/LibVersionKt {
+public final class com/agentclientprotocol/acp/LibVersionKt {
 	public static final field LIB_VERSION Ljava/lang/String;
 }
 

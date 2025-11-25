@@ -10,15 +10,17 @@ plugins {
 val generateLibVersion by tasks.registering {
     val outputDir = layout.buildDirectory.dir("generated-sources/libVersion")
     outputs.dir(outputDir)
+    val packageName = project.name.replace("-", "")
+    val versionString = project.version
 
     doLast {
-        val sourceFile = outputDir.get().file("io/agentclientprotocol/kotlin/LibVersion.kt").asFile
+        val sourceFile = outputDir.get().file("com/agentclientprotocol/$packageName/LibVersion.kt").asFile
         sourceFile.parentFile.mkdirs()
         sourceFile.writeText(
             """
-            package com.agentclientprotocol
+            package com.agentclientprotocol.$packageName
 
-            public const val LIB_VERSION: String = "${project.version}"
+            public const val LIB_VERSION: String = "$versionString"
             
             """.trimIndent()
         )
