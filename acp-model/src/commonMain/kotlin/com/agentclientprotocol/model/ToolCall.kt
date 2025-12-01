@@ -95,6 +95,7 @@ public sealed class ToolCallContent {
     @Serializable
     @SerialName("terminal")
     public data class Terminal(
-        val terminalId: String
-    ) : ToolCallContent()
+        val terminalId: String,
+        override val _meta: JsonElement? = null
+    ) : ToolCallContent(), AcpWithMeta
 }

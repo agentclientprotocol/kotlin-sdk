@@ -1,5 +1,6 @@
 package com.agentclientprotocol.agent
 
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.model.*
 import kotlinx.coroutines.flow.Flow
@@ -45,23 +46,27 @@ public interface AgentSession {
     /**
      * Return a set of available models for the session. If the session doesn't support models, return an empty list.
      */
+    @UnstableApi
     public val availableModels: List<ModelInfo>
         get() = emptyList()
 
     /**
      * Return the default model for the session. The method is called only if [availableModels] returns a non-empty list.
      */
+    @UnstableApi
     public val defaultModel: ModelId
         get() = throw NotImplementedError("Must be implemented when providing non-empty ${::availableModels.name}")
 
     /**
      * Called when a client asks to change model. If the model is changed [SessionUpdate.CurrentModelUpdate] must be sent to the client.
      */
+    @UnstableApi
     public suspend fun setModel(modelId: ModelId, _meta: JsonElement?): SetSessionModelResponse {
         throw NotImplementedError("Must be implemented when providing non-empty ${::availableModels.name}")
     }
 }
 
+@UnstableApi
 internal fun AgentSession.asModelState(): SessionModelState? {
     val models = availableModels
     if (models.isEmpty()) return null

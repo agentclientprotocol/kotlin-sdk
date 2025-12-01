@@ -1,5 +1,6 @@
 package com.agentclientprotocol.client
 
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
@@ -98,15 +99,19 @@ internal class ClientSessionImpl(
         return AcpMethod.AgentMethods.SessionSetMode(protocol, SetSessionModeRequest(sessionId, modeId, _meta))
     }
 
+    @UnstableApi
     override val modelsSupported: Boolean
         get() = createdResponse.models != null
 
+    @UnstableApi
     override val availableModels: List<ModelInfo>
         get() = createdResponse.models?.availableModels ?: emptyList()
 
+    @UnstableApi
     override val currentModel: StateFlow<ModelId>
         get() = _currentModel
 
+    @UnstableApi
     override suspend fun setModel(modelId: ModelId, _meta: JsonElement?): SetSessionModelResponse {
         return AcpMethod.AgentMethods.SessionSetModel(protocol, SetSessionModelRequest(sessionId, modelId, _meta))
     }

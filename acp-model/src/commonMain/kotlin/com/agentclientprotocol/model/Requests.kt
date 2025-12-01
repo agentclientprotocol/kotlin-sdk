@@ -3,6 +3,7 @@
 
 package com.agentclientprotocol.model
 
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.rpc.RequestId
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
@@ -168,6 +169,7 @@ public sealed class RequestPermissionOutcome {
 public data class InitializeRequest(
     val protocolVersion: ProtocolVersion,
     val clientCapabilities: ClientCapabilities = ClientCapabilities(),
+    val clientInfo: Implementation? = null,
     override val _meta: JsonElement? = null
 ) : AcpRequest
 
@@ -282,6 +284,7 @@ public data class SetSessionModeRequest(
  *
  * Request parameters for setting a session model.
  */
+@UnstableApi
 @Serializable
 public data class SetSessionModelRequest(
     override val sessionId: SessionId,
@@ -303,6 +306,7 @@ public data class InitializeResponse(
     val protocolVersion: ProtocolVersion,
     val agentCapabilities: AgentCapabilities = AgentCapabilities(),
     val authMethods: List<AuthMethod> = emptyList(),
+    val agentInfo: Implementation? = null,
     override val _meta: JsonElement? = null
 ) : AcpResponse
 
@@ -336,6 +340,7 @@ public data class SessionModeState(
  *
  * Information about a selectable model.
  */
+@UnstableApi
 @Serializable
 public data class ModelInfo(
     val modelId: ModelId,
@@ -351,6 +356,7 @@ public data class ModelInfo(
  *
  * The set of models and the one currently active.
  */
+@UnstableApi
 @Serializable
 public data class SessionModelState(
     val currentModelId: ModelId,
@@ -433,6 +439,7 @@ public data class SetSessionModeResponse(
  *
  * Response to `session/set_model` method.
  */
+@UnstableApi
 @Serializable
 public data class SetSessionModelResponse(
     override val _meta: JsonElement? = null

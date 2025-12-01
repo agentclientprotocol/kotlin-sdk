@@ -7,9 +7,8 @@ import kotlinx.serialization.json.JsonElement
 
 /**
  * Terminal-related request and response types.
- * 
- * **UNSTABLE**: These types are not part of the spec yet,
- * and may be removed or changed at any point.
+ *
+ * See protocol docs: [Terminal](https://agentclientprotocol.com/protocol/terminal)
  */
 
 /**
