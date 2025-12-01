@@ -42,6 +42,7 @@ internal class ClientSessionImpl(
         MutableStateFlow(modes.currentModeId)
     }
 
+    @UnstableApi
     private val _currentModel by lazy {
         val models = createdResponse.models ?: error("Models are not provided by the agent")
         MutableStateFlow(models.currentModelId)
