@@ -1,7 +1,3 @@
-public final class com/agentclientprotocol/LibVersionKt {
-	public static final field LIB_VERSION Ljava/lang/String;
-}
-
 public final class com/agentclientprotocol/acpktorserver/LibVersionKt {
 	public static final field LIB_VERSION Ljava/lang/String;
 }
