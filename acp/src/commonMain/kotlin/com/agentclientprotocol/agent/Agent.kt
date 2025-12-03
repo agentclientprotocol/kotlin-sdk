@@ -120,12 +120,12 @@ public class Agent(
     private fun setHandlers(protocol: Protocol) {
         // Set up request handlers for incoming client requests
         protocol.setRequestHandler(AcpMethod.AgentMethods.Initialize) { params: InitializeRequest ->
-            val clientInfo = ClientInfo(params.protocolVersion, params.clientCapabilities, params._meta)
+            val clientInfo = ClientInfo(params.protocolVersion, params.clientCapabilities, params.clientInfo, params._meta)
             _clientInfo.complete(clientInfo)
             val agentInfo = agentSupport.initialize(clientInfo)
             // see https://agentclientprotocol.com/protocol/initialization#version-negotiation
             val negotiatedVersion = min(params.protocolVersion, agentInfo.protocolVersion)
-            return@setRequestHandler InitializeResponse(negotiatedVersion, agentInfo.capabilities, agentInfo.authMethods, agentInfo._meta)
+            return@setRequestHandler InitializeResponse(negotiatedVersion, agentInfo.capabilities, agentInfo.authMethods, agentInfo.implementation, agentInfo._meta)
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.Authenticate) { params: AuthenticateRequest ->

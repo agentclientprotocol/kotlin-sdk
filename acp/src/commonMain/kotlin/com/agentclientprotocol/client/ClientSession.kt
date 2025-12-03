@@ -1,5 +1,6 @@
 package com.agentclientprotocol.client
 
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
@@ -53,11 +54,13 @@ public interface ClientSession {
     /**
      * The flag indicates whether the agent supports the session model changing.
      */
+    @UnstableApi
     public val modelsSupported: Boolean
 
     /**
      * Returns a list of available models. Returns an empty list if the model changing is not supported.
      */
+    @UnstableApi
     public val availableModels: List<ModelInfo>
 
     /**
@@ -65,10 +68,12 @@ public interface ClientSession {
      *
      * @throws IllegalStateException if the model changing is not supported.
      */
+    @UnstableApi
     public val currentModel: StateFlow<ModelId>
 
     /**
      * Changes the session model to the specified model. The real change will be reported by an agent via [currentModel] and [ClientSessionOperations.notify].
      */
+    @UnstableApi
     public suspend fun setModel(modelId: ModelId, _meta: JsonElement? = null): SetSessionModelResponse
 }

@@ -62,6 +62,16 @@ public data class McpCapabilities(
 ) : AcpWithMeta
 
 /**
+ * Session capabilities supported by the agent.
+ *
+ * Currently empty but extensible for future session-related capabilities.
+ */
+@Serializable
+public data class SessionCapabilities(
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
  * Capabilities supported by the agent.
  *
  * Advertised during initialization to inform the client about
@@ -74,5 +84,6 @@ public data class AgentCapabilities(
     @EncodeDefault val loadSession: Boolean = false,
     @EncodeDefault val promptCapabilities: PromptCapabilities = PromptCapabilities(),
     @EncodeDefault val mcpCapabilities: McpCapabilities = McpCapabilities(),
+    @EncodeDefault val sessionCapabilities: SessionCapabilities = SessionCapabilities(),
     override val _meta: JsonElement? = null
 ) : AcpCapabilities, AcpWithMeta

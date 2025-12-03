@@ -2,7 +2,7 @@
 
 package com.agentclientprotocol.model
 
-import kotlinx.serialization.ExperimentalSerializationApi
+import com.agentclientprotocol.annotations.UnstableApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
@@ -81,6 +81,7 @@ public value class SessionModeId(public val value: String) {
  *
  * A unique identifier for a model.
  */
+@UnstableApi
 @JvmInline
 @Serializable
 public value class ModelId(public val value: String) {
@@ -95,6 +96,19 @@ public enum class Role {
     @SerialName("assistant") ASSISTANT,
     @SerialName("user") USER
 }
+
+/**
+ * Describes the name and version of an ACP implementation.
+ *
+ * Used by both clients and agents to identify themselves during initialization.
+ */
+@Serializable
+public data class Implementation(
+    val name: String,
+    val version: String,
+    val title: String? = null,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
 
 /**
  * Optional annotations for the client. The client can use annotations to inform how objects are used or displayed.

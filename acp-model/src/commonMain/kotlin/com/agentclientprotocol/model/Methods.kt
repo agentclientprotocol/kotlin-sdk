@@ -2,6 +2,7 @@
 
 package com.agentclientprotocol.model
 
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.rpc.MethodName
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.serializer
@@ -50,6 +51,7 @@ public open class AcpMethod(public val methodName: MethodName) {
         public object SessionPrompt : AcpSessionRequestResponseMethod<PromptRequest, PromptResponse>("session/prompt", PromptRequest.serializer(), PromptResponse.serializer())
         public object SessionCancel : AcpSessionNotificationMethod<CancelNotification>("session/cancel", CancelNotification.serializer())
         public object SessionSetMode : AcpSessionRequestResponseMethod<SetSessionModeRequest, SetSessionModeResponse>("session/set_mode", SetSessionModeRequest.serializer(), SetSessionModeResponse.serializer())
+        @UnstableApi
         public object SessionSetModel : AcpSessionRequestResponseMethod<SetSessionModelRequest, SetSessionModelResponse>("session/set_model", SetSessionModelRequest.serializer(), SetSessionModelResponse.serializer())
     }
 

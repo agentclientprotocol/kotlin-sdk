@@ -9,10 +9,11 @@ public final class com/agentclientprotocol/agent/Agent {
 
 public final class com/agentclientprotocol/agent/AgentInfo {
 	public fun <init> ()V
-	public fun <init> (ILcom/agentclientprotocol/model/AgentCapabilities;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)V
-	public synthetic fun <init> (ILcom/agentclientprotocol/model/AgentCapabilities;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (ILcom/agentclientprotocol/model/AgentCapabilities;Ljava/util/List;Lcom/agentclientprotocol/model/Implementation;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (ILcom/agentclientprotocol/model/AgentCapabilities;Ljava/util/List;Lcom/agentclientprotocol/model/Implementation;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getAuthMethods ()Ljava/util/List;
 	public final fun getCapabilities ()Lcom/agentclientprotocol/model/AgentCapabilities;
+	public final fun getImplementation ()Lcom/agentclientprotocol/model/Implementation;
 	public final fun getProtocolVersion ()I
 	public final fun get_meta ()Lkotlinx/serialization/json/JsonElement;
 }
@@ -78,9 +79,10 @@ public final class com/agentclientprotocol/client/Client {
 
 public final class com/agentclientprotocol/client/ClientInfo {
 	public fun <init> ()V
-	public fun <init> (ILcom/agentclientprotocol/model/ClientCapabilities;Lkotlinx/serialization/json/JsonElement;)V
-	public synthetic fun <init> (ILcom/agentclientprotocol/model/ClientCapabilities;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (ILcom/agentclientprotocol/model/ClientCapabilities;Lcom/agentclientprotocol/model/Implementation;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (ILcom/agentclientprotocol/model/ClientCapabilities;Lcom/agentclientprotocol/model/Implementation;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getCapabilities ()Lcom/agentclientprotocol/model/ClientCapabilities;
+	public final fun getImplementation ()Lcom/agentclientprotocol/model/Implementation;
 	public final fun getProtocolVersion ()I
 	public final fun get_meta ()Lkotlinx/serialization/json/JsonElement;
 }
