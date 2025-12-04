@@ -3101,14 +3101,20 @@ public final class com/agentclientprotocol/rpc/JsonRpcError$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
-public final class com/agentclientprotocol/rpc/JsonRpcErrorCode {
-	public static final field CANCELLED I
-	public static final field INSTANCE Lcom/agentclientprotocol/rpc/JsonRpcErrorCode;
-	public static final field INTERNAL_ERROR I
-	public static final field INVALID_PARAMS I
-	public static final field INVALID_REQUEST I
-	public static final field METHOD_NOT_FOUND I
-	public static final field PARSE_ERROR I
+public final class com/agentclientprotocol/rpc/JsonRpcErrorCode : java/lang/Enum {
+	public static final field AUTH_REQUIRED Lcom/agentclientprotocol/rpc/JsonRpcErrorCode;
+	public static final field CANCELLED Lcom/agentclientprotocol/rpc/JsonRpcErrorCode;
+	public static final field INTERNAL_ERROR Lcom/agentclientprotocol/rpc/JsonRpcErrorCode;
+	public static final field INVALID_PARAMS Lcom/agentclientprotocol/rpc/JsonRpcErrorCode;
+	public static final field INVALID_REQUEST Lcom/agentclientprotocol/rpc/JsonRpcErrorCode;
+	public static final field METHOD_NOT_FOUND Lcom/agentclientprotocol/rpc/JsonRpcErrorCode;
+	public static final field PARSE_ERROR Lcom/agentclientprotocol/rpc/JsonRpcErrorCode;
+	public static final field RESOURCE_NOT_FOUND Lcom/agentclientprotocol/rpc/JsonRpcErrorCode;
+	public final fun getCode ()I
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getMessage ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Lcom/agentclientprotocol/rpc/JsonRpcErrorCode;
+	public static fun values ()[Lcom/agentclientprotocol/rpc/JsonRpcErrorCode;
 }
 
 public final class com/agentclientprotocol/rpc/JsonRpcKt {

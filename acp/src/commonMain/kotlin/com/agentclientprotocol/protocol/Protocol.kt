@@ -44,7 +44,7 @@ public class AcpExpectedError(override val message: String) : Exception(message)
 public fun acpFail(message: String): Nothing = throw AcpExpectedError(message)
 
 public fun jsonRpcMethodNotFound(message: String): Nothing =
-    throw JsonRpcException(JsonRpcErrorCode.METHOD_NOT_FOUND, message)
+    throw JsonRpcException(JsonRpcErrorCode.METHOD_NOT_FOUND.code, message)
 
 /**
  * Exception thrown for JSON-RPC protocol errors.
@@ -380,17 +380,17 @@ public class Protocol(
                 logger.trace(e) { "Expected error on '${request.method}'" }
                 sendResponse(
                     request.id, null, JsonRpcError(
-                        code = JsonRpcErrorCode.INVALID_PARAMS, message = e.message ?: "Invalid params"
+                        code = JsonRpcErrorCode.INVALID_PARAMS.code, message = e.message
                     )
                 )
             } catch (e: JsonRpcException) {
                 logger.trace(e) { "JsonRpcException on '${request.method}'" }
-                sendResponse(request.id, null, JsonRpcError(code = e.code, message = e.message ?: "Internal error", data = e.data))
+                sendResponse(request.id, null, JsonRpcError(code = e.code, message = e.message, data = e.data))
             } catch (e: SerializationException) {
                 logger.trace(e) { "Serialization error on ${request.method}" }
                 sendResponse(
                     request.id, null, JsonRpcError(
-                        code = JsonRpcErrorCode.PARSE_ERROR, message = e.message ?: "Serialization error"
+                        code = JsonRpcErrorCode.PARSE_ERROR.code, message = e.message ?: "Serialization error"
                     )
                 )
             } catch (ce: CancellationException) {
@@ -399,7 +399,7 @@ public class Protocol(
                     sendResponse(
                         request.id, null,
                         JsonRpcError(
-                            code = JsonRpcErrorCode.CANCELLED,
+                            code = JsonRpcErrorCode.CANCELLED.code,
                             message = ce.message ?: "Cancelled"
                         )
                     )
@@ -408,13 +408,13 @@ public class Protocol(
                 logger.error(e) { "Exception on ${request.method}" }
                 sendResponse(
                     request.id, null, JsonRpcError(
-                        code = JsonRpcErrorCode.INTERNAL_ERROR, message = e.message ?: "Internal error"
+                        code = JsonRpcErrorCode.INTERNAL_ERROR.code, message = e.message ?: "Internal error"
                     )
                 )
             }
         } else {
             val error = JsonRpcError(
-                code = JsonRpcErrorCode.METHOD_NOT_FOUND, message = "Method not supported: ${request.method}"
+                code = JsonRpcErrorCode.METHOD_NOT_FOUND.code, message = "Method not supported: ${request.method}"
             )
             sendResponse(request.id, null, error)
         }
@@ -483,17 +483,17 @@ public class Protocol(
 
 private fun convertJsonRpcExceptionIfPossible(jsonRpcException: JsonRpcException): Exception {
     when (jsonRpcException.code) {
-        JsonRpcErrorCode.PARSE_ERROR -> {
+        JsonRpcErrorCode.PARSE_ERROR.code -> {
             return SerializationException(jsonRpcException.message, jsonRpcException)
         }
 
-        JsonRpcErrorCode.INVALID_PARAMS -> {
-            return AcpExpectedError(jsonRpcException.message ?: "Invalid params")
+        JsonRpcErrorCode.INVALID_PARAMS.code -> {
+            return AcpExpectedError(jsonRpcException.message)
         }
 
-        JsonRpcErrorCode.CANCELLED -> {
+        JsonRpcErrorCode.CANCELLED.code -> {
             return CancellationException(
-                jsonRpcException.message ?: "Cancelled on the counterpart side",
+                jsonRpcException.message,
                 jsonRpcException
             )
         }

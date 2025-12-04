@@ -241,7 +241,7 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         }
         catch (e: JsonRpcException) {
             assertEquals(errorMessage, e.message, "Error message should be propagated to client")
-            assertEquals(JsonRpcErrorCode.INTERNAL_ERROR, e.code, "Error code should be INTERNAL_ERROR")
+            assertEquals(JsonRpcErrorCode.INTERNAL_ERROR.code, e.code, "Error code should be INTERNAL_ERROR")
         }
     }
 
@@ -290,7 +290,7 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
             fail("Expected JsonRpcException to be thrown")
         }
         catch (e: JsonRpcException) {
-            assertEquals(JsonRpcErrorCode.METHOD_NOT_FOUND, e.code, "Error code should be METHOD_NOT_FOUND")
+            assertEquals(JsonRpcErrorCode.METHOD_NOT_FOUND.code, e.code, "Error code should be METHOD_NOT_FOUND")
         }
     }
 }

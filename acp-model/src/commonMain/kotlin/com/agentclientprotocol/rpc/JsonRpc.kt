@@ -76,14 +76,34 @@ public data class JsonRpcError(
 /**
  * Standard JSON-RPC error codes.
  */
-public object JsonRpcErrorCode {
-    public const val PARSE_ERROR: Int = -32700
-    public const val INVALID_REQUEST: Int = -32600
-    public const val METHOD_NOT_FOUND: Int = -32601
-    public const val INVALID_PARAMS: Int = -32602
-    public const val INTERNAL_ERROR: Int = -32603
-    // The same code as in LSP
-    public const val CANCELLED: Int = -32800
+public enum class JsonRpcErrorCode(public val code: Int, public val message: String) {
+    /** Invalid JSON was received by the server.
+     * An error occurred on the server while parsing the JSON text. */
+    PARSE_ERROR(-32700, "Parse error"),
+
+    /** The JSON sent is not a valid Request object. */
+    INVALID_REQUEST(-32600, "Invalid Request"),
+
+    /** The method does not exist or is not available. */
+    METHOD_NOT_FOUND(-32601, "Method not found"),
+
+    /** Invalid method parameter(s). */
+    INVALID_PARAMS(-32602, "Invalid params"),
+
+    /** Internal JSON-RPC error.
+     * Reserved for implementation-defined server errors. */
+    INTERNAL_ERROR(-32603, "Internal error"),
+
+    /** The same code as in LSP */
+    CANCELLED(-32800, "Request cancelled"),
+
+    /** Authentication is required before this operation can be performed.
+     * This is an ACP-specific error code in the reserved range. */
+    AUTH_REQUIRED(-32000, "Authentication required"),
+
+    /** A given resource, such as a file, was not found.
+     * This is an ACP-specific error code in the reserved range. */
+    RESOURCE_NOT_FOUND(-32002, "Resource not found")
 }
 
 @OptIn(ExperimentalSerializationApi::class)
