@@ -74,7 +74,14 @@ public class Client(
             val terminal = session.operations as? TerminalOperations
                 ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.TerminalCreate)
             return@setRequestHandler session.executeWithSession {
-                return@executeWithSession terminal.terminalCreate(params.command, params.args, params.cwd, params.env, params.outputByteLimit, params._meta)
+                return@executeWithSession terminal.terminalCreate(
+                    params.command,
+                    params.args,
+                    params.cwd,
+                    params.env,
+                    params.outputByteLimit,
+                    params._meta
+                )
             }
         }
 
@@ -138,8 +145,17 @@ public class Client(
 
     public suspend fun initialize(clientInfo: ClientInfo, _meta: JsonElement? = null): AgentInfo {
         _clientInfo.complete(clientInfo)
-        val initializeResponse = AcpMethod.AgentMethods.Initialize(protocol, InitializeRequest(clientInfo.protocolVersion, clientInfo.capabilities, clientInfo.implementation, _meta))
-        val agentInfo = AgentInfo(initializeResponse.protocolVersion, initializeResponse.agentCapabilities, initializeResponse.authMethods, initializeResponse.agentInfo, initializeResponse._meta)
+        val initializeResponse = AcpMethod.AgentMethods.Initialize(
+            protocol,
+            InitializeRequest(clientInfo.protocolVersion, clientInfo.capabilities, clientInfo.implementation, _meta)
+        )
+        val agentInfo = AgentInfo(
+            initializeResponse.protocolVersion,
+            initializeResponse.agentCapabilities,
+            initializeResponse.authMethods,
+            initializeResponse.agentInfo,
+            initializeResponse._meta
+        )
         _agentInfo.complete(agentInfo)
         return agentInfo
     }
@@ -161,7 +177,10 @@ public class Client(
      * See [ClientOperationsFactory.createClientOperations] for more details.
      * @return a [ClientSession] instance for the new session
      */
-    public suspend fun newSession(sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
+    public suspend fun newSession(
+        sessionParameters: SessionCreationParameters,
+        operationsFactory: ClientOperationsFactory
+    ): ClientSession {
         return withInitializingSession {
             val newSessionResponse = AcpMethod.AgentMethods.SessionNew(
                 protocol,
@@ -172,7 +191,12 @@ public class Client(
                 )
             )
             val sessionId = newSessionResponse.sessionId
-            return@withInitializingSession createSession(sessionId, sessionParameters, newSessionResponse, operationsFactory)
+            return@withInitializingSession createSession(
+                sessionId,
+                sessionParameters,
+                newSessionResponse,
+                operationsFactory
+            )
         }
     }
 
@@ -186,7 +210,11 @@ public class Client(
      * See [ClientOperationsFactory.createClientOperations] for more details.
      * @return a [ClientSession] instance for the new session
      */
-    public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
+    public suspend fun loadSession(
+        sessionId: SessionId,
+        sessionParameters: SessionCreationParameters,
+        operationsFactory: ClientOperationsFactory
+    ): ClientSession {
         return withInitializingSession {
             val loadSessionResponse = AcpMethod.AgentMethods.SessionLoad(
                 protocol,
@@ -197,11 +225,21 @@ public class Client(
                     sessionParameters._meta
                 )
             )
-            return@withInitializingSession createSession(sessionId, sessionParameters, loadSessionResponse, operationsFactory)
+            return@withInitializingSession createSession(
+                sessionId,
+                sessionParameters,
+                loadSessionResponse,
+                operationsFactory
+            )
         }
     }
 
-    private suspend fun createSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, sessionResponse: AcpCreatedSessionResponse, factory: ClientOperationsFactory): ClientSession {
+    private suspend fun createSession(
+        sessionId: SessionId,
+        sessionParameters: SessionCreationParameters,
+        sessionResponse: AcpCreatedSessionResponse,
+        factory: ClientOperationsFactory
+    ): ClientSession {
         val sessionDeferred = CompletableDeferred<ClientSessionImpl>()
         return runCatching {
             _sessions.update { it.put(sessionId, sessionDeferred) }
@@ -238,7 +276,7 @@ public class Client(
         acpFail("Session $sessionId not found")
     }
 
-    private suspend fun<T> withInitializingSession(block: suspend () -> T): T {
+    private suspend fun <T> withInitializingSession(block: suspend () -> T): T {
         _currentlyInitializingSessionsCount.update { it + 1 }
         try {
             return block()

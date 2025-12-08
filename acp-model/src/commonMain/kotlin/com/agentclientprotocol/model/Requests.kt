@@ -1,4 +1,3 @@
-@file:Suppress("unused")
 @file:OptIn(ExperimentalSerializationApi::class)
 
 package com.agentclientprotocol.model
@@ -53,7 +52,7 @@ public data class HttpHeader(
 @Serializable
 public sealed class McpServer {
     public abstract val name: String
-    
+
     /**
      * Stdio transport configuration
      *
@@ -67,7 +66,7 @@ public sealed class McpServer {
         val args: List<String>,
         val env: List<EnvVariable>
     ) : McpServer()
-    
+
     /**
      * HTTP transport configuration
      *
@@ -80,7 +79,7 @@ public sealed class McpServer {
         val url: String,
         val headers: List<HttpHeader>
     ) : McpServer()
-    
+
     /**
      * SSE transport configuration
      *
@@ -102,11 +101,20 @@ public sealed class McpServer {
  */
 @Serializable
 public enum class StopReason {
-    @SerialName("end_turn") END_TURN,
-    @SerialName("max_tokens") MAX_TOKENS,
-    @SerialName("max_turn_requests") MAX_TURN_REQUESTS,
-    @SerialName("refusal") REFUSAL,
-    @SerialName("cancelled") CANCELLED
+    @SerialName("end_turn")
+    END_TURN,
+
+    @SerialName("max_tokens")
+    MAX_TOKENS,
+
+    @SerialName("max_turn_requests")
+    MAX_TURN_REQUESTS,
+
+    @SerialName("refusal")
+    REFUSAL,
+
+    @SerialName("cancelled")
+    CANCELLED
 }
 
 /**
@@ -116,10 +124,17 @@ public enum class StopReason {
  */
 @Serializable
 public enum class PermissionOptionKind {
-    @SerialName("allow_once") ALLOW_ONCE,
-    @SerialName("allow_always") ALLOW_ALWAYS,
-    @SerialName("reject_once") REJECT_ONCE,
-    @SerialName("reject_always") REJECT_ALWAYS
+    @SerialName("allow_once")
+    ALLOW_ONCE,
+
+    @SerialName("allow_always")
+    ALLOW_ALWAYS,
+
+    @SerialName("reject_once")
+    REJECT_ONCE,
+
+    @SerialName("reject_always")
+    REJECT_ALWAYS
 }
 
 /**

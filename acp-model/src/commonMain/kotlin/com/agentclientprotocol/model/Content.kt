@@ -1,4 +1,3 @@
-@file:Suppress("unused")
 @file:OptIn(ExperimentalSerializationApi::class)
 
 package com.agentclientprotocol.model
@@ -21,7 +20,7 @@ import kotlinx.serialization.json.JsonElement
 @JsonClassDiscriminator("type")
 public sealed class ContentBlock : AcpWithMeta {
     public abstract val annotations: Annotations?
-    
+
     /**
      * Plain text content
      *
