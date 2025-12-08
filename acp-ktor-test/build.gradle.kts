@@ -3,6 +3,11 @@ plugins {
 }
 
 kotlin {
+    js {
+        browser()
+        nodejs()
+    }
+
     sourceSets {
         commonTest {
             dependencies {
