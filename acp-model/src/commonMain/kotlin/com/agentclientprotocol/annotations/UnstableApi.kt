@@ -5,4 +5,4 @@ package com.agentclientprotocol.annotations
     level = RequiresOptIn.Level.WARNING
 )
 @Retention(AnnotationRetention.BINARY)
-public annotation class UnstableApi()
+public annotation class UnstableApi

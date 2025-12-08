@@ -1,12 +1,12 @@
 package com.agentclientprotocol
 
-import com.agentclientprotocol.agent.Agent
-import com.agentclientprotocol.agent.AgentInfo
-import com.agentclientprotocol.agent.AgentSession
-import com.agentclientprotocol.agent.AgentSupport
-import com.agentclientprotocol.agent.client
-import com.agentclientprotocol.client.*
-import com.agentclientprotocol.common.*
+import com.agentclientprotocol.agent.*
+import com.agentclientprotocol.client.Client
+import com.agentclientprotocol.client.ClientInfo
+import com.agentclientprotocol.common.ClientSessionOperations
+import com.agentclientprotocol.common.Event
+import com.agentclientprotocol.common.FileSystemOperations
+import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.*
 import kotlinx.coroutines.currentCoroutineContext
@@ -15,9 +15,12 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.JsonElement
-import kotlin.test.*
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
-open class TestClientSessionOperations(): ClientSessionOperations {
+open class TestClientSessionOperations : ClientSessionOperations {
     override suspend fun requestPermissions(
         toolCall: SessionUpdate.ToolCallUpdate,
         permissions: List<PermissionOption>,
@@ -42,7 +45,10 @@ open class TestAgentSession(override val sessionId: SessionId = SessionId("test-
     }
 }
 
-class TestAgentSupport(val capabilities: AgentCapabilities = AgentCapabilities(), val createSessionFunc: suspend (SessionCreationParameters) -> AgentSession) : AgentSupport {
+class TestAgentSupport(
+    val capabilities: AgentCapabilities = AgentCapabilities(),
+    val createSessionFunc: suspend (SessionCreationParameters) -> AgentSession
+) : AgentSupport {
     val agentInitialized = kotlinx.coroutines.CompletableDeferred<ClientInfo>()
 
     override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
@@ -121,7 +127,10 @@ abstract class FeaturesTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     fun `change mode from client`() = testWithProtocols { clientProtocol, agentProtocol ->
         val client = Client(protocol = clientProtocol)
 
-        val modes = listOf(SessionMode(SessionModeId("ask"), "Ask mode", "Only conversations"), SessionMode(SessionModeId("Code"), "Coding mode", "Writes code"))
+        val modes = listOf(
+            SessionMode(SessionModeId("ask"), "Ask mode", "Only conversations"),
+            SessionMode(SessionModeId("Code"), "Coding mode", "Writes code")
+        )
 
         val agentSupport = TestAgentSupport {
             object : TestAgentSession() {
@@ -189,7 +198,6 @@ abstract class FeaturesTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         delay(100)
         assertEquals(modes[1].id, session.currentMode.value, "Current mode should be changed")
     }
-
 
 
 //    @Test

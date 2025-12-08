@@ -1,4 +1,3 @@
-@file:Suppress("unused")
 @file:OptIn(ExperimentalSerializationApi::class)
 
 package com.agentclientprotocol.model

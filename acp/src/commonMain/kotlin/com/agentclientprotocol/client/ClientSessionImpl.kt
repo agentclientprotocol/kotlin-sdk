@@ -35,6 +35,7 @@ internal class ClientSessionImpl(
     private class PromptSession(
         val updateChannel: Channel<SessionUpdate>
     )
+
     private val activePrompt = atomic<PromptSession?>(null)
 
     private val _currentMode by lazy {
@@ -69,7 +70,8 @@ internal class ClientSessionImpl(
         }
         try {
             logger.trace { "Sending prompt request: $content" }
-            val promptResponse = AcpMethod.AgentMethods.SessionPrompt(protocol, PromptRequest(sessionId, content, _meta))
+            val promptResponse =
+                AcpMethod.AgentMethods.SessionPrompt(protocol, PromptRequest(sessionId, content, _meta))
             logger.trace { "Received prompt response: $promptResponse" }
 
             // after receiving prompt response we immediately close the current prompt channel
@@ -143,6 +145,7 @@ internal class ClientSessionImpl(
             block()
         }
     }
+
     /**
      * Routes notification to either active prompt or global notification channel
      */
@@ -168,17 +171,18 @@ internal class ClientSessionImpl(
         if (promptSession != null && !promptSession.updateChannel.isClosedForSend) {
             logger.trace { "Sending update to active prompt: $notification" }
             promptSession.updateChannel.send(notification)
-        }
-        else {
+        } else {
             logger.trace { "Notifying globally: $notification" }
             operations.notify(notification, _meta)
         }
     }
 
-    internal suspend fun handlePermissionResponse(toolCall: SessionUpdate.ToolCallUpdate,
-                                                  permissions: List<PermissionOption>,
-                                                  _meta: JsonElement?,): RequestPermissionResponse {
-        return operations.requestPermissions(toolCall,  permissions, _meta)
+    internal suspend fun handlePermissionResponse(
+        toolCall: SessionUpdate.ToolCallUpdate,
+        permissions: List<PermissionOption>,
+        _meta: JsonElement?,
+    ): RequestPermissionResponse {
+        return operations.requestPermissions(toolCall, permissions, _meta)
     }
 }
 

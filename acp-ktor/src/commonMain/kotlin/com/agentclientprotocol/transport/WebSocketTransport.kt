@@ -1,8 +1,8 @@
 package com.agentclientprotocol.transport
 
 import com.agentclientprotocol.rpc.ACPJson
-import com.agentclientprotocol.rpc.decodeJsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcMessage
+import com.agentclientprotocol.rpc.decodeJsonRpcMessage
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.websocket.*
 import kotlinx.coroutines.CoroutineScope
@@ -18,7 +18,8 @@ private val logger = KotlinLogging.logger {}
 
 public const val ACP_PATH: String = "acp"
 
-public class WebSocketTransport(private val parentScope: CoroutineScope, private val wss: WebSocketSession) : BaseTransport() {
+public class WebSocketTransport(private val parentScope: CoroutineScope, private val wss: WebSocketSession) :
+    BaseTransport() {
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
     private val sendChannel = Channel<JsonRpcMessage>(Channel.UNLIMITED)
 
@@ -29,7 +30,7 @@ public class WebSocketTransport(private val parentScope: CoroutineScope, private
                     val jsonText = try {
                         ACPJson.encodeToString(message)
                     } catch (e: SerializationException) {
-                        logger.trace(e) { "Failed to serialize message: ${message}" }
+                        logger.trace(e) { "Failed to serialize message: $message" }
                         fireError(e)
                         continue
                     }
@@ -41,12 +42,10 @@ public class WebSocketTransport(private val parentScope: CoroutineScope, private
                 logger.trace { "No more messages in channel, closing connection" }
                 wss.close()
                 wss.flush()
-            }
-            catch (ce: CancellationException) {
+            } catch (ce: CancellationException) {
                 logger.trace(ce) { "Send job cancelled" }
                 wss.close(CloseReason(CloseReason.Codes.NORMAL, "Cancelled"))
-            }
-            catch (e: Throwable) {
+            } catch (e: Throwable) {
                 logger.trace(e) { "Failed to send message to channel" }
                 fireError(e)
                 wss.close(CloseReason(CloseReason.Codes.INTERNAL_ERROR, e.message ?: "Internal error"))
@@ -75,16 +74,13 @@ public class WebSocketTransport(private val parentScope: CoroutineScope, private
                         }
                     }
                 }
-            }
-            catch (ce: CancellationException) {
+            } catch (ce: CancellationException) {
                 logger.trace(ce) { "Receive job cancelled" }
                 wss.close(CloseReason(CloseReason.Codes.NORMAL, "Cancelled"))
-            }
-            catch (e: Throwable) {
+            } catch (e: Throwable) {
                 logger.trace(e) { "Failed to receive message from channel" }
                 fireError(e)
-            }
-            finally {
+            } finally {
                 close()
             }
             logger.trace { "Exiting read job..." }

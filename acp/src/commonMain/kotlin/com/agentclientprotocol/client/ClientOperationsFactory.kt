@@ -15,5 +15,8 @@ public fun interface ClientOperationsFactory {
      *
      * [sessionId] an existing id in the case when the session is being loaded or a new id when the session is newly created (id is returned from the agent)
      */
-    public suspend fun createClientOperations(sessionId: SessionId, sessionResponse: AcpCreatedSessionResponse): ClientSessionOperations
+    public suspend fun createClientOperations(
+        sessionId: SessionId,
+        sessionResponse: AcpCreatedSessionResponse
+    ): ClientSessionOperations
 }

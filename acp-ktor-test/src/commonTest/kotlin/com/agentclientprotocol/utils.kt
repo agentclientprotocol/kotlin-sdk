@@ -25,6 +25,7 @@ suspend fun ClientSession.promptToList(message: String): List<String> {
             is Event.PromptResponseEvent -> {
                 it.response.stopReason.toString()
             }
+
             is Event.SessionUpdateEvent -> {
                 when (val update = it.update) {
                     is SessionUpdate.AgentMessageChunk -> update.content.render()

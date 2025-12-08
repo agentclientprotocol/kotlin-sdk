@@ -46,6 +46,7 @@ public interface ClientSession {
      * @throws IllegalStateException if the mode changing is not supported.
      */
     public val currentMode: StateFlow<SessionModeId>
+
     /**
      * Changes the session mode to the specified mode. The real change will be reported by an agent via [currentMode] and [ClientSessionOperations.notify].
      */

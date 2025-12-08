@@ -1,11 +1,8 @@
 package com.agentclientprotocol.samples
 
-import com.agentclientprotocol.client.*
-import com.agentclientprotocol.common.ClientSessionOperations
-import com.agentclientprotocol.common.Event
-import com.agentclientprotocol.common.FileSystemOperations
-import com.agentclientprotocol.common.SessionCreationParameters
-import com.agentclientprotocol.common.TerminalOperations
+import com.agentclientprotocol.client.Client
+import com.agentclientprotocol.client.ClientInfo
+import com.agentclientprotocol.common.*
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.transport.Transport
@@ -13,7 +10,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.serialization.json.JsonElement
 import java.nio.file.Paths
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.absolutePathString
 import kotlin.io.path.readText
@@ -37,7 +34,10 @@ class TerminalClientSessionOperations : ClientSessionOperations, FileSystemOpera
             val read = readln()
             val optionIndex = read.toIntOrNull()
             if (optionIndex != null && optionIndex in permissions.indices) {
-                return RequestPermissionResponse(RequestPermissionOutcome.Selected(permissions[optionIndex].optionId), _meta)
+                return RequestPermissionResponse(
+                    RequestPermissionOutcome.Selected(permissions[optionIndex].optionId),
+                    _meta
+                )
             }
             println("Invalid option selected. Try again.")
         }
