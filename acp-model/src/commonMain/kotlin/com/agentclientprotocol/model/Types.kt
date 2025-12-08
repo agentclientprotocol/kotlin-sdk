@@ -1,5 +1,3 @@
-@file:Suppress("unused")
-
 package com.agentclientprotocol.model
 
 import com.agentclientprotocol.annotations.UnstableApi
@@ -93,8 +91,11 @@ public value class ModelId(public val value: String) {
  */
 @Serializable
 public enum class Role {
-    @SerialName("assistant") ASSISTANT,
-    @SerialName("user") USER
+    @SerialName("assistant")
+    ASSISTANT,
+
+    @SerialName("user")
+    USER
 }
 
 /**
