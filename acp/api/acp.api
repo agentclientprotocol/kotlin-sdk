@@ -8,6 +8,7 @@ public final class com/agentclientprotocol/agent/Agent {
 }
 
 public final class com/agentclientprotocol/agent/AgentInfo {
+	public static final field Companion Lcom/agentclientprotocol/agent/AgentInfo$Companion;
 	public fun <init> ()V
 	public fun <init> (ILcom/agentclientprotocol/model/AgentCapabilities;Ljava/util/List;Lcom/agentclientprotocol/model/Implementation;Lkotlinx/serialization/json/JsonElement;)V
 	public synthetic fun <init> (ILcom/agentclientprotocol/model/AgentCapabilities;Ljava/util/List;Lcom/agentclientprotocol/model/Implementation;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -16,6 +17,21 @@ public final class com/agentclientprotocol/agent/AgentInfo {
 	public final fun getImplementation ()Lcom/agentclientprotocol/model/Implementation;
 	public final fun getProtocolVersion ()I
 	public final fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+}
+
+public final synthetic class com/agentclientprotocol/agent/AgentInfo$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/agent/AgentInfo$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/agent/AgentInfo;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/agent/AgentInfo;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/agent/AgentInfo$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class com/agentclientprotocol/agent/AgentKt {
@@ -78,6 +94,7 @@ public final class com/agentclientprotocol/client/Client {
 }
 
 public final class com/agentclientprotocol/client/ClientInfo {
+	public static final field Companion Lcom/agentclientprotocol/client/ClientInfo$Companion;
 	public fun <init> ()V
 	public fun <init> (ILcom/agentclientprotocol/model/ClientCapabilities;Lcom/agentclientprotocol/model/Implementation;Lkotlinx/serialization/json/JsonElement;)V
 	public synthetic fun <init> (ILcom/agentclientprotocol/model/ClientCapabilities;Lcom/agentclientprotocol/model/Implementation;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -85,6 +102,21 @@ public final class com/agentclientprotocol/client/ClientInfo {
 	public final fun getImplementation ()Lcom/agentclientprotocol/model/Implementation;
 	public final fun getProtocolVersion ()I
 	public final fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+}
+
+public final synthetic class com/agentclientprotocol/client/ClientInfo$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/client/ClientInfo$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/client/ClientInfo;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/client/ClientInfo;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/client/ClientInfo$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public abstract interface class com/agentclientprotocol/client/ClientOperationsFactory {
