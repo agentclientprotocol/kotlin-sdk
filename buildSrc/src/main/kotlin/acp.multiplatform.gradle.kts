@@ -1,3 +1,6 @@
+@file:OptIn(ExperimentalWasmDsl::class)
+
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.ExplicitApiMode
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -31,9 +34,9 @@ kotlin {
     jvm {
         compilerOptions.jvmTarget = JvmTarget.JVM_1_8
     }
+    js { nodejs() }
+    wasmJs { nodejs() }
     // Future multiplatform targets can be added here without changing the code
-//     js { nodejs() }
-     wasmJs { nodejs() }
 //     linuxX64(); macosX64(); mingwX64()
 
     explicitApi = ExplicitApiMode.Strict
