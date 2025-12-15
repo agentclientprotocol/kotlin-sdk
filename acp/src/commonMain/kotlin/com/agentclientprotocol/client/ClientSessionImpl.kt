@@ -32,10 +32,8 @@ internal class ClientSessionImpl(
     private val protocol: Protocol,
 ) : ClientSession {
 
-    private class PromptSession(
-        val updateChannel: Channel<SessionUpdate>
-    )
-    private val activePrompt = atomic<PromptSession?>(null)
+    private val updateChannel: Channel<SessionUpdate> = Channel(Channel.UNLIMITED)
+    private val activePrompt = atomic(false)
 
     private val _currentMode by lazy {
         val modes = createdResponse.modes ?: error("Modes are not provided by the agent")
@@ -52,11 +50,10 @@ internal class ClientSessionImpl(
         content: List<ContentBlock>,
         _meta: JsonElement?,
     ): Flow<Event> = channelFlow {
-        val promptSession = PromptSession(Channel(Channel.UNLIMITED))
-        if (!activePrompt.compareAndSet(null, promptSession)) error("There is active prompt execution")
+        if (!activePrompt.compareAndSet(false, true)) error("There is active prompt execution")
         logger.trace { "Starting channel collection for prompt" }
         val channelJob = launch {
-            for (update in promptSession.updateChannel) {
+            for (update in updateChannel) {
                 logger.trace { "Received update for prompt: $update" }
                 send(Event.SessionUpdateEvent(update))
             }
@@ -66,18 +63,18 @@ internal class ClientSessionImpl(
             val promptResponse = AcpMethod.AgentMethods.SessionPrompt(protocol, PromptRequest(sessionId, content, _meta))
             logger.trace { "Received prompt response: $promptResponse" }
 
-            // after receiving prompt response we immediately close the current prompt channel
-            // and then waiting for draining all the updates that were sent during prompt execution
-            // only after that we emit the PromptResponseEvent to the outbound flow
-            logger.trace { "Closing prompt channel" }
-            activePrompt.getAndSet(null)?.updateChannel?.close()
-            logger.trace { "Waiting for prompt channel to close" }
+            // after receiving prompt response we mark the prompt as inactive
+            // and cancel the channel job to stop collecting updates
+            logger.trace { "Marking prompt as inactive" }
+            activePrompt.getAndSet(false)
+            logger.trace { "Cancelling channel job" }
+            channelJob.cancel()
             channelJob.join()
 
             send(Event.PromptResponseEvent(promptResponse))
             close()
         } finally {
-            activePrompt.getAndSet(null)?.updateChannel?.close()
+            activePrompt.getAndSet(false)
             channelJob.cancel()
         }
     }
@@ -137,12 +134,11 @@ internal class ClientSessionImpl(
 //            _currentModel.value = notification.currentModelId
 //        }
 
-        val promptSession = activePrompt.value
         @OptIn(DelicateCoroutinesApi::class)
-        // check for isClosedForSend because the prompt may exist, but the code is waiting for the updates drain
-        if (promptSession != null && !promptSession.updateChannel.isClosedForSend) {
+        // check if there's an active prompt and the channel is open
+        if (activePrompt.value && !updateChannel.isClosedForSend) {
             logger.trace { "Sending update to active prompt: $notification" }
-            promptSession.updateChannel.send(notification)
+            updateChannel.send(notification)
         }
         else {
             logger.trace { "Notifying globally: $notification" }
