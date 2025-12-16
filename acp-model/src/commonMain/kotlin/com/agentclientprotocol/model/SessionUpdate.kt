@@ -15,7 +15,7 @@ import kotlinx.serialization.json.JsonElement
  * Specifies how the agent should collect input for this command.
  */
 @Serializable
-@JsonClassDiscriminator("type")
+@JsonClassDiscriminator(TYPE_DISCRIMINATOR)
 public sealed class AvailableCommandInput {
     /**
      * All text typed after the command name is provided as unstructured input.

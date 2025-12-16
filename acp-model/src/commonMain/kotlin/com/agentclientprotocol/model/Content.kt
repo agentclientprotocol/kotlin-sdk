@@ -15,6 +15,11 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
+ * Common discriminator key used for polymorphic serialization in ACP.
+ */
+internal const val TYPE_DISCRIMINATOR = "type"
+
+/**
  * Content blocks represent displayable information in the Agent Client Protocol.
  *
  * They provide a structured way to handle various types of user-facing content—whether
@@ -23,7 +28,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * See protocol docs: [Content](https://agentclientprotocol.com/protocol/content)
  */
 @Serializable
-@JsonClassDiscriminator("type")
+@JsonClassDiscriminator(TYPE_DISCRIMINATOR)
 public sealed class ContentBlock : AcpWithMeta {
     public abstract val annotations: Annotations?
 
@@ -142,16 +147,16 @@ internal object EmbeddedResourceResourceSerializer :
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<EmbeddedResourceResource> {
         val obj = element.jsonObject
 
-        val explicitType = obj["type"]?.jsonPrimitive?.content
+        val explicitType = obj[TYPE_DISCRIMINATOR]?.jsonPrimitive?.content
         when (explicitType) {
-            "TextResourceContents" -> return EmbeddedResourceResource.TextResourceContents.serializer()
-            "BlobResourceContents" -> return EmbeddedResourceResource.BlobResourceContents.serializer()
+            EmbeddedResourceResource.TextResourceContents::class.simpleName -> return EmbeddedResourceResource.TextResourceContents.serializer()
+            EmbeddedResourceResource.BlobResourceContents::class.simpleName -> return EmbeddedResourceResource.BlobResourceContents.serializer()
         }
 
-        if ("text" in obj) return EmbeddedResourceResource.TextResourceContents.serializer()
-        if ("blob" in obj) return EmbeddedResourceResource.BlobResourceContents.serializer()
+        if (EmbeddedResourceResource.TextResourceContents::text.name in obj) return EmbeddedResourceResource.TextResourceContents.serializer()
+        if (EmbeddedResourceResource.BlobResourceContents::blob.name in obj) return EmbeddedResourceResource.BlobResourceContents.serializer()
 
-        throw SerializationException("Cannot determine EmbeddedResourceResource type; expected 'text' or 'blob'")
+        throw SerializationException("Cannot determine EmbeddedResourceResource type; expected '${EmbeddedResourceResource.TextResourceContents::text.name}' or '${EmbeddedResourceResource.BlobResourceContents::blob.name}'")
     }
 }
 
