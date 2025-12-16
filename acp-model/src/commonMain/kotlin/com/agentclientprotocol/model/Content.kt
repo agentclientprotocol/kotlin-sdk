@@ -3,11 +3,21 @@
 
 package com.agentclientprotocol.model
 
+import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonClassDiscriminator
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonContentPolymorphicSerializer
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
+/**
+ * Common discriminator key used for polymorphic serialization in ACP.
+ */
+internal const val TYPE_DISCRIMINATOR = "type"
 
 /**
  * Content blocks represent displayable information in the Agent Client Protocol.
@@ -18,10 +28,10 @@ import kotlinx.serialization.json.JsonElement
  * See protocol docs: [Content](https://agentclientprotocol.com/protocol/content)
  */
 @Serializable
-@JsonClassDiscriminator("type")
+@JsonClassDiscriminator(TYPE_DISCRIMINATOR)
 public sealed class ContentBlock : AcpWithMeta {
     public abstract val annotations: Annotations?
-    
+
     /**
      * Plain text content
      *
@@ -101,7 +111,7 @@ public sealed class ContentBlock : AcpWithMeta {
 /**
  * Resource content that can be embedded in a message.
  */
-@Serializable
+@Serializable(with = EmbeddedResourceResourceSerializer::class)
 public sealed class EmbeddedResourceResource : AcpWithMeta {
     /**
      * Text-based resource contents.
@@ -126,6 +136,28 @@ public sealed class EmbeddedResourceResource : AcpWithMeta {
         val mimeType: String? = null,
         override val _meta: JsonElement? = null
     ) : EmbeddedResourceResource()
+}
+
+/**
+ * Embedded resources are discriminator-less in the protocol; choose subtype by fields if
+ * discriminator is absent, but still honor an explicit discriminator when provided.
+ */
+internal object EmbeddedResourceResourceSerializer :
+    JsonContentPolymorphicSerializer<EmbeddedResourceResource>(EmbeddedResourceResource::class) {
+    override fun selectDeserializer(element: JsonElement): DeserializationStrategy<EmbeddedResourceResource> {
+        val obj = element.jsonObject
+
+        val explicitType = obj[TYPE_DISCRIMINATOR]?.jsonPrimitive?.content
+        when (explicitType) {
+            EmbeddedResourceResource.TextResourceContents::class.simpleName -> return EmbeddedResourceResource.TextResourceContents.serializer()
+            EmbeddedResourceResource.BlobResourceContents::class.simpleName -> return EmbeddedResourceResource.BlobResourceContents.serializer()
+        }
+
+        if (EmbeddedResourceResource.TextResourceContents::text.name in obj) return EmbeddedResourceResource.TextResourceContents.serializer()
+        if (EmbeddedResourceResource.BlobResourceContents::blob.name in obj) return EmbeddedResourceResource.BlobResourceContents.serializer()
+
+        throw SerializationException("Cannot determine EmbeddedResourceResource type; expected '${EmbeddedResourceResource.TextResourceContents::text.name}' or '${EmbeddedResourceResource.BlobResourceContents::blob.name}'")
+    }
 }
 
 /**
