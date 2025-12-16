@@ -3,11 +3,16 @@
 
 package com.agentclientprotocol.model
 
+import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonClassDiscriminator
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonContentPolymorphicSerializer
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Content blocks represent displayable information in the Agent Client Protocol.
@@ -21,7 +26,7 @@ import kotlinx.serialization.json.JsonElement
 @JsonClassDiscriminator("type")
 public sealed class ContentBlock : AcpWithMeta {
     public abstract val annotations: Annotations?
-    
+
     /**
      * Plain text content
      *
@@ -101,7 +106,7 @@ public sealed class ContentBlock : AcpWithMeta {
 /**
  * Resource content that can be embedded in a message.
  */
-@Serializable
+@Serializable(with = EmbeddedResourceResourceSerializer::class)
 public sealed class EmbeddedResourceResource : AcpWithMeta {
     /**
      * Text-based resource contents.
@@ -126,6 +131,28 @@ public sealed class EmbeddedResourceResource : AcpWithMeta {
         val mimeType: String? = null,
         override val _meta: JsonElement? = null
     ) : EmbeddedResourceResource()
+}
+
+/**
+ * Embedded resources are discriminator-less in the protocol; choose subtype by fields if
+ * discriminator is absent, but still honor an explicit discriminator when provided.
+ */
+internal object EmbeddedResourceResourceSerializer :
+    JsonContentPolymorphicSerializer<EmbeddedResourceResource>(EmbeddedResourceResource::class) {
+    override fun selectDeserializer(element: JsonElement): DeserializationStrategy<EmbeddedResourceResource> {
+        val obj = element.jsonObject
+
+        val explicitType = obj["type"]?.jsonPrimitive?.content
+        when (explicitType) {
+            "TextResourceContents" -> return EmbeddedResourceResource.TextResourceContents.serializer()
+            "BlobResourceContents" -> return EmbeddedResourceResource.BlobResourceContents.serializer()
+        }
+
+        if ("text" in obj) return EmbeddedResourceResource.TextResourceContents.serializer()
+        if ("blob" in obj) return EmbeddedResourceResource.BlobResourceContents.serializer()
+
+        throw SerializationException("Cannot determine EmbeddedResourceResource type; expected 'text' or 'blob'")
+    }
 }
 
 /**
