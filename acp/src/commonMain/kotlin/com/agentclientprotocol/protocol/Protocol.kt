@@ -184,7 +184,7 @@ public class Protocol(
         method: MethodName,
         params: JsonElement?
     ): JsonElement {
-        val requestId = OutgoingRequestId(RequestId(requestIdCounter.incrementAndGet()))
+        val requestId = OutgoingRequestId(RequestId.create(requestIdCounter.incrementAndGet()))
         val deferred = CompletableDeferred<JsonElement>()
 
         pendingOutgoingRequests.update { it.put(requestId, deferred) }
