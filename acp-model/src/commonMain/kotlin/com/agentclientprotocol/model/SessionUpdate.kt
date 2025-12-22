@@ -3,6 +3,7 @@
 
 package com.agentclientprotocol.model
 
+import com.agentclientprotocol.annotations.UnstableApi
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -146,4 +147,35 @@ public sealed class SessionUpdate {
     public data class CurrentModeUpdate(
         val currentModeId: SessionModeId
     ) : SessionUpdate()
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Configuration options have been updated.
+     */
+    @UnstableApi
+    @Serializable
+    @SerialName("config_option_update")
+    public data class ConfigOptionUpdate(
+        val configOptions: List<SessionConfigOption>,
+        override val _meta: JsonElement? = null
+    ) : SessionUpdate(), AcpWithMeta
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Session information has been updated.
+     */
+    @UnstableApi
+    @Serializable
+    @SerialName("session_info_update")
+    public data class SessionInfoUpdate(
+        val title: String? = null,
+        val updatedAt: String? = null,
+        override val _meta: JsonElement? = null
+    ) : SessionUpdate(), AcpWithMeta
 }

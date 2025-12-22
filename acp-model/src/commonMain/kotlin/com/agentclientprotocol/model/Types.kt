@@ -89,6 +89,48 @@ public value class ModelId(public val value: String) {
 }
 
 /**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Unique identifier for a session configuration option.
+ */
+@UnstableApi
+@JvmInline
+@Serializable
+public value class SessionConfigId(public val value: String) {
+    override fun toString(): String = value
+}
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Unique identifier for a session configuration value.
+ */
+@UnstableApi
+@JvmInline
+@Serializable
+public value class SessionConfigValueId(public val value: String) {
+    override fun toString(): String = value
+}
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Unique identifier for a session configuration group.
+ */
+@UnstableApi
+@JvmInline
+@Serializable
+public value class SessionConfigGroupId(public val value: String) {
+    override fun toString(): String = value
+}
+
+/**
  * The sender or recipient of messages and data in a conversation.
  */
 @Serializable
@@ -118,5 +160,22 @@ public data class Annotations(
     val audience: List<Role>? = null,
     val priority: Double? = null,
     val lastModified: String? = null,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Information about an existing session.
+ */
+@UnstableApi
+@Serializable
+public data class SessionInfo(
+    val sessionId: SessionId,
+    val cwd: String,
+    val title: String? = null,
+    val updatedAt: String? = null,
     override val _meta: JsonElement? = null
 ) : AcpWithMeta
