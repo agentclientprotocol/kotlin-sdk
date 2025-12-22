@@ -2,6 +2,7 @@
 
 package com.agentclientprotocol.rpc
 
+import com.agentclientprotocol.model.AvailableCommandInput
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
@@ -16,6 +17,8 @@ import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.modules.polymorphic
 import kotlin.jvm.JvmInline
 
 /**
@@ -170,6 +173,13 @@ public enum class JsonRpcErrorCode(public val code: Int, public val message: Str
     RESOURCE_NOT_FOUND(-32002, "Resource not found")
 }
 
+private val acpSerializersModule = SerializersModule {
+    polymorphic(AvailableCommandInput::class) {
+        subclass(AvailableCommandInput.Unstructured::class, AvailableCommandInput.Unstructured.serializer())
+        defaultDeserializer { AvailableCommandInput.Unstructured.serializer() }
+    }
+}
+
 @OptIn(ExperimentalSerializationApi::class)
 public val ACPJson: Json by lazy {
     Json {
@@ -177,6 +187,7 @@ public val ACPJson: Json by lazy {
         encodeDefaults = true
         isLenient = true
         explicitNulls = false
+        serializersModule = acpSerializersModule
     }
 }
 
