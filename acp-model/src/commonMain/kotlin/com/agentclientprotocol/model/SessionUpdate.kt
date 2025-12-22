@@ -13,6 +13,9 @@ import kotlinx.serialization.json.JsonElement
  * Input specification for a command.
  *
  * Specifies how the agent should collect input for this command.
+ *
+ * Note: Default deserializer for this sealed class is configured in [com.agentclientprotocol.rpc.ACPJson]
+ * to fall back to [Unstructured] when no type discriminator is present.
  */
 @Serializable
 @JsonClassDiscriminator(TYPE_DISCRIMINATOR)

@@ -5,7 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class EmbeddedResourceResourceTest {
+class SerializationTests {
 
     @Test
     fun `decodes resource content without discriminator`() {
@@ -49,5 +49,54 @@ class EmbeddedResourceResourceTest {
         assertEquals("ZGF0YQ==", resource.blob)
         assertEquals("application/octet-stream", resource.mimeType)
         assertEquals("file:///tmp/data.bin", resource.uri)
+    }
+
+    @Test
+    fun `decodes AvailableCommandInput without discriminator defaults to Unstructured`() {
+        val payload = """
+            {
+              "hint": "optional custom review instructions"
+            }
+        """.trimIndent()
+
+        val input = ACPJson.decodeFromString(AvailableCommandInput.serializer(), payload)
+
+        assertTrue(input is AvailableCommandInput.Unstructured)
+        assertEquals("optional custom review instructions", input.hint)
+    }
+
+    @Test
+    fun `decodes AvailableCommandInput with explicit discriminator`() {
+        val payload = """
+            {
+              "type": "unstructured",
+              "hint": "enter your query"
+            }
+        """.trimIndent()
+
+        val input = ACPJson.decodeFromString(AvailableCommandInput.serializer(), payload)
+
+        assertTrue(input is AvailableCommandInput.Unstructured)
+        assertEquals("enter your query", input.hint)
+    }
+
+    @Test
+    fun `decodes AvailableCommand with input without discriminator`() {
+        val payload = """
+            {
+              "name": "review",
+              "description": "Review code",
+              "input": {
+                "hint": "optional custom review instructions"
+              }
+            }
+        """.trimIndent()
+
+        val command = ACPJson.decodeFromString(AvailableCommand.serializer(), payload)
+
+        assertEquals("review", command.name)
+        assertEquals("Review code", command.description)
+        assertTrue(command.input is AvailableCommandInput.Unstructured)
+        assertEquals("optional custom review instructions", command.input.hint)
     }
 }
