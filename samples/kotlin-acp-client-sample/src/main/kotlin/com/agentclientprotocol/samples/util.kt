@@ -40,6 +40,13 @@ fun SessionUpdate.render() {
             println("User: ${this.content.render()}")
         }
 
+        is SessionUpdate.ConfigOptionUpdate -> {
+            println("Configuration options updated")
+        }
+
+        is SessionUpdate.SessionInfoUpdate -> {
+            println("Session info updated: title=${this.title}, updatedAt=${this.updatedAt}")
+        }
     }
 }
 
