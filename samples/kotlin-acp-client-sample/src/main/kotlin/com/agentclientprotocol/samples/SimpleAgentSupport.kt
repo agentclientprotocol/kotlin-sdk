@@ -180,7 +180,7 @@ class SimpleAgentSession(
 
             emit(Event.SessionUpdateEvent(
                 SessionUpdate.AgentMessageChunk(
-                    ContentBlock.Text("\nTerminal output: ${outputResponse.output} (exit code: ${exitResponse.exitCode})")
+                    ContentBlock.Text("\nTerminal output: ${outputResponse.output} (exit code: ${exitResponse?.exitCode})")
                 )
             ))
         } catch (e: Exception) {
