@@ -30,12 +30,6 @@ public class com/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod : 
 	public final fun getResponseSerializer ()Lkotlinx/serialization/KSerializer;
 }
 
-public class com/agentclientprotocol/model/AcpMethod$AcpRequestResponseNullableMethod : com/agentclientprotocol/model/AcpMethod {
-	public fun <init> (Ljava/lang/String;Lkotlinx/serialization/KSerializer;Lkotlinx/serialization/KSerializer;)V
-	public final fun getRequestSerializer ()Lkotlinx/serialization/KSerializer;
-	public final fun getResponseSerializer ()Lkotlinx/serialization/KSerializer;
-}
-
 public class com/agentclientprotocol/model/AcpMethod$AcpSessionNotificationMethod : com/agentclientprotocol/model/AcpMethod$AcpNotificationMethod {
 	public fun <init> (Ljava/lang/String;Lkotlinx/serialization/KSerializer;)V
 }
@@ -44,15 +38,11 @@ public class com/agentclientprotocol/model/AcpMethod$AcpSessionRequestResponseMe
 	public fun <init> (Ljava/lang/String;Lkotlinx/serialization/KSerializer;Lkotlinx/serialization/KSerializer;)V
 }
 
-public class com/agentclientprotocol/model/AcpMethod$AcpSessionRequestResponseNullableMethod : com/agentclientprotocol/model/AcpMethod$AcpRequestResponseNullableMethod {
-	public fun <init> (Ljava/lang/String;Lkotlinx/serialization/KSerializer;Lkotlinx/serialization/KSerializer;)V
-}
-
 public final class com/agentclientprotocol/model/AcpMethod$AgentMethods {
 	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods;
 }
 
-public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$Authenticate : com/agentclientprotocol/model/AcpMethod$AcpRequestResponseNullableMethod {
+public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$Authenticate : com/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod {
 	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$Authenticate;
 }
 
@@ -76,11 +66,11 @@ public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$SessionP
 	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$SessionPrompt;
 }
 
-public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$SessionSetMode : com/agentclientprotocol/model/AcpMethod$AcpSessionRequestResponseNullableMethod {
+public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$SessionSetMode : com/agentclientprotocol/model/AcpMethod$AcpSessionRequestResponseMethod {
 	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$SessionSetMode;
 }
 
-public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$SessionSetModel : com/agentclientprotocol/model/AcpMethod$AcpSessionRequestResponseNullableMethod {
+public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$SessionSetModel : com/agentclientprotocol/model/AcpMethod$AcpSessionRequestResponseMethod {
 	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$SessionSetModel;
 }
 
@@ -92,7 +82,7 @@ public final class com/agentclientprotocol/model/AcpMethod$ClientMethods$FsReadT
 	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$ClientMethods$FsReadTextFile;
 }
 
-public final class com/agentclientprotocol/model/AcpMethod$ClientMethods$FsWriteTextFile : com/agentclientprotocol/model/AcpMethod$AcpSessionRequestResponseNullableMethod {
+public final class com/agentclientprotocol/model/AcpMethod$ClientMethods$FsWriteTextFile : com/agentclientprotocol/model/AcpMethod$AcpSessionRequestResponseMethod {
 	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$ClientMethods$FsWriteTextFile;
 }
 
@@ -108,7 +98,7 @@ public final class com/agentclientprotocol/model/AcpMethod$ClientMethods$Termina
 	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$ClientMethods$TerminalCreate;
 }
 
-public final class com/agentclientprotocol/model/AcpMethod$ClientMethods$TerminalKill : com/agentclientprotocol/model/AcpMethod$AcpSessionRequestResponseNullableMethod {
+public final class com/agentclientprotocol/model/AcpMethod$ClientMethods$TerminalKill : com/agentclientprotocol/model/AcpMethod$AcpSessionRequestResponseMethod {
 	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$ClientMethods$TerminalKill;
 }
 
@@ -116,11 +106,11 @@ public final class com/agentclientprotocol/model/AcpMethod$ClientMethods$Termina
 	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$ClientMethods$TerminalOutput;
 }
 
-public final class com/agentclientprotocol/model/AcpMethod$ClientMethods$TerminalRelease : com/agentclientprotocol/model/AcpMethod$AcpSessionRequestResponseNullableMethod {
+public final class com/agentclientprotocol/model/AcpMethod$ClientMethods$TerminalRelease : com/agentclientprotocol/model/AcpMethod$AcpSessionRequestResponseMethod {
 	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$ClientMethods$TerminalRelease;
 }
 
-public final class com/agentclientprotocol/model/AcpMethod$ClientMethods$TerminalWaitForExit : com/agentclientprotocol/model/AcpMethod$AcpSessionRequestResponseNullableMethod {
+public final class com/agentclientprotocol/model/AcpMethod$ClientMethods$TerminalWaitForExit : com/agentclientprotocol/model/AcpMethod$AcpSessionRequestResponseMethod {
 	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$ClientMethods$TerminalWaitForExit;
 }
 

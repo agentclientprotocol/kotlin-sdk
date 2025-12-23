@@ -192,37 +192,6 @@ abstract class FeaturesTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
 
 
 
-    @Test
-    fun `authenticate returns null when agent returns null`() = testWithProtocols { clientProtocol, agentProtocol ->
-        val client = Client(protocol = clientProtocol)
-
-        val agentSupport = object : AgentSupport {
-            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
-                return AgentInfo(clientInfo.protocolVersion)
-            }
-
-            override suspend fun authenticate(methodId: AuthMethodId, _meta: JsonElement?): AuthenticateResponse? {
-                // Return null to simulate {"jsonrpc":"2.0","id":3,"result":null} response
-                return null
-            }
-
-            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
-                return TestAgentSession()
-            }
-
-            override suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters): AgentSession {
-                return TestAgentSession()
-            }
-        }
-        Agent(agentProtocol, agentSupport)
-
-        client.initialize(ClientInfo())
-
-        // This should correctly handle the null response without throwing an exception
-        val result = client.authenticate(AuthMethodId("test-auth"))
-        assertNull(result, "authenticate should return null when agent returns null")
-    }
-
 //    @Test
 //    fun `call agent extension from client`(): TestResult = testWithProtocols { clientProtocol, agentProtocol ->
 //

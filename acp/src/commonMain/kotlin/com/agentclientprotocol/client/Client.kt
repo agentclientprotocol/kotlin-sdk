@@ -148,7 +148,7 @@ public class Client(
      * Performs authentication of the agent with the specified [methodId].
      * The method may throw an exception if the authentication fails.
      */
-    public suspend fun authenticate(methodId: AuthMethodId, _meta: JsonElement? = null): AuthenticateResponse? {
+    public suspend fun authenticate(methodId: AuthMethodId, _meta: JsonElement? = null): AuthenticateResponse {
         return AcpMethod.AgentMethods.Authenticate(protocol, AuthenticateRequest(methodId, _meta))
     }
 
