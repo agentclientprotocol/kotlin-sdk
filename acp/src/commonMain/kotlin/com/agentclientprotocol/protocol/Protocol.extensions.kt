@@ -7,6 +7,7 @@ import com.agentclientprotocol.model.AcpResponse
 import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.JsonRpcRequest
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlin.coroutines.AbstractCoroutineContextElement
@@ -22,7 +23,8 @@ public suspend fun <TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOp
     request: TRequest?
 ): TResponse {
     val params = request?.let { ACPJson.encodeToJsonElement(method.requestSerializer, request) }
-    val responseJson = this.sendRequestRaw(method.methodName, params)
+    // if we've got null, we can interpret it as {}
+    val responseJson = this.sendRequestRaw(method.methodName, params).takeIf { it != JsonNull } ?: buildJsonObject {  }
     return ACPJson.decodeFromJsonElement(method.responseSerializer, responseJson)
 }
 
