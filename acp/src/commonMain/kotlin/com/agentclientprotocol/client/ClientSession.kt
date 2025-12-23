@@ -49,7 +49,7 @@ public interface ClientSession {
     /**
      * Changes the session mode to the specified mode. The real change will be reported by an agent via [currentMode] and [ClientSessionOperations.notify].
      */
-    public suspend fun setMode(modeId: SessionModeId, _meta: JsonElement? = null): SetSessionModeResponse
+    public suspend fun setMode(modeId: SessionModeId, _meta: JsonElement? = null): SetSessionModeResponse?
 
     /**
      * The flag indicates whether the agent supports the session model changing.
@@ -75,5 +75,5 @@ public interface ClientSession {
      * Changes the session model to the specified model. The real change will be reported by an agent via [currentModel] and [ClientSessionOperations.notify].
      */
     @UnstableApi
-    public suspend fun setModel(modelId: ModelId, _meta: JsonElement? = null): SetSessionModelResponse
+    public suspend fun setModel(modelId: ModelId, _meta: JsonElement? = null): SetSessionModelResponse?
 }

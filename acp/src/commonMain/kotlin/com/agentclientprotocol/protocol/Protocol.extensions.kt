@@ -7,6 +7,7 @@ import com.agentclientprotocol.model.AcpResponse
 import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.JsonRpcRequest
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlin.coroutines.AbstractCoroutineContextElement
@@ -23,6 +24,16 @@ public suspend fun <TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOp
 ): TResponse {
     val params = request?.let { ACPJson.encodeToJsonElement(method.requestSerializer, request) }
     val responseJson = this.sendRequestRaw(method.methodName, params)
+    return ACPJson.decodeFromJsonElement(method.responseSerializer, responseJson)
+}
+
+public suspend fun <TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOperations.sendRequestNullable(
+    method: AcpMethod.AcpRequestResponseNullableMethod<TRequest, TResponse>,
+    request: TRequest?
+): TResponse? {
+    val params = request?.let { ACPJson.encodeToJsonElement(method.requestSerializer, request) }
+    val responseJson = this.sendRequestRaw(method.methodName, params)
+    if (responseJson is JsonNull) return null
     return ACPJson.decodeFromJsonElement(method.responseSerializer, responseJson)
 }
 
@@ -51,6 +62,21 @@ public fun<TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOperations.
         ACPJson.encodeToJsonElement(method.responseSerializer, responseObject)
     }
 }
+
+/**
+ * Register a handler for incoming requests.
+ */
+public fun<TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOperations.setRequestHandler(
+    method: AcpMethod.AcpRequestResponseNullableMethod<TRequest, TResponse>,
+    additionalContext: CoroutineContext = EmptyCoroutineContext,
+    handler: suspend (TRequest) -> TResponse?
+) {
+    this.setRequestHandlerRaw(method, additionalContext) { request ->
+        val requestParams = ACPJson.decodeFromJsonElement(method.requestSerializer, request.params ?: JsonNull)
+        val responseObject = handler(requestParams)
+        responseObject?.let { ACPJson.encodeToJsonElement(method.responseSerializer, responseObject) } ?: JsonNull
+    }
+}
 /**
  * Register a handler for incoming notifications.
  */
@@ -67,6 +93,10 @@ public fun<TNotification : AcpNotification> RpcMethodsOperations.setNotification
 
 public suspend operator fun <TRequest: AcpRequest, TResponse: AcpResponse> AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>.invoke(rpc: RpcMethodsOperations, request: TRequest): TResponse {
     return rpc.sendRequest(this, request)
+}
+
+public suspend operator fun <TRequest: AcpRequest, TResponse: AcpResponse> AcpMethod.AcpRequestResponseNullableMethod<TRequest, TResponse>.invoke(rpc: RpcMethodsOperations, request: TRequest): TResponse? {
+    return rpc.sendRequestNullable(this, request)
 }
 
 public operator fun <TNotification : AcpNotification> AcpMethod.AcpNotificationMethod<TNotification>.invoke(rpc: RpcMethodsOperations, notification: TNotification) {

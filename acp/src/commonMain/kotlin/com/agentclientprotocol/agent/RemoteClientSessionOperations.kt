@@ -36,7 +36,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
         path: String,
         content: String,
         _meta: JsonElement?,
-    ): WriteTextFileResponse {
+    ): WriteTextFileResponse? {
         if (clientCapabilities.fs?.writeTextFile != true) error("Client does not support fs.writeTextFile capability")
         return AcpMethod.ClientMethods.FsWriteTextFile(rpc, WriteTextFileRequest(sessionId, path, content, _meta))
     }
@@ -64,7 +64,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
     override suspend fun terminalRelease(
         terminalId: String,
         _meta: JsonElement?,
-    ): ReleaseTerminalResponse {
+    ): ReleaseTerminalResponse? {
         if (!clientCapabilities.terminal) error("Client does not support terminal capability")
         return AcpMethod.ClientMethods.TerminalRelease(rpc, ReleaseTerminalRequest(sessionId, terminalId, _meta))
     }
@@ -72,7 +72,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
     override suspend fun terminalWaitForExit(
         terminalId: String,
         _meta: JsonElement?,
-    ): WaitForTerminalExitResponse {
+    ): WaitForTerminalExitResponse? {
         if (!clientCapabilities.terminal) error("Client does not support terminal capability")
         return AcpMethod.ClientMethods.TerminalWaitForExit(rpc, WaitForTerminalExitRequest(sessionId, terminalId, _meta))
     }
@@ -80,7 +80,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
     override suspend fun terminalKill(
         terminalId: String,
         _meta: JsonElement?,
-    ): KillTerminalCommandResponse {
+    ): KillTerminalCommandResponse? {
         if (!clientCapabilities.terminal) error("Client does not support terminal capability")
         return AcpMethod.ClientMethods.TerminalKill(rpc, KillTerminalCommandRequest(sessionId, terminalId, _meta))
     }

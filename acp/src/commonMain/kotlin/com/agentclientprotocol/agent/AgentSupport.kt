@@ -9,7 +9,7 @@ import kotlinx.serialization.json.JsonElement
 
 public interface AgentSupport {
     public suspend fun initialize(clientInfo: ClientInfo): AgentInfo
-    public suspend fun authenticate(methodId: AuthMethodId, _meta: JsonElement?): AuthenticateResponse = AuthenticateResponse()
+    public suspend fun authenticate(methodId: AuthMethodId, _meta: JsonElement?): AuthenticateResponse? = AuthenticateResponse()
     public suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters): AgentSession
 }
