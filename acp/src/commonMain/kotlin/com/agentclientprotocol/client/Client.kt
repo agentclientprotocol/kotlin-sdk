@@ -3,6 +3,7 @@
 package com.agentclientprotocol.client
 
 import com.agentclientprotocol.agent.AgentInfo
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.FileSystemOperations
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.common.TerminalOperations
@@ -206,17 +207,67 @@ public class Client(
      *
      * This capability is not part of the spec yet, and may be removed or changed at any point.
      *
-     * Resume an existing session without returning previous messages.
+     * Lists existing sessions with optional filtering and pagination.
+     *
+     * @param cwd optional current working directory filter
+     * @param cursor optional cursor for pagination
+     * @param _meta optional metadata
+     * @return a [ListSessionsResponse] containing the list of sessions and optional next cursor
+     */
+    @OptIn(UnstableApi::class)
+    @UnstableApi
+    public suspend fun listSessions(cwd: String? = null, cursor: String? = null, _meta: JsonElement? = null): ListSessionsResponse {
+        return AcpMethod.AgentMethods.SessionList(protocol, ListSessionsRequest(cwd, cursor, _meta))
+    }
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Forks an existing session, creating a new session based on the existing session's context.
+     *
+     * @param sessionId the id of the session to fork
+     * @param sessionParameters parameters for the forked session
+     * @param operationsFactory a factory for creating [com.agentclientprotocol.common.ClientSessionOperations] for the new session.
+     * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
+     * See [ClientOperationsFactory.createClientOperations] for more details.
+     * @return a [ClientSession] instance for the forked session
+     */
+    @UnstableApi
+    public suspend fun forkSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
+        return withInitializingSession {
+            val forkSessionResponse = AcpMethod.AgentMethods.SessionFork(
+                protocol,
+                ForkSessionRequest(
+                    sessionId,
+                    sessionParameters.cwd,
+                    sessionParameters.mcpServers,
+                    sessionParameters._meta
+                )
+            )
+            val newSessionId = forkSessionResponse.sessionId
+            return@withInitializingSession createSession(newSessionId, sessionParameters, forkSessionResponse, operationsFactory)
+        }
+    }
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Resumes an existing session without replaying message history.
      *
      * This method is only available if the agent advertises the `session.resume` capability.
      *
-     * @param sessionId the id of the existing session to resume
+     * @param sessionId the id of the session to resume
      * @param sessionParameters parameters for resuming the session
      * @param operationsFactory a factory for creating [com.agentclientprotocol.common.ClientSessionOperations] for the session.
      * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
      * See [ClientOperationsFactory.createClientOperations] for more details.
      * @return a [ClientSession] instance for the resumed session
      */
+    @UnstableApi
     public suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
         return withInitializingSession {
             val resumeSessionResponse = AcpMethod.AgentMethods.SessionResume(

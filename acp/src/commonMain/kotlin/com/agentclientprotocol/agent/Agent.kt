@@ -1,5 +1,6 @@
 package com.agentclientprotocol.agent
 
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.ClientInfo
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
@@ -132,25 +133,35 @@ public class Agent(
             return@setRequestHandler agentSupport.authenticate(params.methodId, params._meta)
         }
 
+        // Unstable session methods
+        @OptIn(UnstableApi::class)
+        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionList) { params: ListSessionsRequest ->
+            return@setRequestHandler agentSupport.listSessions(params.cwd, params.cursor, params._meta)
+        }
+
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionNew) { params: NewSessionRequest ->
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params._meta)
             val session = createSession(sessionParameters) { agentSupport.createSession(it) }
 
+            @OptIn(UnstableApi::class)
             return@setRequestHandler NewSessionResponse(
                 sessionId = session.sessionId,
                 modes = session.asModeState(),
-                models = session.asModelState()
+                models = session.asModelState(),
+                configOptions = session.asConfigOptionsState()
             )
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionLoad) { params: LoadSessionRequest ->
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params._meta)
             val session = createSession(sessionParameters) { agentSupport.loadSession(params.sessionId, sessionParameters) }
+            @OptIn(UnstableApi::class)
             return@setRequestHandler LoadSessionResponse(
                 // maybe unify result of these two methods to have sessionId in both
 //                sessionId = session.sessionId,
                 modes = session.asModeState(),
-                models = session.asModelState()
+                models = session.asModelState(),
+                configOptions = session.asConfigOptionsState()
             )
         }
 
@@ -169,6 +180,7 @@ public class Agent(
                 session.agentSession.setMode(params.modeId, params._meta)
             }
         }
+        @OptIn(UnstableApi::class)
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionSetModel) { params: SetSessionModelRequest ->
             val session = getSessionOrThrow(params.sessionId)
             return@setRequestHandler session.executeWithSession {
@@ -187,6 +199,37 @@ public class Agent(
             val session = getSessionOrThrow(params.sessionId)
             session.executeWithSession {
                 session.cancel()
+            }
+        }
+
+        @OptIn(UnstableApi::class)
+        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionFork) { params: ForkSessionRequest ->
+            val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params._meta)
+            val session = createSession(sessionParameters) { agentSupport.forkSession(params.sessionId, sessionParameters) }
+            return@setRequestHandler ForkSessionResponse(
+                sessionId = session.sessionId,
+                modes = session.asModeState(),
+                models = session.asModelState(),
+                configOptions = session.asConfigOptionsState()
+            )
+        }
+
+        @OptIn(UnstableApi::class)
+        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionResume) { params: ResumeSessionRequest ->
+            val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params._meta)
+            val session = createSession(sessionParameters) { agentSupport.resumeSession(params.sessionId, sessionParameters) }
+            return@setRequestHandler ResumeSessionResponse(
+                modes = session.asModeState(),
+                models = session.asModelState(),
+                configOptions = session.asConfigOptionsState()
+            )
+        }
+
+        @OptIn(UnstableApi::class)
+        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionSetConfigOption) { params: SetSessionConfigOptionRequest ->
+            val session = getSessionOrThrow(params.sessionId)
+            return@setRequestHandler session.executeWithSession {
+                session.agentSession.setConfigOption(params.configId, params.value, params._meta)
             }
         }
     }

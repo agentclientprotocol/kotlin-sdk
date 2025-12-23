@@ -391,12 +391,15 @@ public data class SessionModelState(
  *
  * See protocol docs: [Creating a Session](https://agentclientprotocol.com/protocol/session-setup#creating-a-session)
  */
+@OptIn(UnstableApi::class)
 @Serializable
 public data class NewSessionResponse(
     override val sessionId: SessionId,
     override val modes: SessionModeState? = null,
+    @property:UnstableApi
     override val models: SessionModelState? = null,
-    val configOptions: List<SessionConfigOption>? = null,
+    @property:UnstableApi
+    override val configOptions: List<SessionConfigOption>? = null,
     override val _meta: JsonElement? = null
 ) : AcpCreatedSessionResponse, AcpResponse, AcpWithSessionId
 
@@ -414,11 +417,14 @@ public data class PromptResponse(
 /**
  * Response from loading an existing session.
  */
+@OptIn(UnstableApi::class)
 @Serializable
 public data class LoadSessionResponse(
     override val modes: SessionModeState? = null,
+    @property:UnstableApi
     override val models: SessionModelState? = null,
-    val configOptions: List<SessionConfigOption>? = null,
+    @property:UnstableApi
+    override val configOptions: List<SessionConfigOption>? = null,
     override val _meta: JsonElement? = null
 ) : AcpCreatedSessionResponse, AcpResponse
 
@@ -530,8 +536,10 @@ public data class ForkSessionRequest(
 public data class ForkSessionResponse(
     override val sessionId: SessionId,
     override val modes: SessionModeState? = null,
+    @property:UnstableApi
     override val models: SessionModelState? = null,
-    val configOptions: List<SessionConfigOption>? = null,
+    @property:UnstableApi
+    override val configOptions: List<SessionConfigOption>? = null,
     override val _meta: JsonElement? = null
 ) : AcpCreatedSessionResponse, AcpResponse, AcpWithSessionId
 
@@ -545,10 +553,10 @@ public data class ForkSessionResponse(
 @UnstableApi
 @Serializable
 public data class ListSessionsRequest(
-    val cursor: String? = null,
     val cwd: String? = null,
+    override val cursor: String? = null,
     override val _meta: JsonElement? = null
-) : AcpRequest
+) : AcpRequest, AcpPaginatedRequest
 
 /**
  * **UNSTABLE**
@@ -561,9 +569,9 @@ public data class ListSessionsRequest(
 @Serializable
 public data class ListSessionsResponse(
     val sessions: List<SessionInfo>,
-    val nextCursor: String? = null,
+    override val nextCursor: String? = null,
     override val _meta: JsonElement? = null
-) : AcpResponse
+) : AcpResponse, AcpPaginatedResponse
 
 /**
  * **UNSTABLE**
@@ -592,8 +600,10 @@ public data class ResumeSessionRequest(
 @Serializable
 public data class ResumeSessionResponse(
     override val modes: SessionModeState? = null,
+    @property:UnstableApi
     override val models: SessionModelState? = null,
-    val configOptions: List<SessionConfigOption>? = null,
+    @property:UnstableApi
+    override val configOptions: List<SessionConfigOption>? = null,
     override val _meta: JsonElement? = null
 ) : AcpCreatedSessionResponse, AcpResponse
 

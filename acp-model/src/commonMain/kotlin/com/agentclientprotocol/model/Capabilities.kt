@@ -104,6 +104,7 @@ public data class SessionResumeCapabilities(
 /**
  * Session capabilities supported by the agent.
  */
+@OptIn(UnstableApi::class)
 @Serializable
 public data class SessionCapabilities(
     val fork: SessionForkCapabilities? = null,
@@ -120,6 +121,7 @@ public data class SessionCapabilities(
  *
  * See protocol docs: [Agent Capabilities](https://agentclientprotocol.com/protocol/initialization#agent-capabilities)
  */
+@OptIn(UnstableApi::class)
 @Serializable
 public data class AgentCapabilities(
     @EncodeDefault val loadSession: Boolean = false,

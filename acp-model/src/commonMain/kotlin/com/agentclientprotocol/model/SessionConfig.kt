@@ -80,6 +80,7 @@ public sealed class SessionConfigSelectOptions {
  *
  * Polymorphic serializer for [SessionConfigSelectOptions].
  */
+@OptIn(UnstableApi::class)
 internal object SessionConfigSelectOptionsSerializer :
     JsonContentPolymorphicSerializer<SessionConfigSelectOptions>(SessionConfigSelectOptions::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<SessionConfigSelectOptions> {
