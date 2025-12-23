@@ -53,6 +53,16 @@ public open class AcpMethod(public val methodName: MethodName) {
         public object SessionSetMode : AcpSessionRequestResponseMethod<SetSessionModeRequest, SetSessionModeResponse>("session/set_mode", SetSessionModeRequest.serializer(), SetSessionModeResponse.serializer())
         @UnstableApi
         public object SessionSetModel : AcpSessionRequestResponseMethod<SetSessionModelRequest, SetSessionModelResponse>("session/set_model", SetSessionModelRequest.serializer(), SetSessionModelResponse.serializer())
+
+        // unstable session methods
+        @UnstableApi
+        public object SessionFork : AcpSessionRequestResponseMethod<ForkSessionRequest, ForkSessionResponse>("session/fork", ForkSessionRequest.serializer(), ForkSessionResponse.serializer())
+        @UnstableApi
+        public object SessionList : AcpRequestResponseMethod<ListSessionsRequest, ListSessionsResponse>("session/list", ListSessionsRequest.serializer(), ListSessionsResponse.serializer())
+        @UnstableApi
+        public object SessionResume : AcpSessionRequestResponseMethod<ResumeSessionRequest, ResumeSessionResponse>("session/resume", ResumeSessionRequest.serializer(), ResumeSessionResponse.serializer())
+        @UnstableApi
+        public object SessionSetConfigOption : AcpSessionRequestResponseMethod<SetSessionConfigOptionRequest, SetSessionConfigOptionResponse>("session/set_config_option", SetSessionConfigOptionRequest.serializer(), SetSessionConfigOptionResponse.serializer())
     }
 
     public object ClientMethods {

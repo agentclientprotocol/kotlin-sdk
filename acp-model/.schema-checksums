@@ -3,9 +3,9 @@
 # Format: SHA256 FILENAME
 
 # Stable schemas
-796e38e275a1587b5a711a4b4508cb69825448b70e79b14bdb4256b24688b89d  schema/schema.json
+07f2cdfd7814496ebdab83fb7417787fa1dddc6276b11cd31b51be2f8ba95f2b  schema/schema.json
 f242b95def9a9cbfddd2db1a45d8d3d489ad1b4f564a1322547c90a94c647637  schema/meta.json
 
 # Unstable schemas
-4a886716877f97bc24c4c7f1ae24c9ad06a779107afbdf0718110fc50b5135b7  schema/schema.unstable.json
-8ad80116767e0921970b28766c214d7921268653544d5996a8e2814e1244d4d2  schema/meta.unstable.json
+75d180b9c589cd7d79a5a9cbb6680d52e1bce71238839871441d30c753b497a9  schema/schema.unstable.json
+e87ae9b3fc3b05f88da6dfc06d003e5263d6a041b1c934ed13b83173b39ed111  schema/meta.unstable.json
