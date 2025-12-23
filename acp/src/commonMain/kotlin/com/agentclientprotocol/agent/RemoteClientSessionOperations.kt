@@ -36,9 +36,9 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
         path: String,
         content: String,
         _meta: JsonElement?,
-    ): WriteTextFileResponse {
+    ): WriteTextFileResponse? {
         if (clientCapabilities.fs?.writeTextFile != true) error("Client does not support fs.writeTextFile capability")
-        return AcpMethod.ClientMethods.FsWriteTextFile(rpc, WriteTextFileRequest(sessionId, path, content, _meta)) ?: WriteTextFileResponse()
+        return AcpMethod.ClientMethods.FsWriteTextFile(rpc, WriteTextFileRequest(sessionId, path, content, _meta))
     }
 
     override suspend fun terminalCreate(

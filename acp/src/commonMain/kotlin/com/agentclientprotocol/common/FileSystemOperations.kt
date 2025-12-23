@@ -13,7 +13,7 @@ public interface FileSystemOperations {
     }
     public suspend fun fsWriteTextFile(path: String,
                                        content: String,
-                                       _meta: JsonElement? = null): WriteTextFileResponse {
+                                       _meta: JsonElement? = null): WriteTextFileResponse? {
         throw NotImplementedError("Must be implemented by client when advertising fs.writeTextFile capability")
     }
 }
