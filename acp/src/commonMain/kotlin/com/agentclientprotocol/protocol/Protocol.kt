@@ -87,12 +87,6 @@ public interface RpcMethodsOperations {
         handler: suspend (JsonRpcRequest) -> JsonElement?
     )
 
-    public fun setRequestHandlerRaw(
-        method: AcpMethod.AcpRequestResponseNullableMethod<*, *>,
-        additionalContext: CoroutineContext = EmptyCoroutineContext,
-        handler: suspend (JsonRpcRequest) -> JsonElement?
-    )
-
     public fun setNotificationHandlerRaw(
         method: AcpMethod.AcpNotificationMethod<*>,
         additionalContext: CoroutineContext = EmptyCoroutineContext,
@@ -268,22 +262,6 @@ public class Protocol(
      */
     public override fun setRequestHandlerRaw(
         method: AcpMethod.AcpRequestResponseMethod<*, *>,
-        additionalContext: CoroutineContext,
-        handler: suspend (JsonRpcRequest) -> JsonElement?
-    ) {
-        doSetRequestHandlerRaw(method, additionalContext, handler)
-    }
-
-    override fun setRequestHandlerRaw(
-        method: AcpMethod.AcpRequestResponseNullableMethod<*, *>,
-        additionalContext: CoroutineContext,
-        handler: suspend (JsonRpcRequest) -> JsonElement?
-    ) {
-        doSetRequestHandlerRaw(method, additionalContext, handler)
-    }
-
-    private fun doSetRequestHandlerRaw(
-        method: AcpMethod,
         additionalContext: CoroutineContext,
         handler: suspend (JsonRpcRequest) -> JsonElement?
     ) {

@@ -96,7 +96,7 @@ internal class ClientSessionImpl(
         get() = _currentMode
 
 
-    override suspend fun setMode(modeId: SessionModeId, _meta: JsonElement?): SetSessionModeResponse? {
+    override suspend fun setMode(modeId: SessionModeId, _meta: JsonElement?): SetSessionModeResponse {
         return AcpMethod.AgentMethods.SessionSetMode(protocol, SetSessionModeRequest(sessionId, modeId, _meta))
     }
 
@@ -113,7 +113,7 @@ internal class ClientSessionImpl(
         get() = _currentModel
 
     @UnstableApi
-    override suspend fun setModel(modelId: ModelId, _meta: JsonElement?): SetSessionModelResponse? {
+    override suspend fun setModel(modelId: ModelId, _meta: JsonElement?): SetSessionModelResponse {
         return AcpMethod.AgentMethods.SessionSetModel(protocol, SetSessionModelRequest(sessionId, modelId, _meta))
     }
 

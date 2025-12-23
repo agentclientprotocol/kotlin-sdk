@@ -272,7 +272,6 @@ public final class com/agentclientprotocol/protocol/Protocol : com/agentclientpr
 	public fun sendRequestRaw-TF-lsE4 (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun setNotificationHandlerRaw (Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
 	public fun setRequestHandlerRaw (Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
-	public fun setRequestHandlerRaw (Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseNullableMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
 	public final fun start ()V
 	public fun toString ()Ljava/lang/String;
 }
@@ -294,17 +293,13 @@ public final class com/agentclientprotocol/protocol/Protocol_extensionsKt {
 	public static final fun getJsonRpcRequest (Lkotlin/coroutines/CoroutineContext;)Lcom/agentclientprotocol/rpc/JsonRpcRequest;
 	public static final fun invoke (Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpNotification;)V
 	public static final fun invoke (Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public static final fun invoke (Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseNullableMethod;Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static final fun sendNotification (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lcom/agentclientprotocol/model/AcpNotification;)V
 	public static synthetic fun sendNotification$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lcom/agentclientprotocol/model/AcpNotification;ILjava/lang/Object;)V
 	public static final fun sendRequest (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lcom/agentclientprotocol/model/AcpRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public static final fun sendRequestNullable (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseNullableMethod;Lcom/agentclientprotocol/model/AcpRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static final fun setNotificationHandler (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
 	public static synthetic fun setNotificationHandler$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
 	public static final fun setRequestHandler (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
-	public static final fun setRequestHandler (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseNullableMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
 	public static synthetic fun setRequestHandler$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
-	public static synthetic fun setRequestHandler$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseNullableMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
 }
 
 public abstract interface class com/agentclientprotocol/protocol/RpcMethodsOperations {
@@ -315,9 +310,7 @@ public abstract interface class com/agentclientprotocol/protocol/RpcMethodsOpera
 	public abstract fun setNotificationHandlerRaw (Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
 	public static synthetic fun setNotificationHandlerRaw$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
 	public abstract fun setRequestHandlerRaw (Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
-	public abstract fun setRequestHandlerRaw (Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseNullableMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
 	public static synthetic fun setRequestHandlerRaw$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
-	public static synthetic fun setRequestHandlerRaw$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseNullableMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
 }
 
 public final class com/agentclientprotocol/protocol/RpcMethodsOperations$DefaultImpls {
@@ -325,7 +318,6 @@ public final class com/agentclientprotocol/protocol/RpcMethodsOperations$Default
 	public static synthetic fun sendRequestRaw-TF-lsE4$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun setNotificationHandlerRaw$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
 	public static synthetic fun setRequestHandlerRaw$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
-	public static synthetic fun setRequestHandlerRaw$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseNullableMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
 }
 
 public abstract class com/agentclientprotocol/transport/BaseTransport : com/agentclientprotocol/transport/Transport {
