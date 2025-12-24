@@ -10,6 +10,6 @@ import com.agentclientprotocol.annotations.UnstableApi
  * Interface for paginated requests that include a cursor for pagination.
  */
 @UnstableApi
-public interface AcpPaginatedRequest {
+public interface AcpPaginatedRequest : AcpRequest {
     public val cursor: String?
 }

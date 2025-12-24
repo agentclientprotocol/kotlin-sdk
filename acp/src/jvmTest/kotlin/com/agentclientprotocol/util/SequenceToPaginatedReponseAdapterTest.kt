@@ -6,6 +6,7 @@ import com.agentclientprotocol.model.AcpPaginatedResponse
 import com.agentclientprotocol.protocol.JsonRpcException
 import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonElement
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -16,12 +17,12 @@ import kotlin.test.assertNull
 class SequenceToPaginatedReponseAdapterTest {
 
     private data class TestRequest(
-        override val cursor: String? = null
+        override val cursor: String? = null, override val _meta: JsonElement? = null
     ) : AcpPaginatedRequest
 
     private data class TestResponse(
         val items: List<Int>,
-        override val nextCursor: String?
+        override val nextCursor: String?, override val _meta: JsonElement? = null
     ) : AcpPaginatedResponse<Int> {
         override fun getItemsBatch(): List<Int> = items
     }

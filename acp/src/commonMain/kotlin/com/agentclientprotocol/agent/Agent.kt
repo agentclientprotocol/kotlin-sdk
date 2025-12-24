@@ -8,7 +8,6 @@ import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.*
 import com.agentclientprotocol.rpc.RequestId
-import com.agentclientprotocol.util.SequenceToPaginatedResponseAdapter
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
@@ -137,15 +136,13 @@ public class Agent(
             return@setRequestHandler agentSupport.authenticate(params.methodId, params._meta)
         }
 
-        // TODO: make setRequestHandler for this
-        val paginatedResponseAdapter = SequenceToPaginatedResponseAdapter<SessionInfo, ListSessionsRequest, ListSessionsResponse>(batchSize = 10)
-        // Unstable session methods
-        @OptIn(UnstableApi::class)
-        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionList) { params: ListSessionsRequest ->
-            return@setRequestHandler paginatedResponseAdapter.next(params, { p -> agentSupport.listSessions(p.cwd, p._meta) }) { _, batch, newCursor ->
-                ListSessionsResponse(batch, newCursor)
-            }
-        }
+        protocol.setPaginatedRequestHandler(
+            AcpMethod.AgentMethods.SessionList,
+            // TODO: move to some global agent/client settings
+            batchSize = 10,
+            batchedResultFactory = { _, batch, newCursor -> ListSessionsResponse(batch, newCursor) },
+            sequenceFactory = { p -> agentSupport.listSessions(p.cwd, p._meta) }
+        )
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionNew) { params: NewSessionRequest ->
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params._meta)
