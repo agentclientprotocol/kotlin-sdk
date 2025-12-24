@@ -5,6 +5,7 @@ import com.agentclientprotocol.agent.AgentInfo
 import com.agentclientprotocol.agent.AgentSession
 import com.agentclientprotocol.agent.AgentSupport
 import com.agentclientprotocol.agent.client
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.Client
 import com.agentclientprotocol.client.ClientInfo
 import com.agentclientprotocol.common.ClientSessionOperations
@@ -12,6 +13,7 @@ import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.AcpMethod
+import com.agentclientprotocol.model.AgentCapabilities
 import com.agentclientprotocol.model.ContentBlock
 import com.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
 import com.agentclientprotocol.model.PermissionOption
@@ -20,7 +22,10 @@ import com.agentclientprotocol.model.PermissionOptionKind
 import com.agentclientprotocol.model.PromptResponse
 import com.agentclientprotocol.model.RequestPermissionOutcome
 import com.agentclientprotocol.model.RequestPermissionResponse
+import com.agentclientprotocol.model.SessionCapabilities
 import com.agentclientprotocol.model.SessionId
+import com.agentclientprotocol.model.SessionInfo
+import com.agentclientprotocol.model.SessionListCapabilities
 import com.agentclientprotocol.model.SessionNotification
 import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.model.StopReason
@@ -41,6 +46,8 @@ import kotlinx.serialization.json.JsonElement
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -681,5 +688,116 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
         assertTrue(notification is SessionUpdate.AvailableCommandsUpdate)
     }
 
+    @OptIn(UnstableApi::class)
+    @Test
+    fun `list sessions returns paginated results`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val testSessions = (1..25).map { i ->
+            SessionInfo(
+                sessionId = SessionId("session-$i"),
+                cwd = "/test/path/$i",
+                title = "Session $i"
+            )
+        }
+
+        val client = Client(protocol = clientProtocol)
+        val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(
+                    clientInfo.protocolVersion,
+                    capabilities = AgentCapabilities(
+                        sessionCapabilities = SessionCapabilities(list = SessionListCapabilities())
+                    )
+                )
+            }
+
+            override suspend fun listSessions(cwd: String?, _meta: kotlinx.serialization.json.JsonElement?): Sequence<SessionInfo> {
+                return if (cwd != null) {
+                    testSessions.filter { it.cwd.contains(cwd) }.asSequence()
+                } else {
+                    testSessions.asSequence()
+                }
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                TODO("Not yet implemented")
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        // First page
+        val firstPage = client.listSessions()
+        assertEquals(10, firstPage.sessions.size)
+        assertEquals("session-1", firstPage.sessions.first().sessionId.value)
+        assertNotNull(firstPage.nextCursor)
+
+        // Second page
+        val secondPage = client.listSessions(cursor = firstPage.nextCursor)
+        assertEquals(10, secondPage.sessions.size)
+        assertEquals("session-11", secondPage.sessions.first().sessionId.value)
+        assertNotNull(secondPage.nextCursor)
+
+        // Third page (last)
+        val thirdPage = client.listSessions(cursor = secondPage.nextCursor)
+        assertEquals(5, thirdPage.sessions.size)
+        assertEquals("session-21", thirdPage.sessions.first().sessionId.value)
+        assertNull(thirdPage.nextCursor)
+    }
+
+    @OptIn(UnstableApi::class)
+    @Test
+    fun `list sessions with cwd filter`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val testSessions = listOf(
+            SessionInfo(sessionId = SessionId("session-1"), cwd = "/project/a"),
+            SessionInfo(sessionId = SessionId("session-2"), cwd = "/project/b"),
+            SessionInfo(sessionId = SessionId("session-3"), cwd = "/project/a/subdir"),
+            SessionInfo(sessionId = SessionId("session-4"), cwd = "/other/path"),
+        )
+
+        val client = Client(protocol = clientProtocol)
+        val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(
+                    clientInfo.protocolVersion,
+                    capabilities = AgentCapabilities(
+                        sessionCapabilities = SessionCapabilities(list = SessionListCapabilities())
+                    )
+                )
+            }
+
+            override suspend fun listSessions(cwd: String?, _meta: kotlinx.serialization.json.JsonElement?): Sequence<SessionInfo> {
+                return if (cwd != null) {
+                    testSessions.filter { it.cwd.contains(cwd) }.asSequence()
+                } else {
+                    testSessions.asSequence()
+                }
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                TODO("Not yet implemented")
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val filteredResult = client.listSessions(cwd = "/project/a")
+        assertEquals(2, filteredResult.sessions.size)
+        assertTrue(filteredResult.sessions.all { it.cwd.contains("/project/a") })
+        assertNull(filteredResult.nextCursor)
+    }
 
 }
