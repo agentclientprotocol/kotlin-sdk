@@ -5,8 +5,8 @@ import com.agentclientprotocol.client.ClientInfo
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.AuthMethodId
 import com.agentclientprotocol.model.AuthenticateResponse
-import com.agentclientprotocol.model.ListSessionsResponse
 import com.agentclientprotocol.model.SessionId
+import com.agentclientprotocol.model.SessionInfo
 import kotlinx.serialization.json.JsonElement
 
 public interface AgentSupport {
@@ -29,21 +29,20 @@ public interface AgentSupport {
      */
     public suspend fun authenticate(methodId: AuthMethodId, _meta: JsonElement?): AuthenticateResponse = AuthenticateResponse()
 
-    // TODO support cursor autowiring
     /**
      * **UNSTABLE**
      *
      * This capability is not part of the spec yet, and may be removed or changed at any point.
      *
      * Lists existing sessions with optional filtering and pagination.
+     * Pagination is automatically handled by [com.agentclientprotocol.util.SequenceToPaginatedResponseAdapter].
      *
      * @param cwd optional current working directory filter
-     * @param cursor optional cursor for pagination
      * @param _meta optional metadata
-     * @return a [ListSessionsResponse] containing the list of sessions and optional next cursor
+     * @return a sequence of [SessionInfo]
      */
     @UnstableApi
-    public suspend fun listSessions(cwd: String?, cursor: String?, _meta: JsonElement?): ListSessionsResponse {
+    public suspend fun listSessions(cwd: String?, _meta: JsonElement?): Sequence<SessionInfo> {
         throw NotImplementedError("listSessions is not implemented. The capability is declared in AgentCapabilities.sessionCapabilities.list")
     }
 

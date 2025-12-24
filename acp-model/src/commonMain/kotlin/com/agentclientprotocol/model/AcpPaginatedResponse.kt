@@ -10,6 +10,7 @@ import com.agentclientprotocol.annotations.UnstableApi
  * Interface for paginated responses that include a cursor for the next page.
  */
 @UnstableApi
-public interface AcpPaginatedResponse {
+public interface AcpPaginatedResponse<TItem> {
     public val nextCursor: String?
+    public fun getItemsBatch(): List<TItem>
 }

@@ -46,6 +46,9 @@ public fun acpFail(message: String): Nothing = throw AcpExpectedError(message)
 public fun jsonRpcMethodNotFound(message: String): Nothing =
     throw JsonRpcException(JsonRpcErrorCode.METHOD_NOT_FOUND.code, message)
 
+public fun jsonRpcInvalidParams(message: String): Nothing =
+    throw JsonRpcException(JsonRpcErrorCode.INVALID_PARAMS.code, message)
+
 /**
  * Exception thrown for JSON-RPC protocol errors.
  */

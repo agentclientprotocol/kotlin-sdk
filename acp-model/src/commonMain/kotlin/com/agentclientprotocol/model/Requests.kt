@@ -571,7 +571,9 @@ public data class ListSessionsResponse(
     val sessions: List<SessionInfo>,
     override val nextCursor: String? = null,
     override val _meta: JsonElement? = null
-) : AcpResponse, AcpPaginatedResponse
+) : AcpResponse, AcpPaginatedResponse<SessionInfo> {
+    override fun getItemsBatch(): List<SessionInfo> = sessions
+}
 
 /**
  * **UNSTABLE**
