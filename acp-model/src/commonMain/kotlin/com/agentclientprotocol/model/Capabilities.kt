@@ -68,6 +68,7 @@ public data class McpCapabilities(
  */
 @Serializable
 public data class SessionCapabilities(
+    @EncodeDefault val resume: Boolean = false,
     override val _meta: JsonElement? = null
 ) : AcpWithMeta
 
