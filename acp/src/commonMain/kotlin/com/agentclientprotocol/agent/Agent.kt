@@ -153,6 +153,16 @@ public class Agent(
                 models = session.asModelState()
             )
         }
+
+        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionResume) { params: ResumeSessionRequest ->
+            val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params._meta)
+            val session = createSession(sessionParameters) { agentSupport.resumeSession(params.sessionId, sessionParameters) }
+            return@setRequestHandler ResumeSessionResponse(
+                modes = session.asModeState(),
+                models = session.asModelState()
+            )
+        }
+
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionSetMode) { params: SetSessionModeRequest ->
             val session = getSessionOrThrow(params.sessionId)
             return@setRequestHandler session.executeWithSession {

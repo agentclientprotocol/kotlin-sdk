@@ -212,6 +212,27 @@ public data class LoadSessionRequest(
 ) : AcpRequest, AcpWithSessionId
 
 /**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Request parameters for resuming an existing session.
+ *
+ * Resumes an existing session without returning previous messages (unlike `session/load`).
+ * This is useful for agents that can resume sessions but don't implement full session loading.
+ *
+ * Only available if the Agent supports the `session.resume` capability.
+ */
+@UnstableApi
+@Serializable
+public data class ResumeSessionRequest(
+    override val sessionId: SessionId,
+    val cwd: String,
+    val mcpServers: List<McpServer>,
+    override val _meta: JsonElement? = null
+) : AcpRequest, AcpWithSessionId
+
+/**
  * Request parameters for sending a user prompt to the agent.
  *
  * Contains the user's message and any additional context.
@@ -393,6 +414,21 @@ public data class PromptResponse(
  */
 @Serializable
 public data class LoadSessionResponse(
+    override val modes: SessionModeState? = null,
+    override val models: SessionModelState? = null,
+    override val _meta: JsonElement? = null
+) : AcpCreatedSessionResponse, AcpResponse
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Response from resuming an existing session.
+ */
+@UnstableApi
+@Serializable
+public data class ResumeSessionResponse(
     override val modes: SessionModeState? = null,
     override val models: SessionModelState? = null,
     override val _meta: JsonElement? = null

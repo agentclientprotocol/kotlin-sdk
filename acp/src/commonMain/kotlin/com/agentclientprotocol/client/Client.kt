@@ -201,6 +201,37 @@ public class Client(
         }
     }
 
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Resume an existing session without returning previous messages.
+     *
+     * This method is only available if the agent advertises the `session.resume` capability.
+     *
+     * @param sessionId the id of the existing session to resume
+     * @param sessionParameters parameters for resuming the session
+     * @param operationsFactory a factory for creating [com.agentclientprotocol.common.ClientSessionOperations] for the session.
+     * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
+     * See [ClientOperationsFactory.createClientOperations] for more details.
+     * @return a [ClientSession] instance for the resumed session
+     */
+    public suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
+        return withInitializingSession {
+            val resumeSessionResponse = AcpMethod.AgentMethods.SessionResume(
+                protocol,
+                ResumeSessionRequest(
+                    sessionId,
+                    sessionParameters.cwd,
+                    sessionParameters.mcpServers,
+                    sessionParameters._meta
+                )
+            )
+            return@withInitializingSession createSession(sessionId, sessionParameters, resumeSessionResponse, operationsFactory)
+        }
+    }
+
     private suspend fun createSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, sessionResponse: AcpCreatedSessionResponse, factory: ClientOperationsFactory): ClientSession {
         val sessionDeferred = CompletableDeferred<ClientSessionImpl>()
         return runCatching {

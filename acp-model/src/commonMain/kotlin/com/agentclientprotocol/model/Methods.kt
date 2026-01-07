@@ -46,6 +46,8 @@ public open class AcpMethod(public val methodName: MethodName) {
         public object Authenticate : AcpRequestResponseMethod<AuthenticateRequest, AuthenticateResponse>("authenticate", AuthenticateRequest.serializer(), AuthenticateResponse.serializer())
         public object SessionNew : AcpRequestResponseMethod<NewSessionRequest, NewSessionResponse>("session/new", NewSessionRequest.serializer(), NewSessionResponse.serializer())
         public object SessionLoad : AcpRequestResponseMethod<LoadSessionRequest, LoadSessionResponse>("session/load", LoadSessionRequest.serializer(), LoadSessionResponse.serializer())
+        @UnstableApi
+        public object SessionResume : AcpSessionRequestResponseMethod<ResumeSessionRequest, ResumeSessionResponse>("session/resume", ResumeSessionRequest.serializer(), ResumeSessionResponse.serializer())
 
         // session specific
         public object SessionPrompt : AcpSessionRequestResponseMethod<PromptRequest, PromptResponse>("session/prompt", PromptRequest.serializer(), PromptResponse.serializer())
