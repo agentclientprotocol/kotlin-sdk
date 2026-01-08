@@ -2092,14 +2092,14 @@ public final class com/agentclientprotocol/model/Role$Companion {
 public final class com/agentclientprotocol/model/SessionCapabilities : com/agentclientprotocol/model/AcpWithMeta {
 	public static final field Companion Lcom/agentclientprotocol/model/SessionCapabilities$Companion;
 	public fun <init> ()V
-	public fun <init> (ZLkotlinx/serialization/json/JsonElement;)V
-	public synthetic fun <init> (ZLkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun component1 ()Z
+	public fun <init> (Lcom/agentclientprotocol/model/SessionResumeCapabilities;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/SessionResumeCapabilities;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/SessionResumeCapabilities;
 	public final fun component2 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun copy (ZLkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/SessionCapabilities;
-	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/SessionCapabilities;ZLkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionCapabilities;
+	public final fun copy (Lcom/agentclientprotocol/model/SessionResumeCapabilities;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/SessionCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/SessionCapabilities;Lcom/agentclientprotocol/model/SessionResumeCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionCapabilities;
 	public fun equals (Ljava/lang/Object;)Z
-	public final fun getResume ()Z
+	public final fun getResume ()Lcom/agentclientprotocol/model/SessionResumeCapabilities;
 	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
@@ -2307,6 +2307,35 @@ public final synthetic class com/agentclientprotocol/model/SessionNotification$$
 }
 
 public final class com/agentclientprotocol/model/SessionNotification$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/SessionResumeCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/SessionResumeCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/SessionResumeCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/SessionResumeCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionResumeCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/SessionResumeCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/SessionResumeCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/SessionResumeCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/SessionResumeCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/SessionResumeCapabilities$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 

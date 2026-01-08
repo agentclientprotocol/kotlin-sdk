@@ -62,13 +62,20 @@ public data class McpCapabilities(
 ) : AcpWithMeta
 
 /**
+ * Session resume capabilities supported by the agent.
+ */
+@Serializable
+public data class SessionResumeCapabilities(
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
  * Session capabilities supported by the agent.
  *
- * Currently empty but extensible for future session-related capabilities.
  */
 @Serializable
 public data class SessionCapabilities(
-    @EncodeDefault val resume: Boolean = false,
+    val resume: SessionResumeCapabilities? = null,
     override val _meta: JsonElement? = null
 ) : AcpWithMeta
 
