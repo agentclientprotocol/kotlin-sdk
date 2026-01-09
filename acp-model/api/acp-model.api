@@ -1232,9 +1232,7 @@ public final class com/agentclientprotocol/model/McpCapabilities$Companion {
 
 public abstract class com/agentclientprotocol/model/McpServer {
 	public static final field Companion Lcom/agentclientprotocol/model/McpServer$Companion;
-	public synthetic fun <init> (ILkotlinx/serialization/internal/SerializationConstructorMarker;)V
 	public abstract fun getName ()Ljava/lang/String;
-	public static final synthetic fun write$Self (Lcom/agentclientprotocol/model/McpServer;Lkotlinx/serialization/encoding/CompositeEncoder;Lkotlinx/serialization/descriptors/SerialDescriptor;)V
 }
 
 public final class com/agentclientprotocol/model/McpServer$Companion {
