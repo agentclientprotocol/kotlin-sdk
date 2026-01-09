@@ -57,7 +57,6 @@ public data class HttpHeader(
 @OptIn(ExperimentalSerializationApi::class)
 internal object McpServerSerializer : KSerializer<McpServer> {
     override val descriptor: SerialDescriptor = PolymorphicSerializer(McpServer::class).descriptor
-    private const val DISCRIMINATOR_KEY: String = "type"
 
     override fun deserialize(decoder: Decoder): McpServer {
         require(decoder is JsonDecoder) { "Can be deserialized only by JSON" }
@@ -88,7 +87,7 @@ internal object McpServerSerializer : KSerializer<McpServer> {
             contentObject
         } else {
             buildJsonObject {
-                put(DISCRIMINATOR_KEY, JsonPrimitive(type))
+                put(TYPE_DISCRIMINATOR, JsonPrimitive(type))
                 contentObject.forEach { (key, value) -> put(key, value) }
             }
         }
@@ -96,9 +95,9 @@ internal object McpServerSerializer : KSerializer<McpServer> {
     }
 
     private fun JsonObject.discriminator(): String? =
-        (this[DISCRIMINATOR_KEY] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        (this[TYPE_DISCRIMINATOR] as? JsonPrimitive)?.takeIf { it.isString }?.content
 
-    private fun JsonObject.hasDiscriminator(): Boolean = this.containsKey(DISCRIMINATOR_KEY)
+    private fun JsonObject.hasDiscriminator(): Boolean = this.containsKey(TYPE_DISCRIMINATOR)
 }
 
 /**
