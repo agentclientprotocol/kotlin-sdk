@@ -6,6 +6,7 @@ package com.agentclientprotocol.model
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.rpc.RequestId
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.Polymorphic
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonClassDiscriminator
@@ -53,7 +54,7 @@ public data class HttpHeader(
 @Serializable
 public sealed class McpServer {
     public abstract val name: String
-    
+
     /**
      * Stdio transport configuration
      *
@@ -67,7 +68,7 @@ public sealed class McpServer {
         val args: List<String>,
         val env: List<EnvVariable>
     ) : McpServer()
-    
+
     /**
      * HTTP transport configuration
      *
@@ -80,7 +81,7 @@ public sealed class McpServer {
         val url: String,
         val headers: List<HttpHeader>
     ) : McpServer()
-    
+
     /**
      * SSE transport configuration
      *
@@ -192,7 +193,7 @@ public data class AuthenticateRequest(
 @Serializable
 public data class NewSessionRequest(
     val cwd: String,
-    val mcpServers: List<McpServer>,
+    val mcpServers: List<@Polymorphic McpServer>,
     override val _meta: JsonElement? = null
 ) : AcpRequest
 
@@ -207,7 +208,7 @@ public data class NewSessionRequest(
 public data class LoadSessionRequest(
     override val sessionId: SessionId,
     val cwd: String,
-    val mcpServers: List<McpServer>,
+    val mcpServers: List<@Polymorphic McpServer>,
     override val _meta: JsonElement? = null
 ) : AcpRequest, AcpWithSessionId
 

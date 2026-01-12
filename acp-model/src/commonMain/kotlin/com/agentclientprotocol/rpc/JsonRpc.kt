@@ -3,6 +3,7 @@
 package com.agentclientprotocol.rpc
 
 import com.agentclientprotocol.model.AvailableCommandInput
+import com.agentclientprotocol.model.McpServer
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
@@ -177,6 +178,12 @@ private val acpSerializersModule = SerializersModule {
     polymorphic(AvailableCommandInput::class) {
         subclass(AvailableCommandInput.Unstructured::class, AvailableCommandInput.Unstructured.serializer())
         defaultDeserializer { AvailableCommandInput.Unstructured.serializer() }
+    }
+    polymorphic(McpServer::class) {
+        subclass(McpServer.Stdio::class, McpServer.Stdio.serializer())
+        subclass(McpServer.Http::class, McpServer.Http.serializer())
+        subclass(McpServer.Sse::class, McpServer.Sse.serializer())
+        defaultDeserializer { McpServer.Stdio.serializer() }
     }
 }
 
