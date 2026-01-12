@@ -96,6 +96,8 @@ public class WebSocketTransport(private val parentScope: CoroutineScope, private
     }
 
     override fun close() {
-        sendChannel.close()
+        if (sendChannel.close()) {
+            fireClose()
+        }
     }
 }
