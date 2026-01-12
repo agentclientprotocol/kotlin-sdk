@@ -77,7 +77,7 @@ class McpServerSerializerTest {
     }
 
     @Test
-    fun `does not encode discriminator for stdio`() {
+    fun `encodes stdio discriminator when serializing`() {
         val server = McpServer.Stdio(
             name = "filesystem",
             command = "/path/to/mcp-server",
@@ -86,6 +86,6 @@ class McpServerSerializerTest {
         )
 
         val encoded = ACPJson.encodeToString(McpServer.serializer(), server)
-        assertTrue(!encoded.contains("\"type\""))
+        assertTrue(encoded.contains("\"type\":\"stdio\""))
     }
 }

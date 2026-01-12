@@ -6,22 +6,11 @@ package com.agentclientprotocol.model
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.rpc.RequestId
 import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.KSerializer
-import kotlinx.serialization.PolymorphicSerializer
+import kotlinx.serialization.Polymorphic
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.SerializationException
-import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.encoding.Decoder
-import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.JsonClassDiscriminator
-import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonEncoder
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonObject
 
 /**
  * Describes an available authentication method.
@@ -54,52 +43,6 @@ public data class HttpHeader(
     override val _meta: JsonElement? = null
 ) : AcpWithMeta
 
-@OptIn(ExperimentalSerializationApi::class)
-internal object McpServerSerializer : KSerializer<McpServer> {
-    override val descriptor: SerialDescriptor = PolymorphicSerializer(McpServer::class).descriptor
-
-    override fun deserialize(decoder: Decoder): McpServer {
-        require(decoder is JsonDecoder) { "Can be deserialized only by JSON" }
-        val jsonObject = decoder.decodeJsonElement().jsonObject
-        val type = jsonObject.discriminator()?.lowercase()
-        val deserializer = when (type) {
-            null, "stdio" -> McpServer.Stdio.serializer()
-            "http" -> McpServer.Http.serializer()
-            "sse" -> McpServer.Sse.serializer()
-            else -> throw SerializationException("Unknown McpServer type '$type'")
-        }
-        return decoder.json.decodeFromJsonElement(deserializer, jsonObject)
-    }
-
-    override fun serialize(encoder: Encoder, value: McpServer) {
-        require(encoder is JsonEncoder) { "Can be serialized only by JSON" }
-        val contentObject = when (value) {
-            is McpServer.Stdio -> encoder.json.encodeToJsonElement(McpServer.Stdio.serializer(), value)
-            is McpServer.Http -> encoder.json.encodeToJsonElement(McpServer.Http.serializer(), value)
-            is McpServer.Sse -> encoder.json.encodeToJsonElement(McpServer.Sse.serializer(), value)
-        }.jsonObject
-        val type = when (value) {
-            is McpServer.Stdio -> null
-            is McpServer.Http -> "http"
-            is McpServer.Sse -> "sse"
-        }
-        val payload = if (contentObject.hasDiscriminator() || type == null) {
-            contentObject
-        } else {
-            buildJsonObject {
-                put(TYPE_DISCRIMINATOR, JsonPrimitive(type))
-                contentObject.forEach { (key, value) -> put(key, value) }
-            }
-        }
-        encoder.encodeJsonElement(payload)
-    }
-
-    private fun JsonObject.discriminator(): String? =
-        (this[TYPE_DISCRIMINATOR] as? JsonPrimitive)?.takeIf { it.isString }?.content
-
-    private fun JsonObject.hasDiscriminator(): Boolean = this.containsKey(TYPE_DISCRIMINATOR)
-}
-
 /**
  * Configuration for connecting to an MCP (Model Context Protocol) server.
  *
@@ -108,7 +51,7 @@ internal object McpServerSerializer : KSerializer<McpServer> {
  *
  * See protocol docs: [MCP Servers](https://agentclientprotocol.com/protocol/session-setup#mcp-servers)
  */
-@Serializable(with = McpServerSerializer::class)
+@Serializable
 public sealed class McpServer {
     public abstract val name: String
 
@@ -118,6 +61,7 @@ public sealed class McpServer {
      * All Agents MUST support this transport.
      */
     @Serializable
+    @SerialName("stdio")
     public data class Stdio(
         override val name: String,
         val command: String,
@@ -131,6 +75,7 @@ public sealed class McpServer {
      * Only available when the Agent capabilities indicate `mcp_capabilities.http` is `true`.
      */
     @Serializable
+    @SerialName("http")
     public data class Http(
         override val name: String,
         val url: String,
@@ -143,6 +88,7 @@ public sealed class McpServer {
      * Only available when the Agent capabilities indicate `mcp_capabilities.sse` is `true`.
      */
     @Serializable
+    @SerialName("sse")
     public data class Sse(
         override val name: String,
         val url: String,
@@ -247,7 +193,7 @@ public data class AuthenticateRequest(
 @Serializable
 public data class NewSessionRequest(
     val cwd: String,
-    val mcpServers: List<McpServer>,
+    val mcpServers: List<@Polymorphic McpServer>,
     override val _meta: JsonElement? = null
 ) : AcpRequest
 
@@ -262,7 +208,7 @@ public data class NewSessionRequest(
 public data class LoadSessionRequest(
     override val sessionId: SessionId,
     val cwd: String,
-    val mcpServers: List<McpServer>,
+    val mcpServers: List<@Polymorphic McpServer>,
     override val _meta: JsonElement? = null
 ) : AcpRequest, AcpWithSessionId
 
