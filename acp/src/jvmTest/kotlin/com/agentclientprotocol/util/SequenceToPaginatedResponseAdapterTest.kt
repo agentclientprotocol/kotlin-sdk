@@ -14,7 +14,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 @OptIn(UnstableApi::class)
-class SequenceToPaginatedReponseAdapterTest {
+class SequenceToPaginatedResponseAdapterTest {
 
     private data class TestRequest(
         override val cursor: String? = null, override val _meta: JsonElement? = null

@@ -9,7 +9,9 @@ import com.agentclientprotocol.model.AcpRequest
 import com.agentclientprotocol.model.AcpResponse
 import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.JsonRpcRequest
+import com.agentclientprotocol.util.PaginatedResponseToFlowAdapter
 import com.agentclientprotocol.util.SequenceToPaginatedResponseAdapter
+import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlin.coroutines.AbstractCoroutineContextElement
@@ -28,6 +30,20 @@ public suspend fun <TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOp
     // if we've got null, we can interpret it as {}
     val responseJson = this.sendRequestRaw(method.methodName, params).takeIf { it != JsonNull } ?: buildJsonObject {  }
     return ACPJson.decodeFromJsonElement(method.responseSerializer, responseJson)
+}
+
+/**
+ * Send a batched request and return a cold [Flow] that automatically fetches subsequent pages.
+ * The flow is cold - it won't start fetching until collection begins.
+ */
+@UnstableApi
+public fun <TRequest : AcpPaginatedRequest, TResponse : AcpPaginatedResponse<TItem>, TItem> RpcMethodsOperations.sendBatchedRequest(
+    method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
+    requestFactory: (cursor: String?) -> TRequest
+): Flow<TItem> {
+    return PaginatedResponseToFlowAdapter.asFlow { cursor ->
+        sendRequest(method, requestFactory(cursor))
+    }
 }
 
 /**

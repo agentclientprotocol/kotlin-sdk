@@ -9,12 +9,14 @@ import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.common.TerminalOperations
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.*
+import com.agentclientprotocol.util.PaginatedResponseToFlowAdapter
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
@@ -207,17 +209,20 @@ public class Client(
      *
      * This capability is not part of the spec yet, and may be removed or changed at any point.
      *
-     * Lists existing sessions with optional filtering and pagination.
+     * Lists all existing sessions as a cold flow, automatically handling pagination. The necessary pages are fetched on demand.
      *
      * @param cwd optional current working directory filter
-     * @param cursor optional cursor for pagination
      * @param _meta optional metadata
-     * @return a [ListSessionsResponse] containing the list of sessions and optional next cursor
+     * @return a cold [Flow] of [SessionInfo] that lazily fetches pages as needed
      */
-    @OptIn(UnstableApi::class)
     @UnstableApi
-    public suspend fun listSessions(cwd: String? = null, cursor: String? = null, _meta: JsonElement? = null): ListSessionsResponse {
-        return AcpMethod.AgentMethods.SessionList(protocol, ListSessionsRequest(cwd, cursor, _meta))
+    public fun listSessions(
+        cwd: String? = null,
+        _meta: JsonElement? = null
+    ): Flow<SessionInfo> {
+        return PaginatedResponseToFlowAdapter.asFlow { cursor ->
+            AcpMethod.AgentMethods.SessionList(protocol, ListSessionsRequest(cwd, cursor, _meta))
+        }
     }
 
     /**

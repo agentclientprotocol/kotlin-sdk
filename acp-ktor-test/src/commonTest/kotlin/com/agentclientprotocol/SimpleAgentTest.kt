@@ -1,10 +1,6 @@
 package com.agentclientprotocol
 
-import com.agentclientprotocol.agent.Agent
-import com.agentclientprotocol.agent.AgentInfo
-import com.agentclientprotocol.agent.AgentSession
-import com.agentclientprotocol.agent.AgentSupport
-import com.agentclientprotocol.agent.client
+import com.agentclientprotocol.agent.*
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.Client
 import com.agentclientprotocol.client.ClientInfo
@@ -12,43 +8,12 @@ import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.framework.ProtocolDriver
-import com.agentclientprotocol.model.AcpMethod
-import com.agentclientprotocol.model.AgentCapabilities
-import com.agentclientprotocol.model.ContentBlock
-import com.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
-import com.agentclientprotocol.model.PermissionOption
-import com.agentclientprotocol.model.PermissionOptionId
-import com.agentclientprotocol.model.PermissionOptionKind
-import com.agentclientprotocol.model.PromptResponse
-import com.agentclientprotocol.model.RequestPermissionOutcome
-import com.agentclientprotocol.model.RequestPermissionResponse
-import com.agentclientprotocol.model.SessionCapabilities
-import com.agentclientprotocol.model.SessionId
-import com.agentclientprotocol.model.SessionInfo
-import com.agentclientprotocol.model.SessionListCapabilities
-import com.agentclientprotocol.model.SessionNotification
-import com.agentclientprotocol.model.SessionUpdate
-import com.agentclientprotocol.model.StopReason
-import com.agentclientprotocol.model.ToolCallId
+import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.invoke
-import io.github.oshai.kotlinlogging.KotlinLogging.logger
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.JsonElement
-import kotlin.test.Test
-import kotlin.test.assertContentEquals
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import kotlin.test.*
 import kotlin.time.Duration.Companion.milliseconds
 
 abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver by protocolDriver {
@@ -732,23 +697,12 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
         client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
 
-        // First page
-        val firstPage = client.listSessions()
-        assertEquals(10, firstPage.sessions.size)
-        assertEquals("session-1", firstPage.sessions.first().sessionId.value)
-        assertNotNull(firstPage.nextCursor)
+        val flow = client.listSessions()
+        val allSessions = flow.toList()
 
-        // Second page
-        val secondPage = client.listSessions(cursor = firstPage.nextCursor)
-        assertEquals(10, secondPage.sessions.size)
-        assertEquals("session-11", secondPage.sessions.first().sessionId.value)
-        assertNotNull(secondPage.nextCursor)
-
-        // Third page (last)
-        val thirdPage = client.listSessions(cursor = secondPage.nextCursor)
-        assertEquals(5, thirdPage.sessions.size)
-        assertEquals("session-21", thirdPage.sessions.first().sessionId.value)
-        assertNull(thirdPage.nextCursor)
+        assertEquals(25, allSessions.size)
+        assertEquals("session-1", allSessions.first().sessionId.value)
+        assertEquals("session-25", allSessions.last().sessionId.value)
     }
 
     @OptIn(UnstableApi::class)
@@ -794,10 +748,226 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
         client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
 
-        val filteredResult = client.listSessions(cwd = "/project/a")
-        assertEquals(2, filteredResult.sessions.size)
-        assertTrue(filteredResult.sessions.all { it.cwd.contains("/project/a") })
-        assertNull(filteredResult.nextCursor)
+        val flow = client.listSessions(cwd = "/project/a")
+        val filteredSessions = flow.toList()
+
+        assertEquals(2, filteredSessions.size)
+        assertTrue(filteredSessions.all { it.cwd.contains("/project/a") })
+    }
+
+    @OptIn(UnstableApi::class)
+    @Test
+    fun `list sessions with partial iteration works correctly`() = testWithProtocols { clientProtocol, agentProtocol ->
+        // Create 30 test sessions
+        val allSessions = (1..30).map { i ->
+            SessionInfo(sessionId = SessionId("session-$i"), cwd = "/project")
+        }
+        
+        val client = Client(protocol = clientProtocol)
+        val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(
+                    clientInfo.protocolVersion,
+                    capabilities = AgentCapabilities(
+                        sessionCapabilities = SessionCapabilities(list = SessionListCapabilities())
+                    )
+                )
+            }
+
+            override suspend fun listSessions(cwd: String?, _meta: JsonElement?): Sequence<SessionInfo> {
+                // Return all sessions - the adapter will handle pagination
+                return allSessions.asSequence()
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                TODO("Not yet implemented")
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        // Take only 12 items from 30 available
+        val flow = client.listSessions()
+        val partialSessions = flow.take(12).toList()
+
+        // Verify we got exactly 12 items even though 30 were available
+        assertEquals(12, partialSessions.size)
+        assertEquals("session-1", partialSessions.first().sessionId.value)
+        assertEquals("session-12", partialSessions[11].sessionId.value)
+    }
+
+    @OptIn(UnstableApi::class)
+    @Test
+    fun `list sessions stops cleanly on early termination`() = testWithProtocols { clientProtocol, agentProtocol ->
+        var resourcesAcquired = 0
+        var resourcesReleased = 0
+        
+        val client = Client(protocol = clientProtocol)
+        val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(
+                    clientInfo.protocolVersion,
+                    capabilities = AgentCapabilities(
+                        sessionCapabilities = SessionCapabilities(list = SessionListCapabilities())
+                    )
+                )
+            }
+
+            override suspend fun listSessions(cwd: String?, _meta: JsonElement?): Sequence<SessionInfo> {
+                resourcesAcquired++
+                
+                return sequence {
+                    try {
+                        // Simulate paginated data
+                        repeat(10) { i ->
+                            yield(SessionInfo(sessionId = SessionId("session-$i"), cwd = "/project"))
+                        }
+                    } finally {
+                        // Cleanup should happen even on early termination
+                        resourcesReleased++
+                    }
+                }
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                TODO("Not yet implemented")
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        // Take only 3 items and stop
+        val flow = client.listSessions()
+        val limitedSessions = flow.take(3).toList()
+
+        assertEquals(3, limitedSessions.size)
+        assertEquals("session-0", limitedSessions.first().sessionId.value)
+        assertEquals("session-2", limitedSessions.last().sessionId.value)
+        
+        // Resources should be properly cleaned up
+        assertEquals(resourcesAcquired, resourcesReleased)
+        assertTrue(resourcesReleased > 0)
+    }
+
+    @OptIn(UnstableApi::class)
+    @Test
+    fun `list sessions does not fetch second page when only first is consumed`() = testWithProtocols { clientProtocol, agentProtocol ->
+        var itemsGenerated = 0
+        
+        val client = Client(protocol = clientProtocol)
+        val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(
+                    clientInfo.protocolVersion,
+                    capabilities = AgentCapabilities(
+                        sessionCapabilities = SessionCapabilities(list = SessionListCapabilities())
+                    )
+                )
+            }
+
+            override suspend fun listSessions(cwd: String?, _meta: JsonElement?): Sequence<SessionInfo> {
+                // The Agent's setPaginatedRequestHandler with batchSize=10 will consume
+                // items from this sequence in batches of 10
+                return sequence {
+                    for (i in 1..20) {
+                        itemsGenerated++
+                        yield(SessionInfo(sessionId = SessionId("session-$i"), cwd = "/project"))
+                    }
+                }
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                TODO("Not yet implemented")
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        // Take only 5 items - the flow should lazily fetch data
+        val flow = client.listSessions()
+        val limitedSessions = flow.take(5).toList()
+
+        assertEquals(5, limitedSessions.size)
+        assertEquals("session-1", limitedSessions.first().sessionId.value)
+        assertEquals("session-5", limitedSessions.last().sessionId.value)
+        
+        // Due to batchSize=10 in Agent.setPaginatedRequestHandler, 
+        // the sequence should generate approximately 10 items for the first batch
+        // (might be 11 due to iterator checking for next)
+        assertTrue(itemsGenerated <= 11, "Should have generated only first batch (~10 items), but generated $itemsGenerated")
+        assertTrue(itemsGenerated < 15, "Should not have fetched second batch")
+    }
+
+    @OptIn(UnstableApi::class)
+    @Test
+    fun `list sessions is truly lazy and cold`() = testWithProtocols { clientProtocol, agentProtocol ->
+        var fetchStarted = false
+        
+        val client = Client(protocol = clientProtocol)
+        val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(
+                    clientInfo.protocolVersion,
+                    capabilities = AgentCapabilities(
+                        sessionCapabilities = SessionCapabilities(list = SessionListCapabilities())
+                    )
+                )
+            }
+
+            override suspend fun listSessions(cwd: String?, _meta: JsonElement?): Sequence<SessionInfo> {
+                fetchStarted = true
+                return sequenceOf(
+                    SessionInfo(sessionId = SessionId("session-1"), cwd = "/project")
+                )
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                TODO("Not yet implemented")
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        // Create flow but don't collect yet
+        val flow = client.listSessions()
+        
+        // Flow is cold - should not start fetching until collection begins
+        assertFalse(fetchStarted, "Flow should not start fetching before collection")
+        
+        // Now start collecting
+        val sessions = flow.toList()
+        
+        // Now fetching should have started
+        assertTrue(fetchStarted, "Flow should start fetching when collection begins")
+        assertEquals(1, sessions.size)
     }
 
 }
