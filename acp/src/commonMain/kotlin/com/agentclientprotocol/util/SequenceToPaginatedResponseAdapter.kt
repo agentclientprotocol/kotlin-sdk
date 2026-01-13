@@ -7,9 +7,18 @@ import com.agentclientprotocol.protocol.JsonRpcException
 import com.agentclientprotocol.protocol.jsonRpcInvalidParams
 import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.concurrent.atomics.update
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -27,9 +36,18 @@ import kotlin.uuid.Uuid
  */
 @OptIn(ExperimentalAtomicApi::class, UnstableApi::class)
 public class SequenceToPaginatedResponseAdapter<TItem, TInput : AcpPaginatedRequest, TOutput : AcpPaginatedResponse<TItem>>(
-    public val batchSize: Int = 10) {
+    public val batchSize: Int = 10,
+    public val orphanedIteratorsEvictionTimeout: Duration = 1.minutes
+) {
+    init {
+        require(orphanedIteratorsEvictionTimeout > Duration.ZERO) { "orphanedIteratorsEvictionTimeout must be positive" }
+    }
 
-    private val iterators = AtomicReference(persistentMapOf<String, Iterator<TItem>>())
+    private class IteratorState<TItem>(val iterator: Iterator<TItem>, val timeoutJob: Job)
+    private val iterators = AtomicReference(persistentMapOf<String, IteratorState<TItem>>())
+
+    // Since all jobs are stopped by timeout we can omit a separate method for closing this scope because eventually it has no active jobs
+    private val timeoutJobScope = CoroutineScope(Dispatchers.Default + SupervisorJob() + CoroutineName("SequenceToPaginatedResponseAdapter.timeoutJobScope"))
 
     /**
      * Creates [TOutput] instance for the next [batchSize] items from the sequence either stored
@@ -43,13 +61,14 @@ public class SequenceToPaginatedResponseAdapter<TItem, TInput : AcpPaginatedRequ
             sequenceFactory(params).iterator()
         }
         else {
-            // TODO: really remove now or remove by timeout?
-            // TODO: if to keep it when iterating this time, someone can ask iterate this iterator again in parallel
             var iteratorFromMap: Iterator<TItem>? = null
+            var timeoutJob: Job? = null
             iterators.update { map ->
-                iteratorFromMap = map[givenCursor]
+                iteratorFromMap = map[givenCursor]?.iterator
+                timeoutJob = map[givenCursor]?.timeoutJob
                 map.remove(givenCursor)
             }
+            timeoutJob?.cancel()
             iteratorFromMap ?: jsonRpcInvalidParams("No such cursor: $givenCursor")
         }
         val batch = iterator.asSequence().take(batchSize).toList()
@@ -57,7 +76,11 @@ public class SequenceToPaginatedResponseAdapter<TItem, TInput : AcpPaginatedRequ
         val newCursor = if (iterator.hasNext()) {
             @OptIn(ExperimentalUuidApi::class)
             val newCursor = Uuid.random().toHexDashString()
-            iterators.update { map -> map.put(newCursor, iterator) }
+            val timeoutJob = timeoutJobScope.launch {
+                delay(orphanedIteratorsEvictionTimeout)
+                iterators.update { map -> map.remove(newCursor) }
+            }
+            iterators.update { map -> map.put(newCursor, IteratorState(iterator, timeoutJob)) }
             newCursor
         }
         else {

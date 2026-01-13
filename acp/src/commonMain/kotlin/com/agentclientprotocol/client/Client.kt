@@ -211,6 +211,11 @@ public class Client(
      *
      * Lists all existing sessions as a cold flow, automatically handling pagination. The necessary pages are fetched on demand.
      *
+     * The flow is cold and finite, so any aggregation operators may be used like `toList`, `take`, etc.
+     *
+     * Unlike the agent's side, this method returns a cold flow instead of a sequence because remote suspend calls are being done under the hood to fetch pages.
+     * Sequences don't support suspending operations between value yields.
+     *
      * @param cwd optional current working directory filter
      * @param _meta optional metadata
      * @return a cold [Flow] of [SessionInfo] that lazily fetches pages as needed
