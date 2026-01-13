@@ -3,6 +3,7 @@
 
 package com.agentclientprotocol.model
 
+import com.agentclientprotocol.annotations.UnstableApi
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
@@ -62,8 +63,39 @@ public data class McpCapabilities(
 ) : AcpWithMeta
 
 /**
- * Session resume capabilities supported by the agent.
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Capabilities for forking sessions.
  */
+@UnstableApi
+@Serializable
+public data class SessionForkCapabilities(
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Capabilities for listing sessions.
+ */
+@UnstableApi
+@Serializable
+public data class SessionListCapabilities(
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Capabilities for resuming sessions.
+ */
+@UnstableApi
 @Serializable
 public data class SessionResumeCapabilities(
     override val _meta: JsonElement? = null
@@ -71,10 +103,12 @@ public data class SessionResumeCapabilities(
 
 /**
  * Session capabilities supported by the agent.
- *
  */
+@OptIn(UnstableApi::class)
 @Serializable
 public data class SessionCapabilities(
+    val fork: SessionForkCapabilities? = null,
+    val list: SessionListCapabilities? = null,
     val resume: SessionResumeCapabilities? = null,
     override val _meta: JsonElement? = null
 ) : AcpWithMeta
@@ -87,6 +121,7 @@ public data class SessionCapabilities(
  *
  * See protocol docs: [Agent Capabilities](https://agentclientprotocol.com/protocol/initialization#agent-capabilities)
  */
+@OptIn(UnstableApi::class)
 @Serializable
 public data class AgentCapabilities(
     @EncodeDefault val loadSession: Boolean = false,

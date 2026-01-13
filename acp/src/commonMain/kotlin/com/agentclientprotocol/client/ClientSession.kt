@@ -76,4 +76,42 @@ public interface ClientSession {
      */
     @UnstableApi
     public suspend fun setModel(modelId: ModelId, _meta: JsonElement? = null): SetSessionModelResponse
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * The flag indicates whether the agent supports session configuration options.
+     */
+    @UnstableApi
+    public val configOptionsSupported: Boolean
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Returns the current configuration options for the session.
+     * Check for [configOptionsSupported] before calling this method.
+     *
+     * @throws IllegalStateException if configuration options are not supported.
+     */
+    @UnstableApi
+    public val configOptions: StateFlow<List<SessionConfigOption>>
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Sets a configuration option for the session.
+     *
+     * @param configId the id of the configuration option to set
+     * @param value the value to set for the configuration option
+     * @param _meta optional metadata
+     * @return a [SetSessionConfigOptionResponse] containing the updated configuration options
+     */
+    @UnstableApi
+    public suspend fun setConfigOption(configId: SessionConfigId, value: SessionConfigValueId, _meta: JsonElement? = null): SetSessionConfigOptionResponse
 }

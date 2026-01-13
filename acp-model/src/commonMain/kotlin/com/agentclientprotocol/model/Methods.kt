@@ -46,8 +46,6 @@ public open class AcpMethod(public val methodName: MethodName) {
         public object Authenticate : AcpRequestResponseMethod<AuthenticateRequest, AuthenticateResponse>("authenticate", AuthenticateRequest.serializer(), AuthenticateResponse.serializer())
         public object SessionNew : AcpRequestResponseMethod<NewSessionRequest, NewSessionResponse>("session/new", NewSessionRequest.serializer(), NewSessionResponse.serializer())
         public object SessionLoad : AcpRequestResponseMethod<LoadSessionRequest, LoadSessionResponse>("session/load", LoadSessionRequest.serializer(), LoadSessionResponse.serializer())
-        @UnstableApi
-        public object SessionResume : AcpSessionRequestResponseMethod<ResumeSessionRequest, ResumeSessionResponse>("session/resume", ResumeSessionRequest.serializer(), ResumeSessionResponse.serializer())
 
         // session specific
         public object SessionPrompt : AcpSessionRequestResponseMethod<PromptRequest, PromptResponse>("session/prompt", PromptRequest.serializer(), PromptResponse.serializer())
@@ -55,6 +53,16 @@ public open class AcpMethod(public val methodName: MethodName) {
         public object SessionSetMode : AcpSessionRequestResponseMethod<SetSessionModeRequest, SetSessionModeResponse>("session/set_mode", SetSessionModeRequest.serializer(), SetSessionModeResponse.serializer())
         @UnstableApi
         public object SessionSetModel : AcpSessionRequestResponseMethod<SetSessionModelRequest, SetSessionModelResponse>("session/set_model", SetSessionModelRequest.serializer(), SetSessionModelResponse.serializer())
+
+        // unstable session methods
+        @UnstableApi
+        public object SessionFork : AcpSessionRequestResponseMethod<ForkSessionRequest, ForkSessionResponse>("session/fork", ForkSessionRequest.serializer(), ForkSessionResponse.serializer())
+        @UnstableApi
+        public object SessionList : AcpRequestResponseMethod<ListSessionsRequest, ListSessionsResponse>("session/list", ListSessionsRequest.serializer(), ListSessionsResponse.serializer())
+        @UnstableApi
+        public object SessionResume : AcpSessionRequestResponseMethod<ResumeSessionRequest, ResumeSessionResponse>("session/resume", ResumeSessionRequest.serializer(), ResumeSessionResponse.serializer())
+        @UnstableApi
+        public object SessionSetConfigOption : AcpSessionRequestResponseMethod<SetSessionConfigOptionRequest, SetSessionConfigOptionResponse>("session/set_config_option", SetSessionConfigOptionRequest.serializer(), SetSessionConfigOptionResponse.serializer())
     }
 
     public object ClientMethods {

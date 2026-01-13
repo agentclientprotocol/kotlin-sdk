@@ -1,15 +1,19 @@
 package com.agentclientprotocol.protocol
 
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.AcpNotification
+import com.agentclientprotocol.model.AcpPaginatedRequest
+import com.agentclientprotocol.model.AcpPaginatedResponse
 import com.agentclientprotocol.model.AcpRequest
 import com.agentclientprotocol.model.AcpResponse
 import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.JsonRpcRequest
+import com.agentclientprotocol.util.PaginatedResponseToFlowAdapter
+import com.agentclientprotocol.util.SequenceToPaginatedResponseAdapter
+import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.encodeToJsonElement
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
@@ -26,6 +30,20 @@ public suspend fun <TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOp
     // if we've got null, we can interpret it as {}
     val responseJson = this.sendRequestRaw(method.methodName, params).takeIf { it != JsonNull } ?: buildJsonObject {  }
     return ACPJson.decodeFromJsonElement(method.responseSerializer, responseJson)
+}
+
+/**
+ * Send a batched request and return a cold [Flow] that automatically fetches subsequent pages.
+ * The flow is cold - it won't start fetching until collection begins.
+ */
+@UnstableApi
+public fun <TRequest : AcpPaginatedRequest, TResponse : AcpPaginatedResponse<TItem>, TItem> RpcMethodsOperations.sendBatchedRequest(
+    method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
+    requestFactory: (cursor: String?) -> TRequest
+): Flow<TItem> {
+    return PaginatedResponseToFlowAdapter.asFlow { cursor ->
+        sendRequest(method, requestFactory(cursor))
+    }
 }
 
 /**
@@ -51,6 +69,24 @@ public fun<TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOperations.
         val requestParams = ACPJson.decodeFromJsonElement(method.requestSerializer, request.params ?: JsonNull)
         val responseObject = handler(requestParams)
         ACPJson.encodeToJsonElement(method.responseSerializer, responseObject)
+    }
+}
+
+@OptIn(UnstableApi::class)
+public fun<TRequest : AcpPaginatedRequest, TResponse : AcpPaginatedResponse<TItem>, TItem> RpcMethodsOperations.setPaginatedRequestHandler(
+    method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
+    batchSize: Int = 10,
+    additionalContext: CoroutineContext = EmptyCoroutineContext,
+    batchedResultFactory: (request: TRequest, batch: List<TItem>, newCursor: String?) -> TResponse,
+    sequenceFactory: suspend (request: TRequest) -> Sequence<TItem>
+) {
+    val paginatedResponseAdapter = SequenceToPaginatedResponseAdapter<TItem, TRequest, TResponse>(batchSize = batchSize)
+    this.setRequestHandler(method, additionalContext) { params ->
+        return@setRequestHandler paginatedResponseAdapter.next(
+            params = params,
+            sequenceFactory = sequenceFactory,
+            resultFactory = { _, batch, newCursor -> batchedResultFactory(params, batch, newCursor) }
+        )
     }
 }
 /**

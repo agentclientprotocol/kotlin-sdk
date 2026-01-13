@@ -48,6 +48,12 @@ internal class ClientSessionImpl(
         MutableStateFlow(models.currentModelId)
     }
 
+    @UnstableApi
+    private val _configOptions by lazy {
+        val configOptions = createdResponse.configOptions ?: error("Config options are not provided by the agent")
+        MutableStateFlow(configOptions)
+    }
+
     override suspend fun prompt(
         content: List<ContentBlock>,
         _meta: JsonElement?,
@@ -117,6 +123,21 @@ internal class ClientSessionImpl(
         return AcpMethod.AgentMethods.SessionSetModel(protocol, SetSessionModelRequest(sessionId, modelId, _meta))
     }
 
+    @UnstableApi
+    override val configOptionsSupported: Boolean
+        get() = createdResponse.configOptions != null
+
+    @UnstableApi
+    override val configOptions: StateFlow<List<SessionConfigOption>>
+        get() = _configOptions
+
+    @UnstableApi
+    override suspend fun setConfigOption(configId: SessionConfigId, value: SessionConfigValueId, _meta: JsonElement?): SetSessionConfigOptionResponse {
+        val response = AcpMethod.AgentMethods.SessionSetConfigOption(protocol, SetSessionConfigOptionRequest(sessionId, configId, value, _meta))
+        _configOptions.value = response.configOptions
+        return response
+    }
+
     internal suspend fun <T> executeWithSession(block: suspend () -> T): T {
         return withContext(this.asContextElement()) {
             block()
@@ -136,6 +157,10 @@ internal class ClientSessionImpl(
 //        if (notification is SessionUpdate.CurrentModelUpdate) {
 //            _currentModel.value = notification.currentModelId
 //        }
+        @OptIn(UnstableApi::class)
+        if (notification is SessionUpdate.ConfigOptionUpdate && configOptionsSupported) {
+            _configOptions.value = notification.configOptions
+        }
 
         val promptSession = activePrompt.value
         @OptIn(DelicateCoroutinesApi::class)

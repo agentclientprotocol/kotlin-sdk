@@ -64,6 +64,29 @@ public interface AgentSession {
     public suspend fun setModel(modelId: ModelId, _meta: JsonElement?): SetSessionModelResponse {
         throw NotImplementedError("Must be implemented when providing non-empty ${::availableModels.name}")
     }
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Return a list of available configuration options for the session. If the session doesn't support config options, return an empty list.
+     */
+    @UnstableApi
+    public val configOptions: List<SessionConfigOption>
+        get() = emptyList()
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Called when a client asks to change a configuration option. If the option is changed [SessionUpdate.ConfigOptionUpdate] must be sent to the client.
+     */
+    @UnstableApi
+    public suspend fun setConfigOption(configId: SessionConfigId, value: SessionConfigValueId, _meta: JsonElement?): SetSessionConfigOptionResponse {
+        throw NotImplementedError("Must be implemented when providing non-empty ${::configOptions.name}")
+    }
 }
 
 @UnstableApi
@@ -77,4 +100,11 @@ internal fun AgentSession.asModeState(): SessionModeState? {
     val modes = availableModes
     if (modes.isEmpty()) return null
     return SessionModeState(defaultMode, modes)
+}
+
+@UnstableApi
+internal fun AgentSession.asConfigOptionsState(): List<SessionConfigOption>? {
+    val options = configOptions
+    if (options.isEmpty()) return null
+    return options
 }

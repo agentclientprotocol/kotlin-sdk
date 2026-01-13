@@ -212,26 +212,6 @@ public data class LoadSessionRequest(
     override val _meta: JsonElement? = null
 ) : AcpRequest, AcpWithSessionId
 
-/**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
- * Request parameters for resuming an existing session.
- *
- * Resumes an existing session without returning previous messages (unlike `session/load`).
- * This is useful for agents that can resume sessions but don't implement full session loading.
- *
- * Only available if the Agent supports the `session.resume` capability.
- */
-@UnstableApi
-@Serializable
-public data class ResumeSessionRequest(
-    override val sessionId: SessionId,
-    val cwd: String,
-    val mcpServers: List<McpServer>,
-    override val _meta: JsonElement? = null
-) : AcpRequest, AcpWithSessionId
 
 /**
  * Request parameters for sending a user prompt to the agent.
@@ -391,11 +371,15 @@ public data class SessionModelState(
  *
  * See protocol docs: [Creating a Session](https://agentclientprotocol.com/protocol/session-setup#creating-a-session)
  */
+@OptIn(UnstableApi::class)
 @Serializable
 public data class NewSessionResponse(
     override val sessionId: SessionId,
     override val modes: SessionModeState? = null,
+    @property:UnstableApi
     override val models: SessionModelState? = null,
+    @property:UnstableApi
+    override val configOptions: List<SessionConfigOption>? = null,
     override val _meta: JsonElement? = null
 ) : AcpCreatedSessionResponse, AcpResponse, AcpWithSessionId
 
@@ -413,25 +397,14 @@ public data class PromptResponse(
 /**
  * Response from loading an existing session.
  */
+@OptIn(UnstableApi::class)
 @Serializable
 public data class LoadSessionResponse(
     override val modes: SessionModeState? = null,
+    @property:UnstableApi
     override val models: SessionModelState? = null,
-    override val _meta: JsonElement? = null
-) : AcpCreatedSessionResponse, AcpResponse
-
-/**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
- * Response from resuming an existing session.
- */
-@UnstableApi
-@Serializable
-public data class ResumeSessionResponse(
-    override val modes: SessionModeState? = null,
-    override val models: SessionModelState? = null,
+    @property:UnstableApi
+    override val configOptions: List<SessionConfigOption>? = null,
     override val _meta: JsonElement? = null
 ) : AcpCreatedSessionResponse, AcpResponse
 
@@ -495,6 +468,139 @@ public data class WriteTextFileResponse(
  */
 @Serializable
 public data class ReleaseTerminalResponse(
+    override val _meta: JsonElement? = null
+) : AcpResponse
+
+// === Unstable Request/Response Types ===
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Request to fork a session, creating a new session based on an existing session's context.
+ */
+@UnstableApi
+@Serializable
+public data class ForkSessionRequest(
+    override val sessionId: SessionId,
+    val cwd: String,
+    val mcpServers: List<McpServer>,
+    override val _meta: JsonElement? = null
+) : AcpRequest, AcpWithSessionId
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Response from forking a session.
+ */
+@UnstableApi
+@Serializable
+public data class ForkSessionResponse(
+    override val sessionId: SessionId,
+    override val modes: SessionModeState? = null,
+    @property:UnstableApi
+    override val models: SessionModelState? = null,
+    @property:UnstableApi
+    override val configOptions: List<SessionConfigOption>? = null,
+    override val _meta: JsonElement? = null
+) : AcpCreatedSessionResponse, AcpResponse, AcpWithSessionId
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Request to list existing sessions with optional filtering and pagination.
+ */
+@UnstableApi
+@Serializable
+public data class ListSessionsRequest(
+    val cwd: String? = null,
+    override val cursor: String? = null,
+    override val _meta: JsonElement? = null
+) : AcpRequest, AcpPaginatedRequest
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Response from listing sessions.
+ */
+@UnstableApi
+@Serializable
+public data class ListSessionsResponse(
+    val sessions: List<SessionInfo>,
+    override val nextCursor: String? = null,
+    override val _meta: JsonElement? = null
+) : AcpResponse, AcpPaginatedResponse<SessionInfo> {
+    override fun getItemsBatch(): List<SessionInfo> = sessions
+}
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Request to resume a session without replaying message history.
+ */
+@UnstableApi
+@Serializable
+public data class ResumeSessionRequest(
+    override val sessionId: SessionId,
+    val cwd: String,
+    val mcpServers: List<McpServer>,
+    override val _meta: JsonElement? = null
+) : AcpRequest, AcpWithSessionId
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Response from resuming a session.
+ */
+@UnstableApi
+@Serializable
+public data class ResumeSessionResponse(
+    override val modes: SessionModeState? = null,
+    @property:UnstableApi
+    override val models: SessionModelState? = null,
+    @property:UnstableApi
+    override val configOptions: List<SessionConfigOption>? = null,
+    override val _meta: JsonElement? = null
+) : AcpCreatedSessionResponse, AcpResponse
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Request to set a configuration option for a session.
+ */
+@UnstableApi
+@Serializable
+public data class SetSessionConfigOptionRequest(
+    override val sessionId: SessionId,
+    val configId: SessionConfigId,
+    val value: SessionConfigValueId,
+    override val _meta: JsonElement? = null
+) : AcpRequest, AcpWithSessionId
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Response from setting a configuration option.
+ */
+@UnstableApi
+@Serializable
+public data class SetSessionConfigOptionResponse(
+    val configOptions: List<SessionConfigOption>,
     override val _meta: JsonElement? = null
 ) : AcpResponse
 
