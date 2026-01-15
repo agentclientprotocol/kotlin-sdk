@@ -43,11 +43,13 @@ class SimpleAgentSession(
                     .joinToString(" ") { it.text }
             }"
 
-            emit(Event.SessionUpdateEvent(
-                SessionUpdate.AgentMessageChunk(
-                    ContentBlock.Text(responseText)
+            emit(
+                Event.SessionUpdateEvent(
+                    SessionUpdate.AgentMessageChunk(
+                        ContentBlock.Text(responseText)
+                    )
                 )
-            ))
+            )
 
             // Simulate a tool call if client supports file operations
             if (clientCapabilities.fs?.readTextFile == true) {
@@ -85,50 +87,58 @@ class SimpleAgentSession(
             )
         )
 
-        emit(Event.SessionUpdateEvent(
-            SessionUpdate.PlanUpdate(plan.entries)
-        ))
+        emit(
+            Event.SessionUpdateEvent(
+                SessionUpdate.PlanUpdate(plan.entries)
+            )
+        )
     }
 
     private suspend fun FlowCollector<Event>.simulateToolCall() {
         val toolCallId = ToolCallId("tool-${System.currentTimeMillis()}")
 
         // Start tool call
-        emit(Event.SessionUpdateEvent(
-            SessionUpdate.ToolCallUpdate(
-                toolCallId = toolCallId,
-                title = "Reading current directory",
-                kind = ToolKind.READ,
-                status = ToolCallStatus.PENDING,
-                locations = listOf(ToolCallLocation(".")),
-                content = emptyList()
+        emit(
+            Event.SessionUpdateEvent(
+                SessionUpdate.ToolCallUpdate(
+                    toolCallId = toolCallId,
+                    title = "Reading current directory",
+                    kind = ToolKind.READ,
+                    status = ToolCallStatus.PENDING,
+                    locations = listOf(ToolCallLocation(".")),
+                    content = emptyList()
+                )
             )
-        ))
+        )
 
         delay(500) // Simulate work
 
         // Update to in progress
-        emit(Event.SessionUpdateEvent(
-            SessionUpdate.ToolCallUpdate(
-                toolCallId = toolCallId,
-                status = ToolCallStatus.IN_PROGRESS
+        emit(
+            Event.SessionUpdateEvent(
+                SessionUpdate.ToolCallUpdate(
+                    toolCallId = toolCallId,
+                    status = ToolCallStatus.IN_PROGRESS
+                )
             )
-        ))
+        )
 
         delay(500) // Simulate more work
 
         // Complete the tool call
-        emit(Event.SessionUpdateEvent(
-            SessionUpdate.ToolCallUpdate(
-                toolCallId = toolCallId,
-                status = ToolCallStatus.COMPLETED,
-                content = listOf(
-                    ToolCallContent.Content(
-                        ContentBlock.Text("Directory listing completed successfully")
+        emit(
+            Event.SessionUpdateEvent(
+                SessionUpdate.ToolCallUpdate(
+                    toolCallId = toolCallId,
+                    status = ToolCallStatus.COMPLETED,
+                    content = listOf(
+                        ToolCallContent.Content(
+                            ContentBlock.Text("Directory listing completed successfully")
+                        )
                     )
                 )
             )
-        ))
+        )
     }
 
     private suspend fun FlowCollector<Event>.demonstrateFileSystemOperations() {
@@ -136,11 +146,13 @@ class SimpleAgentSession(
             val clientOperation = currentCoroutineContext().client
 
             // Example: Write a file
-            emit(Event.SessionUpdateEvent(
-                SessionUpdate.AgentMessageChunk(
-                    ContentBlock.Text("\nDemonstrating file system operations...")
+            emit(
+                Event.SessionUpdateEvent(
+                    SessionUpdate.AgentMessageChunk(
+                        ContentBlock.Text("\nDemonstrating file system operations...")
+                    )
                 )
-            ))
+            )
 
             val testContent = "Hello from ACP agent!"
             clientOperation.fsWriteTextFile("/tmp/acp_test.txt", testContent)
@@ -148,17 +160,21 @@ class SimpleAgentSession(
             // Example: Read the file back
             val readResponse = clientOperation.fsReadTextFile("/tmp/acp_test.txt")
 
-            emit(Event.SessionUpdateEvent(
-                SessionUpdate.AgentMessageChunk(
-                    ContentBlock.Text("\nFile content read: ${readResponse.content}")
+            emit(
+                Event.SessionUpdateEvent(
+                    SessionUpdate.AgentMessageChunk(
+                        ContentBlock.Text("\nFile content read: ${readResponse.content}")
+                    )
                 )
-            ))
+            )
         } catch (e: Exception) {
-            emit(Event.SessionUpdateEvent(
-                SessionUpdate.AgentMessageChunk(
-                    ContentBlock.Text("\nFile system operation failed: ${e.message}")
+            emit(
+                Event.SessionUpdateEvent(
+                    SessionUpdate.AgentMessageChunk(
+                        ContentBlock.Text("\nFile system operation failed: ${e.message}")
+                    )
                 )
-            ))
+            )
         }
     }
 
@@ -166,11 +182,13 @@ class SimpleAgentSession(
         try {
             val terminalOps = currentCoroutineContext().client
 
-            emit(Event.SessionUpdateEvent(
-                SessionUpdate.AgentMessageChunk(
-                    ContentBlock.Text("\nDemonstrating terminal operations...")
+            emit(
+                Event.SessionUpdateEvent(
+                    SessionUpdate.AgentMessageChunk(
+                        ContentBlock.Text("\nDemonstrating terminal operations...")
+                    )
                 )
-            ))
+            )
 
             // Example: Execute a simple command
             val createResponse = terminalOps.terminalCreate("echo", listOf("Hello from terminal!"))
@@ -178,17 +196,21 @@ class SimpleAgentSession(
             val outputResponse = terminalOps.terminalOutput(createResponse.terminalId)
             terminalOps.terminalRelease(createResponse.terminalId)
 
-            emit(Event.SessionUpdateEvent(
-                SessionUpdate.AgentMessageChunk(
-                    ContentBlock.Text("\nTerminal output: ${outputResponse.output} (exit code: ${exitResponse.exitCode})")
+            emit(
+                Event.SessionUpdateEvent(
+                    SessionUpdate.AgentMessageChunk(
+                        ContentBlock.Text("\nTerminal output: ${outputResponse.output} (exit code: ${exitResponse.exitCode})")
+                    )
                 )
-            ))
+            )
         } catch (e: Exception) {
-            emit(Event.SessionUpdateEvent(
-                SessionUpdate.AgentMessageChunk(
-                    ContentBlock.Text("\nTerminal operation failed: ${e.message}")
+            emit(
+                Event.SessionUpdateEvent(
+                    SessionUpdate.AgentMessageChunk(
+                        ContentBlock.Text("\nTerminal operation failed: ${e.message}")
+                    )
                 )
-            ))
+            )
         }
     }
 }

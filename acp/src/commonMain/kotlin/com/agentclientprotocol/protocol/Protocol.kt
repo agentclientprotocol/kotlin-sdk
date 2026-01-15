@@ -1,5 +1,3 @@
-@file:Suppress("unused")
-
 package com.agentclientprotocol.protocol
 
 import com.agentclientprotocol.model.AcpMethod

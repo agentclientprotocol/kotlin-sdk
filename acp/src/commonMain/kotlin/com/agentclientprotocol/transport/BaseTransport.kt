@@ -12,9 +12,9 @@ private val logger = KotlinLogging.logger {}
 
 public abstract class BaseTransport : Transport {
     protected val _state: MutableStateFlow<Transport.State> = MutableStateFlow(Transport.State.CREATED)
-    private val messageHandlers = atomic<MessageListener>({})
-    private val errorHandlers = atomic<ErrorListener>({})
-    private val closeHandlers = atomic<CloseListener>({})
+    private val messageHandlers = atomic<MessageListener> {}
+    private val errorHandlers = atomic<ErrorListener> {}
+    private val closeHandlers = atomic<CloseListener> {}
 
     override fun onMessage(handler: MessageListener) {
         messageHandlers.update { old ->

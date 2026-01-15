@@ -52,7 +52,8 @@ class JsonDecodeTest {
     @Test
     fun testDecodeError() {
         try {
-            decodeJsonRpcMessage("""
+            decodeJsonRpcMessage(
+                """
             asdfasdfas
                 "outcome": {
                   "outcome": "selected",
@@ -60,9 +61,11 @@ class JsonDecodeTest {
                 }
               }
             }
-        """.trimIndent())
+        """.trimIndent()
+            )
             fail("Exception expected")
-        } catch (_: SerializationException) {}
+        } catch (_: SerializationException) {
+        }
     }
 
 }

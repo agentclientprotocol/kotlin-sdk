@@ -4,12 +4,10 @@ import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.decodeJsonRpcMessage
 import com.agentclientprotocol.transport.Transport.State
-import com.agentclientprotocol.util.checkCancelled
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.getAndUpdate
-import kotlinx.coroutines.flow.update
 import kotlinx.io.*
 import kotlinx.serialization.encodeToString
 
@@ -28,11 +26,13 @@ public class StdioTransport(
     private val output: Sink,
     private val name: String = StdioTransport::class.simpleName!!,
 ) : BaseTransport() {
-    private val childScope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]) + CoroutineName(name))
+    private val childScope = CoroutineScope(
+        parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]) + CoroutineName(name)
+    )
 
     private val receiveChannel = Channel<JsonRpcMessage>(Channel.UNLIMITED)
     private val sendChannel = Channel<JsonRpcMessage>(Channel.UNLIMITED)
-    
+
     override fun start() {
         if (_state.getAndUpdate { State.STARTING } != State.CREATED) error("Transport is not in ${State.CREATED.name} state")
         // Start reading messages from input
@@ -112,16 +112,13 @@ public class StdioTransport(
                 logger.trace { "Joining read/write jobs..." }
                 if (_state.getAndUpdate { State.STARTED } != State.STARTING) logger.warn { "Transport is not in ${State.STARTING.name} state" }
                 joinAll(readJob, writeJob)
-            }
-            catch (ce: CancellationException) {
+            } catch (ce: CancellationException) {
                 logger.trace(ce) { "Join cancelled" }
                 // don't throw as error
-            }
-            catch (e: Exception) {
+            } catch (e: Exception) {
                 logger.trace(e) { "Exception while waiting read/write jobs" }
                 fireError(e)
-            }
-            finally {
+            } finally {
                 childScope.cancel()
                 if (_state.getAndUpdate { State.CLOSED } != State.CLOSING) logger.warn { "Transport is not in ${State.CLOSING.name} state" }
                 fireClose()
@@ -129,7 +126,7 @@ public class StdioTransport(
             }
         }
     }
-    
+
     override fun send(message: JsonRpcMessage) {
         logger.trace { "Sending message: $message" }
         val channelResult = sendChannel.trySend(message)

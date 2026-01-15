@@ -1,5 +1,3 @@
-@file:Suppress("unused")
-
 package com.agentclientprotocol.transport
 
 import com.agentclientprotocol.rpc.JsonRpcMessage
@@ -18,6 +16,7 @@ public typealias CloseListener = () -> Unit
  */
 public interface Transport : AutoCloseable {
     public enum class State { CREATED, STARTING, STARTED, CLOSING, CLOSED }
+
     public val state: StateFlow<State>
 
     /**
