@@ -2,6 +2,7 @@ package com.agentclientprotocol.agent
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.ClientInfo
+import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.AuthMethodId
 import com.agentclientprotocol.model.AuthenticateResponse
@@ -64,6 +65,19 @@ public interface AgentSupport {
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters): AgentSession {
         throw NotImplementedError("loadSession is not implemented. The capability is declared in AgentCapabilities.loadSession")
     }
+
+    /**
+     * **UNSTABLE**
+     *
+     * Hook invoked after a session is created/loaded and bound to a client, before responding to the request.
+     * Use it to push initial session updates (for example, available commands) that must be sent before any prompt.
+     */
+    @UnstableApi
+    public suspend fun onSessionReady(
+        session: AgentSession,
+        sessionParameters: SessionCreationParameters,
+        client: ClientSessionOperations,
+    ) {}
 
     /**
      * **UNSTABLE**

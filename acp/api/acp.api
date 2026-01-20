@@ -83,6 +83,8 @@ public abstract interface class com/agentclientprotocol/agent/AgentSupport {
 	public static synthetic fun listSessions$suspendImpl (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun loadSession-nk3TnMc (Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun loadSession-nk3TnMc$suspendImpl (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun onSessionReady (Lcom/agentclientprotocol/agent/AgentSession;Lcom/agentclientprotocol/common/SessionCreationParameters;Lcom/agentclientprotocol/common/ClientSessionOperations;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun onSessionReady$suspendImpl (Lcom/agentclientprotocol/agent/AgentSupport;Lcom/agentclientprotocol/agent/AgentSession;Lcom/agentclientprotocol/common/SessionCreationParameters;Lcom/agentclientprotocol/common/ClientSessionOperations;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun resumeSession-nk3TnMc (Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun resumeSession-nk3TnMc$suspendImpl (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
@@ -92,6 +94,7 @@ public final class com/agentclientprotocol/agent/AgentSupport$DefaultImpls {
 	public static fun forkSession-nk3TnMc (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun listSessions (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun loadSession-nk3TnMc (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun onSessionReady (Lcom/agentclientprotocol/agent/AgentSupport;Lcom/agentclientprotocol/agent/AgentSession;Lcom/agentclientprotocol/common/SessionCreationParameters;Lcom/agentclientprotocol/common/ClientSessionOperations;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun resumeSession-nk3TnMc (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 

@@ -78,6 +78,8 @@ import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionParameters
 import com.agentclientprotocol.common.remoteSessionOperations
 import com.agentclientprotocol.model.AgentCapabilities
+import com.agentclientprotocol.model.AvailableCommand
+import com.agentclientprotocol.model.AvailableCommandInput
 import com.agentclientprotocol.model.ContentBlock
 import com.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
 import com.agentclientprotocol.model.PromptResponse
@@ -149,6 +151,18 @@ private class TerminalAgentSupport : AgentSupport {
     override suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionParameters): AgentSession =
         // Rehydrate existing sessions with the provided identifier.
         TerminalAgentSession(sessionId)
+
+    override suspend fun onSessionReady(
+        session: AgentSession,
+        sessionParameters: SessionParameters,
+        client: ClientSessionOperations
+    ) {
+        client.notify(
+            SessionUpdate.AvailableCommandsUpdate(
+                listOf(AvailableCommand("help", "Show available commands", AvailableCommandInput.Unstructured("topic")))
+            )
+        )
+    }
 }
 
 fun main(): Unit = runBlocking {

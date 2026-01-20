@@ -114,6 +114,66 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
     }
 
     @Test
+    @OptIn(UnstableApi::class)
+    fun `session ready notifies available commands`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val readyUpdate = CompletableDeferred<SessionUpdate>()
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(clientInfo.protocolVersion)
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                return object : AgentSession {
+                    override val sessionId: SessionId = SessionId("ready-session-id")
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = emptyFlow()
+                }
+            }
+
+            override suspend fun onSessionReady(
+                session: AgentSession,
+                sessionParameters: SessionCreationParameters,
+                client: ClientSessionOperations,
+            ) {
+                client.notify(
+                    SessionUpdate.AvailableCommandsUpdate(
+                        listOf(AvailableCommand("help", "Show available commands", AvailableCommandInput.Unstructured("topic")))
+                    )
+                )
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = 10))
+        client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+            object : ClientSessionOperations {
+                override suspend fun requestPermissions(
+                    toolCall: SessionUpdate.ToolCallUpdate,
+                    permissions: List<PermissionOption>,
+                    _meta: JsonElement?,
+                ): RequestPermissionResponse {
+                    return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+                }
+
+                override suspend fun notify(
+                    notification: SessionUpdate,
+                    _meta: JsonElement?,
+                ) {
+                    readyUpdate.complete(notification)
+                }
+            }
+        }
+
+        val update = withTimeout(1000) { readyUpdate.await() }
+        assertTrue(update is SessionUpdate.AvailableCommandsUpdate)
+        val command = (update as SessionUpdate.AvailableCommandsUpdate).availableCommands.single()
+        assertEquals("help", command.name)
+    }
+
+    @Test
     fun `prompt response and update have proper order`() = testWithProtocols { clientProtocol, agentProtocol ->
         val client = Client(protocol = clientProtocol)
         val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {

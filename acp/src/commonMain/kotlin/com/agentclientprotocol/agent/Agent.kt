@@ -147,6 +147,10 @@ public class Agent(
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionNew) { params: NewSessionRequest ->
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params._meta)
             val session = createSession(sessionParameters) { agentSupport.createSession(it) }
+            @OptIn(UnstableApi::class)
+            getSessionOrThrow(session.sessionId).executeWithSession {
+                agentSupport.onSessionReady(session, sessionParameters, currentCoroutineContext().client)
+            }
 
             @OptIn(UnstableApi::class)
             return@setRequestHandler NewSessionResponse(
@@ -161,6 +165,10 @@ public class Agent(
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params._meta)
             val session = createSession(sessionParameters) { agentSupport.loadSession(params.sessionId, sessionParameters) }
             @OptIn(UnstableApi::class)
+            getSessionOrThrow(session.sessionId).executeWithSession {
+                agentSupport.onSessionReady(session, sessionParameters, currentCoroutineContext().client)
+            }
+            @OptIn(UnstableApi::class)
             return@setRequestHandler LoadSessionResponse(
                 // maybe unify result of these two methods to have sessionId in both
 //                sessionId = session.sessionId,
@@ -173,6 +181,10 @@ public class Agent(
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionResume) { params: ResumeSessionRequest ->
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params._meta)
             val session = createSession(sessionParameters) { agentSupport.resumeSession(params.sessionId, sessionParameters) }
+            @OptIn(UnstableApi::class)
+            getSessionOrThrow(session.sessionId).executeWithSession {
+                agentSupport.onSessionReady(session, sessionParameters, currentCoroutineContext().client)
+            }
             return@setRequestHandler ResumeSessionResponse(
                 modes = session.asModeState(),
                 models = session.asModelState()
@@ -211,6 +223,10 @@ public class Agent(
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionFork) { params: ForkSessionRequest ->
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params._meta)
             val session = createSession(sessionParameters) { agentSupport.forkSession(params.sessionId, sessionParameters) }
+            @OptIn(UnstableApi::class)
+            getSessionOrThrow(session.sessionId).executeWithSession {
+                agentSupport.onSessionReady(session, sessionParameters, currentCoroutineContext().client)
+            }
             return@setRequestHandler ForkSessionResponse(
                 sessionId = session.sessionId,
                 modes = session.asModeState(),
@@ -279,4 +295,3 @@ public val CoroutineContext.clientInfo: ClientInfo
  */
 public val CoroutineContext.client: ClientSessionOperations
     get() = this[SessionWrapperContextElement.Key]?.sessionWrapper?.clientOperations ?: error("No remote client found in context")
-
