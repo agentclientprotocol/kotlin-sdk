@@ -11,6 +11,7 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Polymorphic
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
@@ -184,14 +185,18 @@ internal object AuthMethodSerializer : KSerializer<AuthMethod> {
                 AuthMethod.TerminalAuth.serializer(),
                 jsonObject
             )
-            else -> AuthMethod.UnknownAuthMethod(
-                id = ACPJson.decodeFromJsonElement(AuthMethodId.serializer(), jsonObject["id"]!!),
-                name = jsonObject["name"]!!.jsonPrimitive.content,
-                description = jsonObject["description"]?.jsonPrimitive?.contentOrNull,
-                type = explicitType,
-                rawJson = jsonObject,
-                _meta = jsonObject["_meta"]
-            )
+            else -> {
+                val id = jsonObject["id"] ?: throw SerializationException("Missing 'id' field")
+                val name = jsonObject["name"] ?: throw SerializationException("Missing 'name' field")
+                AuthMethod.UnknownAuthMethod(
+                    id = ACPJson.decodeFromJsonElement(AuthMethodId.serializer(), id),
+                    name = name.jsonPrimitive.content,
+                    description = jsonObject["description"]?.jsonPrimitive?.contentOrNull,
+                    type = explicitType,
+                    rawJson = jsonObject,
+                    _meta = jsonObject["_meta"]
+                )
+            }
         }
     }
 }
