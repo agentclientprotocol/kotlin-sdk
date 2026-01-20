@@ -4,24 +4,197 @@
 package com.agentclientprotocol.model
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.RequestId
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Polymorphic
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.descriptors.buildClassSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.JsonClassDiscriminator
+import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonEncoder
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+
+/**
+ * Type discriminator key for AuthMethod serialization.
+ */
+private const val AUTH_METHOD_TYPE_DISCRIMINATOR = "type"
+
+/**
+ * Type discriminator values for AuthMethod serialization.
+ */
+public object AuthMethodType {
+    public const val AGENT: String = "agent"
+    public const val ENV_VAR: String = "env_var"
+    public const val TERMINAL: String = "terminal"
+}
 
 /**
  * Describes an available authentication method.
  */
-@Serializable
-public data class AuthMethod(
-    val id: AuthMethodId,
-    val name: String,
-    val description: String? = null,
-    override val _meta: JsonElement? = null
-) : AcpWithMeta
+@Serializable(with = AuthMethodSerializer::class)
+public sealed class AuthMethod : AcpWithMeta {
+    public abstract val id: AuthMethodId
+    public abstract val name: String
+    public abstract val description: String?
+
+    /**
+     * Agent-based authentication (default).
+     * Agent handles the auth itself. This is the default type for backward compatibility.
+     */
+    @Serializable
+    @SerialName(AuthMethodType.AGENT)
+    public data class AgentAuth(
+        override val id: AuthMethodId,
+        override val name: String,
+        override val description: String? = null,
+        override val _meta: JsonElement? = null
+    ) : AuthMethod()
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Environment variable-based authentication.
+     * A user can enter a key and a client will pass it to the agent as an env variable.
+     */
+    @UnstableApi
+    @Serializable
+    @SerialName(AuthMethodType.ENV_VAR)
+    public data class EnvVarAuth(
+        override val id: AuthMethodId,
+        override val name: String,
+        override val description: String? = null,
+        val varName: String,
+        val link: String? = null,
+        override val _meta: JsonElement? = null
+    ) : AuthMethod()
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Terminal-based authentication.
+     * The client runs an interactive terminal for the user to login via a TUI.
+     */
+    @UnstableApi
+    @Serializable
+    @SerialName(AuthMethodType.TERMINAL)
+    public data class TerminalAuth(
+        override val id: AuthMethodId,
+        override val name: String,
+        override val description: String? = null,
+        val args: List<String>? = null,
+        val env: Map<String, String>? = null,
+        override val _meta: JsonElement? = null
+    ) : AuthMethod()
+
+    /**
+     * Unknown authentication method for forward compatibility.
+     * Captures any auth method type not recognized by this SDK version.
+     */
+    @Serializable
+    public data class UnknownAuthMethod(
+        override val id: AuthMethodId,
+        override val name: String,
+        override val description: String? = null,
+        val type: String,
+        val rawJson: JsonObject,
+        override val _meta: JsonElement? = null
+    ) : AuthMethod()
+}
+
+/**
+ * Serializer for AuthMethod that handles:
+ * - Missing type field → AgentAuth (backward compatibility)
+ * - type="agent" → AgentAuth
+ * - type="env_var" → EnvVarAuth
+ * - type="terminal" → TerminalAuth
+ * - Unknown type → UnknownAuthMethod
+ */
+@OptIn(UnstableApi::class)
+internal object AuthMethodSerializer : KSerializer<AuthMethod> {
+    override val descriptor: SerialDescriptor = buildClassSerialDescriptor("AuthMethod")
+
+    override fun serialize(encoder: Encoder, value: AuthMethod) {
+        val jsonEncoder = encoder as JsonEncoder
+        val jsonObject = when (value) {
+            is AuthMethod.AgentAuth -> {
+                val base = ACPJson.encodeToJsonElement(AuthMethod.AgentAuth.serializer(), value).jsonObject
+                buildJsonObject {
+                    put(AUTH_METHOD_TYPE_DISCRIMINATOR, AuthMethodType.AGENT)
+                    base.forEach { (k, v) -> put(k, v) }
+                }
+            }
+            is AuthMethod.EnvVarAuth -> {
+                val base = ACPJson.encodeToJsonElement(AuthMethod.EnvVarAuth.serializer(), value).jsonObject
+                buildJsonObject {
+                    put(AUTH_METHOD_TYPE_DISCRIMINATOR, AuthMethodType.ENV_VAR)
+                    base.forEach { (k, v) -> put(k, v) }
+                }
+            }
+            is AuthMethod.TerminalAuth -> {
+                val base = ACPJson.encodeToJsonElement(AuthMethod.TerminalAuth.serializer(), value).jsonObject
+                buildJsonObject {
+                    put(AUTH_METHOD_TYPE_DISCRIMINATOR, AuthMethodType.TERMINAL)
+                    base.forEach { (k, v) -> put(k, v) }
+                }
+            }
+            is AuthMethod.UnknownAuthMethod -> {
+                // For unknown, use the stored type and raw JSON
+                buildJsonObject {
+                    put(AUTH_METHOD_TYPE_DISCRIMINATOR, value.type)
+                    value.rawJson.forEach { (k, v) ->
+                        if (k != AUTH_METHOD_TYPE_DISCRIMINATOR) put(k, v)
+                    }
+                }
+            }
+        }
+        jsonEncoder.encodeJsonElement(jsonObject)
+    }
+
+    override fun deserialize(decoder: Decoder): AuthMethod {
+        val jsonDecoder = decoder as JsonDecoder
+        val jsonObject = jsonDecoder.decodeJsonElement().jsonObject
+        val explicitType = jsonObject[AUTH_METHOD_TYPE_DISCRIMINATOR]?.jsonPrimitive?.content
+
+        return when (explicitType) {
+            null, AuthMethodType.AGENT -> ACPJson.decodeFromJsonElement(
+                AuthMethod.AgentAuth.serializer(),
+                jsonObject
+            )
+            AuthMethodType.ENV_VAR -> ACPJson.decodeFromJsonElement(
+                AuthMethod.EnvVarAuth.serializer(),
+                jsonObject
+            )
+            AuthMethodType.TERMINAL -> ACPJson.decodeFromJsonElement(
+                AuthMethod.TerminalAuth.serializer(),
+                jsonObject
+            )
+            else -> AuthMethod.UnknownAuthMethod(
+                id = ACPJson.decodeFromJsonElement(AuthMethodId.serializer(), jsonObject["id"]!!),
+                name = jsonObject["name"]!!.jsonPrimitive.content,
+                description = jsonObject["description"]?.jsonPrimitive?.contentOrNull,
+                type = explicitType,
+                rawJson = jsonObject,
+                _meta = jsonObject["_meta"]
+            )
+        }
+    }
+}
 
 /**
  * An environment variable to set when launching an MCP server.
