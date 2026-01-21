@@ -147,6 +147,8 @@ public class Protocol(
     private val notificationHandlers: AtomicRef<PersistentMap<MethodName, suspend (JsonRpcNotification) -> Unit>> =
         atomic(persistentMapOf())
 
+    internal fun launch(block: suspend CoroutineScope.() -> Unit): Job = scope.launch(block = block)
+
     /**
      * Connect to a transport and start processing messages.
      */

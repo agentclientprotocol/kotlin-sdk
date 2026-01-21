@@ -14,6 +14,7 @@ import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
@@ -148,9 +149,7 @@ public class Agent(
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params._meta)
             val session = createSession(sessionParameters) { agentSupport.createSession(it) }
             @OptIn(UnstableApi::class)
-            getSessionOrThrow(session.sessionId).executeWithSession {
-                agentSupport.onSessionReady(session, sessionParameters, currentCoroutineContext().client)
-            }
+            scheduleSessionReady(session, sessionParameters)
 
             @OptIn(UnstableApi::class)
             return@setRequestHandler NewSessionResponse(
@@ -165,9 +164,7 @@ public class Agent(
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params._meta)
             val session = createSession(sessionParameters) { agentSupport.loadSession(params.sessionId, sessionParameters) }
             @OptIn(UnstableApi::class)
-            getSessionOrThrow(session.sessionId).executeWithSession {
-                agentSupport.onSessionReady(session, sessionParameters, currentCoroutineContext().client)
-            }
+            scheduleSessionReady(session, sessionParameters)
             @OptIn(UnstableApi::class)
             return@setRequestHandler LoadSessionResponse(
                 // maybe unify result of these two methods to have sessionId in both
@@ -182,9 +179,7 @@ public class Agent(
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params._meta)
             val session = createSession(sessionParameters) { agentSupport.resumeSession(params.sessionId, sessionParameters) }
             @OptIn(UnstableApi::class)
-            getSessionOrThrow(session.sessionId).executeWithSession {
-                agentSupport.onSessionReady(session, sessionParameters, currentCoroutineContext().client)
-            }
+            scheduleSessionReady(session, sessionParameters)
             return@setRequestHandler ResumeSessionResponse(
                 modes = session.asModeState(),
                 models = session.asModelState()
@@ -224,9 +219,7 @@ public class Agent(
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params._meta)
             val session = createSession(sessionParameters) { agentSupport.forkSession(params.sessionId, sessionParameters) }
             @OptIn(UnstableApi::class)
-            getSessionOrThrow(session.sessionId).executeWithSession {
-                agentSupport.onSessionReady(session, sessionParameters, currentCoroutineContext().client)
-            }
+            scheduleSessionReady(session, sessionParameters)
             return@setRequestHandler ForkSessionResponse(
                 sessionId = session.sessionId,
                 modes = session.asModeState(),
@@ -273,6 +266,23 @@ public class Agent(
     }
 
     private fun getSessionOrThrow(sessionId: SessionId): SessionWrapper = _sessions.value[sessionId] ?: acpFail("Session $sessionId not found")
+
+    @OptIn(UnstableApi::class)
+    private suspend fun scheduleSessionReady(
+        session: AgentSession,
+        sessionParameters: SessionCreationParameters,
+    ) {
+        val requestJob = currentCoroutineContext()[Job] ?: return
+        val sessionWrapper = getSessionOrThrow(session.sessionId)
+        requestJob.invokeOnCompletion { cause ->
+            if (cause != null) return@invokeOnCompletion
+            protocol.launch {
+                sessionWrapper.executeWithSession {
+                    agentSupport.onSessionReady(session, sessionParameters, currentCoroutineContext().client)
+                }
+            }
+        }
+    }
 }
 
 
