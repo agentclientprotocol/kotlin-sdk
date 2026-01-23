@@ -111,11 +111,28 @@ public operator fun <TNotification : AcpNotification> AcpMethod.AcpNotificationM
     return rpc.sendNotification(this, notification)
 }
 
-internal class JsonRpcRequestContextElement(val jsonRpcRequest: JsonRpcRequest) : AbstractCoroutineContextElement(Key) {
+internal class RequestHolder(val jsonRpcRequest: JsonRpcRequest) {
+    // probably make it thread safe
+    internal val handlers = mutableListOf<suspend () -> Unit>()
+    fun executeAfterCurrentRequest(block: suspend () -> Unit) {
+        handlers.add(block)
+    }
+}
+
+internal class JsonRpcRequestContextElement(val requestHolder: RequestHolder) : AbstractCoroutineContextElement(Key) {
     object Key : CoroutineContext.Key<JsonRpcRequestContextElement>
 }
 
-public val CoroutineContext.jsonRpcRequest: JsonRpcRequest
-    get() = this[JsonRpcRequestContextElement.Key]?.jsonRpcRequest ?: error("No JsonRpcRequest found in context")
+internal val CoroutineContext.requestHolder: RequestHolder
+    get() = this[JsonRpcRequestContextElement.Key]?.requestHolder ?: error("There is no active incoming request in this context")
 
-internal fun JsonRpcRequest.asContextElement() = JsonRpcRequestContextElement(this)
+public val CoroutineContext.jsonRpcRequest: JsonRpcRequest
+    get() = this.requestHolder.jsonRpcRequest
+
+
+/**
+ * Execute a block after the current request is processed and the response is sent back to the client.
+ */
+internal fun CoroutineContext.executeAfterCurrentRequest(block: suspend () -> Unit) {
+    requestHolder.executeAfterCurrentRequest(block)
+}
