@@ -372,10 +372,11 @@ public class Protocol(
     }
 
     private suspend fun handleRequest(request: JsonRpcRequest) {
+        val requestHolder = RequestHolder(request)
         val handler = requestHandlers.value[request.method]
         if (handler != null) {
             try {
-                val result = withContext(request.asContextElement()) {
+                val result = withContext(JsonRpcRequestContextElement(requestHolder)) {
                     handler(request)
                 }
                 sendResponse(request.id, result, null)
@@ -414,6 +415,16 @@ public class Protocol(
                         code = JsonRpcErrorCode.INTERNAL_ERROR.code, message = e.message ?: "Internal error"
                     )
                 )
+            }
+            for (handler in requestHolder.handlers) {
+                runCatching { handler() }.onFailure { t ->
+                    if (t is CancellationException) {
+                        // ignore CE
+                        logger.trace(t) { "Request handler for '${request.method}' cancelled" }
+                    } else {
+                        logger.error(t) { "Error handling after request handlers for ${request.method}" }
+                    }
+                }
             }
         } else {
             val error = JsonRpcError(

@@ -10,6 +10,17 @@ public interface AgentSession {
     public val sessionId: SessionId
 
     /**
+     * Executes after the session is created and send to the client. Can be used to send additional notifications like Commands.
+     *
+     * To access client operations use:
+     * ```
+     * currentCoroutineContext().client
+     * ```
+     *
+     * This method shouldn't throw exceptions.
+     */
+    public suspend fun postInitialize() {}
+    /**
      * Sends a message to the agent for execution and waits for the whole turn to be completed.
      * During execution, the agent can send notifications or requests to the client.
      *

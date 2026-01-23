@@ -249,6 +249,7 @@ public class Agent(
             RemoteClientSessionOperations(protocol, session.sessionId, clientInfo.capabilities),
             protocol
         )
+        currentCoroutineContext().executeAfterCurrentRequest { sessionWrapper.executeWithSession { session.postInitialize() } }
 
         _sessions.update {
             it.put(session.sessionId, sessionWrapper)
