@@ -1,5 +1,3 @@
-@file:Suppress("unused")
-
 package com.agentclientprotocol.model
 
 import kotlinx.serialization.SerialName
@@ -16,9 +14,14 @@ import kotlinx.serialization.json.JsonElement
  */
 @Serializable
 public enum class PlanEntryPriority {
-    @SerialName("high") HIGH,
-    @SerialName("medium") MEDIUM,
-    @SerialName("low") LOW
+    @SerialName("high")
+    HIGH,
+
+    @SerialName("medium")
+    MEDIUM,
+
+    @SerialName("low")
+    LOW
 }
 
 /**
@@ -30,9 +33,14 @@ public enum class PlanEntryPriority {
  */
 @Serializable
 public enum class PlanEntryStatus {
-    @SerialName("pending") PENDING,
-    @SerialName("in_progress") IN_PROGRESS,
-    @SerialName("completed") COMPLETED
+    @SerialName("pending")
+    PENDING,
+
+    @SerialName("in_progress")
+    IN_PROGRESS,
+
+    @SerialName("completed")
+    COMPLETED
 }
 
 /**
