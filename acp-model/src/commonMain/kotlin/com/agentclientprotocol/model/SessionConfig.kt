@@ -4,13 +4,19 @@
 package com.agentclientprotocol.model
 
 import com.agentclientprotocol.annotations.UnstableApi
-import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.InternalSerializationApi
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonClassDiscriminator
-import kotlinx.serialization.json.JsonContentPolymorphicSerializer
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonEncoder
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 
@@ -41,7 +47,7 @@ public data class SessionConfigSelectOption(
 @Serializable
 public data class SessionConfigSelectGroup(
     val group: SessionConfigGroupId,
-    val name: String,
+    val name: String? = null,
     val options: List<SessionConfigSelectOption>,
     override val _meta: JsonElement? = null
 ) : AcpWithMeta
@@ -82,16 +88,43 @@ public sealed class SessionConfigSelectOptions {
  */
 @OptIn(UnstableApi::class)
 internal object SessionConfigSelectOptionsSerializer :
-    JsonContentPolymorphicSerializer<SessionConfigSelectOptions>(SessionConfigSelectOptions::class) {
-    override fun selectDeserializer(element: JsonElement): DeserializationStrategy<SessionConfigSelectOptions> {
+    KSerializer<SessionConfigSelectOptions> {
+
+    @OptIn(InternalSerializationApi::class)
+    override val descriptor: SerialDescriptor =
+        ListSerializer(JsonElement.serializer()).descriptor
+
+    override fun serialize(encoder: kotlinx.serialization.encoding.Encoder, value: SessionConfigSelectOptions) {
+        val jsonEncoder = encoder as? JsonEncoder
+            ?: throw SerializationException("SessionConfigSelectOptionsSerializer supports only JSON")
+        val json = jsonEncoder.json
+
+        val elements = when (value) {
+            is SessionConfigSelectOptions.Flat ->
+                value.options.map { json.encodeToJsonElement(SessionConfigSelectOption.serializer(), it) }
+            is SessionConfigSelectOptions.Grouped ->
+                value.groups.map { json.encodeToJsonElement(SessionConfigSelectGroup.serializer(), it) }
+        }
+
+        jsonEncoder.encodeJsonElement(JsonArray(elements))
+    }
+
+    override fun deserialize(decoder: kotlinx.serialization.encoding.Decoder): SessionConfigSelectOptions {
+        val jsonDecoder = decoder as? JsonDecoder
+            ?: throw SerializationException("SessionConfigSelectOptionsSerializer supports only JSON")
+        val json = jsonDecoder.json
+        val element = jsonDecoder.decodeJsonElement()
         val array = element.jsonArray
-        if (array.isEmpty()) return SessionConfigSelectOptions.Flat.serializer()
+
+        if (array.isEmpty()) return SessionConfigSelectOptions.Flat(emptyList())
 
         val firstElement = array[0].jsonObject
         return if ("group" in firstElement) {
-            SessionConfigSelectOptions.Grouped.serializer()
+            val groups = array.map { json.decodeFromJsonElement(SessionConfigSelectGroup.serializer(), it) }
+            SessionConfigSelectOptions.Grouped(groups)
         } else {
-            SessionConfigSelectOptions.Flat.serializer()
+            val options = array.map { json.decodeFromJsonElement(SessionConfigSelectOption.serializer(), it) }
+            SessionConfigSelectOptions.Flat(options)
         }
     }
 }
