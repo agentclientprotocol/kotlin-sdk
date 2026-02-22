@@ -46,6 +46,21 @@ public data class AvailableCommand(
 ) : AcpWithMeta
 
 /**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Cost information for token usage.
+ */
+@UnstableApi
+@Serializable
+public data class Cost(
+    val amount: Double,
+    val currency: String,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
  * Different types of updates that can be sent during session processing.
  *
  * These updates provide real-time feedback about the agent's progress.
@@ -176,6 +191,23 @@ public sealed class SessionUpdate {
     public data class SessionInfoUpdate(
         val title: String? = null,
         val updatedAt: String? = null,
+        override val _meta: JsonElement? = null
+    ) : SessionUpdate(), AcpWithMeta
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Token usage update for the session.
+     */
+    @UnstableApi
+    @Serializable
+    @SerialName("usage_update")
+    public data class UsageUpdate(
+        val used: Long,
+        val size: Long,
+        val cost: Cost? = null,
         override val _meta: JsonElement? = null
     ) : SessionUpdate(), AcpWithMeta
 }

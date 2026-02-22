@@ -99,4 +99,45 @@ class SerializationTests {
         assertTrue(command.input is AvailableCommandInput.Unstructured)
         assertEquals("optional custom review instructions", command.input.hint)
     }
+
+    @Test
+    fun `decodes usage_update SessionUpdate`() {
+        val payload = """
+            {
+              "sessionUpdate": "usage_update",
+              "used": 0,
+              "size": 200000,
+              "cost": {
+                "amount": 0,
+                "currency": "USD"
+              }
+            }
+        """.trimIndent()
+
+        val update = ACPJson.decodeFromString(SessionUpdate.serializer(), payload)
+
+        assertTrue(update is SessionUpdate.UsageUpdate)
+        assertEquals(0L, update.used)
+        assertEquals(200000L, update.size)
+        assertEquals(0.0, update.cost?.amount)
+        assertEquals("USD", update.cost?.currency)
+    }
+
+    @Test
+    fun `decodes usage_update SessionUpdate without cost`() {
+        val payload = """
+            {
+              "sessionUpdate": "usage_update",
+              "used": 12345,
+              "size": 500000
+            }
+        """.trimIndent()
+
+        val update = ACPJson.decodeFromString(SessionUpdate.serializer(), payload)
+
+        assertTrue(update is SessionUpdate.UsageUpdate)
+        assertEquals(12345L, update.used)
+        assertEquals(500000L, update.size)
+        assertEquals(null, update.cost)
+    }
 }
