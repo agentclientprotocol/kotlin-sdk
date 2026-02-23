@@ -844,6 +844,38 @@ public final class com/agentclientprotocol/model/ContentBlock$Text$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class com/agentclientprotocol/model/Cost : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/Cost$Companion;
+	public fun <init> (DLjava/lang/String;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (DLjava/lang/String;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()D
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (DLjava/lang/String;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/Cost;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/Cost;DLjava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/Cost;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAmount ()D
+	public final fun getCurrency ()Ljava/lang/String;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/Cost$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/Cost$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/Cost;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/Cost;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/Cost$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class com/agentclientprotocol/model/CreateTerminalRequest : com/agentclientprotocol/model/AcpRequest, com/agentclientprotocol/model/AcpWithSessionId {
 	public static final field Companion Lcom/agentclientprotocol/model/CreateTerminalRequest$Companion;
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Lkotlin/ULong;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -3006,8 +3038,6 @@ public final class com/agentclientprotocol/model/SessionResumeCapabilities$Compa
 
 public abstract class com/agentclientprotocol/model/SessionUpdate {
 	public static final field Companion Lcom/agentclientprotocol/model/SessionUpdate$Companion;
-	public synthetic fun <init> (ILkotlinx/serialization/internal/SerializationConstructorMarker;)V
-	public static final synthetic fun write$Self (Lcom/agentclientprotocol/model/SessionUpdate;Lkotlinx/serialization/encoding/CompositeEncoder;Lkotlinx/serialization/descriptors/SerialDescriptor;)V
 }
 
 public final class com/agentclientprotocol/model/SessionUpdate$AgentMessageChunk : com/agentclientprotocol/model/SessionUpdate {
@@ -3300,6 +3330,72 @@ public final synthetic class com/agentclientprotocol/model/SessionUpdate$ToolCal
 }
 
 public final class com/agentclientprotocol/model/SessionUpdate$ToolCallUpdate$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/SessionUpdate$UnknownSessionUpdate : com/agentclientprotocol/model/SessionUpdate, com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/SessionUpdate$UnknownSessionUpdate$Companion;
+	public fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonObject;
+	public final fun component3 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/SessionUpdate$UnknownSessionUpdate;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/SessionUpdate$UnknownSessionUpdate;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionUpdate$UnknownSessionUpdate;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRawJson ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getSessionUpdateType ()Ljava/lang/String;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/SessionUpdate$UnknownSessionUpdate$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/SessionUpdate$UnknownSessionUpdate$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/SessionUpdate$UnknownSessionUpdate;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/SessionUpdate$UnknownSessionUpdate;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/SessionUpdate$UnknownSessionUpdate$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/SessionUpdate$UsageUpdate : com/agentclientprotocol/model/SessionUpdate, com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/SessionUpdate$UsageUpdate$Companion;
+	public fun <init> (JJLcom/agentclientprotocol/model/Cost;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (JJLcom/agentclientprotocol/model/Cost;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun component3 ()Lcom/agentclientprotocol/model/Cost;
+	public final fun component4 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (JJLcom/agentclientprotocol/model/Cost;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/SessionUpdate$UsageUpdate;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/SessionUpdate$UsageUpdate;JJLcom/agentclientprotocol/model/Cost;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionUpdate$UsageUpdate;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCost ()Lcom/agentclientprotocol/model/Cost;
+	public final fun getSize ()J
+	public final fun getUsed ()J
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/SessionUpdate$UsageUpdate$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/SessionUpdate$UsageUpdate$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/SessionUpdate$UsageUpdate;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/SessionUpdate$UsageUpdate;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/SessionUpdate$UsageUpdate$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 

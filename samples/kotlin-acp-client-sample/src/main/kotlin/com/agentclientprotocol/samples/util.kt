@@ -47,6 +47,14 @@ fun SessionUpdate.render() {
         is SessionUpdate.SessionInfoUpdate -> {
             println("Session info updated: title=${this.title}, updatedAt=${this.updatedAt}")
         }
+
+        is SessionUpdate.UsageUpdate -> {
+            println("Usage update: used=${this.used}, size=${this.size}, cost=${this.cost?.amount} ${this.cost?.currency ?: ""}")
+        }
+
+        is SessionUpdate.UnknownSessionUpdate -> {
+            println("Unknown session update: ${this.sessionUpdateType}")
+        }
     }
 }
 
