@@ -86,6 +86,7 @@ public sealed class ToolCallContent {
         val path: String,
         val newText: String,
         val oldText: String? = null,
+        val deleted: Boolean = false,
         override val _meta: JsonElement? = null
     ) : ToolCallContent(), AcpWithMeta
 
