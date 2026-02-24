@@ -113,5 +113,5 @@ public interface ClientSession {
      * @return a [SetSessionConfigOptionResponse] containing the updated configuration options
      */
     @UnstableApi
-    public suspend fun setConfigOption(configId: SessionConfigId, value: SessionConfigValueId, _meta: JsonElement? = null): SetSessionConfigOptionResponse
+    public suspend fun setConfigOption(configId: SessionConfigId, value: SessionConfigOptionValue, _meta: JsonElement? = null): SetSessionConfigOptionResponse
 }

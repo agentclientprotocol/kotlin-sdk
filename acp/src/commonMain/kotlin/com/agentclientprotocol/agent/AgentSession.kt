@@ -95,7 +95,7 @@ public interface AgentSession {
      * Called when a client asks to change a configuration option. If the option is changed [SessionUpdate.ConfigOptionUpdate] must be sent to the client.
      */
     @UnstableApi
-    public suspend fun setConfigOption(configId: SessionConfigId, value: SessionConfigValueId, _meta: JsonElement?): SetSessionConfigOptionResponse {
+    public suspend fun setConfigOption(configId: SessionConfigId, value: SessionConfigOptionValue, _meta: JsonElement?): SetSessionConfigOptionResponse {
         throw NotImplementedError("Must be implemented when providing non-empty ${::configOptions.name}")
     }
 }

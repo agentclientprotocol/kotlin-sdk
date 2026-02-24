@@ -9,6 +9,7 @@ import com.agentclientprotocol.rpc.JsonRpcResponse
 import kotlinx.serialization.json.JsonNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 
@@ -241,7 +242,8 @@ class SessionConfigSelectOptionsSerializerTest {
         )
         assertEquals(SessionId("sess_abc123def456"), params.sessionId)
         assertEquals(SessionConfigId("mode"), params.configId)
-        assertEquals(SessionConfigValueId("code"), params.value)
+        val stringValue = assertIs<SessionConfigOptionValue.StringValue>(params.value)
+        assertEquals("code", stringValue.value)
     }
 
     @Test
@@ -373,4 +375,221 @@ class SessionConfigSelectOptionsSerializerTest {
         val options = assertIs<SessionConfigSelectOptions.Flat>(first.options)
         assertEquals(2, options.options.size)
     }
+
+    @Test
+    fun `decode boolean config option`() {
+        val json = """
+            {
+              "id": "auto_approve",
+              "name": "Auto Approve",
+              "description": "Automatically approve all tool calls",
+              "type": "boolean",
+              "currentValue": true
+            }
+        """.trimIndent()
+
+        val option = ACPJson.decodeFromString(SessionConfigOption.serializer(), json)
+        val boolOption = assertIs<SessionConfigOption.BooleanOption>(option)
+        assertEquals(SessionConfigId("auto_approve"), boolOption.id)
+        assertEquals("Auto Approve", boolOption.name)
+        assertEquals("Automatically approve all tool calls", boolOption.description)
+        assertEquals(true, boolOption.currentValue)
+    }
+
+    @Test
+    fun `decode boolean config option with false value`() {
+        val json = """
+            {
+              "id": "verbose",
+              "name": "Verbose",
+              "type": "boolean",
+              "currentValue": false
+            }
+        """.trimIndent()
+
+        val option = ACPJson.decodeFromString(SessionConfigOption.serializer(), json)
+        val boolOption = assertIs<SessionConfigOption.BooleanOption>(option)
+        assertEquals(SessionConfigId("verbose"), boolOption.id)
+        assertEquals(false, boolOption.currentValue)
+        assertEquals(null, boolOption.description)
+    }
+
+    @Test
+    fun `encode boolean config option roundtrip`() {
+        val original = SessionConfigOption.BooleanOption(
+            id = SessionConfigId("auto_approve"),
+            name = "Auto Approve",
+            description = "Automatically approve all tool calls",
+            currentValue = true
+        )
+
+        val encoded = ACPJson.encodeToString(SessionConfigOption.serializer(), original)
+        val decoded = ACPJson.decodeFromString(SessionConfigOption.serializer(), encoded)
+        val boolOption = assertIs<SessionConfigOption.BooleanOption>(decoded)
+        assertEquals(original.id, boolOption.id)
+        assertEquals(original.name, boolOption.name)
+        assertEquals(original.description, boolOption.description)
+        assertEquals(original.currentValue, boolOption.currentValue)
+    }
+
+    @Test
+    fun `decode session-new response with mixed select and boolean config options`() {
+        val json = """
+            {
+              "sessionId": "sess_mixed",
+              "configOptions": [
+                {
+                  "id": "mode",
+                  "name": "Session Mode",
+                  "type": "select",
+                  "currentValue": "ask",
+                  "options": [
+                    {
+                      "value": "ask",
+                      "name": "Ask"
+                    }
+                  ]
+                },
+                {
+                  "id": "auto_approve",
+                  "name": "Auto Approve",
+                  "type": "boolean",
+                  "currentValue": true
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val response = ACPJson.decodeFromString(NewSessionResponse.serializer(), json)
+        val configOptions = response.configOptions
+        assertNotNull(configOptions)
+        assertEquals(2, configOptions.size)
+        assertIs<SessionConfigOption.Select>(configOptions[0])
+        val boolOption = assertIs<SessionConfigOption.BooleanOption>(configOptions[1])
+        assertEquals(true, boolOption.currentValue)
+    }
+
+    @Test
+    fun `decode set config option request with boolean value`() {
+        val json = """
+            {
+              "jsonrpc": "2.0",
+              "id": 3,
+              "method": "session/set_config_option",
+              "params": {
+                "sessionId": "sess_abc123def456",
+                "configId": "auto_approve",
+                "value": true
+              }
+            }
+        """.trimIndent()
+
+        val request = ACPJson.decodeFromString(JsonRpcRequest.serializer(), json)
+        val params = ACPJson.decodeFromJsonElement(
+            SetSessionConfigOptionRequest.serializer(),
+            request.params ?: JsonNull
+        )
+        assertEquals(SessionId("sess_abc123def456"), params.sessionId)
+        assertEquals(SessionConfigId("auto_approve"), params.configId)
+        val boolValue = assertIs<SessionConfigOptionValue.BoolValue>(params.value)
+        assertEquals(true, boolValue.value)
+    }
+
+    @Test
+    fun `encode set config option request with boolean value roundtrip`() {
+        val original = SetSessionConfigOptionRequest(
+            sessionId = SessionId("sess_test"),
+            configId = SessionConfigId("verbose"),
+            value = SessionConfigOptionValue.BoolValue(false)
+        )
+
+        val encoded = ACPJson.encodeToString(SetSessionConfigOptionRequest.serializer(), original)
+        val decoded = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), encoded)
+        assertEquals(original.sessionId, decoded.sessionId)
+        assertEquals(original.configId, decoded.configId)
+        val boolValue = assertIs<SessionConfigOptionValue.BoolValue>(decoded.value)
+        assertEquals(false, boolValue.value)
+    }
+
+    @Test
+    fun `encode set config option request with string value roundtrip`() {
+        val original = SetSessionConfigOptionRequest(
+            sessionId = SessionId("sess_test"),
+            configId = SessionConfigId("mode"),
+            value = SessionConfigOptionValue.StringValue("code")
+        )
+
+        val encoded = ACPJson.encodeToString(SetSessionConfigOptionRequest.serializer(), original)
+        val decoded = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), encoded)
+        assertEquals(original.sessionId, decoded.sessionId)
+        assertEquals(original.configId, decoded.configId)
+        val stringValue = assertIs<SessionConfigOptionValue.StringValue>(decoded.value)
+        assertEquals("code", stringValue.value)
+    }
+
+    // --- Edge case tests ---
+
+    @Test
+    fun `quoted string true is deserialized as StringValue not BoolValue`() {
+        val json = """{"sessionId":"s","configId":"c","value":"true"}"""
+        val request = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), json)
+        val stringValue = assertIs<SessionConfigOptionValue.StringValue>(request.value)
+        assertEquals("true", stringValue.value)
+    }
+
+    @Test
+    fun `quoted string false is deserialized as StringValue not BoolValue`() {
+        val json = """{"sessionId":"s","configId":"c","value":"false"}"""
+        val request = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), json)
+        val stringValue = assertIs<SessionConfigOptionValue.StringValue>(request.value)
+        assertEquals("false", stringValue.value)
+    }
+
+    @Test
+    fun `numeric value in config option throws SerializationException`() {
+        val json = """{"sessionId":"s","configId":"c","value":42}"""
+        assertFailsWith<kotlinx.serialization.SerializationException> {
+            ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), json)
+        }
+    }
+
+    // --- Factory method and extension function tests ---
+
+    @Test
+    fun `SessionConfigOption boolean factory creates BooleanOption`() {
+        val option = SessionConfigOption.boolean("verbose", "Verbose", true, "Enable verbose logging")
+        assertIs<SessionConfigOption.BooleanOption>(option)
+        assertEquals(SessionConfigId("verbose"), option.id)
+        assertEquals("Verbose", option.name)
+        assertEquals("Enable verbose logging", option.description)
+        assertEquals(true, option.currentValue)
+    }
+
+    @Test
+    fun `SessionConfigOption select factory creates Select`() {
+        val options = SessionConfigSelectOptions.Flat(listOf(
+            SessionConfigSelectOption(SessionConfigValueId("a"), "Option A")
+        ))
+        val option = SessionConfigOption.select("mode", "Mode", "a", options, "Pick a mode")
+        assertIs<SessionConfigOption.Select>(option)
+        assertEquals(SessionConfigId("mode"), option.id)
+        assertEquals("Mode", option.name)
+        assertEquals("Pick a mode", option.description)
+        assertEquals(SessionConfigValueId("a"), option.currentValue)
+    }
+
+    @Test
+    fun `SessionConfigOptionValue of String creates StringValue`() {
+        val value = SessionConfigOptionValue.of("code")
+        val stringValue = assertIs<SessionConfigOptionValue.StringValue>(value)
+        assertEquals("code", stringValue.value)
+    }
+
+    @Test
+    fun `SessionConfigOptionValue of Boolean creates BoolValue`() {
+        val value = SessionConfigOptionValue.of(true)
+        val boolValue = assertIs<SessionConfigOptionValue.BoolValue>(value)
+        assertEquals(true, boolValue.value)
+    }
+
 }
