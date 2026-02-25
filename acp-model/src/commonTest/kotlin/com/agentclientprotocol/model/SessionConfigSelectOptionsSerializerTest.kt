@@ -7,9 +7,9 @@ import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.rpc.JsonRpcResponse
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 
@@ -546,11 +546,35 @@ class SessionConfigSelectOptionsSerializerTest {
     }
 
     @Test
-    fun `numeric value in config option throws SerializationException`() {
+    fun `numeric value in config option deserializes as UnknownValue`() {
         val json = """{"sessionId":"s","configId":"c","value":42}"""
-        assertFailsWith<kotlinx.serialization.SerializationException> {
-            ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), json)
-        }
+        val request = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), json)
+        val unknown = assertIs<SessionConfigOptionValue.UnknownValue>(request.value)
+        assertEquals(JsonPrimitive(42), unknown.rawElement)
+    }
+
+    @Test
+    fun `array value in config option deserializes as UnknownValue`() {
+        val json = """{"sessionId":"s","configId":"c","value":["a","b"]}"""
+        val request = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), json)
+        assertIs<SessionConfigOptionValue.UnknownValue>(request.value)
+    }
+
+    @Test
+    fun `object value in config option deserializes as UnknownValue`() {
+        val json = """{"sessionId":"s","configId":"c","value":{"key":"val"}}"""
+        val request = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), json)
+        assertIs<SessionConfigOptionValue.UnknownValue>(request.value)
+    }
+
+    @Test
+    fun `UnknownValue roundtrip preserves raw element`() {
+        val json = """{"sessionId":"s","configId":"c","value":42}"""
+        val request = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), json)
+        val encoded = ACPJson.encodeToString(SetSessionConfigOptionRequest.serializer(), request)
+        val decoded = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), encoded)
+        val unknown = assertIs<SessionConfigOptionValue.UnknownValue>(decoded.value)
+        assertEquals(JsonPrimitive(42), unknown.rawElement)
     }
 
     // --- Factory method and extension function tests ---

@@ -25,7 +25,6 @@ import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * **UNSTABLE**
@@ -233,6 +232,12 @@ public sealed class SessionConfigOptionValue {
      */
     public data class BoolValue(val value: Boolean) : SessionConfigOptionValue()
 
+    /**
+     * An unknown value type, used for forward compatibility with future protocol extensions.
+     * Contains the raw JSON element that could not be mapped to a known type.
+     */
+    public data class UnknownValue(val rawElement: JsonElement) : SessionConfigOptionValue()
+
     public companion object {
         /**
          * Creates a [StringValue] from the given string.
@@ -263,19 +268,21 @@ internal object SessionConfigOptionValueSerializer : KSerializer<SessionConfigOp
         when (value) {
             is SessionConfigOptionValue.StringValue -> jsonEncoder.encodeJsonElement(JsonPrimitive(value.value))
             is SessionConfigOptionValue.BoolValue -> jsonEncoder.encodeJsonElement(JsonPrimitive(value.value))
+            is SessionConfigOptionValue.UnknownValue -> jsonEncoder.encodeJsonElement(value.rawElement)
         }
     }
 
     override fun deserialize(decoder: Decoder): SessionConfigOptionValue {
         val jsonDecoder = decoder as? JsonDecoder
             ?: throw SerializationException("SessionConfigOptionValueSerializer supports only JSON")
-        val element = jsonDecoder.decodeJsonElement().jsonPrimitive
+        val element = jsonDecoder.decodeJsonElement()
+        if (element !is JsonPrimitive) {
+            return SessionConfigOptionValue.UnknownValue(element)
+        }
         return when {
             element.isString -> SessionConfigOptionValue.StringValue(element.content)
             element.booleanOrNull != null -> SessionConfigOptionValue.BoolValue(element.boolean)
-            else -> throw SerializationException(
-                "Unsupported SessionConfigOptionValue type: $element. Expected a string or boolean."
-            )
+            else -> SessionConfigOptionValue.UnknownValue(element)
         }
     }
 }

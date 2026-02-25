@@ -2635,6 +2635,17 @@ public final class com/agentclientprotocol/model/SessionConfigOptionValue$String
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/agentclientprotocol/model/SessionConfigOptionValue$UnknownValue : com/agentclientprotocol/model/SessionConfigOptionValue {
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/SessionConfigOptionValue$UnknownValue;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/SessionConfigOptionValue$UnknownValue;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionConfigOptionValue$UnknownValue;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRawElement ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/agentclientprotocol/model/SessionConfigSelectGroup : com/agentclientprotocol/model/AcpWithMeta {
 	public static final field Companion Lcom/agentclientprotocol/model/SessionConfigSelectGroup$Companion;
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
