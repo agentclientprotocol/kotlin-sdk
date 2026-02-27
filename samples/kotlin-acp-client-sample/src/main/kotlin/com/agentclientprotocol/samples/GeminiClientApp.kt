@@ -22,7 +22,7 @@ private val logger = KotlinLogging.logger {}
  */
 suspend fun main() = coroutineScope {
     logger.info { "Starting Gemini ACP Client App" }
-        // Create process transport to start Gemini agent
-        val transport = createProcessStdioTransport(this, "gemini", "--experimental-acp")
-        runTerminalClient(transport)
+    // Create process transport to start Gemini agent
+    val transport = createProcessStdioTransport(this, "gemini", "--experimental-acp")
+    runTerminalClient(transport)
 }

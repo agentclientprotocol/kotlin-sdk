@@ -1,5 +1,3 @@
-@file:Suppress("unused")
-
 package com.agentclientprotocol.rpc
 
 import com.agentclientprotocol.model.AvailableCommandInput

@@ -1,11 +1,6 @@
 package com.agentclientprotocol.transport
 
-import com.agentclientprotocol.rpc.JsonRpcMessage
-import com.agentclientprotocol.rpc.JsonRpcNotification
-import com.agentclientprotocol.rpc.JsonRpcRequest
-import com.agentclientprotocol.rpc.JsonRpcResponse
-import com.agentclientprotocol.rpc.MethodName
-import com.agentclientprotocol.rpc.RequestId
+import com.agentclientprotocol.rpc.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
@@ -38,8 +33,7 @@ class StdioTransportTest {
                     .onEach { observed.add(it) }
                     .first { it == state }
             }
-        }
-        catch (_: TimeoutCancellationException) {
+        } catch (_: TimeoutCancellationException) {
             fail("Timed out waiting for state $state after $timeout, observed states: ${observed.joinToString { it.name }}, ${message?.let { ": $it" } ?: ""}")
         }
     }
@@ -168,7 +162,7 @@ class StdioTransportTest {
 
         // Closing again should not throw
         transport.close()
-         expectState(Transport.State.CLOSED, message = "After 2 close")
+        expectState(Transport.State.CLOSED, message = "After 2 close")
     }
 
     @Test

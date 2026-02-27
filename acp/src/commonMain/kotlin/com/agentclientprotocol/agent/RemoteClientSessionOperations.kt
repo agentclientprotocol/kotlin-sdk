@@ -6,13 +6,20 @@ import com.agentclientprotocol.protocol.RpcMethodsOperations
 import com.agentclientprotocol.protocol.invoke
 import kotlinx.serialization.json.JsonElement
 
-internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperations, private val sessionId: SessionId, private val clientCapabilities: ClientCapabilities) : ClientSessionOperations {
+internal class RemoteClientSessionOperations(
+    private val rpc: RpcMethodsOperations,
+    private val sessionId: SessionId,
+    private val clientCapabilities: ClientCapabilities
+) : ClientSessionOperations {
     override suspend fun requestPermissions(
         toolCall: SessionUpdate.ToolCallUpdate,
         permissions: List<PermissionOption>,
         _meta: JsonElement?,
     ): RequestPermissionResponse {
-        return AcpMethod.ClientMethods.SessionRequestPermission(rpc, RequestPermissionRequest(sessionId, toolCall, permissions, _meta))
+        return AcpMethod.ClientMethods.SessionRequestPermission(
+            rpc,
+            RequestPermissionRequest(sessionId, toolCall, permissions, _meta)
+        )
     }
 
     override suspend fun notify(
@@ -50,7 +57,10 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
         _meta: JsonElement?,
     ): CreateTerminalResponse {
         if (!clientCapabilities.terminal) error("Client does not support terminal capability")
-        return AcpMethod.ClientMethods.TerminalCreate(rpc, CreateTerminalRequest(sessionId, command, args, cwd, env, outputByteLimit, _meta))
+        return AcpMethod.ClientMethods.TerminalCreate(
+            rpc,
+            CreateTerminalRequest(sessionId, command, args, cwd, env, outputByteLimit, _meta)
+        )
     }
 
     override suspend fun terminalOutput(
@@ -74,7 +84,10 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
         _meta: JsonElement?,
     ): WaitForTerminalExitResponse {
         if (!clientCapabilities.terminal) error("Client does not support terminal capability")
-        return AcpMethod.ClientMethods.TerminalWaitForExit(rpc, WaitForTerminalExitRequest(sessionId, terminalId, _meta))
+        return AcpMethod.ClientMethods.TerminalWaitForExit(
+            rpc,
+            WaitForTerminalExitRequest(sessionId, terminalId, _meta)
+        )
     }
 
     override suspend fun terminalKill(

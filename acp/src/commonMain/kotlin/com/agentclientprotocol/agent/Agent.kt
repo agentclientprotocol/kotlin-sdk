@@ -39,7 +39,7 @@ private val logger = KotlinLogging.logger {}
 public class Agent(
     public val protocol: Protocol,
     private val agentSupport: AgentSupport
-    ) {
+) {
 
     internal class SessionWrapper(
         val agent: Agent,
@@ -48,6 +48,7 @@ public class Agent(
         val protocol: Protocol
     ) {
         private class PromptSession(val currentRequestId: RequestId)
+
         private val _activePrompt = atomic<PromptSession?>(null)
 
         internal suspend fun <T> executeWithSession(block: suspend () -> T): T {
@@ -58,7 +59,11 @@ public class Agent(
 
         suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): PromptResponse {
             val currentRpcRequest = currentCoroutineContext().jsonRpcRequest
-            if (!_activePrompt.compareAndSet(null, PromptSession(currentRpcRequest.id))) error("There is already active prompt execution")
+            if (!_activePrompt.compareAndSet(
+                    null,
+                    PromptSession(currentRpcRequest.id)
+                )
+            ) error("There is already active prompt execution")
             try {
                 var response: PromptResponse? = null
 
@@ -78,12 +83,10 @@ public class Agent(
                 }
 
                 return response ?: PromptResponse(StopReason.END_TURN)
-            }
-            catch (ce: CancellationException) {
+            } catch (ce: CancellationException) {
                 logger.trace(ce) { "Prompt job cancelled" }
                 return PromptResponse(StopReason.CANCELLED)
-            }
-            finally {
+            } finally {
                 _activePrompt.getAndSet(null)
             }
         }
@@ -124,12 +127,19 @@ public class Agent(
     private fun setHandlers(protocol: Protocol) {
         // Set up request handlers for incoming client requests
         protocol.setRequestHandler(AcpMethod.AgentMethods.Initialize) { params: InitializeRequest ->
-            val clientInfo = ClientInfo(params.protocolVersion, params.clientCapabilities, params.clientInfo, params._meta)
+            val clientInfo =
+                ClientInfo(params.protocolVersion, params.clientCapabilities, params.clientInfo, params._meta)
             _clientInfo.complete(clientInfo)
             val agentInfo = agentSupport.initialize(clientInfo)
             // see https://agentclientprotocol.com/protocol/initialization#version-negotiation
             val negotiatedVersion = min(params.protocolVersion, agentInfo.protocolVersion)
-            return@setRequestHandler InitializeResponse(negotiatedVersion, agentInfo.capabilities, agentInfo.authMethods, agentInfo.implementation, agentInfo._meta)
+            return@setRequestHandler InitializeResponse(
+                negotiatedVersion,
+                agentInfo.capabilities,
+                agentInfo.authMethods,
+                agentInfo.implementation,
+                agentInfo._meta
+            )
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.Authenticate) { params: AuthenticateRequest ->
@@ -239,7 +249,10 @@ public class Agent(
         }
     }
 
-    private suspend fun createSession(sessionParameters: SessionCreationParameters, sessionFactory: suspend (SessionCreationParameters) -> AgentSession): AgentSession {
+    private suspend fun createSession(
+        sessionParameters: SessionCreationParameters,
+        sessionFactory: suspend (SessionCreationParameters) -> AgentSession
+    ): AgentSession {
         val session = sessionFactory(sessionParameters)
         val clientInfo = getClientInfoOrThrow()
 
@@ -257,11 +270,13 @@ public class Agent(
         return session
     }
 
-    private fun getSessionOrThrow(sessionId: SessionId): SessionWrapper = _sessions.value[sessionId] ?: acpFail("Session $sessionId not found")
+    private fun getSessionOrThrow(sessionId: SessionId): SessionWrapper =
+        _sessions.value[sessionId] ?: acpFail("Session $sessionId not found")
 }
 
 
-internal class SessionWrapperContextElement(val sessionWrapper: Agent.SessionWrapper) : AbstractCoroutineContextElement(Key) {
+internal class SessionWrapperContextElement(val sessionWrapper: Agent.SessionWrapper) :
+    AbstractCoroutineContextElement(Key) {
     object Key : CoroutineContext.Key<SessionWrapperContextElement>
 }
 
@@ -269,6 +284,7 @@ internal fun Agent.SessionWrapper.asContextElement() = SessionWrapperContextElem
 
 public val CoroutineContext.agent: Agent
     get() = this[SessionWrapperContextElement.Key]?.sessionWrapper?.agent ?: error("No agent data found in context")
+
 /**
  * Returns client info associated with the current protocol. Throws an exception if the agent is still not initialized from the client side.
  */
@@ -279,5 +295,6 @@ public val CoroutineContext.clientInfo: ClientInfo
  * Returns a remote client connected to the counterpart via the current protocol
  */
 public val CoroutineContext.client: ClientSessionOperations
-    get() = this[SessionWrapperContextElement.Key]?.sessionWrapper?.clientOperations ?: error("No remote client found in context")
+    get() = this[SessionWrapperContextElement.Key]?.sessionWrapper?.clientOperations
+        ?: error("No remote client found in context")
 

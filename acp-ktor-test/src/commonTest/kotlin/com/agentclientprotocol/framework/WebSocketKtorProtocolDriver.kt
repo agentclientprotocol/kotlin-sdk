@@ -27,7 +27,8 @@ class WebSocketKtorProtocolDriver : ProtocolDriver {
             val httpClient = createClient {
                 install(io.ktor.client.plugins.websocket.WebSockets.Plugin)
             }
-            val clientProtocol = httpClient.acpProtocolOnClientWebSocket("acp", ProtocolOptions(protocolDebugName = "client protocol"))
+            val clientProtocol =
+                httpClient.acpProtocolOnClientWebSocket("acp", ProtocolOptions(protocolDebugName = "client protocol"))
             val agentProtocol = agentProtocolDeferred.await()
             agentProtocol.start()
             clientProtocol.start()
