@@ -95,7 +95,7 @@ public interface AgentSession {
      * Called when a client asks to change a configuration option. If the option is changed [SessionUpdate.ConfigOptionUpdate] must be sent to the client.
      */
     @UnstableApi
-    public suspend fun setConfigOption(configId: SessionConfigId, value: SessionConfigValueId, _meta: JsonElement?): SetSessionConfigOptionResponse {
+    public suspend fun setConfigOption(configId: SessionConfigId, value: SessionConfigOptionValue, _meta: JsonElement?): SetSessionConfigOptionResponse {
         throw NotImplementedError("Must be implemented when providing non-empty ${::configOptions.name}")
     }
 }
@@ -112,6 +112,19 @@ internal fun AgentSession.asModeState(): SessionModeState? {
     if (modes.isEmpty()) return null
     return SessionModeState(defaultMode, modes)
 }
+
+/**
+ * Sets a configuration option using a [SessionConfigValueId] (string value).
+ *
+ * @deprecated Use [AgentSession.setConfigOption] with [SessionConfigOptionValue] instead.
+ */
+@UnstableApi
+@Deprecated(
+    "Use setConfigOption with SessionConfigOptionValue instead",
+    ReplaceWith("setConfigOption(configId, SessionConfigOptionValue.StringValue(value.value), _meta)")
+)
+public suspend fun AgentSession.setConfigOption(configId: SessionConfigId, value: SessionConfigValueId, _meta: JsonElement? = null): SetSessionConfigOptionResponse =
+    setConfigOption(configId, SessionConfigOptionValue.StringValue(value.value), _meta)
 
 @UnstableApi
 internal fun AgentSession.asConfigOptionsState(): List<SessionConfigOption>? {

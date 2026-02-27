@@ -1,3 +1,5 @@
+@file:OptIn(com.agentclientprotocol.annotations.UnstableApi::class)
+
 package com.agentclientprotocol.samples
 
 import com.agentclientprotocol.agent.*
@@ -18,6 +20,34 @@ private val logger = KotlinLogging.logger {}
 class SimpleAgentSession(
     override val sessionId: SessionId
 ) : AgentSession {
+
+    // Example: Expose boolean and select config options for the session
+    override val configOptions: List<SessionConfigOption>
+        get() = listOf(
+            SessionConfigOption.boolean(
+                id = "auto_approve",
+                name = "Auto Approve",
+                currentValue = false,
+                description = "Automatically approve all tool calls without prompting the user"
+            ),
+            SessionConfigOption.boolean(
+                id = "verbose",
+                name = "Verbose",
+                currentValue = true,
+                description = "Enable verbose logging output"
+            )
+        )
+
+    override suspend fun setConfigOption(
+        configId: SessionConfigId,
+        value: SessionConfigOptionValue,
+        _meta: JsonElement?
+    ): SetSessionConfigOptionResponse {
+        logger.info { "Setting config option $configId to $value" }
+        // In a real agent, you would update internal state based on the config option
+        return SetSessionConfigOptionResponse(configOptions = configOptions)
+    }
+
     override suspend fun prompt(
         content: List<ContentBlock>,
         _meta: JsonElement?,
