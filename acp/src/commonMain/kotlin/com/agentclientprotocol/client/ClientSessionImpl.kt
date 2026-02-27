@@ -132,7 +132,7 @@ internal class ClientSessionImpl(
         get() = _configOptions
 
     @UnstableApi
-    override suspend fun setConfigOption(configId: SessionConfigId, value: SessionConfigValueId, _meta: JsonElement?): SetSessionConfigOptionResponse {
+    override suspend fun setConfigOption(configId: SessionConfigId, value: SessionConfigOptionValue, _meta: JsonElement?): SetSessionConfigOptionResponse {
         val response = AcpMethod.AgentMethods.SessionSetConfigOption(protocol, SetSessionConfigOptionRequest(sessionId, configId, value, _meta))
         _configOptions.value = response.configOptions
         return response

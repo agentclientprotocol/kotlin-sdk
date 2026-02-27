@@ -764,7 +764,7 @@ public data class ResumeSessionResponse(
 public data class SetSessionConfigOptionRequest(
     override val sessionId: SessionId,
     val configId: SessionConfigId,
-    val value: SessionConfigValueId,
+    val value: SessionConfigOptionValue,
     override val _meta: JsonElement? = null
 ) : AcpRequest, AcpWithSessionId
 
