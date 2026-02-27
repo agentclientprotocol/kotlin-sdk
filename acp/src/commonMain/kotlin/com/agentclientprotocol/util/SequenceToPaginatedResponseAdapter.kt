@@ -76,11 +76,15 @@ public class SequenceToPaginatedResponseAdapter<TItem, TInput : AcpPaginatedRequ
         val newCursor = if (iterator.hasNext()) {
             @OptIn(ExperimentalUuidApi::class)
             val newCursor = Uuid.random().toHexDashString()
-            val timeoutJob = timeoutJobScope.launch {
+            // Store the iterator before launching the timeout job to avoid a race condition
+            // where a very short timeout fires before the entry is in the map.
+            // We use a lazy-start timeout job so it doesn't run until after the map is updated.
+            val timeoutJob = timeoutJobScope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
                 delay(orphanedIteratorsEvictionTimeout)
                 iterators.update { map -> map.remove(newCursor) }
             }
             iterators.update { map -> map.put(newCursor, IteratorState(iterator, timeoutJob)) }
+            timeoutJob.start()
             newCursor
         }
         else {
