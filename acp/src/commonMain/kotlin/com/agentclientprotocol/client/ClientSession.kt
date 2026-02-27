@@ -115,3 +115,16 @@ public interface ClientSession {
     @UnstableApi
     public suspend fun setConfigOption(configId: SessionConfigId, value: SessionConfigOptionValue, _meta: JsonElement? = null): SetSessionConfigOptionResponse
 }
+
+/**
+ * Sets a configuration option using a [SessionConfigValueId] (string value).
+ *
+ * @deprecated Use [ClientSession.setConfigOption] with [SessionConfigOptionValue] instead.
+ */
+@UnstableApi
+@Deprecated(
+    "Use setConfigOption with SessionConfigOptionValue instead",
+    ReplaceWith("setConfigOption(configId, SessionConfigOptionValue.StringValue(value.value), _meta)")
+)
+public suspend fun ClientSession.setConfigOption(configId: SessionConfigId, value: SessionConfigValueId, _meta: JsonElement? = null): SetSessionConfigOptionResponse =
+    setConfigOption(configId, SessionConfigOptionValue.StringValue(value.value), _meta)

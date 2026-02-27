@@ -113,6 +113,19 @@ internal fun AgentSession.asModeState(): SessionModeState? {
     return SessionModeState(defaultMode, modes)
 }
 
+/**
+ * Sets a configuration option using a [SessionConfigValueId] (string value).
+ *
+ * @deprecated Use [AgentSession.setConfigOption] with [SessionConfigOptionValue] instead.
+ */
+@UnstableApi
+@Deprecated(
+    "Use setConfigOption with SessionConfigOptionValue instead",
+    ReplaceWith("setConfigOption(configId, SessionConfigOptionValue.StringValue(value.value), _meta)")
+)
+public suspend fun AgentSession.setConfigOption(configId: SessionConfigId, value: SessionConfigValueId, _meta: JsonElement? = null): SetSessionConfigOptionResponse =
+    setConfigOption(configId, SessionConfigOptionValue.StringValue(value.value), _meta)
+
 @UnstableApi
 internal fun AgentSession.asConfigOptionsState(): List<SessionConfigOption>? {
     val options = configOptions

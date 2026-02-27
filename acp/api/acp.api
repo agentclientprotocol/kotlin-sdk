@@ -75,6 +75,11 @@ public final class com/agentclientprotocol/agent/AgentSession$DefaultImpls {
 	public static fun setModel-BrQ11X8 (Lcom/agentclientprotocol/agent/AgentSession;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
+public final class com/agentclientprotocol/agent/AgentSessionKt {
+	public static final fun setConfigOption-lh9iGNw (Lcom/agentclientprotocol/agent/AgentSession;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun setConfigOption-lh9iGNw$default (Lcom/agentclientprotocol/agent/AgentSession;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
 public abstract interface class com/agentclientprotocol/agent/AgentSupport {
 	public fun authenticate-fMnwWJU (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun authenticate-fMnwWJU$suspendImpl (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -179,6 +184,11 @@ public final class com/agentclientprotocol/client/ClientSession$DefaultImpls {
 
 public final class com/agentclientprotocol/client/ClientSessionImplKt {
 	public static final fun getClientSession (Lkotlin/coroutines/CoroutineContext;)Lcom/agentclientprotocol/client/ClientSession;
+}
+
+public final class com/agentclientprotocol/client/ClientSessionKt {
+	public static final fun setConfigOption-lh9iGNw (Lcom/agentclientprotocol/client/ClientSession;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun setConfigOption-lh9iGNw$default (Lcom/agentclientprotocol/client/ClientSession;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
 public abstract interface class com/agentclientprotocol/common/ClientSessionOperations : com/agentclientprotocol/common/FileSystemOperations, com/agentclientprotocol/common/TerminalOperations {
