@@ -3,6 +3,7 @@ package com.agentclientprotocol.model
 import com.agentclientprotocol.rpc.ACPJson
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SerializationTests {
@@ -139,5 +140,61 @@ class SerializationTests {
         assertEquals(12345L, update.used)
         assertEquals(500000L, update.size)
         assertEquals(null, update.cost)
+    }
+
+    @Test
+    fun `decodes diff without deleted flag defaulting to false`() {
+        val payload = """
+            {
+              "type": "diff",
+              "path": "/home/user/project/src/main.kt",
+              "oldText": "fun main() {}",
+              "newText": ""
+            }
+        """.trimIndent()
+
+        val content = ACPJson.decodeFromString(ToolCallContent.serializer(), payload)
+
+        assertTrue(content is ToolCallContent.Diff)
+        assertEquals("/home/user/project/src/main.kt", content.path)
+        assertEquals("fun main() {}", content.oldText)
+        assertEquals("", content.newText)
+        assertFalse(content.deleted)
+    }
+
+    @Test
+    fun `decodes diff with deleted true`() {
+        val payload = """
+            {
+              "type": "diff",
+              "path": "/home/user/project/src/main.kt",
+              "oldText": "fun main() {}",
+              "newText": "",
+              "deleted": true
+            }
+        """.trimIndent()
+
+        val content = ACPJson.decodeFromString(ToolCallContent.serializer(), payload)
+
+        assertTrue(content is ToolCallContent.Diff)
+        assertTrue(content.deleted)
+    }
+
+    @Test
+    fun `decodes diff with deleted false`() {
+        val payload = """
+            {
+              "type": "diff",
+              "path": "/home/user/project/src/main.kt",
+              "oldText": "fun main() {}",
+              "newText": "",
+              "deleted": false
+            }
+        """.trimIndent()
+
+        val content = ACPJson.decodeFromString(ToolCallContent.serializer(), payload)
+
+        assertTrue(content is ToolCallContent.Diff)
+        assertFalse(content.deleted)
     }
 }

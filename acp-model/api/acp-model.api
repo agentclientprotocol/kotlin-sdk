@@ -3848,15 +3848,17 @@ public final class com/agentclientprotocol/model/ToolCallContent$Content$Compani
 
 public final class com/agentclientprotocol/model/ToolCallContent$Diff : com/agentclientprotocol/model/ToolCallContent, com/agentclientprotocol/model/AcpWithMeta {
 	public static final field Companion Lcom/agentclientprotocol/model/ToolCallContent$Diff$Companion;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Ljava/lang/String;
-	public final fun component4 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/ToolCallContent$Diff;
-	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/ToolCallContent$Diff;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/ToolCallContent$Diff;
+	public final fun component4 ()Z
+	public final fun component5 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/ToolCallContent$Diff;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/ToolCallContent$Diff;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/ToolCallContent$Diff;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDeleted ()Z
 	public final fun getNewText ()Ljava/lang/String;
 	public final fun getOldText ()Ljava/lang/String;
 	public final fun getPath ()Ljava/lang/String;
