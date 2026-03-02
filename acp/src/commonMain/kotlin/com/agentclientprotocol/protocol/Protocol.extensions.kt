@@ -49,7 +49,7 @@ public fun <TRequest : AcpPaginatedRequest, TResponse : AcpPaginatedResponse<TIt
 /**
  * Send a notification (no response expected).
  */
-public fun <TNotification: AcpNotification> RpcMethodsOperations.sendNotification(
+public fun <TNotification : AcpNotification> RpcMethodsOperations.sendNotification(
     method: AcpMethod.AcpNotificationMethod<TNotification>,
     notification: TNotification? = null,
 ) {
@@ -60,7 +60,7 @@ public fun <TNotification: AcpNotification> RpcMethodsOperations.sendNotificatio
 /**
  * Register a handler for incoming requests.
  */
-public fun<TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOperations.setRequestHandler(
+public fun <TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOperations.setRequestHandler(
     method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
     additionalContext: CoroutineContext = EmptyCoroutineContext,
     handler: suspend (TRequest) -> TResponse
@@ -92,7 +92,7 @@ public fun<TRequest : AcpPaginatedRequest, TResponse : AcpPaginatedResponse<TIte
 /**
  * Register a handler for incoming notifications.
  */
-public fun<TNotification : AcpNotification> RpcMethodsOperations.setNotificationHandler(
+public fun <TNotification : AcpNotification> RpcMethodsOperations.setNotificationHandler(
     method: AcpMethod.AcpNotificationMethod<TNotification>,
     additionalContext: CoroutineContext = EmptyCoroutineContext,
     handler: suspend (TNotification) -> Unit
@@ -103,11 +103,17 @@ public fun<TNotification : AcpNotification> RpcMethodsOperations.setNotification
     }
 }
 
-public suspend operator fun <TRequest: AcpRequest, TResponse: AcpResponse> AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>.invoke(rpc: RpcMethodsOperations, request: TRequest): TResponse {
+public suspend operator fun <TRequest : AcpRequest, TResponse : AcpResponse> AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>.invoke(
+    rpc: RpcMethodsOperations,
+    request: TRequest
+): TResponse {
     return rpc.sendRequest(this, request)
 }
 
-public operator fun <TNotification : AcpNotification> AcpMethod.AcpNotificationMethod<TNotification>.invoke(rpc: RpcMethodsOperations, notification: TNotification) {
+public operator fun <TNotification : AcpNotification> AcpMethod.AcpNotificationMethod<TNotification>.invoke(
+    rpc: RpcMethodsOperations,
+    notification: TNotification
+) {
     return rpc.sendNotification(this, notification)
 }
 

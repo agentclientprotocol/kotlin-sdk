@@ -1,5 +1,3 @@
-@file:Suppress("unused")
-
 package com.agentclientprotocol.model
 
 import kotlinx.serialization.SerialName
@@ -16,16 +14,35 @@ import kotlinx.serialization.json.JsonElement
  */
 @Serializable
 public enum class ToolKind {
-    @SerialName("read") READ,
-    @SerialName("edit") EDIT,
-    @SerialName("delete") DELETE,
-    @SerialName("move") MOVE,
-    @SerialName("search") SEARCH,
-    @SerialName("execute") EXECUTE,
-    @SerialName("think") THINK,
-    @SerialName("fetch") FETCH,
-    @SerialName("switch_mode") SWITCH_MODE,
-    @SerialName("other") OTHER
+    @SerialName("read")
+    READ,
+
+    @SerialName("edit")
+    EDIT,
+
+    @SerialName("delete")
+    DELETE,
+
+    @SerialName("move")
+    MOVE,
+
+    @SerialName("search")
+    SEARCH,
+
+    @SerialName("execute")
+    EXECUTE,
+
+    @SerialName("think")
+    THINK,
+
+    @SerialName("fetch")
+    FETCH,
+
+    @SerialName("switch_mode")
+    SWITCH_MODE,
+
+    @SerialName("other")
+    OTHER
 }
 
 /**
@@ -37,10 +54,17 @@ public enum class ToolKind {
  */
 @Serializable
 public enum class ToolCallStatus {
-    @SerialName("pending") PENDING,
-    @SerialName("in_progress") IN_PROGRESS,
-    @SerialName("completed") COMPLETED,
-    @SerialName("failed") FAILED
+    @SerialName("pending")
+    PENDING,
+
+    @SerialName("in_progress")
+    IN_PROGRESS,
+
+    @SerialName("completed")
+    COMPLETED,
+
+    @SerialName("failed")
+    FAILED
 }
 
 /**
