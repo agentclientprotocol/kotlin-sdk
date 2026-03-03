@@ -15,11 +15,13 @@ import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonElement
 
 private val logger = KotlinLogging.logger {}
@@ -40,7 +42,76 @@ public typealias ClientInstance = Client
 public class Client(
     public val protocol: Protocol
 ) {
-    private val _sessions = atomic(persistentMapOf<SessionId, CompletableDeferred<ClientSessionImpl>>())
+    private class ClientSessionHolder {
+        private val sessionDeferred: CompletableDeferred<ClientSessionImpl> = CompletableDeferred()
+        private val notifications: MutableList<Pair<SessionUpdate, JsonElement?>> = mutableListOf()
+        private val lock = Mutex(false)
+
+        val session: Deferred<ClientSessionImpl> get() = sessionDeferred
+
+        suspend fun drainEventsAndCompleteSession(session: ClientSessionImpl) {
+            val notifications = drainNotifications()
+            for ((notification, meta) in notifications) {
+                session.handleNotification(notification, meta)
+            }
+
+            sessionDeferred.complete(session)
+        }
+
+        fun completeExceptionally(cause: Throwable) {
+            sessionDeferred.completeExceptionally(cause)
+        }
+
+        suspend fun handleOrQueue(notification: SessionUpdate, _meta: JsonElement?) {
+            if (sessionDeferred.isCompleted) {
+                @OptIn(ExperimentalCoroutinesApi::class)
+                sessionDeferred.getCompleted().handleNotification(notification, _meta)
+            }
+            else {
+                lock.withLock {
+                    notifications.add(Pair(notification, _meta))
+                }
+            }
+        }
+
+        private suspend fun drainNotifications(): List<Pair<SessionUpdate, JsonElement?>> {
+            return lock.withLock {
+                val notificationsCopy = notifications.toList()
+                notifications.clear()
+                notificationsCopy
+            }
+        }
+    }
+
+    private val _sessions = atomic(persistentMapOf<SessionId, ClientSessionHolder>())
+//    private val _sessionsLock = Mutex(false)
+
+    /**
+     * Creates a new entry only if there are some currently initializing sessions. Otherwise, throws in the case of missing session.
+     */
+    private fun getOrCreateSessionHolder(sessionId: SessionId): ClientSessionHolder {
+        val holder = _sessions.value[sessionId]
+        if (holder != null) return holder
+        if (_currentlyInitializingSessionsCount.value > 0) {
+            var clientSessionHolder: ClientSessionHolder? = null
+            _sessions.update { currentMap ->
+                val existingHolder = currentMap[sessionId]
+                if (existingHolder != null) {
+                    clientSessionHolder = existingHolder
+                    currentMap
+                }
+                else {
+                    val newHolder = ClientSessionHolder()
+                    clientSessionHolder = newHolder
+                    currentMap.put(sessionId, newHolder)
+                }
+            }
+            return clientSessionHolder!!
+        } else {
+            acpFail("Session $sessionId not found")
+        }
+    }
+
     private val _clientInfo = CompletableDeferred<ClientInfo>()
     private val _agentInfo = CompletableDeferred<AgentInfo>()
     private val _currentlyInitializingSessionsCount = MutableStateFlow(0)
@@ -118,10 +189,12 @@ public class Client(
         }
 
         protocol.setNotificationHandler(AcpMethod.ClientMethods.SessionUpdate) { params: SessionNotification ->
-            val session = getSessionOrThrow(params.sessionId)
-            session.executeWithSession {
-                session.handleNotification(params.update, params._meta)
-            }
+            val sessionHolder = getOrCreateSessionHolder(params.sessionId)
+            sessionHolder.handleOrQueue(params.update, params._meta)
+//            val session = getSessionOrThrow(params.sessionId)
+//            session.executeWithSession {
+//                session.handleNotification(params.update, params._meta)
+//            }
         }
     }
 
@@ -293,41 +366,31 @@ public class Client(
         }
     }
 
+    /**
+     * After ClientSessionImpl is created the delayed notifications are drained and pushed into session.notify()
+     */
     private suspend fun createSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, sessionResponse: AcpCreatedSessionResponse, factory: ClientOperationsFactory): ClientSession {
-        val sessionDeferred = CompletableDeferred<ClientSessionImpl>()
         return runCatching {
-            _sessions.update { it.put(sessionId, sessionDeferred) }
-
             val operations = factory.createClientOperations(sessionId, sessionResponse)
-
             val session = ClientSessionImpl(this, sessionId, sessionParameters, operations, sessionResponse, protocol)
-            sessionDeferred.complete(session)
+            getOrCreateSessionHolder(sessionId).drainEventsAndCompleteSession(session)
             session
-        }.getOrElse {
-            sessionDeferred.completeExceptionally(IllegalStateException("Failed to create session $sessionId", it))
+        }.getOrElse { throwable ->
+            getOrCreateSessionHolder(sessionId).completeExceptionally(IllegalStateException("Failed to create session $sessionId", throwable))
             _sessions.update { it.remove(sessionId) }
-            throw it
+            throw throwable
         }
     }
 
     public fun getSession(sessionId: SessionId): ClientSession {
-        val completableDeferred = _sessions.value[sessionId] ?: error("Session $sessionId not found")
-        if (!completableDeferred.isCompleted) error("Session $sessionId not initialized yet")
+        val sessionHolder = _sessions.value[sessionId] ?: error("Session $sessionId not found")
+        if (!sessionHolder.session.isCompleted) error("Session $sessionId not initialized yet")
         @OptIn(ExperimentalCoroutinesApi::class)
-        return completableDeferred.getCompleted()
+        return sessionHolder.session.getCompleted()
     }
 
     private suspend fun getSessionOrThrow(sessionId: SessionId): ClientSessionImpl {
-        _sessions.value[sessionId]?.let {
-            return it.await()
-        }
-        // try to wait for all pending sessions to initialize
-        _currentlyInitializingSessionsCount.first { it == 0 }
-        // try to get the session again
-        _sessions.value[sessionId]?.let {
-            return it.await()
-        }
-        acpFail("Session $sessionId not found")
+        return getOrCreateSessionHolder(sessionId).session.await()
     }
 
     private suspend fun<T> withInitializingSession(block: suspend () -> T): T {
