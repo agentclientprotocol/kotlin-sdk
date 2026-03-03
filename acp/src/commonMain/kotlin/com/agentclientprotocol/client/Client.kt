@@ -22,8 +22,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonElement
 
 private val logger = KotlinLogging.logger {}
@@ -55,7 +53,9 @@ public class Client(
             @OptIn(ExperimentalCoroutinesApi::class)
             notifications.close()
             for ((notification, meta) in notifications) {
-                session.handleNotification(notification, meta)
+                session.executeWithSession {
+                    session.handleNotification(notification, meta)
+                }
             }
 
             sessionDeferred.complete(session)
@@ -70,7 +70,10 @@ public class Client(
             @OptIn(DelicateCoroutinesApi::class)
             if (notifications.isClosedForSend) {
                 // probably it will suspend for the period of loop with `handleNotification` above
-                session.await().handleNotification(notification, _meta)
+                val session = this@ClientSessionHolder.session.await()
+                session.executeWithSession {
+                    session.handleNotification(notification, _meta)
+                }
                 return
             }
             else {
@@ -192,10 +195,6 @@ public class Client(
         protocol.setNotificationHandler(AcpMethod.ClientMethods.SessionUpdate) { params: SessionNotification ->
             val sessionHolder = getOrCreateSessionHolder(params.sessionId)
             sessionHolder.handleOrQueue(params.update, params._meta)
-//            val session = getSessionOrThrow(params.sessionId)
-//            session.executeWithSession {
-//                session.handleNotification(params.update, params._meta)
-//            }
         }
     }
 
