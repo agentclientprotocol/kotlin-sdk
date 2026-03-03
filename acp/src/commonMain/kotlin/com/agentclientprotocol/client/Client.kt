@@ -80,7 +80,6 @@ public class Client(
     }
 
     private val _sessions = atomic(persistentMapOf<SessionId, ClientSessionHolder>())
-//    private val _sessionsLock = Mutex(false)
 
     /**
      * Creates a new entry only if there are some currently initializing sessions. Otherwise, throws in the case of missing session.
