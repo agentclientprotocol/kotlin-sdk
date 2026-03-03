@@ -108,6 +108,12 @@ public class Client(
         }
     }
 
+    private fun removeSessionHolder(sessionId: SessionId) {
+        _sessions.update { currentMap ->
+            currentMap.remove(sessionId)
+        }
+    }
+
     private val _clientInfo = CompletableDeferred<ClientInfo>()
     private val _agentInfo = CompletableDeferred<AgentInfo>()
     private val _currentlyInitializingSessionsCount = MutableStateFlow(0)
@@ -366,14 +372,16 @@ public class Client(
      * After ClientSessionImpl is created the delayed notifications are drained and pushed into session.notify()
      */
     private suspend fun createSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, sessionResponse: AcpCreatedSessionResponse, factory: ClientOperationsFactory): ClientSession {
+        // doesn't throw if executing under `withInitializingSession` because creates a new entry
+        val sessionHolder = getOrCreateSessionHolder(sessionId)
         return runCatching {
             val operations = factory.createClientOperations(sessionId, sessionResponse)
             val session = ClientSessionImpl(this, sessionId, sessionParameters, operations, sessionResponse, protocol)
-            getOrCreateSessionHolder(sessionId).drainEventsAndCompleteSession(session)
+            sessionHolder.drainEventsAndCompleteSession(session)
             session
         }.getOrElse { throwable ->
-            getOrCreateSessionHolder(sessionId).completeExceptionally(IllegalStateException("Failed to create session $sessionId", throwable))
-            _sessions.update { it.remove(sessionId) }
+            sessionHolder.completeExceptionally(IllegalStateException("Failed to create session $sessionId", throwable))
+            removeSessionHolder(sessionId)
             throw throwable
         }
     }
