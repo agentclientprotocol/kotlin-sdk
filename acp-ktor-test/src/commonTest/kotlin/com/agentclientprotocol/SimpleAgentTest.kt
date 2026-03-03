@@ -9,13 +9,12 @@ import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.*
-import com.agentclientprotocol.protocol.JsonRpcException
 import com.agentclientprotocol.protocol.invoke
-import com.agentclientprotocol.rpc.MethodName
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.JsonElement
 import kotlin.test.*
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver by protocolDriver {
@@ -800,16 +799,33 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
     }
 
     @Test
-    fun `new session should not lose updates that arrive while queued updates are draining`() = testWithProtocols { clientProtocol, agentProtocol ->
-        val sessionId = SessionId("new-session-race-id")
-        val firstText = "first-before-response"
-        val secondText = "second-during-drain"
+    fun `create session should not lose events client slower agent (new session)`() = `create session should not lose events`(agentEmitDelay = 100.milliseconds, clientNotifyDelay = 200.milliseconds, isLoad = false)
+    @Test
+    fun `create session should not lose events agent slower client (new session)`() = `create session should not lose events`(agentEmitDelay = 200.milliseconds, clientNotifyDelay = 100.milliseconds, isLoad = false)
+    @Test
+    fun `create session should not lose events client slower agent (load session)`() = `create session should not lose events`(agentEmitDelay = 100.milliseconds, clientNotifyDelay = 200.milliseconds, isLoad = true)
+    @Test
+    fun `create session should not lose events agent slower client (load session)`() = `create session should not lose events`(agentEmitDelay = 200.milliseconds, clientNotifyDelay = 100.milliseconds, isLoad = true)
 
-        val firstNotificationEnteredNotify = CompletableDeferred<Unit>()
-        val allowFirstNotificationToFinish = CompletableDeferred<Unit>()
-        val secondNotificationProcessedByClientLoop = CompletableDeferred<Unit>()
-        val receivedAllNotifications = CompletableDeferred<List<String>>()
-        val received = mutableListOf<String>()
+    private fun `create session should not lose events`(agentEmitDelay: Duration, clientNotifyDelay: Duration, isLoad: Boolean = false) = testWithProtocols { clientProtocol, agentProtocol ->
+        val sessionId = SessionId("slow-notify-load-session-id")
+        val replayUpdates = (1..10).map { index ->
+            if (index % 2 == 0) {
+                SessionUpdate.AgentMessageChunk(ContentBlock.Text("agent-$index"))
+            } else {
+                SessionUpdate.UserMessageChunk(ContentBlock.Text("user-$index"))
+            }
+        }
+        val postInitializeText = "post-initialize-agent"
+        val expectedMessages = replayUpdates.mapNotNull { update ->
+            when (update) {
+                is SessionUpdate.AgentMessageChunk -> "agent:${(update.content as ContentBlock.Text).text}"
+                is SessionUpdate.UserMessageChunk -> "user:${(update.content as ContentBlock.Text).text}"
+                else -> null
+            }
+        }
+
+        val receivedMessages = mutableListOf<String>()
 
         val client = Client(protocol = clientProtocol)
         val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
@@ -818,35 +834,34 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
             }
 
             override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
-                this@testWithProtocols.launch {
-                    firstNotificationEnteredNotify.await()
+                return newSession(sessionId)
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                return newSession(sessionId)
+            }
+
+            private suspend fun newSession(sessionId: SessionId): AgentSession {
+                for (update in replayUpdates) {
                     AcpMethod.ClientMethods.SessionUpdate(
                         agentProtocol,
-                        SessionNotification(
-                            sessionId = sessionId,
-                            update = SessionUpdate.AgentMessageChunk(ContentBlock.Text(secondText))
-                        )
+                        SessionNotification(sessionId, update)
                     )
-                    // Keep order on the wire: if this request gets a response, client has already handled
-                    // the preceding session/update in its message loop.
-                    try {
-                        agentProtocol.sendRequestRaw(MethodName("test/barrier-after-second-update"), null)
-                    } catch (_: JsonRpcException) {
-                        // expected: method is unknown on client side
-                    }
-                    secondNotificationProcessedByClientLoop.complete(Unit)
+                    delay(agentEmitDelay)
                 }
-
-                AcpMethod.ClientMethods.SessionUpdate(
-                    agentProtocol,
-                    SessionNotification(
-                        sessionId = sessionId,
-                        update = SessionUpdate.AgentMessageChunk(ContentBlock.Text(firstText))
-                    )
-                )
 
                 return object : AgentSession {
                     override val sessionId: SessionId = sessionId
+
+                    override suspend fun postInitialize() {
+                        delay(agentEmitDelay)
+                        currentCoroutineContext().client.notify(
+                            SessionUpdate.AgentMessageChunk(ContentBlock.Text(postInitializeText))
+                        )
+                    }
 
                     override suspend fun prompt(
                         content: List<ContentBlock>,
@@ -854,59 +869,61 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                     ): Flow<Event> = emptyFlow()
                 }
             }
-
-            override suspend fun loadSession(
-                sessionId: SessionId,
-                sessionParameters: SessionCreationParameters,
-            ): AgentSession {
-                TODO("Not yet implemented")
-            }
         })
 
         client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
 
-        val createdSessionDeferred = async {
-            client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
-                object : ClientSessionOperations {
-                    override suspend fun requestPermissions(
-                        toolCall: SessionUpdate.ToolCallUpdate,
-                        permissions: List<PermissionOption>,
-                        _meta: JsonElement?,
-                    ): RequestPermissionResponse {
-                        return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+        val postInitializeDeferred = CompletableDeferred<String>()
+        withTimeout(8000.milliseconds) {
+            fun createOperations(
+                clientNotifyDelay: Duration,
+                postInitializeText: String,
+                postInitializeDeferred: CompletableDeferred<String>,
+                receivedMessages: MutableList<String>,
+            ): ClientSessionOperations = object : ClientSessionOperations {
+                override suspend fun requestPermissions(
+                    toolCall: SessionUpdate.ToolCallUpdate,
+                    permissions: List<PermissionOption>,
+                    _meta: JsonElement?,
+                ): RequestPermissionResponse {
+                    return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+                }
+
+                override suspend fun notify(
+                    notification: SessionUpdate,
+                    _meta: JsonElement?,
+                ) {
+                    delay(clientNotifyDelay)
+                    val message = when (notification) {
+                        is SessionUpdate.AgentMessageChunk -> "agent:${(notification.content as ContentBlock.Text).text}"
+                        is SessionUpdate.UserMessageChunk -> "user:${(notification.content as ContentBlock.Text).text}"
+                        else -> return
                     }
-
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
-                        if (notification !is SessionUpdate.AgentMessageChunk) return
-                        val text = (notification.content as ContentBlock.Text).text
-                        received.add(text)
-
-                        if (text == firstText) {
-                            firstNotificationEnteredNotify.complete(Unit)
-                            allowFirstNotificationToFinish.await()
-                        }
-
-                        if (received.size == 2) {
-                            receivedAllNotifications.complete(received.toList())
-                        }
+                    if (message.contains(postInitializeText)) {
+                        postInitializeDeferred.complete(message)
+                    } else {
+                        receivedMessages.add(message)
                     }
+                }
+            }
+
+            if (isLoad) {
+                client.loadSession(sessionId, SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                    createOperations(clientNotifyDelay, postInitializeText, postInitializeDeferred, receivedMessages)
+                }
+            } else {
+                client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                    createOperations(clientNotifyDelay, postInitializeText, postInitializeDeferred, receivedMessages)
                 }
             }
         }
 
-        withTimeout(2000.milliseconds) { secondNotificationProcessedByClientLoop.await() }
-        allowFirstNotificationToFinish.complete(Unit)
-
-        val createdSession = withTimeout(2000.milliseconds) { createdSessionDeferred.await() }
-        assertEquals(sessionId, createdSession.sessionId)
-        assertContentEquals(
-            listOf(firstText, secondText),
-            withTimeout(2000.milliseconds) { receivedAllNotifications.await() }
-        )
+        withTimeout(5000.milliseconds) {
+            postInitializeDeferred.await()
+        }
+        assertContentEquals(expectedMessages, receivedMessages)
     }
+
 
     @OptIn(UnstableApi::class)
     @Test

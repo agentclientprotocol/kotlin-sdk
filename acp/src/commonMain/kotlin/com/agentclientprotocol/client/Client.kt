@@ -16,7 +16,9 @@ import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -44,13 +46,14 @@ public class Client(
 ) {
     private class ClientSessionHolder {
         private val sessionDeferred: CompletableDeferred<ClientSessionImpl> = CompletableDeferred()
-        private val notifications: MutableList<Pair<SessionUpdate, JsonElement?>> = mutableListOf()
-        private val lock = Mutex(false)
+        private val notifications = Channel<Pair<SessionUpdate, JsonElement?>>(capacity = Channel.UNLIMITED)
+
 
         val session: Deferred<ClientSessionImpl> get() = sessionDeferred
 
         suspend fun drainEventsAndCompleteSession(session: ClientSessionImpl) {
-            val notifications = drainNotifications()
+            @OptIn(ExperimentalCoroutinesApi::class)
+            notifications.close()
             for ((notification, meta) in notifications) {
                 session.handleNotification(notification, meta)
             }
@@ -63,22 +66,15 @@ public class Client(
         }
 
         suspend fun handleOrQueue(notification: SessionUpdate, _meta: JsonElement?) {
-            if (sessionDeferred.isCompleted) {
-                @OptIn(ExperimentalCoroutinesApi::class)
-                sessionDeferred.getCompleted().handleNotification(notification, _meta)
+            // means that `close` was called in drain
+            @OptIn(DelicateCoroutinesApi::class)
+            if (notifications.isClosedForSend) {
+                // probably it will suspend for the period of loop with `handleNotification` above
+                session.await().handleNotification(notification, _meta)
+                return
             }
             else {
-                lock.withLock {
-                    notifications.add(Pair(notification, _meta))
-                }
-            }
-        }
-
-        private suspend fun drainNotifications(): List<Pair<SessionUpdate, JsonElement?>> {
-            return lock.withLock {
-                val notificationsCopy = notifications.toList()
-                notifications.clear()
-                notificationsCopy
+                notifications.send(Pair(notification, _meta))
             }
         }
     }
