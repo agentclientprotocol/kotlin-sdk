@@ -402,6 +402,11 @@ public class Client(
         } finally {
             var hangingSessions: Map<SessionId, ClientSessionHolder>? = null
             _sessions.update { currentStorage ->
+                hangingSessions = null
+                if (currentStorage.initializingSessionsCount == 0) {
+                    logger.error { "Assertion failed: initializingSessionsCount should be positive, got ${currentStorage.initializingSessionsCount}" }
+                    return@update currentStorage
+                }
                 val newCount = currentStorage.initializingSessionsCount - 1
                 return@update if (newCount == 0) {
                     // this means that currently no sessions can be in initializing state during to ongoing load/new/fork/resume calls
