@@ -2000,14 +2000,16 @@ public final class com/agentclientprotocol/model/PromptCapabilities$Companion {
 
 public final class com/agentclientprotocol/model/PromptRequest : com/agentclientprotocol/model/AcpRequest, com/agentclientprotocol/model/AcpWithSessionId {
 	public static final field Companion Lcom/agentclientprotocol/model/PromptRequest$Companion;
-	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1-7EW-EgU ()Ljava/lang/String;
 	public final fun component2 ()Ljava/util/List;
-	public final fun component3 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun copy-nk3TnMc (Ljava/lang/String;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/PromptRequest;
-	public static synthetic fun copy-nk3TnMc$default (Lcom/agentclientprotocol/model/PromptRequest;Ljava/lang/String;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/PromptRequest;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy-wPMwmcM (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/PromptRequest;
+	public static synthetic fun copy-wPMwmcM$default (Lcom/agentclientprotocol/model/PromptRequest;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/PromptRequest;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMessageId ()Ljava/lang/String;
 	public final fun getPrompt ()Ljava/util/List;
 	public fun getSessionId-7EW-EgU ()Ljava/lang/String;
 	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
@@ -2032,14 +2034,16 @@ public final class com/agentclientprotocol/model/PromptRequest$Companion {
 
 public final class com/agentclientprotocol/model/PromptResponse : com/agentclientprotocol/model/AcpResponse {
 	public static final field Companion Lcom/agentclientprotocol/model/PromptResponse$Companion;
-	public fun <init> (Lcom/agentclientprotocol/model/StopReason;Lkotlinx/serialization/json/JsonElement;)V
-	public synthetic fun <init> (Lcom/agentclientprotocol/model/StopReason;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/agentclientprotocol/model/StopReason;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/StopReason;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lcom/agentclientprotocol/model/StopReason;
-	public final fun component2 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun copy (Lcom/agentclientprotocol/model/StopReason;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/PromptResponse;
-	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/PromptResponse;Lcom/agentclientprotocol/model/StopReason;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/PromptResponse;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lcom/agentclientprotocol/model/StopReason;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/PromptResponse;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/PromptResponse;Lcom/agentclientprotocol/model/StopReason;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/PromptResponse;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getStopReason ()Lcom/agentclientprotocol/model/StopReason;
+	public final fun getUserMessageId ()Ljava/lang/String;
 	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
@@ -3125,12 +3129,15 @@ public abstract class com/agentclientprotocol/model/SessionUpdate {
 
 public final class com/agentclientprotocol/model/SessionUpdate$AgentMessageChunk : com/agentclientprotocol/model/SessionUpdate {
 	public static final field Companion Lcom/agentclientprotocol/model/SessionUpdate$AgentMessageChunk$Companion;
-	public fun <init> (Lcom/agentclientprotocol/model/ContentBlock;)V
+	public fun <init> (Lcom/agentclientprotocol/model/ContentBlock;Ljava/lang/String;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/ContentBlock;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lcom/agentclientprotocol/model/ContentBlock;
-	public final fun copy (Lcom/agentclientprotocol/model/ContentBlock;)Lcom/agentclientprotocol/model/SessionUpdate$AgentMessageChunk;
-	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/SessionUpdate$AgentMessageChunk;Lcom/agentclientprotocol/model/ContentBlock;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionUpdate$AgentMessageChunk;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Lcom/agentclientprotocol/model/ContentBlock;Ljava/lang/String;)Lcom/agentclientprotocol/model/SessionUpdate$AgentMessageChunk;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/SessionUpdate$AgentMessageChunk;Lcom/agentclientprotocol/model/ContentBlock;Ljava/lang/String;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionUpdate$AgentMessageChunk;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getContent ()Lcom/agentclientprotocol/model/ContentBlock;
+	public final fun getMessageId ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -3152,12 +3159,15 @@ public final class com/agentclientprotocol/model/SessionUpdate$AgentMessageChunk
 
 public final class com/agentclientprotocol/model/SessionUpdate$AgentThoughtChunk : com/agentclientprotocol/model/SessionUpdate {
 	public static final field Companion Lcom/agentclientprotocol/model/SessionUpdate$AgentThoughtChunk$Companion;
-	public fun <init> (Lcom/agentclientprotocol/model/ContentBlock;)V
+	public fun <init> (Lcom/agentclientprotocol/model/ContentBlock;Ljava/lang/String;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/ContentBlock;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lcom/agentclientprotocol/model/ContentBlock;
-	public final fun copy (Lcom/agentclientprotocol/model/ContentBlock;)Lcom/agentclientprotocol/model/SessionUpdate$AgentThoughtChunk;
-	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/SessionUpdate$AgentThoughtChunk;Lcom/agentclientprotocol/model/ContentBlock;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionUpdate$AgentThoughtChunk;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Lcom/agentclientprotocol/model/ContentBlock;Ljava/lang/String;)Lcom/agentclientprotocol/model/SessionUpdate$AgentThoughtChunk;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/SessionUpdate$AgentThoughtChunk;Lcom/agentclientprotocol/model/ContentBlock;Ljava/lang/String;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionUpdate$AgentThoughtChunk;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getContent ()Lcom/agentclientprotocol/model/ContentBlock;
+	public final fun getMessageId ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -3484,12 +3494,15 @@ public final class com/agentclientprotocol/model/SessionUpdate$UsageUpdate$Compa
 
 public final class com/agentclientprotocol/model/SessionUpdate$UserMessageChunk : com/agentclientprotocol/model/SessionUpdate {
 	public static final field Companion Lcom/agentclientprotocol/model/SessionUpdate$UserMessageChunk$Companion;
-	public fun <init> (Lcom/agentclientprotocol/model/ContentBlock;)V
+	public fun <init> (Lcom/agentclientprotocol/model/ContentBlock;Ljava/lang/String;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/ContentBlock;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lcom/agentclientprotocol/model/ContentBlock;
-	public final fun copy (Lcom/agentclientprotocol/model/ContentBlock;)Lcom/agentclientprotocol/model/SessionUpdate$UserMessageChunk;
-	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/SessionUpdate$UserMessageChunk;Lcom/agentclientprotocol/model/ContentBlock;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionUpdate$UserMessageChunk;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Lcom/agentclientprotocol/model/ContentBlock;Ljava/lang/String;)Lcom/agentclientprotocol/model/SessionUpdate$UserMessageChunk;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/SessionUpdate$UserMessageChunk;Lcom/agentclientprotocol/model/ContentBlock;Ljava/lang/String;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionUpdate$UserMessageChunk;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getContent ()Lcom/agentclientprotocol/model/ContentBlock;
+	public final fun getMessageId ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
