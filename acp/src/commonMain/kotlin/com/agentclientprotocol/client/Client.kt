@@ -13,13 +13,13 @@ import com.agentclientprotocol.util.PaginatedResponseToFlowAdapter
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
+import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.update
 import kotlinx.serialization.json.JsonElement
 
 private val logger = KotlinLogging.logger {}
@@ -40,10 +40,86 @@ public typealias ClientInstance = Client
 public class Client(
     public val protocol: Protocol
 ) {
-    private val _sessions = atomic(persistentMapOf<SessionId, CompletableDeferred<ClientSessionImpl>>())
+    private class ClientSessionHolder {
+        private val sessionDeferred: CompletableDeferred<ClientSessionImpl> = CompletableDeferred()
+        // Don't make the channel limited, because it leads to a deadlock also:
+        // when client side makes loadSession/newSession and an agent sends updates more than channel.capacity
+        // the message with call response suspends because protocol thread is suspended in handleNotification
+        // if to address it we have to somehow reorder events, that's not obvious on the protocol level, so we pay with memory right now to handle it
+        private val notifications = Channel<Pair<SessionUpdate, JsonElement?>>(capacity = Channel.UNLIMITED)
+
+        val session: Deferred<ClientSessionImpl> get() = sessionDeferred
+
+        suspend fun drainEventsAndCompleteSession(session: ClientSessionImpl) {
+            @OptIn(ExperimentalCoroutinesApi::class)
+            notifications.close()
+            for ((notification, meta) in notifications) {
+                session.executeWithSession {
+                    session.handleNotification(notification, meta)
+                }
+            }
+
+            sessionDeferred.complete(session)
+        }
+
+        fun completeExceptionally(cause: Throwable) {
+            notifications.close(cause)
+            sessionDeferred.completeExceptionally(cause)
+        }
+
+        suspend fun handleOrQueue(notification: SessionUpdate, _meta: JsonElement?) {
+            val sendResult = notifications.trySend(Pair(notification, _meta))
+
+            // means that `close` was called in drain
+            if (!sendResult.isSuccess) {
+                // probably it will suspend for the period of loop with `handleNotification` above
+                val session = this@ClientSessionHolder.session.await()
+                session.executeWithSession {
+                    session.handleNotification(notification, _meta)
+                }
+            }
+        }
+    }
+
+    private data class SessionsStorage(val initializingSessionsCount: Int = 0, val sessions: PersistentMap<SessionId, ClientSessionHolder> = persistentMapOf())
+
+    private val _sessions = atomic(SessionsStorage())
+
+    /**
+     * Creates a new entry only if there are some currently initializing sessions. Otherwise, throws in the case of missing session.
+     */
+    private fun getOrCreateSessionHolder(sessionId: SessionId): ClientSessionHolder {
+        val sessionsStorage = _sessions.value
+        val holder = sessionsStorage.sessions[sessionId]
+        if (holder != null) return holder
+        var clientSessionHolder: ClientSessionHolder? = null
+        _sessions.update { currentStorage ->
+            if (currentStorage.initializingSessionsCount > 0) {
+                val existingHolder = currentStorage.sessions[sessionId]
+                if (existingHolder != null) {
+                    clientSessionHolder = existingHolder
+                    currentStorage
+                } else {
+                    val newHolder = ClientSessionHolder()
+                    clientSessionHolder = newHolder
+                    currentStorage.copy(sessions = currentStorage.sessions.put(sessionId, newHolder))
+                }
+            } else {
+                clientSessionHolder = null
+                currentStorage
+            }
+        }
+        return clientSessionHolder ?: acpFail("Session $sessionId not found")
+    }
+
+    private fun removeSessionHolder(sessionId: SessionId) {
+        _sessions.update { currentMap ->
+            currentMap.copy(sessions = currentMap.sessions.remove(sessionId))
+        }
+    }
+
     private val _clientInfo = CompletableDeferred<ClientInfo>()
     private val _agentInfo = CompletableDeferred<AgentInfo>()
-    private val _currentlyInitializingSessionsCount = MutableStateFlow(0)
 
     init {
         // Set up request handlers for incoming agent requests
@@ -118,10 +194,8 @@ public class Client(
         }
 
         protocol.setNotificationHandler(AcpMethod.ClientMethods.SessionUpdate) { params: SessionNotification ->
-            val session = getSessionOrThrow(params.sessionId)
-            session.executeWithSession {
-                session.handleNotification(params.update, params._meta)
-            }
+            val sessionHolder = getOrCreateSessionHolder(params.sessionId)
+            sessionHolder.handleOrQueue(params.update, params._meta)
         }
     }
 
@@ -293,49 +367,73 @@ public class Client(
         }
     }
 
+    /**
+     * After ClientSessionImpl is created the delayed notifications are drained and pushed into session.notify()
+     */
     private suspend fun createSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, sessionResponse: AcpCreatedSessionResponse, factory: ClientOperationsFactory): ClientSession {
-        val sessionDeferred = CompletableDeferred<ClientSessionImpl>()
+        // doesn't throw if executing under `withInitializingSession` because creates a new entry
+        val sessionHolder = getOrCreateSessionHolder(sessionId)
         return runCatching {
-            _sessions.update { it.put(sessionId, sessionDeferred) }
-
             val operations = factory.createClientOperations(sessionId, sessionResponse)
-
             val session = ClientSessionImpl(this, sessionId, sessionParameters, operations, sessionResponse, protocol)
-            sessionDeferred.complete(session)
+            sessionHolder.drainEventsAndCompleteSession(session)
             session
-        }.getOrElse {
-            sessionDeferred.completeExceptionally(IllegalStateException("Failed to create session $sessionId", it))
-            _sessions.update { it.remove(sessionId) }
-            throw it
+        }.getOrElse { throwable ->
+            // throw IllegalStateException to pass it as INTERNAL_ERROR to the other side (see in Protocol)
+            sessionHolder.completeExceptionally(IllegalStateException("Failed to create session $sessionId", throwable))
+            // cleanup of this sessionId entry will be done in finally of withInitializingSession
+            throw throwable
         }
     }
 
     public fun getSession(sessionId: SessionId): ClientSession {
-        val completableDeferred = _sessions.value[sessionId] ?: error("Session $sessionId not found")
-        if (!completableDeferred.isCompleted) error("Session $sessionId not initialized yet")
+        val sessionHolder = _sessions.value.sessions[sessionId] ?: error("Session $sessionId not found")
+        if (!sessionHolder.session.isCompleted) error("Session $sessionId not initialized yet")
         @OptIn(ExperimentalCoroutinesApi::class)
-        return completableDeferred.getCompleted()
+        return sessionHolder.session.getCompleted()
     }
 
     private suspend fun getSessionOrThrow(sessionId: SessionId): ClientSessionImpl {
-        _sessions.value[sessionId]?.let {
-            return it.await()
-        }
-        // try to wait for all pending sessions to initialize
-        _currentlyInitializingSessionsCount.first { it == 0 }
-        // try to get the session again
-        _sessions.value[sessionId]?.let {
-            return it.await()
-        }
-        acpFail("Session $sessionId not found")
+        return getOrCreateSessionHolder(sessionId).session.await()
     }
 
     private suspend fun<T> withInitializingSession(block: suspend () -> T): T {
-        _currentlyInitializingSessionsCount.update { it + 1 }
+        _sessions.update { it.copy(initializingSessionsCount = it.initializingSessionsCount + 1) }
         try {
             return block()
         } finally {
-            _currentlyInitializingSessionsCount.update { it - 1 }
+            var hangingSessions: Map<SessionId, ClientSessionHolder>? = null
+            _sessions.update { currentStorage ->
+                hangingSessions = null
+                if (currentStorage.initializingSessionsCount == 0) {
+                    logger.error { "Assertion failed: initializingSessionsCount should be positive, got ${currentStorage.initializingSessionsCount}" }
+                    return@update currentStorage
+                }
+                val newCount = currentStorage.initializingSessionsCount - 1
+                return@update if (newCount == 0) {
+                    // this means that currently no sessions can be in initializing state during to ongoing load/new/fork/resume calls
+                    // so if on exit from these methods we observe any entries with not completed or failed state we assume that someone sent us events with non-existent session ids
+                    // and we have to remove them and report errors
+                    hangingSessions = currentStorage.sessions.filterValues {
+                        @OptIn(ExperimentalCoroutinesApi::class)
+                        !it.session.isCompleted || it.session.getCompletionExceptionOrNull() != null
+                    }
+                    var aliveSessions: PersistentMap<SessionId, ClientSessionHolder> = currentStorage.sessions
+                    for ((id, _) in hangingSessions) {
+                        aliveSessions = aliveSessions.remove(id)
+                    }
+                    currentStorage.copy(initializingSessionsCount = newCount, sessions = aliveSessions)
+                } else {
+                    currentStorage.copy(initializingSessionsCount = newCount)
+                }
+            }
+            if (hangingSessions != null) {
+                for ((id, holder) in hangingSessions) {
+                    logger.trace { "Removing hanging session $id" }
+                    // report it as non existent session
+                    holder.completeExceptionally(AcpExpectedError("Session $id not found"))
+                }
+            }
         }
     }
 }

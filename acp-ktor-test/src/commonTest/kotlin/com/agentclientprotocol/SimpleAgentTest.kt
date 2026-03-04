@@ -14,6 +14,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.JsonElement
 import kotlin.test.*
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver by protocolDriver {
@@ -652,6 +653,979 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
         }
         assertTrue(notification is SessionUpdate.AvailableCommandsUpdate)
     }
+
+    @Test
+    fun `load session should process updates that arrive before load response`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val sessionId = SessionId("loaded-session-id")
+        val replayText = "replay-before-load-response"
+        val notificationDeferred = CompletableDeferred<SessionUpdate>()
+
+        val client = Client(protocol = clientProtocol)
+        val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(clientInfo.protocolVersion)
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                AcpMethod.ClientMethods.SessionUpdate(
+                    agentProtocol,
+                    SessionNotification(
+                        sessionId = sessionId,
+                        update = SessionUpdate.AgentMessageChunk(ContentBlock.Text(replayText))
+                    )
+                )
+
+                return object : AgentSession {
+                    override val sessionId: SessionId = sessionId
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = emptyFlow()
+                }
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val loadedSession = withTimeout(2000.milliseconds) {
+            client.loadSession(sessionId, SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                object : ClientSessionOperations {
+                    override suspend fun requestPermissions(
+                        toolCall: SessionUpdate.ToolCallUpdate,
+                        permissions: List<PermissionOption>,
+                        _meta: JsonElement?,
+                    ): RequestPermissionResponse {
+                        return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+                    }
+
+                    override suspend fun notify(
+                        notification: SessionUpdate,
+                        _meta: JsonElement?,
+                    ) {
+                        notificationDeferred.complete(notification)
+                    }
+                }
+            }
+        }
+
+        assertEquals(sessionId, loadedSession.sessionId)
+
+        val notification = withTimeout(2000.milliseconds) { notificationDeferred.await() }
+        assertTrue(notification is SessionUpdate.AgentMessageChunk)
+        val text = ((notification as SessionUpdate.AgentMessageChunk).content as ContentBlock.Text).text
+        assertEquals(replayText, text)
+    }
+
+    @Test
+    fun `unknown session replay should not leak into later load after init cleanup`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val createdSessionId = SessionId("created-session-id")
+        val unknownSessionId = SessionId("unknown-session-id")
+        val staleReplay = "stale-replay-from-unknown-session"
+        val freshReplay = "fresh-replay-from-load-session"
+        val received = mutableListOf<String>()
+
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(clientInfo.protocolVersion)
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                AcpMethod.ClientMethods.SessionUpdate(
+                    agentProtocol,
+                    SessionNotification(
+                        sessionId = unknownSessionId,
+                        update = SessionUpdate.AgentMessageChunk(ContentBlock.Text(staleReplay))
+                    )
+                )
+
+                return object : AgentSession {
+                    override val sessionId: SessionId = createdSessionId
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = emptyFlow()
+                }
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                AcpMethod.ClientMethods.SessionUpdate(
+                    agentProtocol,
+                    SessionNotification(
+                        sessionId = sessionId,
+                        update = SessionUpdate.AgentMessageChunk(ContentBlock.Text(freshReplay))
+                    )
+                )
+
+                return object : AgentSession {
+                    override val sessionId: SessionId = sessionId
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = emptyFlow()
+                }
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        withTimeout(2000.milliseconds) {
+            client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                object : ClientSessionOperations {
+                    override suspend fun requestPermissions(
+                        toolCall: SessionUpdate.ToolCallUpdate,
+                        permissions: List<PermissionOption>,
+                        _meta: JsonElement?,
+                    ): RequestPermissionResponse {
+                        return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+                    }
+
+                    override suspend fun notify(
+                        notification: SessionUpdate,
+                        _meta: JsonElement?,
+                    ) {
+                    }
+                }
+            }
+        }
+
+        val loadedSession = withTimeout(2000.milliseconds) {
+            client.loadSession(unknownSessionId, SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                object : ClientSessionOperations {
+                    override suspend fun requestPermissions(
+                        toolCall: SessionUpdate.ToolCallUpdate,
+                        permissions: List<PermissionOption>,
+                        _meta: JsonElement?,
+                    ): RequestPermissionResponse {
+                        return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+                    }
+
+                    override suspend fun notify(
+                        notification: SessionUpdate,
+                        _meta: JsonElement?,
+                    ) {
+                        val text = (notification as? SessionUpdate.AgentMessageChunk)?.content as? ContentBlock.Text ?: return
+                        received.add(text.text)
+                    }
+                }
+            }
+        }
+
+        assertEquals(unknownSessionId, loadedSession.sessionId)
+        assertContentEquals(listOf(freshReplay), received)
+    }
+
+    @Test
+    fun `unknown session request during init should fail fast with not found`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val unknownSessionId = SessionId("unknown-request-session-id")
+        val requestFailure = CompletableDeferred<Throwable>()
+
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(clientInfo.protocolVersion)
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                this@testWithProtocols.launch {
+                    try {
+                        AcpMethod.ClientMethods.FsReadTextFile(
+                            agentProtocol,
+                            ReadTextFileRequest(unknownSessionId, "/test/path", null, null, null)
+                        )
+                        requestFailure.complete(AssertionError("Unknown session request should fail"))
+                    } catch (t: Throwable) {
+                        requestFailure.complete(t)
+                    }
+                }
+
+                delay(200.milliseconds)
+                return object : AgentSession {
+                    override val sessionId: SessionId = SessionId("known-session-id")
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = emptyFlow()
+                }
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                TODO("Not yet implemented")
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        withTimeout(2000.milliseconds) {
+            client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                object : ClientSessionOperations {
+                    override suspend fun requestPermissions(
+                        toolCall: SessionUpdate.ToolCallUpdate,
+                        permissions: List<PermissionOption>,
+                        _meta: JsonElement?,
+                    ): RequestPermissionResponse {
+                        return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+                    }
+
+                    override suspend fun notify(
+                        notification: SessionUpdate,
+                        _meta: JsonElement?,
+                    ) {
+                    }
+                }
+            }
+        }
+
+        val failure = withTimeout(2000.milliseconds) { requestFailure.await() }
+        val message = failure.message ?: failure.toString()
+        assertTrue(
+            message.contains("Session $unknownSessionId not found"),
+            "Unexpected failure message: $message"
+        )
+    }
+
+    @Test
+    fun `unknown session replay should survive while another session still initializing`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val newSessionId = SessionId("parallel-new-session-id")
+        val delayedLoadSessionId = SessionId("parallel-load-session-id")
+        val replayText = "replay-during-parallel-init"
+        val loadStarted = CompletableDeferred<Unit>()
+        val allowLoadToComplete = CompletableDeferred<Unit>()
+        val replayReceived = CompletableDeferred<String>()
+
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(clientInfo.protocolVersion)
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                loadStarted.await()
+                AcpMethod.ClientMethods.SessionUpdate(
+                    agentProtocol,
+                    SessionNotification(
+                        sessionId = delayedLoadSessionId,
+                        update = SessionUpdate.AgentMessageChunk(ContentBlock.Text(replayText))
+                    )
+                )
+                return object : AgentSession {
+                    override val sessionId: SessionId = newSessionId
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = emptyFlow()
+                }
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                loadStarted.complete(Unit)
+                allowLoadToComplete.await()
+                return object : AgentSession {
+                    override val sessionId: SessionId = sessionId
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = emptyFlow()
+                }
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val loadedSessionDeferred = async {
+            client.loadSession(delayedLoadSessionId, SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                object : ClientSessionOperations {
+                    override suspend fun requestPermissions(
+                        toolCall: SessionUpdate.ToolCallUpdate,
+                        permissions: List<PermissionOption>,
+                        _meta: JsonElement?,
+                    ): RequestPermissionResponse {
+                        return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+                    }
+
+                    override suspend fun notify(
+                        notification: SessionUpdate,
+                        _meta: JsonElement?,
+                    ) {
+                        val text = (notification as? SessionUpdate.AgentMessageChunk)?.content as? ContentBlock.Text ?: return
+                        if (!replayReceived.isCompleted) {
+                            replayReceived.complete(text.text)
+                        }
+                    }
+                }
+            }
+        }
+
+        withTimeout(2000.milliseconds) { loadStarted.await() }
+
+        val createdSession = withTimeout(2000.milliseconds) {
+            client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                object : ClientSessionOperations {
+                    override suspend fun requestPermissions(
+                        toolCall: SessionUpdate.ToolCallUpdate,
+                        permissions: List<PermissionOption>,
+                        _meta: JsonElement?,
+                    ): RequestPermissionResponse {
+                        return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+                    }
+
+                    override suspend fun notify(
+                        notification: SessionUpdate,
+                        _meta: JsonElement?,
+                    ) {
+                    }
+                }
+            }
+        }
+        assertEquals(newSessionId, createdSession.sessionId)
+
+        allowLoadToComplete.complete(Unit)
+        val loadedSession = withTimeout(2000.milliseconds) { loadedSessionDeferred.await() }
+
+        assertEquals(delayedLoadSessionId, loadedSession.sessionId)
+        assertEquals(replayText, withTimeout(2000.milliseconds) { replayReceived.await() })
+    }
+
+    @OptIn(UnstableApi::class)
+    @Test
+    fun `fork session should process updates that arrive before fork response`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val sourceSessionId = SessionId("source-session-id")
+        val forkedSessionId = SessionId("forked-session-id")
+        val replayText = "replay-before-fork-response"
+        val notificationDeferred = CompletableDeferred<SessionUpdate>()
+
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(
+                    clientInfo.protocolVersion,
+                    capabilities = AgentCapabilities(
+                        sessionCapabilities = SessionCapabilities(fork = SessionForkCapabilities())
+                    )
+                )
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun forkSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                assertEquals(sourceSessionId, sessionId)
+                AcpMethod.ClientMethods.SessionUpdate(
+                    agentProtocol,
+                    SessionNotification(
+                        sessionId = forkedSessionId,
+                        update = SessionUpdate.AgentMessageChunk(ContentBlock.Text(replayText))
+                    )
+                )
+                return object : AgentSession {
+                    override val sessionId: SessionId = forkedSessionId
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = emptyFlow()
+                }
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val forkedSession = withTimeout(2000.milliseconds) {
+            client.forkSession(sourceSessionId, SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                object : ClientSessionOperations {
+                    override suspend fun requestPermissions(
+                        toolCall: SessionUpdate.ToolCallUpdate,
+                        permissions: List<PermissionOption>,
+                        _meta: JsonElement?,
+                    ): RequestPermissionResponse {
+                        return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+                    }
+
+                    override suspend fun notify(
+                        notification: SessionUpdate,
+                        _meta: JsonElement?,
+                    ) {
+                        notificationDeferred.complete(notification)
+                    }
+                }
+            }
+        }
+
+        assertEquals(forkedSessionId, forkedSession.sessionId)
+        val notification = withTimeout(2000.milliseconds) { notificationDeferred.await() }
+        assertTrue(notification is SessionUpdate.AgentMessageChunk)
+        val text = ((notification as SessionUpdate.AgentMessageChunk).content as ContentBlock.Text).text
+        assertEquals(replayText, text)
+    }
+
+    @OptIn(UnstableApi::class)
+    @Test
+    fun `resume session should process updates that arrive before resume response`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val resumedSessionId = SessionId("resumed-session-id")
+        val replayText = "replay-before-resume-response"
+        val notificationDeferred = CompletableDeferred<SessionUpdate>()
+
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(
+                    clientInfo.protocolVersion,
+                    capabilities = AgentCapabilities(
+                        sessionCapabilities = SessionCapabilities(resume = SessionResumeCapabilities())
+                    )
+                )
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun resumeSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                assertEquals(resumedSessionId, sessionId)
+                AcpMethod.ClientMethods.SessionUpdate(
+                    agentProtocol,
+                    SessionNotification(
+                        sessionId = sessionId,
+                        update = SessionUpdate.AgentMessageChunk(ContentBlock.Text(replayText))
+                    )
+                )
+                return object : AgentSession {
+                    override val sessionId: SessionId = sessionId
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = emptyFlow()
+                }
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val resumedSession = withTimeout(2000.milliseconds) {
+            client.resumeSession(resumedSessionId, SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                object : ClientSessionOperations {
+                    override suspend fun requestPermissions(
+                        toolCall: SessionUpdate.ToolCallUpdate,
+                        permissions: List<PermissionOption>,
+                        _meta: JsonElement?,
+                    ): RequestPermissionResponse {
+                        return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+                    }
+
+                    override suspend fun notify(
+                        notification: SessionUpdate,
+                        _meta: JsonElement?,
+                    ) {
+                        notificationDeferred.complete(notification)
+                    }
+                }
+            }
+        }
+
+        assertEquals(resumedSessionId, resumedSession.sessionId)
+        val notification = withTimeout(2000.milliseconds) { notificationDeferred.await() }
+        assertTrue(notification is SessionUpdate.AgentMessageChunk)
+        val text = ((notification as SessionUpdate.AgentMessageChunk).content as ContentBlock.Text).text
+        assertEquals(replayText, text)
+    }
+
+    @Test
+    fun `failed session creation should cleanup holder and allow retry`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val sessionId = SessionId("retry-session-id")
+        var loadAttempt = 0
+        val firstNotification = CompletableDeferred<String>()
+        val secondNotification = CompletableDeferred<String>()
+
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(clientInfo.protocolVersion)
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                loadAttempt += 1
+                AcpMethod.ClientMethods.SessionUpdate(
+                    agentProtocol,
+                    SessionNotification(
+                        sessionId = sessionId,
+                        update = SessionUpdate.AgentMessageChunk(ContentBlock.Text("replay-attempt-$loadAttempt"))
+                    )
+                )
+                return object : AgentSession {
+                    override val sessionId: SessionId = sessionId
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = emptyFlow()
+                }
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val firstFailure = runCatching {
+            withTimeout(2000.milliseconds) {
+                client.loadSession(sessionId, SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                    throw IllegalStateException("operations factory failed")
+                }
+            }
+        }.exceptionOrNull()
+
+        assertNotNull(firstFailure, "First attempt should fail")
+        assertTrue(
+            (firstFailure.message ?: "").contains("operations factory failed"),
+            "Unexpected first failure: $firstFailure"
+        )
+
+        val loadedSession = withTimeout(2000.milliseconds) {
+            client.loadSession(sessionId, SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                object : ClientSessionOperations {
+                    override suspend fun requestPermissions(
+                        toolCall: SessionUpdate.ToolCallUpdate,
+                        permissions: List<PermissionOption>,
+                        _meta: JsonElement?,
+                    ): RequestPermissionResponse {
+                        return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+                    }
+
+                    override suspend fun notify(
+                        notification: SessionUpdate,
+                        _meta: JsonElement?,
+                    ) {
+                        val text = (notification as? SessionUpdate.AgentMessageChunk)?.content as? ContentBlock.Text ?: return
+                        if (!firstNotification.isCompleted) {
+                            firstNotification.complete(text.text)
+                        } else if (!secondNotification.isCompleted) {
+                            secondNotification.complete(text.text)
+                        }
+                    }
+                }
+            }
+        }
+
+        assertEquals(sessionId, loadedSession.sessionId)
+        assertEquals("replay-attempt-2", withTimeout(2000.milliseconds) { firstNotification.await() })
+        assertNull(withTimeoutOrNull(300) { secondNotification.await() }, "Retry should not receive stale replay from failed attempt")
+    }
+
+    @Test
+    fun `new session should cleanup holder when createClientOperations fails`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val sessionId = SessionId("new-session-retry-id")
+        var createAttempt = 0
+        val received = mutableListOf<String>()
+
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(clientInfo.protocolVersion)
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                createAttempt += 1
+                AcpMethod.ClientMethods.SessionUpdate(
+                    agentProtocol,
+                    SessionNotification(
+                        sessionId = sessionId,
+                        update = SessionUpdate.AgentMessageChunk(ContentBlock.Text("replay-attempt-$createAttempt"))
+                    )
+                )
+                return object : AgentSession {
+                    override val sessionId: SessionId = sessionId
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = emptyFlow()
+                }
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                TODO("Not yet implemented")
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val firstFailure = runCatching {
+            withTimeout(2000.milliseconds) {
+                client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                    throw IllegalStateException("operations factory failed")
+                }
+            }
+        }.exceptionOrNull()
+
+        assertNotNull(firstFailure, "First attempt should fail")
+        assertTrue(
+            (firstFailure.message ?: "").contains("operations factory failed"),
+            "Unexpected first failure: $firstFailure"
+        )
+
+        val getSessionFailure = runCatching {
+            client.getSession(sessionId)
+        }.exceptionOrNull()
+        assertNotNull(getSessionFailure, "Session holder should be removed after factory failure")
+        assertTrue(
+            (getSessionFailure.message ?: "").contains("Session $sessionId not found"),
+            "Unexpected getSession failure: $getSessionFailure"
+        )
+
+        val createdSession = withTimeout(2000.milliseconds) {
+            client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                object : ClientSessionOperations {
+                    override suspend fun requestPermissions(
+                        toolCall: SessionUpdate.ToolCallUpdate,
+                        permissions: List<PermissionOption>,
+                        _meta: JsonElement?,
+                    ): RequestPermissionResponse {
+                        return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+                    }
+
+                    override suspend fun notify(
+                        notification: SessionUpdate,
+                        _meta: JsonElement?,
+                    ) {
+                        val text = (notification as? SessionUpdate.AgentMessageChunk)?.content as? ContentBlock.Text ?: return
+                        received.add(text.text)
+                    }
+                }
+            }
+        }
+
+        assertEquals(sessionId, createdSession.sessionId)
+        assertContentEquals(listOf("replay-attempt-2"), received)
+    }
+
+    @Test
+    fun `new session should process updates that arrive before new response`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val sessionId = SessionId("new-session-id")
+        val replayTexts = listOf("replay-before-new-response-1", "replay-before-new-response-2")
+        val notificationsDeferred = CompletableDeferred<List<String>>()
+        val received = mutableListOf<String>()
+
+        val client = Client(protocol = clientProtocol)
+        val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(clientInfo.protocolVersion)
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                for (text in replayTexts) {
+                    AcpMethod.ClientMethods.SessionUpdate(
+                        agentProtocol,
+                        SessionNotification(
+                            sessionId = sessionId,
+                            update = SessionUpdate.AgentMessageChunk(ContentBlock.Text(text))
+                        )
+                    )
+                }
+
+                return object : AgentSession {
+                    override val sessionId: SessionId = sessionId
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = emptyFlow()
+                }
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                TODO("Not yet implemented")
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val createdSession = withTimeout(2000.milliseconds) {
+            client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                object : ClientSessionOperations {
+                    override suspend fun requestPermissions(
+                        toolCall: SessionUpdate.ToolCallUpdate,
+                        permissions: List<PermissionOption>,
+                        _meta: JsonElement?,
+                    ): RequestPermissionResponse {
+                        return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+                    }
+
+                    override suspend fun notify(
+                        notification: SessionUpdate,
+                        _meta: JsonElement?,
+                    ) {
+                        if (notification !is SessionUpdate.AgentMessageChunk) return
+                        val text = (notification.content as ContentBlock.Text).text
+                        received.add(text)
+                        if (received.size == replayTexts.size) {
+                            notificationsDeferred.complete(received.toList())
+                        }
+                    }
+                }
+            }
+        }
+
+        assertEquals(sessionId, createdSession.sessionId)
+        assertContentEquals(replayTexts, withTimeout(2000.milliseconds) { notificationsDeferred.await() })
+    }
+
+    @Test
+    fun `create session should not lose events client slower agent (new session)`() = `create session should not lose events`(agentEmitDelay = 100.milliseconds, clientNotifyDelay = 200.milliseconds, isLoad = false)
+    @Test
+    fun `create session should not lose events agent slower client (new session)`() = `create session should not lose events`(agentEmitDelay = 200.milliseconds, clientNotifyDelay = 100.milliseconds, isLoad = false)
+    @Test
+    fun `create session should not lose events client slower agent (load session)`() = `create session should not lose events`(agentEmitDelay = 100.milliseconds, clientNotifyDelay = 200.milliseconds, isLoad = true)
+    @Test
+    fun `create session should not lose events agent slower client (load session)`() = `create session should not lose events`(agentEmitDelay = 200.milliseconds, clientNotifyDelay = 100.milliseconds, isLoad = true)
+    @Test
+    fun `load session should handle huge replay updates when client notify is slow`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val sessionId = SessionId("load-session-capacity-stress-id")
+        val updatesCount = 1025
+        val updates = (1..updatesCount).map { index ->
+            "msg-$index"
+        }
+        val receivedMessages = mutableListOf<String>()
+        val allReceived = CompletableDeferred<List<String>>()
+
+        val client = Client(protocol = clientProtocol)
+        val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(clientInfo.protocolVersion)
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                for (message in updates) {
+                    AcpMethod.ClientMethods.SessionUpdate(
+                        agentProtocol,
+                        SessionNotification(
+                            sessionId,
+                            SessionUpdate.AgentMessageChunk(ContentBlock.Text(message))
+                        )
+                    )
+                }
+
+                return object : AgentSession {
+                    override val sessionId: SessionId = sessionId
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = emptyFlow()
+                }
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val loadedSession = withTimeout(30000.milliseconds) {
+            client.loadSession(sessionId, SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                object : ClientSessionOperations {
+                    override suspend fun requestPermissions(
+                        toolCall: SessionUpdate.ToolCallUpdate,
+                        permissions: List<PermissionOption>,
+                        _meta: JsonElement?,
+                    ): RequestPermissionResponse {
+                        return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+                    }
+
+                    override suspend fun notify(
+                        notification: SessionUpdate,
+                        _meta: JsonElement?,
+                    ) {
+                        delay(2.milliseconds)
+                        val text = (notification as? SessionUpdate.AgentMessageChunk)?.content as? ContentBlock.Text ?: return
+                        receivedMessages.add(text.text)
+                        if (receivedMessages.size == updatesCount && !allReceived.isCompleted) {
+                            allReceived.complete(receivedMessages.toList())
+                        }
+                    }
+                }
+            }
+        }
+
+        assertEquals(sessionId, loadedSession.sessionId)
+        assertContentEquals(updates, withTimeout(30000.milliseconds) { allReceived.await() })
+    }
+
+    private fun `create session should not lose events`(agentEmitDelay: Duration, clientNotifyDelay: Duration, isLoad: Boolean = false) = testWithProtocols { clientProtocol, agentProtocol ->
+        val sessionId = SessionId("slow-notify-load-session-id")
+        val replayUpdates = (1..10).map { index ->
+            if (index % 2 == 0) {
+                SessionUpdate.AgentMessageChunk(ContentBlock.Text("agent-$index"))
+            } else {
+                SessionUpdate.UserMessageChunk(ContentBlock.Text("user-$index"))
+            }
+        }
+        val postInitializeText = "post-initialize-agent"
+        val expectedMessages = replayUpdates.mapNotNull { update ->
+            when (update) {
+                is SessionUpdate.AgentMessageChunk -> "agent:${(update.content as ContentBlock.Text).text}"
+                is SessionUpdate.UserMessageChunk -> "user:${(update.content as ContentBlock.Text).text}"
+                else -> null
+            }
+        }
+
+        val receivedMessages = mutableListOf<String>()
+
+        val client = Client(protocol = clientProtocol)
+        val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(clientInfo.protocolVersion)
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                return newSession(sessionId)
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                return newSession(sessionId)
+            }
+
+            private suspend fun newSession(sessionId: SessionId): AgentSession {
+                for (update in replayUpdates) {
+                    AcpMethod.ClientMethods.SessionUpdate(
+                        agentProtocol,
+                        SessionNotification(sessionId, update)
+                    )
+                    delay(agentEmitDelay)
+                }
+
+                return object : AgentSession {
+                    override val sessionId: SessionId = sessionId
+
+                    override suspend fun postInitialize() {
+                        delay(agentEmitDelay)
+                        currentCoroutineContext().client.notify(
+                            SessionUpdate.AgentMessageChunk(ContentBlock.Text(postInitializeText))
+                        )
+                    }
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = emptyFlow()
+                }
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val postInitializeDeferred = CompletableDeferred<String>()
+        withTimeout(8000.milliseconds) {
+            fun createOperations(
+                clientNotifyDelay: Duration,
+                postInitializeText: String,
+                postInitializeDeferred: CompletableDeferred<String>,
+                receivedMessages: MutableList<String>,
+            ): ClientSessionOperations = object : ClientSessionOperations {
+                override suspend fun requestPermissions(
+                    toolCall: SessionUpdate.ToolCallUpdate,
+                    permissions: List<PermissionOption>,
+                    _meta: JsonElement?,
+                ): RequestPermissionResponse {
+                    return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+                }
+
+                override suspend fun notify(
+                    notification: SessionUpdate,
+                    _meta: JsonElement?,
+                ) {
+                    delay(clientNotifyDelay)
+                    val message = when (notification) {
+                        is SessionUpdate.AgentMessageChunk -> "agent:${(notification.content as ContentBlock.Text).text}"
+                        is SessionUpdate.UserMessageChunk -> "user:${(notification.content as ContentBlock.Text).text}"
+                        else -> return
+                    }
+                    if (message.contains(postInitializeText)) {
+                        postInitializeDeferred.complete(message)
+                    } else {
+                        receivedMessages.add(message)
+                    }
+                }
+            }
+
+            if (isLoad) {
+                client.loadSession(sessionId, SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                    createOperations(clientNotifyDelay, postInitializeText, postInitializeDeferred, receivedMessages)
+                }
+            } else {
+                client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                    createOperations(clientNotifyDelay, postInitializeText, postInitializeDeferred, receivedMessages)
+                }
+            }
+        }
+
+        withTimeout(5000.milliseconds) {
+            postInitializeDeferred.await()
+        }
+        assertContentEquals(expectedMessages, receivedMessages)
+    }
+
 
     @OptIn(UnstableApi::class)
     @Test
