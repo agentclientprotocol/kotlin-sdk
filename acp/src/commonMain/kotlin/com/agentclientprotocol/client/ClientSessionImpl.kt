@@ -69,7 +69,7 @@ internal class ClientSessionImpl(
         }
         try {
             logger.trace { "Sending prompt request: $content" }
-            val promptResponse = AcpMethod.AgentMethods.SessionPrompt(protocol, PromptRequest(sessionId, content, _meta))
+            val promptResponse = AcpMethod.AgentMethods.SessionPrompt(protocol, PromptRequest(sessionId, content, _meta = _meta))
             logger.trace { "Received prompt response: $promptResponse" }
 
             // after receiving prompt response we immediately close the current prompt channel
