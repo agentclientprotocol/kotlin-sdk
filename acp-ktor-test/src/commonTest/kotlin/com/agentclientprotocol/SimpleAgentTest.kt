@@ -806,6 +806,82 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
     fun `create session should not lose events client slower agent (load session)`() = `create session should not lose events`(agentEmitDelay = 100.milliseconds, clientNotifyDelay = 200.milliseconds, isLoad = true)
     @Test
     fun `create session should not lose events agent slower client (load session)`() = `create session should not lose events`(agentEmitDelay = 200.milliseconds, clientNotifyDelay = 100.milliseconds, isLoad = true)
+    @Test
+    fun `load session should handle more than 1024 replay updates when client notify is slow`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val sessionId = SessionId("load-session-capacity-stress-id")
+        val updatesCount = 1025
+        val updates = (1..updatesCount).map { index ->
+            "msg-$index"
+        }
+        val receivedMessages = mutableListOf<String>()
+        val allReceived = CompletableDeferred<List<String>>()
+
+        val client = Client(protocol = clientProtocol)
+        val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(clientInfo.protocolVersion)
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                for (message in updates) {
+                    AcpMethod.ClientMethods.SessionUpdate(
+                        agentProtocol,
+                        SessionNotification(
+                            sessionId,
+                            SessionUpdate.AgentMessageChunk(ContentBlock.Text(message))
+                        )
+                    )
+                }
+
+                return object : AgentSession {
+                    override val sessionId: SessionId = sessionId
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = emptyFlow()
+                }
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val loadedSession = withTimeout(30000.milliseconds) {
+            client.loadSession(sessionId, SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                object : ClientSessionOperations {
+                    override suspend fun requestPermissions(
+                        toolCall: SessionUpdate.ToolCallUpdate,
+                        permissions: List<PermissionOption>,
+                        _meta: JsonElement?,
+                    ): RequestPermissionResponse {
+                        return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+                    }
+
+                    override suspend fun notify(
+                        notification: SessionUpdate,
+                        _meta: JsonElement?,
+                    ) {
+//                        delay(2.milliseconds)
+                        val text = (notification as? SessionUpdate.AgentMessageChunk)?.content as? ContentBlock.Text ?: return
+                        receivedMessages.add(text.text)
+                        if (receivedMessages.size == updatesCount && !allReceived.isCompleted) {
+                            allReceived.complete(receivedMessages.toList())
+                        }
+                    }
+                }
+            }
+        }
+
+        assertEquals(sessionId, loadedSession.sessionId)
+        assertContentEquals(updates, withTimeout(30000.milliseconds) { allReceived.await() })
+    }
 
     private fun `create session should not lose events`(agentEmitDelay: Duration, clientNotifyDelay: Duration, isLoad: Boolean = false) = testWithProtocols { clientProtocol, agentProtocol ->
         val sessionId = SessionId("slow-notify-load-session-id")

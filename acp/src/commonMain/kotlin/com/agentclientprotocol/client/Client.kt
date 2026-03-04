@@ -16,7 +16,6 @@ import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -44,8 +43,11 @@ public class Client(
 ) {
     private class ClientSessionHolder {
         private val sessionDeferred: CompletableDeferred<ClientSessionImpl> = CompletableDeferred()
+        // Don't make the channel limited, because it leads to a deadlock also:
+        // when client side makes loadSession/newSession and an agent sends updates more than channel.capacity
+        // the message with call response suspends because protocol thread is suspended in handleNotification
+        // if to address it we have to somehow reorder events, that's not obvious on the protocol level, so we pay with memory right now to handle it
         private val notifications = Channel<Pair<SessionUpdate, JsonElement?>>(capacity = Channel.UNLIMITED)
-
 
         val session: Deferred<ClientSessionImpl> get() = sessionDeferred
 
@@ -66,18 +68,15 @@ public class Client(
         }
 
         suspend fun handleOrQueue(notification: SessionUpdate, _meta: JsonElement?) {
+            val sendResult = notifications.trySend(Pair(notification, _meta))
+
             // means that `close` was called in drain
-            @OptIn(DelicateCoroutinesApi::class)
-            if (notifications.isClosedForSend) {
+            if (!sendResult.isSuccess) {
                 // probably it will suspend for the period of loop with `handleNotification` above
                 val session = this@ClientSessionHolder.session.await()
                 session.executeWithSession {
                     session.handleNotification(notification, _meta)
                 }
-                return
-            }
-            else {
-                notifications.send(Pair(notification, _meta))
             }
         }
     }
