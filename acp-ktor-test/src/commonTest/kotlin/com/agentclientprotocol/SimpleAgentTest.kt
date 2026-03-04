@@ -1261,6 +1261,96 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
     }
 
     @Test
+    fun `new session should cleanup holder when createClientOperations fails`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val sessionId = SessionId("new-session-retry-id")
+        var createAttempt = 0
+        val received = mutableListOf<String>()
+
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(clientInfo.protocolVersion)
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                createAttempt += 1
+                AcpMethod.ClientMethods.SessionUpdate(
+                    agentProtocol,
+                    SessionNotification(
+                        sessionId = sessionId,
+                        update = SessionUpdate.AgentMessageChunk(ContentBlock.Text("replay-attempt-$createAttempt"))
+                    )
+                )
+                return object : AgentSession {
+                    override val sessionId: SessionId = sessionId
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = emptyFlow()
+                }
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                TODO("Not yet implemented")
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val firstFailure = runCatching {
+            withTimeout(2000.milliseconds) {
+                client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                    throw IllegalStateException("operations factory failed")
+                }
+            }
+        }.exceptionOrNull()
+
+        assertNotNull(firstFailure, "First attempt should fail")
+        assertTrue(
+            (firstFailure.message ?: "").contains("operations factory failed"),
+            "Unexpected first failure: $firstFailure"
+        )
+
+        val getSessionFailure = runCatching {
+            client.getSession(sessionId)
+        }.exceptionOrNull()
+        assertNotNull(getSessionFailure, "Session holder should be removed after factory failure")
+        assertTrue(
+            (getSessionFailure.message ?: "").contains("Session $sessionId not found"),
+            "Unexpected getSession failure: $getSessionFailure"
+        )
+
+        val createdSession = withTimeout(2000.milliseconds) {
+            client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+                object : ClientSessionOperations {
+                    override suspend fun requestPermissions(
+                        toolCall: SessionUpdate.ToolCallUpdate,
+                        permissions: List<PermissionOption>,
+                        _meta: JsonElement?,
+                    ): RequestPermissionResponse {
+                        return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+                    }
+
+                    override suspend fun notify(
+                        notification: SessionUpdate,
+                        _meta: JsonElement?,
+                    ) {
+                        val text = (notification as? SessionUpdate.AgentMessageChunk)?.content as? ContentBlock.Text ?: return
+                        received.add(text.text)
+                    }
+                }
+            }
+        }
+
+        assertEquals(sessionId, createdSession.sessionId)
+        assertContentEquals(listOf("replay-attempt-2"), received)
+    }
+
+    @Test
     fun `new session should process updates that arrive before new response`() = testWithProtocols { clientProtocol, agentProtocol ->
         val sessionId = SessionId("new-session-id")
         val replayTexts = listOf("replay-before-new-response-1", "replay-before-new-response-2")

@@ -63,6 +63,7 @@ public class Client(
         }
 
         fun completeExceptionally(cause: Throwable) {
+            notifications.close(cause)
             sessionDeferred.completeExceptionally(cause)
         }
 
@@ -378,8 +379,9 @@ public class Client(
             sessionHolder.drainEventsAndCompleteSession(session)
             session
         }.getOrElse { throwable ->
+            // throw IllegalStateException to pass it as INTERNAL_ERROR to the other side (see in Protocol)
             sessionHolder.completeExceptionally(IllegalStateException("Failed to create session $sessionId", throwable))
-            removeSessionHolder(sessionId)
+            // cleanup of this sessionId entry will be done in finally of withInitializingSession
             throw throwable
         }
     }
@@ -410,9 +412,12 @@ public class Client(
                 val newCount = currentStorage.initializingSessionsCount - 1
                 return@update if (newCount == 0) {
                     // this means that currently no sessions can be in initializing state during to ongoing load/new/fork/resume calls
-                    // so if on exit from these methods we observe any entries with not completed state we assume that someone sent us events with non-existent session ids
+                    // so if on exit from these methods we observe any entries with not completed or failed state we assume that someone sent us events with non-existent session ids
                     // and we have to remove them and report errors
-                    hangingSessions = currentStorage.sessions.filterValues { !it.session.isCompleted }
+                    hangingSessions = currentStorage.sessions.filterValues {
+                        @OptIn(ExperimentalCoroutinesApi::class)
+                        !it.session.isCompleted || it.session.getCompletionExceptionOrNull() != null
+                    }
                     var aliveSessions: PersistentMap<SessionId, ClientSessionHolder> = currentStorage.sessions
                     for ((id, _) in hangingSessions) {
                         aliveSessions = aliveSessions.remove(id)
@@ -426,7 +431,7 @@ public class Client(
                 for ((id, holder) in hangingSessions) {
                     logger.trace { "Removing hanging session $id" }
                     // report it as non existent session
-                    holder.completeExceptionally(IllegalStateException("Session $id not found"))
+                    holder.completeExceptionally(AcpExpectedError("Session $id not found"))
                 }
             }
         }
