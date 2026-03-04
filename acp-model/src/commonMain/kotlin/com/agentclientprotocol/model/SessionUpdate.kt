@@ -90,7 +90,9 @@ public sealed class SessionUpdate {
     @Serializable
     @SerialName("user_message_chunk")
     public data class UserMessageChunk(
-        val content: ContentBlock
+        val content: ContentBlock,
+        @property:UnstableApi
+        val messageId: String? = null
     ) : SessionUpdate()
 
     /**
@@ -99,7 +101,9 @@ public sealed class SessionUpdate {
     @Serializable
     @SerialName("agent_message_chunk")
     public data class AgentMessageChunk(
-        val content: ContentBlock
+        val content: ContentBlock,
+        @property:UnstableApi
+        val messageId: String? = null
     ) : SessionUpdate()
 
     /**
@@ -108,7 +112,9 @@ public sealed class SessionUpdate {
     @Serializable
     @SerialName("agent_thought_chunk")
     public data class AgentThoughtChunk(
-        val content: ContentBlock
+        val content: ContentBlock,
+        @property:UnstableApi
+        val messageId: String? = null
     ) : SessionUpdate()
 
     /**

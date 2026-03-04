@@ -402,6 +402,8 @@ public data class LoadSessionRequest(
 public data class PromptRequest(
     override val sessionId: SessionId,
     val prompt: List<ContentBlock>,
+    @property:UnstableApi
+    val messageId: String? = null,
     override val _meta: JsonElement? = null
 ) : AcpRequest, AcpWithSessionId
 
@@ -569,6 +571,8 @@ public data class NewSessionResponse(
 @Serializable
 public data class PromptResponse(
     val stopReason: StopReason,
+    @property:UnstableApi
+    val userMessageId: String? = null,
     override val _meta: JsonElement? = null
 ) : AcpResponse
 
