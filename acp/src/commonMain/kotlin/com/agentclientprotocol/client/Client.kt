@@ -13,14 +13,13 @@ import com.agentclientprotocol.util.PaginatedResponseToFlowAdapter
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
+import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.serialization.json.JsonElement
 
 private val logger = KotlinLogging.logger {}
@@ -81,43 +80,45 @@ public class Client(
         }
     }
 
-    private val _sessions = atomic(persistentMapOf<SessionId, ClientSessionHolder>())
+    private data class SessionsStorage(val initializingSessionsCount: Int = 0, val sessions: PersistentMap<SessionId, ClientSessionHolder> = persistentMapOf())
+
+    private val _sessions = atomic(SessionsStorage())
 
     /**
      * Creates a new entry only if there are some currently initializing sessions. Otherwise, throws in the case of missing session.
      */
     private fun getOrCreateSessionHolder(sessionId: SessionId): ClientSessionHolder {
-        val holder = _sessions.value[sessionId]
+        val sessionsStorage = _sessions.value
+        val holder = sessionsStorage.sessions[sessionId]
         if (holder != null) return holder
-        if (_currentlyInitializingSessionsCount.value > 0) {
-            var clientSessionHolder: ClientSessionHolder? = null
-            _sessions.update { currentMap ->
-                val existingHolder = currentMap[sessionId]
+        var clientSessionHolder: ClientSessionHolder? = null
+        _sessions.update { currentStorage ->
+            if (currentStorage.initializingSessionsCount > 0) {
+                val existingHolder = currentStorage.sessions[sessionId]
                 if (existingHolder != null) {
                     clientSessionHolder = existingHolder
-                    currentMap
-                }
-                else {
+                    currentStorage
+                } else {
                     val newHolder = ClientSessionHolder()
                     clientSessionHolder = newHolder
-                    currentMap.put(sessionId, newHolder)
+                    currentStorage.copy(sessions = currentStorage.sessions.put(sessionId, newHolder))
                 }
+            } else {
+                clientSessionHolder = null
+                currentStorage
             }
-            return clientSessionHolder!!
-        } else {
-            acpFail("Session $sessionId not found")
         }
+        return clientSessionHolder ?: acpFail("Session $sessionId not found")
     }
 
     private fun removeSessionHolder(sessionId: SessionId) {
         _sessions.update { currentMap ->
-            currentMap.remove(sessionId)
+            currentMap.copy(sessions = currentMap.sessions.remove(sessionId))
         }
     }
 
     private val _clientInfo = CompletableDeferred<ClientInfo>()
     private val _agentInfo = CompletableDeferred<AgentInfo>()
-    private val _currentlyInitializingSessionsCount = MutableStateFlow(0)
 
     init {
         // Set up request handlers for incoming agent requests
@@ -384,7 +385,7 @@ public class Client(
     }
 
     public fun getSession(sessionId: SessionId): ClientSession {
-        val sessionHolder = _sessions.value[sessionId] ?: error("Session $sessionId not found")
+        val sessionHolder = _sessions.value.sessions[sessionId] ?: error("Session $sessionId not found")
         if (!sessionHolder.session.isCompleted) error("Session $sessionId not initialized yet")
         @OptIn(ExperimentalCoroutinesApi::class)
         return sessionHolder.session.getCompleted()
@@ -395,11 +396,34 @@ public class Client(
     }
 
     private suspend fun<T> withInitializingSession(block: suspend () -> T): T {
-        _currentlyInitializingSessionsCount.update { it + 1 }
+        _sessions.update { it.copy(initializingSessionsCount = it.initializingSessionsCount + 1) }
         try {
             return block()
         } finally {
-            _currentlyInitializingSessionsCount.update { it - 1 }
+            var hangingSessions: Map<SessionId, ClientSessionHolder>? = null
+            _sessions.update { currentStorage ->
+                val newCount = currentStorage.initializingSessionsCount - 1
+                return@update if (newCount == 0) {
+                    // this means that currently no sessions can be in initializing state during to ongoing load/new/fork/resume calls
+                    // so if on exit from these methods we observe any entries with not completed state we assume that someone sent us events with non-existent session ids
+                    // and we have to remove them and report errors
+                    hangingSessions = currentStorage.sessions.filterValues { !it.session.isCompleted }
+                    var aliveSessions: PersistentMap<SessionId, ClientSessionHolder> = currentStorage.sessions
+                    for ((id, _) in hangingSessions) {
+                        aliveSessions = aliveSessions.remove(id)
+                    }
+                    currentStorage.copy(initializingSessionsCount = newCount, sessions = aliveSessions)
+                } else {
+                    currentStorage.copy(initializingSessionsCount = newCount)
+                }
+            }
+            if (hangingSessions != null) {
+                for ((id, holder) in hangingSessions) {
+                    logger.trace { "Removing hanging session $id" }
+                    // report it as non existent session
+                    holder.completeExceptionally(IllegalStateException("Session $id not found"))
+                }
+            }
         }
     }
 }
