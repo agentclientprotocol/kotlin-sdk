@@ -398,12 +398,13 @@ public data class LoadSessionRequest(
  *
  * See protocol docs: [User Message](https://agentclientprotocol.com/protocol/prompt-turn#1-user-message)
  */
+@OptIn(UnstableApi::class)
 @Serializable
 public data class PromptRequest(
     override val sessionId: SessionId,
     val prompt: List<ContentBlock>,
     @property:UnstableApi
-    val messageId: String? = null,
+    val messageId: MessageId? = null,
     override val _meta: JsonElement? = null
 ) : AcpRequest, AcpWithSessionId
 
@@ -568,11 +569,12 @@ public data class NewSessionResponse(
  *
  * See protocol docs: [Check for Completion](https://agentclientprotocol.com/protocol/prompt-turn#4-check-for-completion)
  */
+@OptIn(UnstableApi::class)
 @Serializable
 public data class PromptResponse(
     val stopReason: StopReason,
     @property:UnstableApi
-    val userMessageId: String? = null,
+    val userMessageId: MessageId? = null,
     override val _meta: JsonElement? = null
 ) : AcpResponse
 

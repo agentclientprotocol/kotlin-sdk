@@ -87,34 +87,37 @@ public sealed class SessionUpdate {
     /**
      * A chunk of the user's message being streamed.
      */
+    @OptIn(UnstableApi::class)
     @Serializable
     @SerialName("user_message_chunk")
     public data class UserMessageChunk(
         val content: ContentBlock,
         @property:UnstableApi
-        val messageId: String? = null
+        val messageId: MessageId? = null
     ) : SessionUpdate()
 
     /**
      * A chunk of the agent's response being streamed.
      */
+    @OptIn(UnstableApi::class)
     @Serializable
     @SerialName("agent_message_chunk")
     public data class AgentMessageChunk(
         val content: ContentBlock,
         @property:UnstableApi
-        val messageId: String? = null
+        val messageId: MessageId? = null
     ) : SessionUpdate()
 
     /**
      * A chunk of the agent's internal reasoning being streamed.
      */
+    @OptIn(UnstableApi::class)
     @Serializable
     @SerialName("agent_thought_chunk")
     public data class AgentThoughtChunk(
         val content: ContentBlock,
         @property:UnstableApi
-        val messageId: String? = null
+        val messageId: MessageId? = null
     ) : SessionUpdate()
 
     /**
