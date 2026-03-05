@@ -127,7 +127,7 @@ public class Protocol(
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]) + CoroutineName(options.protocolDebugName))
     // a scope and dispatcher that executes requests to avoid blocking of message processing
     private val requestsScope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job])
-            + Dispatchers.Default.limitedParallelism(parallelism = 1, name = "MessageProcessor") + CoroutineName(options.protocolDebugName))
+            + Dispatchers.Default.limitedParallelism(parallelism = 1) + CoroutineName(options.protocolDebugName))
     // now the incoming and outgoing requests can clash by ids, but it should not be a problem
     private val requestIdCounter: AtomicInt = atomic(0)
     private val pendingOutgoingRequests: AtomicRef<PersistentMap<OutgoingRequestId, CompletableDeferred<JsonElement>>> =
