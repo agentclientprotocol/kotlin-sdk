@@ -63,9 +63,12 @@ public data class AuthCapabilities(
  * See protocol docs: [Client Capabilities](https://agentclientprotocol.com/protocol/initialization#client-capabilities)
  */
 @Serializable
+@OptIn(UnstableApi::class)
 public data class ClientCapabilities(
     @EncodeDefault val fs: FileSystemCapability? = null,
     @EncodeDefault val terminal: Boolean = false,
+    @property:UnstableApi
+    @EncodeDefault val auth: AuthCapabilities? = null,
     override val _meta: JsonElement? = null
 ) : AcpCapabilities, AcpWithMeta
 
@@ -145,7 +148,5 @@ public data class AgentCapabilities(
     @EncodeDefault val promptCapabilities: PromptCapabilities = PromptCapabilities(),
     @EncodeDefault val mcpCapabilities: McpCapabilities = McpCapabilities(),
     @EncodeDefault val sessionCapabilities: SessionCapabilities = SessionCapabilities(),
-    @property:UnstableApi
-    @EncodeDefault val auth: AuthCapabilities? = null,
     override val _meta: JsonElement? = null
 ) : AcpCapabilities, AcpWithMeta
