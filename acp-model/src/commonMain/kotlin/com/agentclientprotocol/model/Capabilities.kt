@@ -38,6 +38,23 @@ public data class PromptCapabilities(
 ) : AcpWithMeta
 
 /**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Authentication capabilities supported by the client.
+ *
+ * Advertised during initialization to inform the agent which authentication
+ * method types the client can handle. This governs opt-in types that require
+ * additional client-side support.
+ */
+@UnstableApi
+@Serializable
+public data class AuthCapabilities(
+    override val _meta: JsonElement? = null
+): AcpWithMeta
+
+/**
  * Capabilities supported by the client.
  *
  * Advertised during initialization to inform the agent about
@@ -128,5 +145,7 @@ public data class AgentCapabilities(
     @EncodeDefault val promptCapabilities: PromptCapabilities = PromptCapabilities(),
     @EncodeDefault val mcpCapabilities: McpCapabilities = McpCapabilities(),
     @EncodeDefault val sessionCapabilities: SessionCapabilities = SessionCapabilities(),
+    @property:UnstableApi
+    @EncodeDefault val auth: AuthCapabilities? = null,
     override val _meta: JsonElement? = null
 ) : AcpCapabilities, AcpWithMeta
