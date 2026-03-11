@@ -367,17 +367,28 @@ internal object SetSessionConfigOptionRequestSerializer : KSerializer<SetSession
                 }
             }
             null -> {
-                // No type field = backward-compatible string value (select/value-id)
+                // No type field = backward-compatible primitive value
                 val primitive = rawValue as? JsonPrimitive
-                if (primitive != null && primitive.isString) {
-                    SessionConfigOptionValue.StringValue(primitive.content)
+                if (primitive != null) {
+                    when {
+                        primitive.isString ->
+                            SessionConfigOptionValue.StringValue(primitive.content)
+                        primitive.booleanOrNull != null ->
+                            SessionConfigOptionValue.BoolValue(primitive.boolean)
+                        else ->
+                            SessionConfigOptionValue.UnknownValue(rawValue)
+                    }
                 } else {
                     SessionConfigOptionValue.UnknownValue(rawValue)
                 }
             }
             else -> {
-                // Unknown type - forward compatibility
-                SessionConfigOptionValue.UnknownValue(rawValue)
+                // Unknown type - forward compatibility: preserve both type and value
+                val unknownWrapper = buildJsonObject {
+                    put("type", JsonPrimitive(type))
+                    put("value", rawValue)
+                }
+                SessionConfigOptionValue.UnknownValue(unknownWrapper)
             }
         }
 
