@@ -3602,17 +3602,6 @@ public final class com/agentclientprotocol/model/SetSessionConfigOptionRequest :
 	public fun toString ()Ljava/lang/String;
 }
 
-public final synthetic class com/agentclientprotocol/model/SetSessionConfigOptionRequest$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
-	public static final field INSTANCE Lcom/agentclientprotocol/model/SetSessionConfigOptionRequest$$serializer;
-	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
-	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/SetSessionConfigOptionRequest;
-	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
-	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
-	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/SetSessionConfigOptionRequest;)V
-	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
-	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
-}
-
 public final class com/agentclientprotocol/model/SetSessionConfigOptionRequest$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }

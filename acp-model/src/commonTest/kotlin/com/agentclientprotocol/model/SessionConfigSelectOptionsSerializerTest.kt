@@ -8,6 +8,7 @@ import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.rpc.JsonRpcResponse
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -479,6 +480,7 @@ class SessionConfigSelectOptionsSerializerTest {
               "params": {
                 "sessionId": "sess_abc123def456",
                 "configId": "auto_approve",
+                "type": "boolean",
                 "value": true
               }
             }
@@ -504,6 +506,9 @@ class SessionConfigSelectOptionsSerializerTest {
         )
 
         val encoded = ACPJson.encodeToString(SetSessionConfigOptionRequest.serializer(), original)
+        // Verify the encoded JSON contains "type":"boolean" at top level
+        val encodedJson = ACPJson.parseToJsonElement(encoded)
+        assertEquals("boolean", encodedJson.jsonObject["type"]?.let { (it as? JsonPrimitive)?.content })
         val decoded = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), encoded)
         assertEquals(original.sessionId, decoded.sessionId)
         assertEquals(original.configId, decoded.configId)
@@ -520,6 +525,9 @@ class SessionConfigSelectOptionsSerializerTest {
         )
 
         val encoded = ACPJson.encodeToString(SetSessionConfigOptionRequest.serializer(), original)
+        // Verify the encoded JSON does NOT contain "type" field for string values
+        val encodedJson = ACPJson.parseToJsonElement(encoded)
+        assertEquals(null, encodedJson.jsonObject["type"])
         val decoded = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), encoded)
         assertEquals(original.sessionId, decoded.sessionId)
         assertEquals(original.configId, decoded.configId)
@@ -546,25 +554,37 @@ class SessionConfigSelectOptionsSerializerTest {
     }
 
     @Test
-    fun `numeric value in config option deserializes as UnknownValue`() {
+    fun `decode set config option request without type field is backward compatible`() {
+        // Old format without "type" field should still work as StringValue
+        val json = """{"sessionId":"s","configId":"c","value":"model-1"}"""
+        val request = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), json)
+        assertEquals(SessionId("s"), request.sessionId)
+        assertEquals(SessionConfigId("c"), request.configId)
+        val stringValue = assertIs<SessionConfigOptionValue.StringValue>(request.value)
+        assertEquals("model-1", stringValue.value)
+    }
+
+    @Test
+    fun `decode set config option request with type boolean`() {
+        val json = """{"sessionId":"s","configId":"c","type":"boolean","value":true}"""
+        val request = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), json)
+        val boolValue = assertIs<SessionConfigOptionValue.BoolValue>(request.value)
+        assertEquals(true, boolValue.value)
+    }
+
+    @Test
+    fun `decode set config option request with unknown type falls back to UnknownValue`() {
+        val json = """{"sessionId":"s","configId":"c","type":"multi_select","value":["a","b"]}"""
+        val request = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), json)
+        assertIs<SessionConfigOptionValue.UnknownValue>(request.value)
+    }
+
+    @Test
+    fun `numeric value in config option without type deserializes as UnknownValue`() {
         val json = """{"sessionId":"s","configId":"c","value":42}"""
         val request = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), json)
         val unknown = assertIs<SessionConfigOptionValue.UnknownValue>(request.value)
         assertEquals(JsonPrimitive(42), unknown.rawElement)
-    }
-
-    @Test
-    fun `array value in config option deserializes as UnknownValue`() {
-        val json = """{"sessionId":"s","configId":"c","value":["a","b"]}"""
-        val request = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), json)
-        assertIs<SessionConfigOptionValue.UnknownValue>(request.value)
-    }
-
-    @Test
-    fun `object value in config option deserializes as UnknownValue`() {
-        val json = """{"sessionId":"s","configId":"c","value":{"key":"val"}}"""
-        val request = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), json)
-        assertIs<SessionConfigOptionValue.UnknownValue>(request.value)
     }
 
     @Test
@@ -614,6 +634,34 @@ class SessionConfigSelectOptionsSerializerTest {
         val value = SessionConfigOptionValue.of(true)
         val boolValue = assertIs<SessionConfigOptionValue.BoolValue>(value)
         assertEquals(true, boolValue.value)
+    }
+
+    @Test
+    fun `boolean value without type field deserializes as BoolValue`() {
+        val json = """{"sessionId":"s","configId":"c","value":true}"""
+        val request = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), json)
+        val boolValue = assertIs<SessionConfigOptionValue.BoolValue>(request.value)
+        assertEquals(true, boolValue.value)
+    }
+
+    @Test
+    fun `false value without type field deserializes as BoolValue`() {
+        val json = """{"sessionId":"s","configId":"c","value":false}"""
+        val request = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), json)
+        val boolValue = assertIs<SessionConfigOptionValue.BoolValue>(request.value)
+        assertEquals(false, boolValue.value)
+    }
+
+    @Test
+    fun `unknown type roundtrip preserves type and value`() {
+        val json = """{"sessionId":"s","configId":"c","type":"multi_select","value":["a","b"]}"""
+        val request = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), json)
+        assertIs<SessionConfigOptionValue.UnknownValue>(request.value)
+        // Re-serialize and verify the type and value are preserved
+        val encoded = ACPJson.encodeToString(SetSessionConfigOptionRequest.serializer(), request)
+        val reDecoded = ACPJson.parseToJsonElement(encoded).jsonObject
+        assertEquals("multi_select", (reDecoded["type"] as? JsonPrimitive)?.content)
+        assertNotNull(reDecoded["value"])
     }
 
 }

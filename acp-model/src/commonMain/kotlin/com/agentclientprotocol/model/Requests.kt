@@ -766,7 +766,7 @@ public data class ResumeSessionResponse(
  * Request to set a configuration option for a session.
  */
 @UnstableApi
-@Serializable
+@Serializable(with = SetSessionConfigOptionRequestSerializer::class)
 public data class SetSessionConfigOptionRequest(
     override val sessionId: SessionId,
     val configId: SessionConfigId,
