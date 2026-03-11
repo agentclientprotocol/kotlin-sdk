@@ -24,7 +24,10 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
 
 /**
  * **UNSTABLE**
@@ -284,5 +287,107 @@ internal object SessionConfigOptionValueSerializer : KSerializer<SessionConfigOp
             element.booleanOrNull != null -> SessionConfigOptionValue.BoolValue(element.boolean)
             else -> SessionConfigOptionValue.UnknownValue(element)
         }
+    }
+}
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Custom serializer for [SetSessionConfigOptionRequest] that flattens the [SessionConfigOptionValue]
+ * `type` and `value` fields at the top level of the JSON object.
+ *
+ * Boolean values serialize as: `{"sessionId":"s","configId":"c","type":"boolean","value":true}`
+ * String values serialize as: `{"sessionId":"s","configId":"c","value":"code"}` (no `type` field)
+ * This ensures backward compatibility: the select/value-id format is unchanged.
+ */
+@OptIn(UnstableApi::class)
+internal object SetSessionConfigOptionRequestSerializer : KSerializer<SetSessionConfigOptionRequest> {
+    override val descriptor: SerialDescriptor = buildClassSerialDescriptor("SetSessionConfigOptionRequest")
+
+    override fun serialize(encoder: Encoder, value: SetSessionConfigOptionRequest) {
+        val jsonEncoder = encoder as? JsonEncoder
+            ?: throw SerializationException("SetSessionConfigOptionRequestSerializer supports only JSON")
+        val jsonElement = buildJsonObject {
+            put("sessionId", value.sessionId.value)
+            put("configId", value.configId.value)
+            when (val v = value.value) {
+                is SessionConfigOptionValue.BoolValue -> {
+                    put("type", "boolean")
+                    put("value", v.value)
+                }
+                is SessionConfigOptionValue.StringValue -> {
+                    put("value", v.value)
+                }
+                is SessionConfigOptionValue.UnknownValue -> {
+                    // Preserve unknown fields - if it was an object with type+value, re-flatten them
+                    val raw = v.rawElement
+                    if (raw is JsonObject) {
+                        for ((key, element) in raw) {
+                            put(key, element)
+                        }
+                    } else {
+                        put("value", raw)
+                    }
+                }
+            }
+            if (value._meta != null) {
+                put("_meta", value._meta)
+            }
+        }
+        jsonEncoder.encodeJsonElement(jsonElement)
+    }
+
+    override fun deserialize(decoder: Decoder): SetSessionConfigOptionRequest {
+        val jsonDecoder = decoder as? JsonDecoder
+            ?: throw SerializationException("SetSessionConfigOptionRequestSerializer supports only JSON")
+        val jsonObject = jsonDecoder.decodeJsonElement().jsonObject
+
+        val sessionId = SessionId(jsonObject["sessionId"]?.let {
+            (it as? JsonPrimitive)?.content
+        } ?: throw SerializationException("Missing 'sessionId'"))
+
+        val configId = SessionConfigId(jsonObject["configId"]?.let {
+            (it as? JsonPrimitive)?.content
+        } ?: throw SerializationException("Missing 'configId'"))
+
+        val type = (jsonObject["type"] as? JsonPrimitive)?.content
+        val rawValue = jsonObject["value"]
+            ?: throw SerializationException("Missing 'value'")
+
+        val value: SessionConfigOptionValue = when (type) {
+            "boolean" -> {
+                val primitive = rawValue as? JsonPrimitive
+                    ?: throw SerializationException("Expected boolean primitive for type 'boolean'")
+                if (primitive.booleanOrNull != null) {
+                    SessionConfigOptionValue.BoolValue(primitive.boolean)
+                } else {
+                    SessionConfigOptionValue.UnknownValue(rawValue)
+                }
+            }
+            null -> {
+                // No type field = backward-compatible string value (select/value-id)
+                val primitive = rawValue as? JsonPrimitive
+                if (primitive != null && primitive.isString) {
+                    SessionConfigOptionValue.StringValue(primitive.content)
+                } else {
+                    SessionConfigOptionValue.UnknownValue(rawValue)
+                }
+            }
+            else -> {
+                // Unknown type - forward compatibility
+                SessionConfigOptionValue.UnknownValue(rawValue)
+            }
+        }
+
+        val meta = jsonObject["_meta"]
+
+        return SetSessionConfigOptionRequest(
+            sessionId = sessionId,
+            configId = configId,
+            value = value,
+            _meta = meta
+        )
     }
 }
