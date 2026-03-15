@@ -230,6 +230,21 @@ public class Client(
     }
 
     /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Logs out of the current authenticated state.
+     *
+     * After a successful logout, all new sessions will require authentication.
+     * There is no guarantee about the behavior of already running sessions.
+     */
+    @UnstableApi
+    public suspend fun logout(_meta: JsonElement? = null): LogoutResponse {
+        return AcpMethod.AgentMethods.Logout(protocol, LogoutRequest(_meta))
+    }
+
+    /**
      * Creates a new session with specified [sessionParameters].
      *
      * @param sessionParameters parameters for creating a new session

@@ -5,6 +5,7 @@ import com.agentclientprotocol.client.ClientInfo
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.AuthMethodId
 import com.agentclientprotocol.model.AuthenticateResponse
+import com.agentclientprotocol.model.LogoutResponse
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionInfo
 import kotlinx.serialization.json.JsonElement
@@ -28,6 +29,24 @@ public interface AgentSupport {
      * @return an [AuthenticateResponse] indicating the authentication result
      */
     public suspend fun authenticate(methodId: AuthMethodId, _meta: JsonElement?): AuthenticateResponse = AuthenticateResponse()
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Logs out of the current authenticated state.
+     *
+     * After a successful logout, all new sessions will require authentication.
+     * There is no guarantee about the behavior of already running sessions.
+     *
+     * @param _meta optional metadata
+     * @return a [LogoutResponse] indicating the logout result
+     */
+    @UnstableApi
+    public suspend fun logout(_meta: JsonElement?): LogoutResponse {
+        throw NotImplementedError("logout is not implemented. The capability is declared in AgentCapabilities.auth.logout")
+    }
 
     /**
      * **UNSTABLE**

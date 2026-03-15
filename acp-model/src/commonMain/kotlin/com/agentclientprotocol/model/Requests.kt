@@ -619,6 +619,34 @@ public data class AuthenticateResponse(
 ) : AcpResponse
 
 /**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Request parameters for the logout method.
+ *
+ * Terminates the current authenticated session.
+ */
+@UnstableApi
+@Serializable
+public data class LogoutRequest(
+    override val _meta: JsonElement? = null
+) : AcpRequest
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Response to the `logout` method.
+ */
+@UnstableApi
+@Serializable
+public data class LogoutResponse(
+    override val _meta: JsonElement? = null
+) : AcpResponse
+
+/**
  * Response to `session/set_mode` method.
  */
 @Serializable
