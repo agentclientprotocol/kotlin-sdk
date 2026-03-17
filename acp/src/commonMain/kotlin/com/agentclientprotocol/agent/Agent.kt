@@ -136,6 +136,11 @@ public class Agent(
             return@setRequestHandler agentSupport.authenticate(params.methodId, params._meta)
         }
 
+        @OptIn(UnstableApi::class)
+        protocol.setRequestHandler(AcpMethod.AgentMethods.Logout) { params: LogoutRequest ->
+            return@setRequestHandler agentSupport.logout(params._meta)
+        }
+
         protocol.setPaginatedRequestHandler(
             AcpMethod.AgentMethods.SessionList,
             // TODO: move to some global agent/client settings

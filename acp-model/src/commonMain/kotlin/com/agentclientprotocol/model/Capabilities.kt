@@ -134,6 +134,35 @@ public data class SessionCapabilities(
 ) : AcpWithMeta
 
 /**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Logout capabilities supported by the agent.
+ *
+ * By supplying `{}` it means that the agent supports the logout method.
+ */
+@UnstableApi
+@Serializable
+public data class LogoutCapabilities(
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Authentication-related capabilities supported by the agent.
+ */
+@UnstableApi
+@Serializable
+public data class AgentAuthCapabilities(
+    val logout: LogoutCapabilities? = null,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
  * Capabilities supported by the agent.
  *
  * Advertised during initialization to inform the client about
@@ -148,5 +177,7 @@ public data class AgentCapabilities(
     @EncodeDefault val promptCapabilities: PromptCapabilities = PromptCapabilities(),
     @EncodeDefault val mcpCapabilities: McpCapabilities = McpCapabilities(),
     @EncodeDefault val sessionCapabilities: SessionCapabilities = SessionCapabilities(),
+    @property:UnstableApi
+    @EncodeDefault val auth: AgentAuthCapabilities = AgentAuthCapabilities(),
     override val _meta: JsonElement? = null
 ) : AcpCapabilities, AcpWithMeta

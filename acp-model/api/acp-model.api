@@ -51,6 +51,10 @@ public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$Initiali
 	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$Initialize;
 }
 
+public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$Logout : com/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$Logout;
+}
+
 public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$SessionCancel : com/agentclientprotocol/model/AcpMethod$AcpSessionNotificationMethod {
 	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$SessionCancel;
 }
@@ -169,19 +173,52 @@ public abstract interface class com/agentclientprotocol/model/AcpWithSessionId {
 	public abstract fun getSessionId-7EW-EgU ()Ljava/lang/String;
 }
 
+public final class com/agentclientprotocol/model/AgentAuthCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/AgentAuthCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lcom/agentclientprotocol/model/LogoutCapabilities;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/LogoutCapabilities;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/LogoutCapabilities;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lcom/agentclientprotocol/model/LogoutCapabilities;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/AgentAuthCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/AgentAuthCapabilities;Lcom/agentclientprotocol/model/LogoutCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/AgentAuthCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLogout ()Lcom/agentclientprotocol/model/LogoutCapabilities;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/AgentAuthCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/AgentAuthCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/AgentAuthCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/AgentAuthCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/AgentAuthCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class com/agentclientprotocol/model/AgentCapabilities : com/agentclientprotocol/model/AcpCapabilities, com/agentclientprotocol/model/AcpWithMeta {
 	public static final field Companion Lcom/agentclientprotocol/model/AgentCapabilities$Companion;
 	public fun <init> ()V
-	public fun <init> (ZLcom/agentclientprotocol/model/PromptCapabilities;Lcom/agentclientprotocol/model/McpCapabilities;Lcom/agentclientprotocol/model/SessionCapabilities;Lkotlinx/serialization/json/JsonElement;)V
-	public synthetic fun <init> (ZLcom/agentclientprotocol/model/PromptCapabilities;Lcom/agentclientprotocol/model/McpCapabilities;Lcom/agentclientprotocol/model/SessionCapabilities;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (ZLcom/agentclientprotocol/model/PromptCapabilities;Lcom/agentclientprotocol/model/McpCapabilities;Lcom/agentclientprotocol/model/SessionCapabilities;Lcom/agentclientprotocol/model/AgentAuthCapabilities;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (ZLcom/agentclientprotocol/model/PromptCapabilities;Lcom/agentclientprotocol/model/McpCapabilities;Lcom/agentclientprotocol/model/SessionCapabilities;Lcom/agentclientprotocol/model/AgentAuthCapabilities;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Z
 	public final fun component2 ()Lcom/agentclientprotocol/model/PromptCapabilities;
 	public final fun component3 ()Lcom/agentclientprotocol/model/McpCapabilities;
 	public final fun component4 ()Lcom/agentclientprotocol/model/SessionCapabilities;
-	public final fun component5 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun copy (ZLcom/agentclientprotocol/model/PromptCapabilities;Lcom/agentclientprotocol/model/McpCapabilities;Lcom/agentclientprotocol/model/SessionCapabilities;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/AgentCapabilities;
-	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/AgentCapabilities;ZLcom/agentclientprotocol/model/PromptCapabilities;Lcom/agentclientprotocol/model/McpCapabilities;Lcom/agentclientprotocol/model/SessionCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/AgentCapabilities;
+	public final fun component5 ()Lcom/agentclientprotocol/model/AgentAuthCapabilities;
+	public final fun component6 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (ZLcom/agentclientprotocol/model/PromptCapabilities;Lcom/agentclientprotocol/model/McpCapabilities;Lcom/agentclientprotocol/model/SessionCapabilities;Lcom/agentclientprotocol/model/AgentAuthCapabilities;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/AgentCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/AgentCapabilities;ZLcom/agentclientprotocol/model/PromptCapabilities;Lcom/agentclientprotocol/model/McpCapabilities;Lcom/agentclientprotocol/model/SessionCapabilities;Lcom/agentclientprotocol/model/AgentAuthCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/AgentCapabilities;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAuth ()Lcom/agentclientprotocol/model/AgentAuthCapabilities;
 	public final fun getLoadSession ()Z
 	public final fun getMcpCapabilities ()Lcom/agentclientprotocol/model/McpCapabilities;
 	public final fun getPromptCapabilities ()Lcom/agentclientprotocol/model/PromptCapabilities;
@@ -1549,6 +1586,93 @@ public final synthetic class com/agentclientprotocol/model/LoadSessionResponse$$
 }
 
 public final class com/agentclientprotocol/model/LoadSessionResponse$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/LogoutCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/LogoutCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/LogoutCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/LogoutCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/LogoutCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/LogoutCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/LogoutCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/LogoutCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/LogoutCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/LogoutCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/LogoutRequest : com/agentclientprotocol/model/AcpRequest {
+	public static final field Companion Lcom/agentclientprotocol/model/LogoutRequest$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/LogoutRequest;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/LogoutRequest;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/LogoutRequest;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/LogoutRequest$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/LogoutRequest$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/LogoutRequest;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/LogoutRequest;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/LogoutRequest$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/LogoutResponse : com/agentclientprotocol/model/AcpResponse {
+	public static final field Companion Lcom/agentclientprotocol/model/LogoutResponse$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/LogoutResponse;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/LogoutResponse;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/LogoutResponse;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/LogoutResponse$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/LogoutResponse$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/LogoutResponse;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/LogoutResponse;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/LogoutResponse$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 

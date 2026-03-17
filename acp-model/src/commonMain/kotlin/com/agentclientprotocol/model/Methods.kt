@@ -44,6 +44,8 @@ public open class AcpMethod(public val methodName: MethodName) {
         // Agent-side operations (methods that agents can call on clients)
         public object Initialize : AcpRequestResponseMethod<InitializeRequest, InitializeResponse>("initialize", InitializeRequest.serializer(), InitializeResponse.serializer())
         public object Authenticate : AcpRequestResponseMethod<AuthenticateRequest, AuthenticateResponse>("authenticate", AuthenticateRequest.serializer(), AuthenticateResponse.serializer())
+        @UnstableApi
+        public object Logout : AcpRequestResponseMethod<LogoutRequest, LogoutResponse>("logout", LogoutRequest.serializer(), LogoutResponse.serializer())
         public object SessionNew : AcpRequestResponseMethod<NewSessionRequest, NewSessionResponse>("session/new", NewSessionRequest.serializer(), NewSessionResponse.serializer())
         public object SessionLoad : AcpRequestResponseMethod<LoadSessionRequest, LoadSessionResponse>("session/load", LoadSessionRequest.serializer(), LoadSessionResponse.serializer())
 
