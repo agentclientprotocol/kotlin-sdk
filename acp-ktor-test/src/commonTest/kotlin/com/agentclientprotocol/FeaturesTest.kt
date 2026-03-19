@@ -5,15 +5,18 @@ import com.agentclientprotocol.agent.AgentInfo
 import com.agentclientprotocol.agent.AgentSession
 import com.agentclientprotocol.agent.AgentSupport
 import com.agentclientprotocol.agent.client
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.*
 import com.agentclientprotocol.common.*
 import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.*
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonElement
 import kotlin.test.*
 
@@ -188,6 +191,118 @@ abstract class FeaturesTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         session.setMode(modes[1].id)
         delay(100)
         assertEquals(modes[1].id, session.currentMode.value, "Current mode should be changed")
+    }
+
+    @OptIn(UnstableApi::class)
+    @Test
+    fun `request form elicitation from agent`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val client = Client(protocol = clientProtocol)
+
+        val agentSupport = TestAgentSupport {
+            object : TestAgentSession() {
+                override suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement?): Flow<Event> = flow {
+                    val response = currentCoroutineContext().client.requestElicitation(
+                        mode = ElicitationMode.Form(
+                            ElicitationSchema(
+                                properties = mapOf("name" to ElicitationPropertySchema.StringValue()),
+                                required = listOf("name")
+                            )
+                        ),
+                        message = "Please enter your name"
+                    )
+
+                    val name = ((response.action as? ElicitationAction.Accept)
+                        ?.content?.get("name") as? ElicitationContentValue.StringValue)?.value ?: "none"
+                    emit(Event.SessionUpdateEvent(agentTextChunk("Name: $name")))
+                }
+            }
+        }
+        Agent(agentProtocol, agentSupport)
+
+        client.initialize(
+            ClientInfo(
+                capabilities = ClientCapabilities(
+                    elicitation = ElicitationCapabilities(form = ElicitationFormCapabilities())
+                )
+            )
+        )
+        val session = client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+            object : TestClientSessionOperations() {
+                override suspend fun requestElicitation(
+                    mode: ElicitationMode,
+                    message: String,
+                    _meta: JsonElement?
+                ): ElicitationResponse {
+                    assertTrue(mode is ElicitationMode.Form)
+                    assertEquals("Please enter your name", message)
+                    return ElicitationResponse(
+                        ElicitationAction.Accept(
+                            content = mapOf("name" to ElicitationContentValue.StringValue("Alice"))
+                        )
+                    )
+                }
+            }
+        }
+
+        val result = session.promptToList("Test")
+        assertContentEquals(listOf("Name: Alice", "END_TURN"), result)
+    }
+
+    @OptIn(UnstableApi::class)
+    @Test
+    fun `url elicitation completion notification is routed to client session`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val client = Client(protocol = clientProtocol)
+        val completionDeferred = CompletableDeferred<ElicitationId>()
+
+        val agentSupport = TestAgentSupport {
+            object : TestAgentSession() {
+                override suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement?): Flow<Event> = flow {
+                    val response = currentCoroutineContext().client.requestElicitation(
+                        mode = ElicitationMode.Url(
+                            elicitationId = ElicitationId("elic_1"),
+                            url = "https://example.com/auth"
+                        ),
+                        message = "Authenticate"
+                    )
+
+                    if (response.action is ElicitationAction.Accept) {
+                        currentCoroutineContext().client.notifyElicitationComplete(ElicitationId("elic_1"))
+                    }
+                    emit(Event.SessionUpdateEvent(agentTextChunk("Prompt done")))
+                }
+            }
+        }
+        Agent(agentProtocol, agentSupport)
+
+        client.initialize(
+            ClientInfo(
+                capabilities = ClientCapabilities(
+                    elicitation = ElicitationCapabilities(url = ElicitationUrlCapabilities())
+                )
+            )
+        )
+        val session = client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+            object : TestClientSessionOperations() {
+                override suspend fun requestElicitation(
+                    mode: ElicitationMode,
+                    message: String,
+                    _meta: JsonElement?
+                ): ElicitationResponse {
+                    assertTrue(mode is ElicitationMode.Url)
+                    assertEquals("Authenticate", message)
+                    return ElicitationResponse(ElicitationAction.Accept())
+                }
+
+                override suspend fun notifyElicitationComplete(elicitationId: ElicitationId, _meta: JsonElement?) {
+                    completionDeferred.complete(elicitationId)
+                }
+            }
+        }
+
+        val result = session.promptToList("Test")
+        assertContentEquals(listOf("Prompt done", "END_TURN"), result)
+        val completedId = withTimeout(1000) { completionDeferred.await() }
+        assertEquals(ElicitationId("elic_1"), completedId)
     }
 
 

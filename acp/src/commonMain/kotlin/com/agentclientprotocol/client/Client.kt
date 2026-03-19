@@ -84,6 +84,8 @@ public class Client(
     private data class SessionsStorage(val initializingSessionsCount: Int = 0, val sessions: PersistentMap<SessionId, ClientSessionHolder> = persistentMapOf())
 
     private val _sessions = atomic(SessionsStorage())
+    @OptIn(UnstableApi::class)
+    private val _urlElicitationSessions = atomic(persistentMapOf<ElicitationId, SessionId>())
 
     /**
      * Creates a new entry only if there are some currently initializing sessions. Otherwise, throws in the case of missing session.
@@ -116,6 +118,16 @@ public class Client(
         _sessions.update { currentMap ->
             currentMap.copy(sessions = currentMap.sessions.remove(sessionId))
         }
+        @OptIn(UnstableApi::class)
+        _urlElicitationSessions.update { map ->
+            var updated = map
+            for ((elicitationId, mappedSessionId) in map) {
+                if (mappedSessionId == sessionId) {
+                    updated = updated.remove(elicitationId)
+                }
+            }
+            updated
+        }
     }
 
     private val _clientInfo = CompletableDeferred<ClientInfo>()
@@ -127,6 +139,38 @@ public class Client(
             val session = getSessionOrThrow(params.sessionId)
             return@setRequestHandler session.executeWithSession {
                 session.handlePermissionResponse(params.toolCall, params.options, params._meta)
+            }
+        }
+
+        @OptIn(UnstableApi::class)
+        protocol.setRequestHandler(AcpMethod.ClientMethods.SessionElicitation) { params: ElicitationRequest ->
+            val session = getSessionOrThrow(params.sessionId)
+            val urlElicitationId = when (val mode = params.mode) {
+                is ElicitationMode.Url -> {
+                    val elicitationId = mode.elicitationId
+                    if (elicitationId.value.isBlank()) {
+                        jsonRpcInvalidParams("Elicitation ID must be non-empty for URL mode")
+                    }
+                    elicitationId
+                }
+                is ElicitationMode.Form -> null
+            }
+            if (urlElicitationId != null) {
+                _urlElicitationSessions.update { it.put(urlElicitationId, params.sessionId) }
+            }
+            return@setRequestHandler session.executeWithSession {
+                try {
+                    val response = session.operations.requestElicitation(params.mode, params.message, params._meta)
+                    if (urlElicitationId != null && response.action !is ElicitationAction.Accept) {
+                        _urlElicitationSessions.update { it.remove(urlElicitationId) }
+                    }
+                    response
+                } catch (t: Throwable) {
+                    if (urlElicitationId != null) {
+                        _urlElicitationSessions.update { it.remove(urlElicitationId) }
+                    }
+                    throw t
+                }
             }
         }
 
@@ -196,6 +240,24 @@ public class Client(
         protocol.setNotificationHandler(AcpMethod.ClientMethods.SessionUpdate) { params: SessionNotification ->
             val sessionHolder = getOrCreateSessionHolder(params.sessionId)
             sessionHolder.handleOrQueue(params.update, params._meta)
+        }
+
+        @OptIn(UnstableApi::class)
+        protocol.setNotificationHandler(AcpMethod.ClientMethods.SessionElicitationComplete) { params: ElicitationCompleteNotification ->
+            var sessionId: SessionId? = null
+            _urlElicitationSessions.update { map ->
+                sessionId = map[params.elicitationId]
+                if (sessionId == null) map else map.remove(params.elicitationId)
+            }
+            if (sessionId == null) {
+                jsonRpcInvalidParams("Unknown URL elicitation ID: ${params.elicitationId}")
+            }
+
+            val sessionHolder = getOrCreateSessionHolder(sessionId)
+            val session = sessionHolder.session.await()
+            session.executeWithSession {
+                session.operations.notifyElicitationComplete(params.elicitationId, params._meta)
+            }
         }
     }
 

@@ -41,7 +41,7 @@ public open class AcpMethod(public val methodName: MethodName) {
     }
 
     public object AgentMethods {
-        // Agent-side operations (methods that agents can call on clients)
+        // Agent-side operations (methods that clients can call on agents)
         public object Initialize : AcpRequestResponseMethod<InitializeRequest, InitializeResponse>("initialize", InitializeRequest.serializer(), InitializeResponse.serializer())
         public object Authenticate : AcpRequestResponseMethod<AuthenticateRequest, AuthenticateResponse>("authenticate", AuthenticateRequest.serializer(), AuthenticateResponse.serializer())
         public object SessionNew : AcpRequestResponseMethod<NewSessionRequest, NewSessionResponse>("session/new", NewSessionRequest.serializer(), NewSessionResponse.serializer())
@@ -66,9 +66,13 @@ public open class AcpMethod(public val methodName: MethodName) {
     }
 
     public object ClientMethods {
-        // Client-side operations (methods that clients can call on agents)
+        // Client-side operations (methods that agents can call on clients)
         public object SessionRequestPermission : AcpSessionRequestResponseMethod<RequestPermissionRequest, RequestPermissionResponse>("session/request_permission", RequestPermissionRequest.serializer(), RequestPermissionResponse.serializer())
         public object SessionUpdate : AcpSessionNotificationMethod<SessionNotification>("session/update", SessionNotification.serializer())
+        @UnstableApi
+        public object SessionElicitation : AcpSessionRequestResponseMethod<ElicitationRequest, ElicitationResponse>("session/elicitation", ElicitationRequest.serializer(), ElicitationResponse.serializer())
+        @UnstableApi
+        public object SessionElicitationComplete : AcpNotificationMethod<ElicitationCompleteNotification>("session/elicitation/complete", ElicitationCompleteNotification.serializer())
 
         // extensions
         public object FsReadTextFile : AcpSessionRequestResponseMethod<ReadTextFileRequest, ReadTextFileResponse>("fs/read_text_file", ReadTextFileRequest.serializer(), ReadTextFileResponse.serializer())

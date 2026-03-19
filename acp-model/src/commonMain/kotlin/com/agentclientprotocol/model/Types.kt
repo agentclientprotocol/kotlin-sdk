@@ -66,6 +66,20 @@ public value class PermissionOptionId(public val value: String) {
 }
 
 /**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Unique identifier for an elicitation.
+ */
+@UnstableApi
+@JvmInline
+@Serializable
+public value class ElicitationId(public val value: String) {
+    override fun toString(): String = value
+}
+
+/**
  * Unique identifier for a Session Mode.
  */
 @JvmInline
