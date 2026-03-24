@@ -2,6 +2,7 @@
 
 package com.agentclientprotocol.rpc
 
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.AvailableCommandInput
 import com.agentclientprotocol.model.McpServer
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -171,7 +172,12 @@ public enum class JsonRpcErrorCode(public val code: Int, public val message: Str
 
     /** A given resource, such as a file, was not found.
      * This is an ACP-specific error code in the reserved range. */
-    RESOURCE_NOT_FOUND(-32002, "Resource not found")
+    RESOURCE_NOT_FOUND(-32002, "Resource not found"),
+
+    /** The agent requires user input via URL-based elicitation before it can proceed.
+     * This is an ACP-specific unstable error code in the reserved range. */
+    @UnstableApi
+    URL_ELICITATION_REQUIRED(-32042, "URL elicitation required")
 }
 
 private val acpSerializersModule = SerializersModule {

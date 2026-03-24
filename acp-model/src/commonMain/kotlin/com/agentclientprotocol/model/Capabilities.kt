@@ -69,6 +69,8 @@ public data class ClientCapabilities(
     @EncodeDefault val terminal: Boolean = false,
     @property:UnstableApi
     @EncodeDefault val auth: AuthCapabilities? = null,
+    @property:UnstableApi
+    @EncodeDefault val elicitation: ElicitationCapabilities? = null,
     override val _meta: JsonElement? = null
 ) : AcpCapabilities, AcpWithMeta
 

@@ -1,11 +1,13 @@
 package com.agentclientprotocol.agent
 
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.RpcMethodsOperations
 import com.agentclientprotocol.protocol.invoke
 import kotlinx.serialization.json.JsonElement
 
+@OptIn(UnstableApi::class)
 internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperations, private val sessionId: SessionId, private val clientCapabilities: ClientCapabilities) : ClientSessionOperations {
     override suspend fun requestPermissions(
         toolCall: SessionUpdate.ToolCallUpdate,
@@ -83,5 +85,47 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
     ): KillTerminalCommandResponse {
         if (!clientCapabilities.terminal) error("Client does not support terminal capability")
         return AcpMethod.ClientMethods.TerminalKill(rpc, KillTerminalCommandRequest(sessionId, terminalId, _meta))
+    }
+
+    override suspend fun requestElicitation(
+        mode: ElicitationMode,
+        message: String,
+        _meta: JsonElement?
+    ): ElicitationResponse {
+        when (mode) {
+            is ElicitationMode.Form -> {
+                if (!supportsFormElicitation()) {
+                    error("Client does not support elicitation.form capability")
+                }
+            }
+            is ElicitationMode.Url -> {
+                if (!supportsUrlElicitation()) {
+                    error("Client does not support elicitation.url capability")
+                }
+            }
+        }
+        return AcpMethod.ClientMethods.SessionElicitation(rpc, ElicitationRequest(sessionId, mode, message, _meta))
+    }
+
+    override suspend fun notifyElicitationComplete(
+        elicitationId: ElicitationId,
+        _meta: JsonElement?
+    ) {
+        if (!supportsUrlElicitation()) {
+            error("Client does not support elicitation.url capability")
+        }
+        AcpMethod.ClientMethods.SessionElicitationComplete(rpc, ElicitationCompleteNotification(elicitationId, _meta))
+    }
+
+    /**
+     * MCP-compatible semantics: empty elicitation object implies form-only support.
+     */
+    private fun supportsFormElicitation(): Boolean {
+        val elicitation = clientCapabilities.elicitation ?: return false
+        return elicitation.form != null || (elicitation.form == null && elicitation.url == null)
+    }
+
+    private fun supportsUrlElicitation(): Boolean {
+        return clientCapabilities.elicitation?.url != null
     }
 }
