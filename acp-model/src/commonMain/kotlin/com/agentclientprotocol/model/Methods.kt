@@ -65,6 +65,8 @@ public open class AcpMethod(public val methodName: MethodName) {
         public object SessionResume : AcpSessionRequestResponseMethod<ResumeSessionRequest, ResumeSessionResponse>("session/resume", ResumeSessionRequest.serializer(), ResumeSessionResponse.serializer())
         @UnstableApi
         public object SessionSetConfigOption : AcpSessionRequestResponseMethod<SetSessionConfigOptionRequest, SetSessionConfigOptionResponse>("session/set_config_option", SetSessionConfigOptionRequest.serializer(), SetSessionConfigOptionResponse.serializer())
+        @UnstableApi
+        public object SessionClose : AcpSessionRequestResponseMethod<CloseSessionRequest, CloseSessionResponse>("session/close", CloseSessionRequest.serializer(), CloseSessionResponse.serializer())
     }
 
     public object ClientMethods {

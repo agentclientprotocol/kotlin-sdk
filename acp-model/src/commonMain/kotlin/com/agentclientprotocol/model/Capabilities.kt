@@ -122,6 +122,21 @@ public data class SessionResumeCapabilities(
 ) : AcpWithMeta
 
 /**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Capabilities for the `session/close` method.
+ *
+ * By supplying `{}` it means that the agent supports closing of sessions.
+ */
+@UnstableApi
+@Serializable
+public data class SessionCloseCapabilities(
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
  * Session capabilities supported by the agent.
  */
 @OptIn(UnstableApi::class)
@@ -130,6 +145,8 @@ public data class SessionCapabilities(
     val fork: SessionForkCapabilities? = null,
     val list: SessionListCapabilities? = null,
     val resume: SessionResumeCapabilities? = null,
+    @property:UnstableApi
+    val close: SessionCloseCapabilities? = null,
     override val _meta: JsonElement? = null
 ) : AcpWithMeta
 

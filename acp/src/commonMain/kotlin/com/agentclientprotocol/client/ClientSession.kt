@@ -32,6 +32,22 @@ public interface ClientSession {
     public suspend fun cancel()
 
     /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Closes the session and frees up any resources associated with it.
+     * The agent must cancel any ongoing work (as if `session/cancel` was called)
+     * and then free up any resources associated with the session.
+     *
+     * Only available if the agent advertises the `session.close` capability.
+     *
+     * Corresponds to the [com.agentclientprotocol.model.AcpMethod.AgentMethods.SessionClose]
+     */
+    @UnstableApi
+    public suspend fun close(_meta: JsonElement? = null): CloseSessionResponse
+
+    /**
      * The flag indicates whether the agent supports the session mode changing.
      */
     public val modesSupported: Boolean

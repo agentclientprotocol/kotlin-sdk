@@ -700,6 +700,39 @@ public data class ReleaseTerminalResponse(
     override val _meta: JsonElement? = null
 ) : AcpResponse
 
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Request parameters for closing an active session.
+ *
+ * If supported, the agent must cancel any ongoing work related to the session
+ * (treat it as if `session/cancel` was called) and then free up any resources
+ * associated with the session.
+ *
+ * Only available if the agent supports the `session.close` capability.
+ */
+@UnstableApi
+@Serializable
+public data class CloseSessionRequest(
+    override val sessionId: SessionId,
+    override val _meta: JsonElement? = null
+) : AcpRequest, AcpWithSessionId
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Response from closing a session.
+ */
+@UnstableApi
+@Serializable
+public data class CloseSessionResponse(
+    override val _meta: JsonElement? = null
+) : AcpResponse
+
 // === Unstable Request/Response Types ===
 
 /**

@@ -43,6 +43,8 @@ public final class com/agentclientprotocol/agent/AgentKt {
 public abstract interface class com/agentclientprotocol/agent/AgentSession {
 	public fun cancel (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun cancel$suspendImpl (Lcom/agentclientprotocol/agent/AgentSession;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun close (Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun close$suspendImpl (Lcom/agentclientprotocol/agent/AgentSession;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun getAvailableModels ()Ljava/util/List;
 	public fun getAvailableModes ()Ljava/util/List;
 	public fun getConfigOptions ()Ljava/util/List;
@@ -63,6 +65,7 @@ public abstract interface class com/agentclientprotocol/agent/AgentSession {
 
 public final class com/agentclientprotocol/agent/AgentSession$DefaultImpls {
 	public static fun cancel (Lcom/agentclientprotocol/agent/AgentSession;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun close (Lcom/agentclientprotocol/agent/AgentSession;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun getAvailableModels (Lcom/agentclientprotocol/agent/AgentSession;)Ljava/util/List;
 	public static fun getAvailableModes (Lcom/agentclientprotocol/agent/AgentSession;)Ljava/util/List;
 	public static fun getConfigOptions (Lcom/agentclientprotocol/agent/AgentSession;)Ljava/util/List;
@@ -158,6 +161,8 @@ public abstract interface class com/agentclientprotocol/client/ClientOperationsF
 
 public abstract interface class com/agentclientprotocol/client/ClientSession {
 	public abstract fun cancel (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun close (Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun close$default (Lcom/agentclientprotocol/client/ClientSession;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public abstract fun getAvailableModels ()Ljava/util/List;
 	public abstract fun getAvailableModes ()Ljava/util/List;
 	public abstract fun getClient ()Lcom/agentclientprotocol/client/Client;
@@ -181,6 +186,7 @@ public abstract interface class com/agentclientprotocol/client/ClientSession {
 }
 
 public final class com/agentclientprotocol/client/ClientSession$DefaultImpls {
+	public static synthetic fun close$default (Lcom/agentclientprotocol/client/ClientSession;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun prompt$default (Lcom/agentclientprotocol/client/ClientSession;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun setConfigOption-A2gp-xI$default (Lcom/agentclientprotocol/client/ClientSession;Ljava/lang/String;Lcom/agentclientprotocol/model/SessionConfigOptionValue;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun setMode-tFeI3nk$default (Lcom/agentclientprotocol/client/ClientSession;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;

@@ -213,6 +213,16 @@ public class Agent(
         }
 
         @OptIn(UnstableApi::class)
+        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionClose) { params: CloseSessionRequest ->
+            val session = getSessionOrThrow(params.sessionId)
+            val response = session.executeWithSession {
+                session.agentSession.close(params._meta)
+            }
+            _sessions.update { it.remove(params.sessionId) }
+            return@setRequestHandler response
+        }
+
+        @OptIn(UnstableApi::class)
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionFork) { params: ForkSessionRequest ->
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params._meta)
             val session = createSession(sessionParameters) { agentSupport.forkSession(params.sessionId, sessionParameters) }
