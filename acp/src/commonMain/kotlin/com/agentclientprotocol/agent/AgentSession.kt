@@ -36,6 +36,24 @@ public interface AgentSession {
     public suspend fun cancel() {}
 
     /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Closes the session and frees up any resources associated with it.
+     * The agent must cancel any ongoing work (as if `cancel` was called)
+     * and then free up any resources associated with the session.
+     *
+     * Only called if the agent advertises the `session.close` capability.
+     *
+     * Corresponds to the [AcpMethod.AgentMethods.SessionClose]
+     */
+    @UnstableApi
+    public suspend fun close(_meta: JsonElement?): CloseSessionResponse {
+        throw NotImplementedError("close is not implemented. The capability is declared in AgentCapabilities.sessionCapabilities.close")
+    }
+
+    /**
      * Return a set of available modes for the session. If the session doesn't support modes, return an empty list.
      */
     public val availableModes: List<SessionMode>

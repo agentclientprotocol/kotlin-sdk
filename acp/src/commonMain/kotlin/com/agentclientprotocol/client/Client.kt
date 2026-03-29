@@ -112,7 +112,7 @@ public class Client(
         return clientSessionHolder ?: acpFail("Session $sessionId not found")
     }
 
-    private fun removeSessionHolder(sessionId: SessionId) {
+    internal fun removeSessionHolder(sessionId: SessionId) {
         _sessions.update { currentMap ->
             currentMap.copy(sessions = currentMap.sessions.remove(sessionId))
         }

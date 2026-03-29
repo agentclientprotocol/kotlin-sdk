@@ -92,6 +92,13 @@ internal class ClientSessionImpl(
         AcpMethod.AgentMethods.SessionCancel(protocol, CancelNotification(sessionId))
     }
 
+    @UnstableApi
+    override suspend fun close(_meta: JsonElement?): CloseSessionResponse {
+        val response = AcpMethod.AgentMethods.SessionClose(protocol, CloseSessionRequest(sessionId, _meta))
+        client.removeSessionHolder(sessionId)
+        return response
+    }
+
     override val modesSupported: Boolean
         get() = createdResponse.modes != null
 
