@@ -385,10 +385,13 @@ public data class AuthenticateRequest(
  *
  * See protocol docs: [Creating a Session](https://agentclientprotocol.com/protocol/session-setup#creating-a-session)
  */
+@OptIn(UnstableApi::class)
 @Serializable
 public data class NewSessionRequest(
     val cwd: String,
     val mcpServers: List<@Polymorphic McpServer>,
+    @property:UnstableApi
+    val additionalDirectories: List<String>? = null,
     override val _meta: JsonElement? = null
 ) : AcpRequest
 
@@ -399,11 +402,14 @@ public data class NewSessionRequest(
  *
  * See protocol docs: [Loading Sessions](https://agentclientprotocol.com/protocol/session-setup#loading-sessions)
  */
+@OptIn(UnstableApi::class)
 @Serializable
 public data class LoadSessionRequest(
     override val sessionId: SessionId,
     val cwd: String,
     val mcpServers: List<@Polymorphic McpServer>,
+    @property:UnstableApi
+    val additionalDirectories: List<String>? = null,
     override val _meta: JsonElement? = null
 ) : AcpRequest, AcpWithSessionId
 
@@ -748,6 +754,7 @@ public data class ForkSessionRequest(
     override val sessionId: SessionId,
     val cwd: String,
     val mcpServers: List<McpServer>,
+    val additionalDirectories: List<String>? = null,
     override val _meta: JsonElement? = null
 ) : AcpRequest, AcpWithSessionId
 
@@ -815,6 +822,7 @@ public data class ResumeSessionRequest(
     override val sessionId: SessionId,
     val cwd: String,
     val mcpServers: List<McpServer>,
+    val additionalDirectories: List<String>? = null,
     override val _meta: JsonElement? = null
 ) : AcpRequest, AcpWithSessionId
 

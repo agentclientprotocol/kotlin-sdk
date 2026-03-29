@@ -260,6 +260,7 @@ public class Client(
                 NewSessionRequest(
                     sessionParameters.cwd,
                     sessionParameters.mcpServers,
+                    sessionParameters.additionalDirectories,
                     sessionParameters._meta
                 )
             )
@@ -286,6 +287,7 @@ public class Client(
                     sessionId,
                     sessionParameters.cwd,
                     sessionParameters.mcpServers,
+                    sessionParameters.additionalDirectories,
                     sessionParameters._meta
                 )
             )
@@ -342,6 +344,7 @@ public class Client(
                     sessionId,
                     sessionParameters.cwd,
                     sessionParameters.mcpServers,
+                    sessionParameters.additionalDirectories,
                     sessionParameters._meta
                 )
             )
@@ -375,6 +378,7 @@ public class Client(
                     sessionId,
                     sessionParameters.cwd,
                     sessionParameters.mcpServers,
+                    sessionParameters.additionalDirectories,
                     sessionParameters._meta
                 )
             )

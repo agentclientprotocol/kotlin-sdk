@@ -195,5 +195,6 @@ public data class SessionInfo(
     val cwd: String,
     val title: String? = null,
     val updatedAt: String? = null,
+    val additionalDirectories: List<String>? = null,
     override val _meta: JsonElement? = null
 ) : AcpWithMeta

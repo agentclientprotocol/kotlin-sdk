@@ -137,6 +137,22 @@ public data class SessionCloseCapabilities(
 ) : AcpWithMeta
 
 /**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Capabilities for additional session directories support.
+ *
+ * By supplying `{}` it means that the agent supports the `additionalDirectories` field
+ * on session lifecycle requests.
+ */
+@UnstableApi
+@Serializable
+public data class SessionAdditionalDirectoriesCapabilities(
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
  * Session capabilities supported by the agent.
  */
 @OptIn(UnstableApi::class)
@@ -147,6 +163,8 @@ public data class SessionCapabilities(
     val resume: SessionResumeCapabilities? = null,
     @property:UnstableApi
     val close: SessionCloseCapabilities? = null,
+    @property:UnstableApi
+    val additionalDirectories: SessionAdditionalDirectoriesCapabilities? = null,
     override val _meta: JsonElement? = null
 ) : AcpWithMeta
 
