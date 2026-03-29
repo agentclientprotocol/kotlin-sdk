@@ -41,20 +41,25 @@ public class Agent(
     private val agentSupport: AgentSupport
     ) {
 
-    internal class SessionWrapper(
+    internal open class BaseSessionWrapper(
         val agent: Agent,
-        val agentSession: AgentSession,
-        val clientOperations: ClientSessionOperations,
         val protocol: Protocol
     ) {
-        private class PromptSession(val currentRequestId: RequestId)
-        private val _activePrompt = atomic<PromptSession?>(null)
-
         internal suspend fun <T> executeWithSession(block: suspend () -> T): T {
             return withContext(this.asContextElement()) {
                 return@withContext block()
             }
         }
+    }
+
+    internal class SessionWrapper(
+        agent: Agent,
+        val agentSession: AgentSession,
+        val clientOperations: ClientSessionOperations,
+        protocol: Protocol
+    ) : BaseSessionWrapper(agent, protocol) {
+        private class PromptSession(val currentRequestId: RequestId)
+        private val _activePrompt = atomic<PromptSession?>(null)
 
         suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): PromptResponse {
             val currentRpcRequest = currentCoroutineContext().jsonRpcRequest
@@ -106,8 +111,15 @@ public class Agent(
         }
     }
 
+    internal class NesSessionWrapper(
+        agent: Agent,
+        val nesSession: NesAgentSession,
+        protocol: Protocol
+    ) : BaseSessionWrapper(agent, protocol)
+
     private val _clientInfo = CompletableDeferred<ClientInfo>()
     private val _sessions = atomic(persistentMapOf<SessionId, SessionWrapper>())
+    private val _nesSessions = atomic(persistentMapOf<SessionId, NesSessionWrapper>())
 
     internal fun getClientInfoOrThrow(): ClientInfo {
         if (!_clientInfo.isCompleted) error("Agent is not initialized yet")
@@ -252,6 +264,93 @@ public class Agent(
                 session.agentSession.setConfigOption(params.configId, params.value, params._meta)
             }
         }
+
+        // NES handlers
+        @OptIn(UnstableApi::class)
+        protocol.setRequestHandler(AcpMethod.AgentMethods.NesStart) { params: StartNesRequest ->
+            val nesSession = agentSupport.createNesSession(params)
+            val wrapper = NesSessionWrapper(
+                this@Agent,
+                nesSession,
+                protocol
+            )
+            _nesSessions.update { it.put(nesSession.nesSessionId, wrapper) }
+            return@setRequestHandler StartNesResponse(nesSession.nesSessionId)
+        }
+
+        @OptIn(UnstableApi::class)
+        protocol.setRequestHandler(AcpMethod.AgentMethods.NesSuggest) { params: SuggestNesRequest ->
+            val wrapper = getNesSessionOrThrow(params.sessionId)
+            return@setRequestHandler wrapper.executeWithSession {
+                wrapper.nesSession.suggest(params)
+            }
+        }
+
+        @OptIn(UnstableApi::class)
+        protocol.setRequestHandler(AcpMethod.AgentMethods.NesClose) { params: CloseNesRequest ->
+            val wrapper = getNesSessionOrThrow(params.sessionId)
+            val response = wrapper.executeWithSession {
+                wrapper.nesSession.close(params._meta)
+            }
+            _nesSessions.update { it.remove(params.sessionId) }
+            return@setRequestHandler response
+        }
+
+        @OptIn(UnstableApi::class)
+        protocol.setNotificationHandler(AcpMethod.AgentMethods.NesAccept) { params: AcceptNesNotification ->
+            val wrapper = getNesSessionOrThrow(params.sessionId)
+            wrapper.executeWithSession {
+                wrapper.nesSession.accept(params.id, params._meta)
+            }
+        }
+
+        @OptIn(UnstableApi::class)
+        protocol.setNotificationHandler(AcpMethod.AgentMethods.NesReject) { params: RejectNesNotification ->
+            val wrapper = getNesSessionOrThrow(params.sessionId)
+            wrapper.executeWithSession {
+                wrapper.nesSession.reject(params.id, params.reason, params._meta)
+            }
+        }
+
+        @OptIn(UnstableApi::class)
+        protocol.setNotificationHandler(AcpMethod.AgentMethods.DocumentDidOpen) { params: DidOpenDocumentNotification ->
+            val wrapper = getNesSessionOrThrow(params.sessionId)
+            wrapper.executeWithSession {
+                wrapper.nesSession.didOpen(params)
+            }
+        }
+
+        @OptIn(UnstableApi::class)
+        protocol.setNotificationHandler(AcpMethod.AgentMethods.DocumentDidChange) { params: DidChangeDocumentNotification ->
+            val wrapper = getNesSessionOrThrow(params.sessionId)
+            wrapper.executeWithSession {
+                wrapper.nesSession.didChange(params)
+            }
+        }
+
+        @OptIn(UnstableApi::class)
+        protocol.setNotificationHandler(AcpMethod.AgentMethods.DocumentDidClose) { params: DidCloseDocumentNotification ->
+            val wrapper = getNesSessionOrThrow(params.sessionId)
+            wrapper.executeWithSession {
+                wrapper.nesSession.didClose(params)
+            }
+        }
+
+        @OptIn(UnstableApi::class)
+        protocol.setNotificationHandler(AcpMethod.AgentMethods.DocumentDidSave) { params: DidSaveDocumentNotification ->
+            val wrapper = getNesSessionOrThrow(params.sessionId)
+            wrapper.executeWithSession {
+                wrapper.nesSession.didSave(params)
+            }
+        }
+
+        @OptIn(UnstableApi::class)
+        protocol.setNotificationHandler(AcpMethod.AgentMethods.DocumentDidFocus) { params: DidFocusDocumentNotification ->
+            val wrapper = getNesSessionOrThrow(params.sessionId)
+            wrapper.executeWithSession {
+                wrapper.nesSession.didFocus(params)
+            }
+        }
     }
 
     private suspend fun createSession(sessionParameters: SessionCreationParameters, sessionFactory: suspend (SessionCreationParameters) -> AgentSession): AgentSession {
@@ -273,14 +372,16 @@ public class Agent(
     }
 
     private fun getSessionOrThrow(sessionId: SessionId): SessionWrapper = _sessions.value[sessionId] ?: acpFail("Session $sessionId not found")
+
+    private fun getNesSessionOrThrow(sessionId: SessionId): NesSessionWrapper = _nesSessions.value[sessionId] ?: acpFail("NES session $sessionId not found")
 }
 
 
-internal class SessionWrapperContextElement(val sessionWrapper: Agent.SessionWrapper) : AbstractCoroutineContextElement(Key) {
+internal class SessionWrapperContextElement(val sessionWrapper: Agent.BaseSessionWrapper) : AbstractCoroutineContextElement(Key) {
     object Key : CoroutineContext.Key<SessionWrapperContextElement>
 }
 
-internal fun Agent.SessionWrapper.asContextElement() = SessionWrapperContextElement(this)
+internal fun Agent.BaseSessionWrapper.asContextElement() = SessionWrapperContextElement(this)
 
 public val CoroutineContext.agent: Agent
     get() = this[SessionWrapperContextElement.Key]?.sessionWrapper?.agent ?: error("No agent data found in context")
@@ -291,8 +392,16 @@ public val CoroutineContext.clientInfo: ClientInfo
     get() = agent.getClientInfoOrThrow()
 
 /**
- * Returns a remote client connected to the counterpart via the current protocol
+ * Returns a remote client connected to the counterpart via the current protocol.
+ * Only available for chat sessions. NES sessions do not have access to client operations.
+ *
+ * @throws IllegalStateException if called from a NES session context or outside a session context
  */
 public val CoroutineContext.client: ClientSessionOperations
-    get() = this[SessionWrapperContextElement.Key]?.sessionWrapper?.clientOperations ?: error("No remote client found in context")
+    get() {
+        val wrapper = this[SessionWrapperContextElement.Key]?.sessionWrapper
+            ?: error("No session found in context")
+        return (wrapper as? Agent.SessionWrapper)?.clientOperations
+            ?: error("Client operations are not available for NES sessions. Only chat sessions have access to client operations.")
+    }
 

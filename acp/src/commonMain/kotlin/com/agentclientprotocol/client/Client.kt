@@ -84,6 +84,7 @@ public class Client(
     private data class SessionsStorage(val initializingSessionsCount: Int = 0, val sessions: PersistentMap<SessionId, ClientSessionHolder> = persistentMapOf())
 
     private val _sessions = atomic(SessionsStorage())
+    private val _nesSessions = atomic(persistentMapOf<SessionId, ClientNesSessionImpl>())
 
     /**
      * Creates a new entry only if there are some currently initializing sessions. Otherwise, throws in the case of missing session.
@@ -116,6 +117,11 @@ public class Client(
         _sessions.update { currentMap ->
             currentMap.copy(sessions = currentMap.sessions.remove(sessionId))
         }
+    }
+
+    @OptIn(UnstableApi::class)
+    internal fun removeNesSession(sessionId: SessionId) {
+        _nesSessions.update { it.remove(sessionId) }
     }
 
     private val _clientInfo = CompletableDeferred<ClientInfo>()
@@ -384,6 +390,50 @@ public class Client(
             )
             return@withInitializingSession createSession(sessionId, sessionParameters, resumeSessionResponse, operationsFactory)
         }
+    }
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Starts a new NES (Next Edit Suggestions) session.
+     *
+     * NES sessions are independent from chat sessions and have their own lifecycle.
+     *
+     * @param workspaceUri optional workspace URI
+     * @param workspaceFolders optional list of workspace folders
+     * @param repository optional repository information
+     * @param _meta optional metadata
+     * @return a [ClientNesSession] instance for the new NES session
+     */
+    @UnstableApi
+    public suspend fun startNesSession(
+        workspaceUri: String? = null,
+        workspaceFolders: List<WorkspaceFolder>? = null,
+        repository: NesRepository? = null,
+        _meta: JsonElement? = null
+    ): ClientNesSession {
+        val response = AcpMethod.AgentMethods.NesStart(protocol, StartNesRequest(workspaceUri, workspaceFolders, repository, _meta))
+        val session = ClientNesSessionImpl(this, response.sessionId, protocol)
+        _nesSessions.update { it.put(response.sessionId, session) }
+        return session
+    }
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Returns an existing NES session by its session ID.
+     *
+     * @param sessionId the session ID of the NES session
+     * @return a [ClientNesSession] instance
+     * @throws IllegalStateException if the session is not found
+     */
+    @UnstableApi
+    public fun getNesSession(sessionId: SessionId): ClientNesSession {
+        return _nesSessions.value[sessionId] ?: error("NES session $sessionId not found")
     }
 
     /**

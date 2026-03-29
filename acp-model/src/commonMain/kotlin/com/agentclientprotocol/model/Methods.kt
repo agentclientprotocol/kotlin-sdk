@@ -67,6 +67,28 @@ public open class AcpMethod(public val methodName: MethodName) {
         public object SessionSetConfigOption : AcpSessionRequestResponseMethod<SetSessionConfigOptionRequest, SetSessionConfigOptionResponse>("session/set_config_option", SetSessionConfigOptionRequest.serializer(), SetSessionConfigOptionResponse.serializer())
         @UnstableApi
         public object SessionClose : AcpSessionRequestResponseMethod<CloseSessionRequest, CloseSessionResponse>("session/close", CloseSessionRequest.serializer(), CloseSessionResponse.serializer())
+
+        // NES methods
+        @UnstableApi
+        public object NesStart : AcpRequestResponseMethod<StartNesRequest, StartNesResponse>("nes/start", StartNesRequest.serializer(), StartNesResponse.serializer())
+        @UnstableApi
+        public object NesSuggest : AcpSessionRequestResponseMethod<SuggestNesRequest, SuggestNesResponse>("nes/suggest", SuggestNesRequest.serializer(), SuggestNesResponse.serializer())
+        @UnstableApi
+        public object NesClose : AcpSessionRequestResponseMethod<CloseNesRequest, CloseNesResponse>("nes/close", CloseNesRequest.serializer(), CloseNesResponse.serializer())
+        @UnstableApi
+        public object NesAccept : AcpSessionNotificationMethod<AcceptNesNotification>("nes/accept", AcceptNesNotification.serializer())
+        @UnstableApi
+        public object NesReject : AcpSessionNotificationMethod<RejectNesNotification>("nes/reject", RejectNesNotification.serializer())
+        @UnstableApi
+        public object DocumentDidOpen : AcpSessionNotificationMethod<DidOpenDocumentNotification>("document/didOpen", DidOpenDocumentNotification.serializer())
+        @UnstableApi
+        public object DocumentDidChange : AcpSessionNotificationMethod<DidChangeDocumentNotification>("document/didChange", DidChangeDocumentNotification.serializer())
+        @UnstableApi
+        public object DocumentDidClose : AcpSessionNotificationMethod<DidCloseDocumentNotification>("document/didClose", DidCloseDocumentNotification.serializer())
+        @UnstableApi
+        public object DocumentDidSave : AcpSessionNotificationMethod<DidSaveDocumentNotification>("document/didSave", DidSaveDocumentNotification.serializer())
+        @UnstableApi
+        public object DocumentDidFocus : AcpSessionNotificationMethod<DidFocusDocumentNotification>("document/didFocus", DidFocusDocumentNotification.serializer())
     }
 
     public object ClientMethods {
