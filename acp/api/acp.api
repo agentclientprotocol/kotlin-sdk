@@ -86,6 +86,8 @@ public final class com/agentclientprotocol/agent/AgentSessionKt {
 public abstract interface class com/agentclientprotocol/agent/AgentSupport {
 	public fun authenticate-fMnwWJU (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun authenticate-fMnwWJU$suspendImpl (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun createNesSession (Lcom/agentclientprotocol/model/StartNesRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun createNesSession$suspendImpl (Lcom/agentclientprotocol/agent/AgentSupport;Lcom/agentclientprotocol/model/StartNesRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun createSession (Lcom/agentclientprotocol/common/SessionCreationParameters;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun forkSession-nk3TnMc (Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun forkSession-nk3TnMc$suspendImpl (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -102,11 +104,50 @@ public abstract interface class com/agentclientprotocol/agent/AgentSupport {
 
 public final class com/agentclientprotocol/agent/AgentSupport$DefaultImpls {
 	public static fun authenticate-fMnwWJU (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun createNesSession (Lcom/agentclientprotocol/agent/AgentSupport;Lcom/agentclientprotocol/model/StartNesRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun forkSession-nk3TnMc (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun listSessions (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun loadSession-nk3TnMc (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun logout (Lcom/agentclientprotocol/agent/AgentSupport;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun resumeSession-nk3TnMc (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class com/agentclientprotocol/agent/NesAgentSession {
+	public fun accept (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun accept$default (Lcom/agentclientprotocol/agent/NesAgentSession;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun accept$suspendImpl (Lcom/agentclientprotocol/agent/NesAgentSession;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun close (Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun close$default (Lcom/agentclientprotocol/agent/NesAgentSession;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun close$suspendImpl (Lcom/agentclientprotocol/agent/NesAgentSession;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun didChange (Lcom/agentclientprotocol/model/DidChangeDocumentNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun didChange$suspendImpl (Lcom/agentclientprotocol/agent/NesAgentSession;Lcom/agentclientprotocol/model/DidChangeDocumentNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun didClose (Lcom/agentclientprotocol/model/DidCloseDocumentNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun didClose$suspendImpl (Lcom/agentclientprotocol/agent/NesAgentSession;Lcom/agentclientprotocol/model/DidCloseDocumentNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun didFocus (Lcom/agentclientprotocol/model/DidFocusDocumentNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun didFocus$suspendImpl (Lcom/agentclientprotocol/agent/NesAgentSession;Lcom/agentclientprotocol/model/DidFocusDocumentNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun didOpen (Lcom/agentclientprotocol/model/DidOpenDocumentNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun didOpen$suspendImpl (Lcom/agentclientprotocol/agent/NesAgentSession;Lcom/agentclientprotocol/model/DidOpenDocumentNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun didSave (Lcom/agentclientprotocol/model/DidSaveDocumentNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun didSave$suspendImpl (Lcom/agentclientprotocol/agent/NesAgentSession;Lcom/agentclientprotocol/model/DidSaveDocumentNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun getNesSessionId-7EW-EgU ()Ljava/lang/String;
+	public fun reject (Ljava/lang/String;Lcom/agentclientprotocol/model/NesRejectReason;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun reject$default (Lcom/agentclientprotocol/agent/NesAgentSession;Ljava/lang/String;Lcom/agentclientprotocol/model/NesRejectReason;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun reject$suspendImpl (Lcom/agentclientprotocol/agent/NesAgentSession;Ljava/lang/String;Lcom/agentclientprotocol/model/NesRejectReason;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun suggest (Lcom/agentclientprotocol/model/SuggestNesRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class com/agentclientprotocol/agent/NesAgentSession$DefaultImpls {
+	public static fun accept (Lcom/agentclientprotocol/agent/NesAgentSession;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun accept$default (Lcom/agentclientprotocol/agent/NesAgentSession;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static fun close (Lcom/agentclientprotocol/agent/NesAgentSession;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun close$default (Lcom/agentclientprotocol/agent/NesAgentSession;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static fun didChange (Lcom/agentclientprotocol/agent/NesAgentSession;Lcom/agentclientprotocol/model/DidChangeDocumentNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun didClose (Lcom/agentclientprotocol/agent/NesAgentSession;Lcom/agentclientprotocol/model/DidCloseDocumentNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun didFocus (Lcom/agentclientprotocol/agent/NesAgentSession;Lcom/agentclientprotocol/model/DidFocusDocumentNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun didOpen (Lcom/agentclientprotocol/agent/NesAgentSession;Lcom/agentclientprotocol/model/DidOpenDocumentNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun didSave (Lcom/agentclientprotocol/agent/NesAgentSession;Lcom/agentclientprotocol/model/DidSaveDocumentNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun reject (Lcom/agentclientprotocol/agent/NesAgentSession;Ljava/lang/String;Lcom/agentclientprotocol/model/NesRejectReason;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun reject$default (Lcom/agentclientprotocol/agent/NesAgentSession;Ljava/lang/String;Lcom/agentclientprotocol/model/NesRejectReason;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
 public final class com/agentclientprotocol/client/Client {
@@ -116,6 +157,7 @@ public final class com/agentclientprotocol/client/Client {
 	public final fun forkSession-wPMwmcM (Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lcom/agentclientprotocol/client/ClientOperationsFactory;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun getAgentInfo ()Lcom/agentclientprotocol/agent/AgentInfo;
 	public final fun getClientInfo ()Lcom/agentclientprotocol/client/ClientInfo;
+	public final fun getNesSession-0izbxq0 (Ljava/lang/String;)Lcom/agentclientprotocol/client/ClientNesSession;
 	public final fun getProtocol ()Lcom/agentclientprotocol/protocol/Protocol;
 	public final fun getSession-0izbxq0 (Ljava/lang/String;)Lcom/agentclientprotocol/client/ClientSession;
 	public final fun initialize (Lcom/agentclientprotocol/client/ClientInfo;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -127,6 +169,8 @@ public final class com/agentclientprotocol/client/Client {
 	public static synthetic fun logout$default (Lcom/agentclientprotocol/client/Client;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun newSession (Lcom/agentclientprotocol/common/SessionCreationParameters;Lcom/agentclientprotocol/client/ClientOperationsFactory;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun resumeSession-wPMwmcM (Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lcom/agentclientprotocol/client/ClientOperationsFactory;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun startNesSession (Ljava/lang/String;Ljava/util/List;Lcom/agentclientprotocol/model/NesRepository;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun startNesSession$default (Lcom/agentclientprotocol/client/Client;Ljava/lang/String;Ljava/util/List;Lcom/agentclientprotocol/model/NesRepository;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
 public final class com/agentclientprotocol/client/ClientInfo {
@@ -153,6 +197,40 @@ public final synthetic class com/agentclientprotocol/client/ClientInfo$$serializ
 
 public final class com/agentclientprotocol/client/ClientInfo$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public abstract interface class com/agentclientprotocol/client/ClientNesSession {
+	public abstract fun accept (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun accept$default (Lcom/agentclientprotocol/client/ClientNesSession;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public abstract fun close (Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun close$default (Lcom/agentclientprotocol/client/ClientNesSession;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public abstract fun didChange (Ljava/lang/String;JLjava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun didChange$default (Lcom/agentclientprotocol/client/ClientNesSession;Ljava/lang/String;JLjava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public abstract fun didClose (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun didClose$default (Lcom/agentclientprotocol/client/ClientNesSession;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public abstract fun didFocus (Ljava/lang/String;JLcom/agentclientprotocol/model/NesPosition;Lcom/agentclientprotocol/model/NesRange;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun didFocus$default (Lcom/agentclientprotocol/client/ClientNesSession;Ljava/lang/String;JLcom/agentclientprotocol/model/NesPosition;Lcom/agentclientprotocol/model/NesRange;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public abstract fun didOpen (Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun didOpen$default (Lcom/agentclientprotocol/client/ClientNesSession;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public abstract fun didSave (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun didSave$default (Lcom/agentclientprotocol/client/ClientNesSession;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public abstract fun getNesSessionId-7EW-EgU ()Ljava/lang/String;
+	public abstract fun reject (Ljava/lang/String;Lcom/agentclientprotocol/model/NesRejectReason;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun reject$default (Lcom/agentclientprotocol/client/ClientNesSession;Ljava/lang/String;Lcom/agentclientprotocol/model/NesRejectReason;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public abstract fun suggest (Ljava/lang/String;JLcom/agentclientprotocol/model/NesPosition;Lcom/agentclientprotocol/model/NesRange;Lcom/agentclientprotocol/model/NesTriggerKind;Lcom/agentclientprotocol/model/NesSuggestContext;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun suggest$default (Lcom/agentclientprotocol/client/ClientNesSession;Ljava/lang/String;JLcom/agentclientprotocol/model/NesPosition;Lcom/agentclientprotocol/model/NesRange;Lcom/agentclientprotocol/model/NesTriggerKind;Lcom/agentclientprotocol/model/NesSuggestContext;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class com/agentclientprotocol/client/ClientNesSession$DefaultImpls {
+	public static synthetic fun accept$default (Lcom/agentclientprotocol/client/ClientNesSession;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun close$default (Lcom/agentclientprotocol/client/ClientNesSession;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun didChange$default (Lcom/agentclientprotocol/client/ClientNesSession;Ljava/lang/String;JLjava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun didClose$default (Lcom/agentclientprotocol/client/ClientNesSession;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun didFocus$default (Lcom/agentclientprotocol/client/ClientNesSession;Ljava/lang/String;JLcom/agentclientprotocol/model/NesPosition;Lcom/agentclientprotocol/model/NesRange;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun didOpen$default (Lcom/agentclientprotocol/client/ClientNesSession;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun didSave$default (Lcom/agentclientprotocol/client/ClientNesSession;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun reject$default (Lcom/agentclientprotocol/client/ClientNesSession;Ljava/lang/String;Lcom/agentclientprotocol/model/NesRejectReason;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun suggest$default (Lcom/agentclientprotocol/client/ClientNesSession;Ljava/lang/String;JLcom/agentclientprotocol/model/NesPosition;Lcom/agentclientprotocol/model/NesRange;Lcom/agentclientprotocol/model/NesTriggerKind;Lcom/agentclientprotocol/model/NesSuggestContext;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
 public abstract interface class com/agentclientprotocol/client/ClientOperationsFactory {

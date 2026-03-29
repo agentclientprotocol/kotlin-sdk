@@ -8,6 +8,7 @@ import com.agentclientprotocol.model.AuthenticateResponse
 import com.agentclientprotocol.model.LogoutResponse
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionInfo
+import com.agentclientprotocol.model.StartNesRequest
 import kotlinx.serialization.json.JsonElement
 
 public interface AgentSupport {
@@ -114,5 +115,22 @@ public interface AgentSupport {
     @UnstableApi
     public suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters): AgentSession {
         throw NotImplementedError("resumeSession is not implemented. The capability is declared in AgentCapabilities.sessionCapabilities.resume")
+    }
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Creates a new NES (Next Edit Suggestions) session.
+     *
+     * NES sessions are independent from chat sessions and have their own lifecycle.
+     *
+     * @param request the request containing workspace information for the NES session
+     * @return a [NesAgentSession] instance for the new NES session
+     */
+    @UnstableApi
+    public suspend fun createNesSession(request: StartNesRequest): NesAgentSession {
+        throw NotImplementedError("createNesSession is not implemented. The capability is declared in AgentCapabilities.nes")
     }
 }

@@ -69,6 +69,10 @@ public data class ClientCapabilities(
     @EncodeDefault val terminal: Boolean = false,
     @property:UnstableApi
     @EncodeDefault val auth: AuthCapabilities? = null,
+    @property:UnstableApi
+    val nes: ClientNesCapabilities? = null,
+    @property:UnstableApi
+    val positionEncodings: List<PositionEncodingKind>? = null,
     override val _meta: JsonElement? = null
 ) : AcpCapabilities, AcpWithMeta
 
@@ -214,5 +218,9 @@ public data class AgentCapabilities(
     @EncodeDefault val sessionCapabilities: SessionCapabilities = SessionCapabilities(),
     @property:UnstableApi
     @EncodeDefault val auth: AgentAuthCapabilities = AgentAuthCapabilities(),
+    @property:UnstableApi
+    val nes: NesCapabilities? = null,
+    @property:UnstableApi
+    val positionEncoding: PositionEncodingKind? = null,
     override val _meta: JsonElement? = null
 ) : AcpCapabilities, AcpWithMeta

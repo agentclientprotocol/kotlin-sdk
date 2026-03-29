@@ -5,6 +5,38 @@ public final class com/agentclientprotocol/acpmodel/LibVersionKt {
 public abstract interface annotation class com/agentclientprotocol/annotations/UnstableApi : java/lang/annotation/Annotation {
 }
 
+public final class com/agentclientprotocol/model/AcceptNesNotification : com/agentclientprotocol/model/AcpNotification, com/agentclientprotocol/model/AcpWithSessionId {
+	public static final field Companion Lcom/agentclientprotocol/model/AcceptNesNotification$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-7EW-EgU ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy-nk3TnMc (Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/AcceptNesNotification;
+	public static synthetic fun copy-nk3TnMc$default (Lcom/agentclientprotocol/model/AcceptNesNotification;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/AcceptNesNotification;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()Ljava/lang/String;
+	public fun getSessionId-7EW-EgU ()Ljava/lang/String;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/AcceptNesNotification$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/AcceptNesNotification$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/AcceptNesNotification;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/AcceptNesNotification;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/AcceptNesNotification$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public abstract interface class com/agentclientprotocol/model/AcpCapabilities {
 }
 
@@ -47,12 +79,52 @@ public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$Authenti
 	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$Authenticate;
 }
 
+public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$DocumentDidChange : com/agentclientprotocol/model/AcpMethod$AcpSessionNotificationMethod {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$DocumentDidChange;
+}
+
+public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$DocumentDidClose : com/agentclientprotocol/model/AcpMethod$AcpSessionNotificationMethod {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$DocumentDidClose;
+}
+
+public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$DocumentDidFocus : com/agentclientprotocol/model/AcpMethod$AcpSessionNotificationMethod {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$DocumentDidFocus;
+}
+
+public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$DocumentDidOpen : com/agentclientprotocol/model/AcpMethod$AcpSessionNotificationMethod {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$DocumentDidOpen;
+}
+
+public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$DocumentDidSave : com/agentclientprotocol/model/AcpMethod$AcpSessionNotificationMethod {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$DocumentDidSave;
+}
+
 public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$Initialize : com/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod {
 	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$Initialize;
 }
 
 public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$Logout : com/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod {
 	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$Logout;
+}
+
+public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$NesAccept : com/agentclientprotocol/model/AcpMethod$AcpSessionNotificationMethod {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$NesAccept;
+}
+
+public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$NesClose : com/agentclientprotocol/model/AcpMethod$AcpSessionRequestResponseMethod {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$NesClose;
+}
+
+public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$NesReject : com/agentclientprotocol/model/AcpMethod$AcpSessionNotificationMethod {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$NesReject;
+}
+
+public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$NesStart : com/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$NesStart;
+}
+
+public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$NesSuggest : com/agentclientprotocol/model/AcpMethod$AcpSessionRequestResponseMethod {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$NesSuggest;
 }
 
 public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$SessionCancel : com/agentclientprotocol/model/AcpMethod$AcpSessionNotificationMethod {
@@ -211,20 +283,24 @@ public final class com/agentclientprotocol/model/AgentAuthCapabilities$Companion
 public final class com/agentclientprotocol/model/AgentCapabilities : com/agentclientprotocol/model/AcpCapabilities, com/agentclientprotocol/model/AcpWithMeta {
 	public static final field Companion Lcom/agentclientprotocol/model/AgentCapabilities$Companion;
 	public fun <init> ()V
-	public fun <init> (ZLcom/agentclientprotocol/model/PromptCapabilities;Lcom/agentclientprotocol/model/McpCapabilities;Lcom/agentclientprotocol/model/SessionCapabilities;Lcom/agentclientprotocol/model/AgentAuthCapabilities;Lkotlinx/serialization/json/JsonElement;)V
-	public synthetic fun <init> (ZLcom/agentclientprotocol/model/PromptCapabilities;Lcom/agentclientprotocol/model/McpCapabilities;Lcom/agentclientprotocol/model/SessionCapabilities;Lcom/agentclientprotocol/model/AgentAuthCapabilities;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (ZLcom/agentclientprotocol/model/PromptCapabilities;Lcom/agentclientprotocol/model/McpCapabilities;Lcom/agentclientprotocol/model/SessionCapabilities;Lcom/agentclientprotocol/model/AgentAuthCapabilities;Lcom/agentclientprotocol/model/NesCapabilities;Lcom/agentclientprotocol/model/PositionEncodingKind;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (ZLcom/agentclientprotocol/model/PromptCapabilities;Lcom/agentclientprotocol/model/McpCapabilities;Lcom/agentclientprotocol/model/SessionCapabilities;Lcom/agentclientprotocol/model/AgentAuthCapabilities;Lcom/agentclientprotocol/model/NesCapabilities;Lcom/agentclientprotocol/model/PositionEncodingKind;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Z
 	public final fun component2 ()Lcom/agentclientprotocol/model/PromptCapabilities;
 	public final fun component3 ()Lcom/agentclientprotocol/model/McpCapabilities;
 	public final fun component4 ()Lcom/agentclientprotocol/model/SessionCapabilities;
 	public final fun component5 ()Lcom/agentclientprotocol/model/AgentAuthCapabilities;
-	public final fun component6 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun copy (ZLcom/agentclientprotocol/model/PromptCapabilities;Lcom/agentclientprotocol/model/McpCapabilities;Lcom/agentclientprotocol/model/SessionCapabilities;Lcom/agentclientprotocol/model/AgentAuthCapabilities;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/AgentCapabilities;
-	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/AgentCapabilities;ZLcom/agentclientprotocol/model/PromptCapabilities;Lcom/agentclientprotocol/model/McpCapabilities;Lcom/agentclientprotocol/model/SessionCapabilities;Lcom/agentclientprotocol/model/AgentAuthCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/AgentCapabilities;
+	public final fun component6 ()Lcom/agentclientprotocol/model/NesCapabilities;
+	public final fun component7 ()Lcom/agentclientprotocol/model/PositionEncodingKind;
+	public final fun component8 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (ZLcom/agentclientprotocol/model/PromptCapabilities;Lcom/agentclientprotocol/model/McpCapabilities;Lcom/agentclientprotocol/model/SessionCapabilities;Lcom/agentclientprotocol/model/AgentAuthCapabilities;Lcom/agentclientprotocol/model/NesCapabilities;Lcom/agentclientprotocol/model/PositionEncodingKind;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/AgentCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/AgentCapabilities;ZLcom/agentclientprotocol/model/PromptCapabilities;Lcom/agentclientprotocol/model/McpCapabilities;Lcom/agentclientprotocol/model/SessionCapabilities;Lcom/agentclientprotocol/model/AgentAuthCapabilities;Lcom/agentclientprotocol/model/NesCapabilities;Lcom/agentclientprotocol/model/PositionEncodingKind;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/AgentCapabilities;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getAuth ()Lcom/agentclientprotocol/model/AgentAuthCapabilities;
 	public final fun getLoadSession ()Z
 	public final fun getMcpCapabilities ()Lcom/agentclientprotocol/model/McpCapabilities;
+	public final fun getNes ()Lcom/agentclientprotocol/model/NesCapabilities;
+	public final fun getPositionEncoding ()Lcom/agentclientprotocol/model/PositionEncodingKind;
 	public final fun getPromptCapabilities ()Lcom/agentclientprotocol/model/PromptCapabilities;
 	public final fun getSessionCapabilities ()Lcom/agentclientprotocol/model/SessionCapabilities;
 	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
@@ -733,17 +809,21 @@ public final class com/agentclientprotocol/model/CancelRequestNotification$Compa
 public final class com/agentclientprotocol/model/ClientCapabilities : com/agentclientprotocol/model/AcpCapabilities, com/agentclientprotocol/model/AcpWithMeta {
 	public static final field Companion Lcom/agentclientprotocol/model/ClientCapabilities$Companion;
 	public fun <init> ()V
-	public fun <init> (Lcom/agentclientprotocol/model/FileSystemCapability;ZLcom/agentclientprotocol/model/AuthCapabilities;Lkotlinx/serialization/json/JsonElement;)V
-	public synthetic fun <init> (Lcom/agentclientprotocol/model/FileSystemCapability;ZLcom/agentclientprotocol/model/AuthCapabilities;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/agentclientprotocol/model/FileSystemCapability;ZLcom/agentclientprotocol/model/AuthCapabilities;Lcom/agentclientprotocol/model/ClientNesCapabilities;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/FileSystemCapability;ZLcom/agentclientprotocol/model/AuthCapabilities;Lcom/agentclientprotocol/model/ClientNesCapabilities;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lcom/agentclientprotocol/model/FileSystemCapability;
 	public final fun component2 ()Z
 	public final fun component3 ()Lcom/agentclientprotocol/model/AuthCapabilities;
-	public final fun component4 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun copy (Lcom/agentclientprotocol/model/FileSystemCapability;ZLcom/agentclientprotocol/model/AuthCapabilities;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/ClientCapabilities;
-	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/ClientCapabilities;Lcom/agentclientprotocol/model/FileSystemCapability;ZLcom/agentclientprotocol/model/AuthCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/ClientCapabilities;
+	public final fun component4 ()Lcom/agentclientprotocol/model/ClientNesCapabilities;
+	public final fun component5 ()Ljava/util/List;
+	public final fun component6 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lcom/agentclientprotocol/model/FileSystemCapability;ZLcom/agentclientprotocol/model/AuthCapabilities;Lcom/agentclientprotocol/model/ClientNesCapabilities;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/ClientCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/ClientCapabilities;Lcom/agentclientprotocol/model/FileSystemCapability;ZLcom/agentclientprotocol/model/AuthCapabilities;Lcom/agentclientprotocol/model/ClientNesCapabilities;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/ClientCapabilities;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getAuth ()Lcom/agentclientprotocol/model/AuthCapabilities;
 	public final fun getFs ()Lcom/agentclientprotocol/model/FileSystemCapability;
+	public final fun getNes ()Lcom/agentclientprotocol/model/ClientNesCapabilities;
+	public final fun getPositionEncodings ()Ljava/util/List;
 	public final fun getTerminal ()Z
 	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
 	public fun hashCode ()I
@@ -762,6 +842,100 @@ public final synthetic class com/agentclientprotocol/model/ClientCapabilities$$s
 }
 
 public final class com/agentclientprotocol/model/ClientCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/ClientNesCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/ClientNesCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lcom/agentclientprotocol/model/NesJumpCapabilities;Lcom/agentclientprotocol/model/NesRenameCapabilities;Lcom/agentclientprotocol/model/NesSearchAndReplaceCapabilities;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/NesJumpCapabilities;Lcom/agentclientprotocol/model/NesRenameCapabilities;Lcom/agentclientprotocol/model/NesSearchAndReplaceCapabilities;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/NesJumpCapabilities;
+	public final fun component2 ()Lcom/agentclientprotocol/model/NesRenameCapabilities;
+	public final fun component3 ()Lcom/agentclientprotocol/model/NesSearchAndReplaceCapabilities;
+	public final fun component4 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lcom/agentclientprotocol/model/NesJumpCapabilities;Lcom/agentclientprotocol/model/NesRenameCapabilities;Lcom/agentclientprotocol/model/NesSearchAndReplaceCapabilities;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/ClientNesCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/ClientNesCapabilities;Lcom/agentclientprotocol/model/NesJumpCapabilities;Lcom/agentclientprotocol/model/NesRenameCapabilities;Lcom/agentclientprotocol/model/NesSearchAndReplaceCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/ClientNesCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getJump ()Lcom/agentclientprotocol/model/NesJumpCapabilities;
+	public final fun getRename ()Lcom/agentclientprotocol/model/NesRenameCapabilities;
+	public final fun getSearchAndReplace ()Lcom/agentclientprotocol/model/NesSearchAndReplaceCapabilities;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/ClientNesCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/ClientNesCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/ClientNesCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/ClientNesCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/ClientNesCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/CloseNesRequest : com/agentclientprotocol/model/AcpRequest, com/agentclientprotocol/model/AcpWithSessionId {
+	public static final field Companion Lcom/agentclientprotocol/model/CloseNesRequest$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-7EW-EgU ()Ljava/lang/String;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy-HxD9utI (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/CloseNesRequest;
+	public static synthetic fun copy-HxD9utI$default (Lcom/agentclientprotocol/model/CloseNesRequest;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/CloseNesRequest;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getSessionId-7EW-EgU ()Ljava/lang/String;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/CloseNesRequest$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/CloseNesRequest$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/CloseNesRequest;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/CloseNesRequest;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/CloseNesRequest$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/CloseNesResponse : com/agentclientprotocol/model/AcpResponse {
+	public static final field Companion Lcom/agentclientprotocol/model/CloseNesResponse$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/CloseNesResponse;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/CloseNesResponse;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/CloseNesResponse;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/CloseNesResponse$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/CloseNesResponse$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/CloseNesResponse;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/CloseNesResponse;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/CloseNesResponse$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
@@ -1110,6 +1284,182 @@ public final synthetic class com/agentclientprotocol/model/CreateTerminalRespons
 }
 
 public final class com/agentclientprotocol/model/CreateTerminalResponse$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/DidChangeDocumentNotification : com/agentclientprotocol/model/AcpNotification, com/agentclientprotocol/model/AcpWithSessionId {
+	public static final field Companion Lcom/agentclientprotocol/model/DidChangeDocumentNotification$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/util/List;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-7EW-EgU ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()Ljava/util/List;
+	public final fun component5 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy-8WrnS2s (Ljava/lang/String;Ljava/lang/String;JLjava/util/List;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/DidChangeDocumentNotification;
+	public static synthetic fun copy-8WrnS2s$default (Lcom/agentclientprotocol/model/DidChangeDocumentNotification;Ljava/lang/String;Ljava/lang/String;JLjava/util/List;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/DidChangeDocumentNotification;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContentChanges ()Ljava/util/List;
+	public fun getSessionId-7EW-EgU ()Ljava/lang/String;
+	public final fun getUri ()Ljava/lang/String;
+	public final fun getVersion ()J
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/DidChangeDocumentNotification$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/DidChangeDocumentNotification$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/DidChangeDocumentNotification;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/DidChangeDocumentNotification;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/DidChangeDocumentNotification$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/DidCloseDocumentNotification : com/agentclientprotocol/model/AcpNotification, com/agentclientprotocol/model/AcpWithSessionId {
+	public static final field Companion Lcom/agentclientprotocol/model/DidCloseDocumentNotification$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-7EW-EgU ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy-nk3TnMc (Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/DidCloseDocumentNotification;
+	public static synthetic fun copy-nk3TnMc$default (Lcom/agentclientprotocol/model/DidCloseDocumentNotification;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/DidCloseDocumentNotification;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getSessionId-7EW-EgU ()Ljava/lang/String;
+	public final fun getUri ()Ljava/lang/String;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/DidCloseDocumentNotification$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/DidCloseDocumentNotification$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/DidCloseDocumentNotification;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/DidCloseDocumentNotification;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/DidCloseDocumentNotification$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/DidFocusDocumentNotification : com/agentclientprotocol/model/AcpNotification, com/agentclientprotocol/model/AcpWithSessionId {
+	public static final field Companion Lcom/agentclientprotocol/model/DidFocusDocumentNotification$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLcom/agentclientprotocol/model/NesPosition;Lcom/agentclientprotocol/model/NesRange;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLcom/agentclientprotocol/model/NesPosition;Lcom/agentclientprotocol/model/NesRange;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-7EW-EgU ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()Lcom/agentclientprotocol/model/NesPosition;
+	public final fun component5 ()Lcom/agentclientprotocol/model/NesRange;
+	public final fun component6 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy-PBEKwEQ (Ljava/lang/String;Ljava/lang/String;JLcom/agentclientprotocol/model/NesPosition;Lcom/agentclientprotocol/model/NesRange;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/DidFocusDocumentNotification;
+	public static synthetic fun copy-PBEKwEQ$default (Lcom/agentclientprotocol/model/DidFocusDocumentNotification;Ljava/lang/String;Ljava/lang/String;JLcom/agentclientprotocol/model/NesPosition;Lcom/agentclientprotocol/model/NesRange;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/DidFocusDocumentNotification;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPosition ()Lcom/agentclientprotocol/model/NesPosition;
+	public fun getSessionId-7EW-EgU ()Ljava/lang/String;
+	public final fun getUri ()Ljava/lang/String;
+	public final fun getVersion ()J
+	public final fun getVisibleRange ()Lcom/agentclientprotocol/model/NesRange;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/DidFocusDocumentNotification$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/DidFocusDocumentNotification$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/DidFocusDocumentNotification;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/DidFocusDocumentNotification;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/DidFocusDocumentNotification$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/DidOpenDocumentNotification : com/agentclientprotocol/model/AcpNotification, com/agentclientprotocol/model/AcpWithSessionId {
+	public static final field Companion Lcom/agentclientprotocol/model/DidOpenDocumentNotification$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-7EW-EgU ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()J
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy-PBEKwEQ (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/DidOpenDocumentNotification;
+	public static synthetic fun copy-PBEKwEQ$default (Lcom/agentclientprotocol/model/DidOpenDocumentNotification;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/DidOpenDocumentNotification;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLanguageId ()Ljava/lang/String;
+	public fun getSessionId-7EW-EgU ()Ljava/lang/String;
+	public final fun getText ()Ljava/lang/String;
+	public final fun getUri ()Ljava/lang/String;
+	public final fun getVersion ()J
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/DidOpenDocumentNotification$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/DidOpenDocumentNotification$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/DidOpenDocumentNotification;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/DidOpenDocumentNotification;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/DidOpenDocumentNotification$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/DidSaveDocumentNotification : com/agentclientprotocol/model/AcpNotification, com/agentclientprotocol/model/AcpWithSessionId {
+	public static final field Companion Lcom/agentclientprotocol/model/DidSaveDocumentNotification$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-7EW-EgU ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy-nk3TnMc (Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/DidSaveDocumentNotification;
+	public static synthetic fun copy-nk3TnMc$default (Lcom/agentclientprotocol/model/DidSaveDocumentNotification;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/DidSaveDocumentNotification;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getSessionId-7EW-EgU ()Ljava/lang/String;
+	public final fun getUri ()Ljava/lang/String;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/DidSaveDocumentNotification$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/DidSaveDocumentNotification$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/DidSaveDocumentNotification;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/DidSaveDocumentNotification;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/DidSaveDocumentNotification$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
@@ -2012,6 +2362,1131 @@ public final class com/agentclientprotocol/model/ModelInfo$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class com/agentclientprotocol/model/NesCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/NesCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lcom/agentclientprotocol/model/NesEventCapabilities;Lcom/agentclientprotocol/model/NesContextCapabilities;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/NesEventCapabilities;Lcom/agentclientprotocol/model/NesContextCapabilities;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/NesEventCapabilities;
+	public final fun component2 ()Lcom/agentclientprotocol/model/NesContextCapabilities;
+	public final fun component3 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lcom/agentclientprotocol/model/NesEventCapabilities;Lcom/agentclientprotocol/model/NesContextCapabilities;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/NesCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesCapabilities;Lcom/agentclientprotocol/model/NesEventCapabilities;Lcom/agentclientprotocol/model/NesContextCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContext ()Lcom/agentclientprotocol/model/NesContextCapabilities;
+	public final fun getEvents ()Lcom/agentclientprotocol/model/NesEventCapabilities;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesContextCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/NesContextCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lcom/agentclientprotocol/model/NesRecentFilesCapabilities;Lcom/agentclientprotocol/model/NesRelatedSnippetsCapabilities;Lcom/agentclientprotocol/model/NesEditHistoryCapabilities;Lcom/agentclientprotocol/model/NesUserActionsCapabilities;Lcom/agentclientprotocol/model/NesOpenFilesCapabilities;Lcom/agentclientprotocol/model/NesDiagnosticsCapabilities;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/NesRecentFilesCapabilities;Lcom/agentclientprotocol/model/NesRelatedSnippetsCapabilities;Lcom/agentclientprotocol/model/NesEditHistoryCapabilities;Lcom/agentclientprotocol/model/NesUserActionsCapabilities;Lcom/agentclientprotocol/model/NesOpenFilesCapabilities;Lcom/agentclientprotocol/model/NesDiagnosticsCapabilities;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/NesRecentFilesCapabilities;
+	public final fun component2 ()Lcom/agentclientprotocol/model/NesRelatedSnippetsCapabilities;
+	public final fun component3 ()Lcom/agentclientprotocol/model/NesEditHistoryCapabilities;
+	public final fun component4 ()Lcom/agentclientprotocol/model/NesUserActionsCapabilities;
+	public final fun component5 ()Lcom/agentclientprotocol/model/NesOpenFilesCapabilities;
+	public final fun component6 ()Lcom/agentclientprotocol/model/NesDiagnosticsCapabilities;
+	public final fun component7 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lcom/agentclientprotocol/model/NesRecentFilesCapabilities;Lcom/agentclientprotocol/model/NesRelatedSnippetsCapabilities;Lcom/agentclientprotocol/model/NesEditHistoryCapabilities;Lcom/agentclientprotocol/model/NesUserActionsCapabilities;Lcom/agentclientprotocol/model/NesOpenFilesCapabilities;Lcom/agentclientprotocol/model/NesDiagnosticsCapabilities;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/NesContextCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesContextCapabilities;Lcom/agentclientprotocol/model/NesRecentFilesCapabilities;Lcom/agentclientprotocol/model/NesRelatedSnippetsCapabilities;Lcom/agentclientprotocol/model/NesEditHistoryCapabilities;Lcom/agentclientprotocol/model/NesUserActionsCapabilities;Lcom/agentclientprotocol/model/NesOpenFilesCapabilities;Lcom/agentclientprotocol/model/NesDiagnosticsCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesContextCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDiagnostics ()Lcom/agentclientprotocol/model/NesDiagnosticsCapabilities;
+	public final fun getEditHistory ()Lcom/agentclientprotocol/model/NesEditHistoryCapabilities;
+	public final fun getOpenFiles ()Lcom/agentclientprotocol/model/NesOpenFilesCapabilities;
+	public final fun getRecentFiles ()Lcom/agentclientprotocol/model/NesRecentFilesCapabilities;
+	public final fun getRelatedSnippets ()Lcom/agentclientprotocol/model/NesRelatedSnippetsCapabilities;
+	public final fun getUserActions ()Lcom/agentclientprotocol/model/NesUserActionsCapabilities;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesContextCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesContextCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesContextCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesContextCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesContextCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesDiagnostic {
+	public static final field Companion Lcom/agentclientprotocol/model/NesDiagnostic$Companion;
+	public fun <init> (Ljava/lang/String;Lcom/agentclientprotocol/model/NesRange;Lcom/agentclientprotocol/model/NesDiagnosticSeverity;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lcom/agentclientprotocol/model/NesRange;
+	public final fun component3 ()Lcom/agentclientprotocol/model/NesDiagnosticSeverity;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Lcom/agentclientprotocol/model/NesRange;Lcom/agentclientprotocol/model/NesDiagnosticSeverity;Ljava/lang/String;)Lcom/agentclientprotocol/model/NesDiagnostic;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesDiagnostic;Ljava/lang/String;Lcom/agentclientprotocol/model/NesRange;Lcom/agentclientprotocol/model/NesDiagnosticSeverity;Ljava/lang/String;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesDiagnostic;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMessage ()Ljava/lang/String;
+	public final fun getRange ()Lcom/agentclientprotocol/model/NesRange;
+	public final fun getSeverity ()Lcom/agentclientprotocol/model/NesDiagnosticSeverity;
+	public final fun getUri ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesDiagnostic$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesDiagnostic$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesDiagnostic;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesDiagnostic;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesDiagnostic$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesDiagnosticSeverity : java/lang/Enum {
+	public static final field Companion Lcom/agentclientprotocol/model/NesDiagnosticSeverity$Companion;
+	public static final field ERROR Lcom/agentclientprotocol/model/NesDiagnosticSeverity;
+	public static final field HINT Lcom/agentclientprotocol/model/NesDiagnosticSeverity;
+	public static final field INFORMATION Lcom/agentclientprotocol/model/NesDiagnosticSeverity;
+	public static final field WARNING Lcom/agentclientprotocol/model/NesDiagnosticSeverity;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/agentclientprotocol/model/NesDiagnosticSeverity;
+	public static fun values ()[Lcom/agentclientprotocol/model/NesDiagnosticSeverity;
+}
+
+public final class com/agentclientprotocol/model/NesDiagnosticSeverity$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesDiagnosticsCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/NesDiagnosticsCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/NesDiagnosticsCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesDiagnosticsCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesDiagnosticsCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesDiagnosticsCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesDiagnosticsCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesDiagnosticsCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesDiagnosticsCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesDiagnosticsCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesDocumentDidChangeCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/NesDocumentDidChangeCapabilities$Companion;
+	public fun <init> (Lcom/agentclientprotocol/model/TextDocumentSyncKind;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/TextDocumentSyncKind;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/TextDocumentSyncKind;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lcom/agentclientprotocol/model/TextDocumentSyncKind;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/NesDocumentDidChangeCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesDocumentDidChangeCapabilities;Lcom/agentclientprotocol/model/TextDocumentSyncKind;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesDocumentDidChangeCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSyncKind ()Lcom/agentclientprotocol/model/TextDocumentSyncKind;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesDocumentDidChangeCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesDocumentDidChangeCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesDocumentDidChangeCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesDocumentDidChangeCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesDocumentDidChangeCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesDocumentDidCloseCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/NesDocumentDidCloseCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/NesDocumentDidCloseCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesDocumentDidCloseCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesDocumentDidCloseCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesDocumentDidCloseCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesDocumentDidCloseCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesDocumentDidCloseCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesDocumentDidCloseCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesDocumentDidCloseCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesDocumentDidFocusCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/NesDocumentDidFocusCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/NesDocumentDidFocusCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesDocumentDidFocusCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesDocumentDidFocusCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesDocumentDidFocusCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesDocumentDidFocusCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesDocumentDidFocusCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesDocumentDidFocusCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesDocumentDidFocusCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesDocumentDidOpenCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/NesDocumentDidOpenCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/NesDocumentDidOpenCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesDocumentDidOpenCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesDocumentDidOpenCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesDocumentDidOpenCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesDocumentDidOpenCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesDocumentDidOpenCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesDocumentDidOpenCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesDocumentDidOpenCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesDocumentDidSaveCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/NesDocumentDidSaveCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/NesDocumentDidSaveCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesDocumentDidSaveCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesDocumentDidSaveCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesDocumentDidSaveCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesDocumentDidSaveCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesDocumentDidSaveCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesDocumentDidSaveCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesDocumentDidSaveCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesDocumentEventCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/NesDocumentEventCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lcom/agentclientprotocol/model/NesDocumentDidOpenCapabilities;Lcom/agentclientprotocol/model/NesDocumentDidChangeCapabilities;Lcom/agentclientprotocol/model/NesDocumentDidCloseCapabilities;Lcom/agentclientprotocol/model/NesDocumentDidSaveCapabilities;Lcom/agentclientprotocol/model/NesDocumentDidFocusCapabilities;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/NesDocumentDidOpenCapabilities;Lcom/agentclientprotocol/model/NesDocumentDidChangeCapabilities;Lcom/agentclientprotocol/model/NesDocumentDidCloseCapabilities;Lcom/agentclientprotocol/model/NesDocumentDidSaveCapabilities;Lcom/agentclientprotocol/model/NesDocumentDidFocusCapabilities;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/NesDocumentDidOpenCapabilities;
+	public final fun component2 ()Lcom/agentclientprotocol/model/NesDocumentDidChangeCapabilities;
+	public final fun component3 ()Lcom/agentclientprotocol/model/NesDocumentDidCloseCapabilities;
+	public final fun component4 ()Lcom/agentclientprotocol/model/NesDocumentDidSaveCapabilities;
+	public final fun component5 ()Lcom/agentclientprotocol/model/NesDocumentDidFocusCapabilities;
+	public final fun component6 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lcom/agentclientprotocol/model/NesDocumentDidOpenCapabilities;Lcom/agentclientprotocol/model/NesDocumentDidChangeCapabilities;Lcom/agentclientprotocol/model/NesDocumentDidCloseCapabilities;Lcom/agentclientprotocol/model/NesDocumentDidSaveCapabilities;Lcom/agentclientprotocol/model/NesDocumentDidFocusCapabilities;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/NesDocumentEventCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesDocumentEventCapabilities;Lcom/agentclientprotocol/model/NesDocumentDidOpenCapabilities;Lcom/agentclientprotocol/model/NesDocumentDidChangeCapabilities;Lcom/agentclientprotocol/model/NesDocumentDidCloseCapabilities;Lcom/agentclientprotocol/model/NesDocumentDidSaveCapabilities;Lcom/agentclientprotocol/model/NesDocumentDidFocusCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesDocumentEventCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDidChange ()Lcom/agentclientprotocol/model/NesDocumentDidChangeCapabilities;
+	public final fun getDidClose ()Lcom/agentclientprotocol/model/NesDocumentDidCloseCapabilities;
+	public final fun getDidFocus ()Lcom/agentclientprotocol/model/NesDocumentDidFocusCapabilities;
+	public final fun getDidOpen ()Lcom/agentclientprotocol/model/NesDocumentDidOpenCapabilities;
+	public final fun getDidSave ()Lcom/agentclientprotocol/model/NesDocumentDidSaveCapabilities;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesDocumentEventCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesDocumentEventCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesDocumentEventCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesDocumentEventCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesDocumentEventCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesEditHistoryCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/NesEditHistoryCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/Integer;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Ljava/lang/Integer;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/Integer;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Ljava/lang/Integer;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/NesEditHistoryCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesEditHistoryCapabilities;Ljava/lang/Integer;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesEditHistoryCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMaxCount ()Ljava/lang/Integer;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesEditHistoryCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesEditHistoryCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesEditHistoryCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesEditHistoryCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesEditHistoryCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesEditHistoryEntry {
+	public static final field Companion Lcom/agentclientprotocol/model/NesEditHistoryEntry$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lcom/agentclientprotocol/model/NesEditHistoryEntry;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesEditHistoryEntry;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesEditHistoryEntry;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDiff ()Ljava/lang/String;
+	public final fun getUri ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesEditHistoryEntry$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesEditHistoryEntry$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesEditHistoryEntry;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesEditHistoryEntry;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesEditHistoryEntry$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesEventCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/NesEventCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lcom/agentclientprotocol/model/NesDocumentEventCapabilities;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/NesDocumentEventCapabilities;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/NesDocumentEventCapabilities;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lcom/agentclientprotocol/model/NesDocumentEventCapabilities;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/NesEventCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesEventCapabilities;Lcom/agentclientprotocol/model/NesDocumentEventCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesEventCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDocument ()Lcom/agentclientprotocol/model/NesDocumentEventCapabilities;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesEventCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesEventCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesEventCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesEventCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesEventCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesExcerpt {
+	public static final field Companion Lcom/agentclientprotocol/model/NesExcerpt$Companion;
+	public synthetic fun <init> (IILjava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-pVg5ArA ()I
+	public final fun component2-pVg5ArA ()I
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy-t3GQkyU (IILjava/lang/String;)Lcom/agentclientprotocol/model/NesExcerpt;
+	public static synthetic fun copy-t3GQkyU$default (Lcom/agentclientprotocol/model/NesExcerpt;IILjava/lang/String;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesExcerpt;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEndLine-pVg5ArA ()I
+	public final fun getStartLine-pVg5ArA ()I
+	public final fun getText ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesExcerpt$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesExcerpt$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesExcerpt;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesExcerpt;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesExcerpt$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesJumpCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/NesJumpCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/NesJumpCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesJumpCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesJumpCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesJumpCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesJumpCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesJumpCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesJumpCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesJumpCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesOpenFile {
+	public static final field Companion Lcom/agentclientprotocol/model/NesOpenFile$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/NesRange;Lkotlin/ULong;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/NesRange;Lkotlin/ULong;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lcom/agentclientprotocol/model/NesRange;
+	public final fun component4-6VbMDqA ()Lkotlin/ULong;
+	public final fun copy-nRXsjtY (Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/NesRange;Lkotlin/ULong;)Lcom/agentclientprotocol/model/NesOpenFile;
+	public static synthetic fun copy-nRXsjtY$default (Lcom/agentclientprotocol/model/NesOpenFile;Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/NesRange;Lkotlin/ULong;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesOpenFile;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLanguageId ()Ljava/lang/String;
+	public final fun getLastFocusedMs-6VbMDqA ()Lkotlin/ULong;
+	public final fun getUri ()Ljava/lang/String;
+	public final fun getVisibleRange ()Lcom/agentclientprotocol/model/NesRange;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesOpenFile$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesOpenFile$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesOpenFile;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesOpenFile;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesOpenFile$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesOpenFilesCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/NesOpenFilesCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/NesOpenFilesCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesOpenFilesCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesOpenFilesCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesOpenFilesCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesOpenFilesCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesOpenFilesCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesOpenFilesCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesOpenFilesCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesPosition {
+	public static final field Companion Lcom/agentclientprotocol/model/NesPosition$Companion;
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-pVg5ArA ()I
+	public final fun component2-pVg5ArA ()I
+	public final fun copy-feOb9K0 (II)Lcom/agentclientprotocol/model/NesPosition;
+	public static synthetic fun copy-feOb9K0$default (Lcom/agentclientprotocol/model/NesPosition;IIILjava/lang/Object;)Lcom/agentclientprotocol/model/NesPosition;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCharacter-pVg5ArA ()I
+	public final fun getLine-pVg5ArA ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesPosition$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesPosition$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesPosition;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesPosition;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesPosition$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesRange {
+	public static final field Companion Lcom/agentclientprotocol/model/NesRange$Companion;
+	public fun <init> (Lcom/agentclientprotocol/model/NesPosition;Lcom/agentclientprotocol/model/NesPosition;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/NesPosition;
+	public final fun component2 ()Lcom/agentclientprotocol/model/NesPosition;
+	public final fun copy (Lcom/agentclientprotocol/model/NesPosition;Lcom/agentclientprotocol/model/NesPosition;)Lcom/agentclientprotocol/model/NesRange;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesRange;Lcom/agentclientprotocol/model/NesPosition;Lcom/agentclientprotocol/model/NesPosition;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesRange;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEnd ()Lcom/agentclientprotocol/model/NesPosition;
+	public final fun getStart ()Lcom/agentclientprotocol/model/NesPosition;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesRange$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesRange$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesRange;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesRange;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesRange$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesRecentFile {
+	public static final field Companion Lcom/agentclientprotocol/model/NesRecentFile$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/agentclientprotocol/model/NesRecentFile;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesRecentFile;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesRecentFile;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLanguageId ()Ljava/lang/String;
+	public final fun getText ()Ljava/lang/String;
+	public final fun getUri ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesRecentFile$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesRecentFile$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesRecentFile;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesRecentFile;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesRecentFile$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesRecentFilesCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/NesRecentFilesCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/Integer;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Ljava/lang/Integer;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/Integer;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Ljava/lang/Integer;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/NesRecentFilesCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesRecentFilesCapabilities;Ljava/lang/Integer;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesRecentFilesCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMaxCount ()Ljava/lang/Integer;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesRecentFilesCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesRecentFilesCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesRecentFilesCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesRecentFilesCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesRecentFilesCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesRejectReason : java/lang/Enum {
+	public static final field CANCELLED Lcom/agentclientprotocol/model/NesRejectReason;
+	public static final field Companion Lcom/agentclientprotocol/model/NesRejectReason$Companion;
+	public static final field IGNORED Lcom/agentclientprotocol/model/NesRejectReason;
+	public static final field REJECTED Lcom/agentclientprotocol/model/NesRejectReason;
+	public static final field REPLACED Lcom/agentclientprotocol/model/NesRejectReason;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/agentclientprotocol/model/NesRejectReason;
+	public static fun values ()[Lcom/agentclientprotocol/model/NesRejectReason;
+}
+
+public final class com/agentclientprotocol/model/NesRejectReason$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesRelatedSnippet {
+	public static final field Companion Lcom/agentclientprotocol/model/NesRelatedSnippet$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/util/List;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;)Lcom/agentclientprotocol/model/NesRelatedSnippet;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesRelatedSnippet;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesRelatedSnippet;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getExcerpts ()Ljava/util/List;
+	public final fun getUri ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesRelatedSnippet$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesRelatedSnippet$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesRelatedSnippet;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesRelatedSnippet;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesRelatedSnippet$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesRelatedSnippetsCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/NesRelatedSnippetsCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/NesRelatedSnippetsCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesRelatedSnippetsCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesRelatedSnippetsCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesRelatedSnippetsCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesRelatedSnippetsCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesRelatedSnippetsCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesRelatedSnippetsCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesRelatedSnippetsCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesRenameCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/NesRenameCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/NesRenameCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesRenameCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesRenameCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesRenameCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesRenameCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesRenameCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesRenameCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesRenameCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesRepository {
+	public static final field Companion Lcom/agentclientprotocol/model/NesRepository$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/agentclientprotocol/model/NesRepository;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesRepository;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesRepository;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getName ()Ljava/lang/String;
+	public final fun getOwner ()Ljava/lang/String;
+	public final fun getRemoteUrl ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesRepository$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesRepository$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesRepository;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesRepository;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesRepository$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesSearchAndReplaceCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/NesSearchAndReplaceCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/NesSearchAndReplaceCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesSearchAndReplaceCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesSearchAndReplaceCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesSearchAndReplaceCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesSearchAndReplaceCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesSearchAndReplaceCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesSearchAndReplaceCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesSearchAndReplaceCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesSuggestContext : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/NesSuggestContext$Companion;
+	public fun <init> ()V
+	public fun <init> (Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Ljava/util/List;
+	public final fun component4 ()Ljava/util/List;
+	public final fun component5 ()Ljava/util/List;
+	public final fun component6 ()Ljava/util/List;
+	public final fun component7 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/NesSuggestContext;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesSuggestContext;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesSuggestContext;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDiagnostics ()Ljava/util/List;
+	public final fun getEditHistory ()Ljava/util/List;
+	public final fun getOpenFiles ()Ljava/util/List;
+	public final fun getRecentFiles ()Ljava/util/List;
+	public final fun getRelatedSnippets ()Ljava/util/List;
+	public final fun getUserActions ()Ljava/util/List;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesSuggestContext$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesSuggestContext$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesSuggestContext;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesSuggestContext;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesSuggestContext$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public abstract class com/agentclientprotocol/model/NesSuggestion {
+	public static final field Companion Lcom/agentclientprotocol/model/NesSuggestion$Companion;
+	public synthetic fun <init> (ILkotlinx/serialization/internal/SerializationConstructorMarker;)V
+	public abstract fun getId ()Ljava/lang/String;
+	public static final synthetic fun write$Self (Lcom/agentclientprotocol/model/NesSuggestion;Lkotlinx/serialization/encoding/CompositeEncoder;Lkotlinx/serialization/descriptors/SerialDescriptor;)V
+}
+
+public final class com/agentclientprotocol/model/NesSuggestion$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesSuggestion$Edit : com/agentclientprotocol/model/NesSuggestion {
+	public static final field Companion Lcom/agentclientprotocol/model/NesSuggestion$Edit$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lcom/agentclientprotocol/model/NesPosition;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lcom/agentclientprotocol/model/NesPosition;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/util/List;
+	public final fun component4 ()Lcom/agentclientprotocol/model/NesPosition;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lcom/agentclientprotocol/model/NesPosition;)Lcom/agentclientprotocol/model/NesSuggestion$Edit;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesSuggestion$Edit;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lcom/agentclientprotocol/model/NesPosition;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesSuggestion$Edit;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCursorPosition ()Lcom/agentclientprotocol/model/NesPosition;
+	public final fun getEdits ()Ljava/util/List;
+	public fun getId ()Ljava/lang/String;
+	public final fun getUri ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesSuggestion$Edit$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesSuggestion$Edit$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesSuggestion$Edit;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesSuggestion$Edit;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesSuggestion$Edit$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesSuggestion$Jump : com/agentclientprotocol/model/NesSuggestion {
+	public static final field Companion Lcom/agentclientprotocol/model/NesSuggestion$Jump$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/NesPosition;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lcom/agentclientprotocol/model/NesPosition;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/NesPosition;)Lcom/agentclientprotocol/model/NesSuggestion$Jump;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesSuggestion$Jump;Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/NesPosition;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesSuggestion$Jump;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public final fun getPosition ()Lcom/agentclientprotocol/model/NesPosition;
+	public final fun getUri ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesSuggestion$Jump$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesSuggestion$Jump$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesSuggestion$Jump;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesSuggestion$Jump;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesSuggestion$Jump$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesSuggestion$Rename : com/agentclientprotocol/model/NesSuggestion {
+	public static final field Companion Lcom/agentclientprotocol/model/NesSuggestion$Rename$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/NesPosition;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lcom/agentclientprotocol/model/NesPosition;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/NesPosition;Ljava/lang/String;)Lcom/agentclientprotocol/model/NesSuggestion$Rename;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesSuggestion$Rename;Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/NesPosition;Ljava/lang/String;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesSuggestion$Rename;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public final fun getNewName ()Ljava/lang/String;
+	public final fun getPosition ()Lcom/agentclientprotocol/model/NesPosition;
+	public final fun getUri ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesSuggestion$Rename$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesSuggestion$Rename$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesSuggestion$Rename;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesSuggestion$Rename;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesSuggestion$Rename$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesSuggestion$SearchAndReplace : com/agentclientprotocol/model/NesSuggestion {
+	public static final field Companion Lcom/agentclientprotocol/model/NesSuggestion$SearchAndReplace$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)Lcom/agentclientprotocol/model/NesSuggestion$SearchAndReplace;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesSuggestion$SearchAndReplace;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZILjava/lang/Object;)Lcom/agentclientprotocol/model/NesSuggestion$SearchAndReplace;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public final fun getReplace ()Ljava/lang/String;
+	public final fun getSearch ()Ljava/lang/String;
+	public final fun getUri ()Ljava/lang/String;
+	public fun hashCode ()I
+	public final fun isRegex ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesSuggestion$SearchAndReplace$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesSuggestion$SearchAndReplace$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesSuggestion$SearchAndReplace;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesSuggestion$SearchAndReplace;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesSuggestion$SearchAndReplace$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesTextEdit {
+	public static final field Companion Lcom/agentclientprotocol/model/NesTextEdit$Companion;
+	public fun <init> (Lcom/agentclientprotocol/model/NesRange;Ljava/lang/String;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/NesRange;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Lcom/agentclientprotocol/model/NesRange;Ljava/lang/String;)Lcom/agentclientprotocol/model/NesTextEdit;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesTextEdit;Lcom/agentclientprotocol/model/NesRange;Ljava/lang/String;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesTextEdit;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getNewText ()Ljava/lang/String;
+	public final fun getRange ()Lcom/agentclientprotocol/model/NesRange;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesTextEdit$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesTextEdit$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesTextEdit;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesTextEdit;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesTextEdit$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesTriggerKind : java/lang/Enum {
+	public static final field AUTOMATIC Lcom/agentclientprotocol/model/NesTriggerKind;
+	public static final field Companion Lcom/agentclientprotocol/model/NesTriggerKind$Companion;
+	public static final field DIAGNOSTIC Lcom/agentclientprotocol/model/NesTriggerKind;
+	public static final field MANUAL Lcom/agentclientprotocol/model/NesTriggerKind;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/agentclientprotocol/model/NesTriggerKind;
+	public static fun values ()[Lcom/agentclientprotocol/model/NesTriggerKind;
+}
+
+public final class com/agentclientprotocol/model/NesTriggerKind$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesUserAction {
+	public static final field Companion Lcom/agentclientprotocol/model/NesUserAction$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/NesPosition;JLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lcom/agentclientprotocol/model/NesPosition;
+	public final fun component4-s-VKNKU ()J
+	public final fun copy-ARK9YDc (Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/NesPosition;J)Lcom/agentclientprotocol/model/NesUserAction;
+	public static synthetic fun copy-ARK9YDc$default (Lcom/agentclientprotocol/model/NesUserAction;Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/NesPosition;JILjava/lang/Object;)Lcom/agentclientprotocol/model/NesUserAction;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAction ()Ljava/lang/String;
+	public final fun getPosition ()Lcom/agentclientprotocol/model/NesPosition;
+	public final fun getTimestampMs-s-VKNKU ()J
+	public final fun getUri ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesUserAction$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesUserAction$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesUserAction;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesUserAction;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesUserAction$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesUserActionsCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/NesUserActionsCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/Integer;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Ljava/lang/Integer;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/Integer;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Ljava/lang/Integer;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/NesUserActionsCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/NesUserActionsCapabilities;Ljava/lang/Integer;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/NesUserActionsCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMaxCount ()Ljava/lang/Integer;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/NesUserActionsCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/NesUserActionsCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/NesUserActionsCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/NesUserActionsCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/NesUserActionsCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class com/agentclientprotocol/model/NewSessionRequest : com/agentclientprotocol/model/AcpRequest {
 	public static final field Companion Lcom/agentclientprotocol/model/NewSessionRequest$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)V
@@ -2253,6 +3728,20 @@ public final class com/agentclientprotocol/model/PlanEntryStatus$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class com/agentclientprotocol/model/PositionEncodingKind : java/lang/Enum {
+	public static final field Companion Lcom/agentclientprotocol/model/PositionEncodingKind$Companion;
+	public static final field UTF_16 Lcom/agentclientprotocol/model/PositionEncodingKind;
+	public static final field UTF_32 Lcom/agentclientprotocol/model/PositionEncodingKind;
+	public static final field UTF_8 Lcom/agentclientprotocol/model/PositionEncodingKind;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/agentclientprotocol/model/PositionEncodingKind;
+	public static fun values ()[Lcom/agentclientprotocol/model/PositionEncodingKind;
+}
+
+public final class com/agentclientprotocol/model/PositionEncodingKind$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class com/agentclientprotocol/model/PromptCapabilities : com/agentclientprotocol/model/AcpWithMeta {
 	public static final field Companion Lcom/agentclientprotocol/model/PromptCapabilities$Companion;
 	public fun <init> ()V
@@ -2417,6 +3906,40 @@ public final synthetic class com/agentclientprotocol/model/ReadTextFileResponse$
 }
 
 public final class com/agentclientprotocol/model/ReadTextFileResponse$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/RejectNesNotification : com/agentclientprotocol/model/AcpNotification, com/agentclientprotocol/model/AcpWithSessionId {
+	public static final field Companion Lcom/agentclientprotocol/model/RejectNesNotification$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/NesRejectReason;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/NesRejectReason;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-7EW-EgU ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lcom/agentclientprotocol/model/NesRejectReason;
+	public final fun component4 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy-wPMwmcM (Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/NesRejectReason;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/RejectNesNotification;
+	public static synthetic fun copy-wPMwmcM$default (Lcom/agentclientprotocol/model/RejectNesNotification;Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/NesRejectReason;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/RejectNesNotification;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()Ljava/lang/String;
+	public final fun getReason ()Lcom/agentclientprotocol/model/NesRejectReason;
+	public fun getSessionId-7EW-EgU ()Ljava/lang/String;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/RejectNesNotification$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/RejectNesNotification$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/RejectNesNotification;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/RejectNesNotification;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/RejectNesNotification$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
@@ -4053,6 +5576,71 @@ public final class com/agentclientprotocol/model/SetSessionModelResponse$Compani
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class com/agentclientprotocol/model/StartNesRequest : com/agentclientprotocol/model/AcpRequest {
+	public static final field Companion Lcom/agentclientprotocol/model/StartNesRequest$Companion;
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;Ljava/util/List;Lcom/agentclientprotocol/model/NesRepository;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Lcom/agentclientprotocol/model/NesRepository;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Lcom/agentclientprotocol/model/NesRepository;
+	public final fun component4 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;Lcom/agentclientprotocol/model/NesRepository;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/StartNesRequest;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/StartNesRequest;Ljava/lang/String;Ljava/util/List;Lcom/agentclientprotocol/model/NesRepository;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/StartNesRequest;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRepository ()Lcom/agentclientprotocol/model/NesRepository;
+	public final fun getWorkspaceFolders ()Ljava/util/List;
+	public final fun getWorkspaceUri ()Ljava/lang/String;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/StartNesRequest$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/StartNesRequest$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/StartNesRequest;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/StartNesRequest;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/StartNesRequest$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/StartNesResponse : com/agentclientprotocol/model/AcpResponse {
+	public static final field Companion Lcom/agentclientprotocol/model/StartNesResponse$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-7EW-EgU ()Ljava/lang/String;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy-HxD9utI (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/StartNesResponse;
+	public static synthetic fun copy-HxD9utI$default (Lcom/agentclientprotocol/model/StartNesResponse;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/StartNesResponse;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSessionId-7EW-EgU ()Ljava/lang/String;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/StartNesResponse$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/StartNesResponse$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/StartNesResponse;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/StartNesResponse;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/StartNesResponse$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class com/agentclientprotocol/model/StopReason : java/lang/Enum {
 	public static final field CANCELLED Lcom/agentclientprotocol/model/StopReason;
 	public static final field Companion Lcom/agentclientprotocol/model/StopReason$Companion;
@@ -4066,6 +5654,78 @@ public final class com/agentclientprotocol/model/StopReason : java/lang/Enum {
 }
 
 public final class com/agentclientprotocol/model/StopReason$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/SuggestNesRequest : com/agentclientprotocol/model/AcpRequest, com/agentclientprotocol/model/AcpWithSessionId {
+	public static final field Companion Lcom/agentclientprotocol/model/SuggestNesRequest$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLcom/agentclientprotocol/model/NesPosition;Lcom/agentclientprotocol/model/NesRange;Lcom/agentclientprotocol/model/NesTriggerKind;Lcom/agentclientprotocol/model/NesSuggestContext;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLcom/agentclientprotocol/model/NesPosition;Lcom/agentclientprotocol/model/NesRange;Lcom/agentclientprotocol/model/NesTriggerKind;Lcom/agentclientprotocol/model/NesSuggestContext;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-7EW-EgU ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()Lcom/agentclientprotocol/model/NesPosition;
+	public final fun component5 ()Lcom/agentclientprotocol/model/NesRange;
+	public final fun component6 ()Lcom/agentclientprotocol/model/NesTriggerKind;
+	public final fun component7 ()Lcom/agentclientprotocol/model/NesSuggestContext;
+	public final fun component8 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy-aXQG-3s (Ljava/lang/String;Ljava/lang/String;JLcom/agentclientprotocol/model/NesPosition;Lcom/agentclientprotocol/model/NesRange;Lcom/agentclientprotocol/model/NesTriggerKind;Lcom/agentclientprotocol/model/NesSuggestContext;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/SuggestNesRequest;
+	public static synthetic fun copy-aXQG-3s$default (Lcom/agentclientprotocol/model/SuggestNesRequest;Ljava/lang/String;Ljava/lang/String;JLcom/agentclientprotocol/model/NesPosition;Lcom/agentclientprotocol/model/NesRange;Lcom/agentclientprotocol/model/NesTriggerKind;Lcom/agentclientprotocol/model/NesSuggestContext;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SuggestNesRequest;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContext ()Lcom/agentclientprotocol/model/NesSuggestContext;
+	public final fun getPosition ()Lcom/agentclientprotocol/model/NesPosition;
+	public final fun getSelection ()Lcom/agentclientprotocol/model/NesRange;
+	public fun getSessionId-7EW-EgU ()Ljava/lang/String;
+	public final fun getTriggerKind ()Lcom/agentclientprotocol/model/NesTriggerKind;
+	public final fun getUri ()Ljava/lang/String;
+	public final fun getVersion ()J
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/SuggestNesRequest$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/SuggestNesRequest$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/SuggestNesRequest;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/SuggestNesRequest;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/SuggestNesRequest$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/SuggestNesResponse : com/agentclientprotocol/model/AcpResponse {
+	public static final field Companion Lcom/agentclientprotocol/model/SuggestNesResponse$Companion;
+	public fun <init> (Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/SuggestNesResponse;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/SuggestNesResponse;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SuggestNesResponse;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSuggestions ()Ljava/util/List;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/SuggestNesResponse$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/SuggestNesResponse$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/SuggestNesResponse;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/SuggestNesResponse;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/SuggestNesResponse$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
@@ -4164,6 +5824,49 @@ public final synthetic class com/agentclientprotocol/model/TerminalOutputRespons
 }
 
 public final class com/agentclientprotocol/model/TerminalOutputResponse$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/TextDocumentContentChangeEvent {
+	public static final field Companion Lcom/agentclientprotocol/model/TextDocumentContentChangeEvent$Companion;
+	public fun <init> (Lcom/agentclientprotocol/model/NesRange;Ljava/lang/String;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/NesRange;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/NesRange;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Lcom/agentclientprotocol/model/NesRange;Ljava/lang/String;)Lcom/agentclientprotocol/model/TextDocumentContentChangeEvent;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/TextDocumentContentChangeEvent;Lcom/agentclientprotocol/model/NesRange;Ljava/lang/String;ILjava/lang/Object;)Lcom/agentclientprotocol/model/TextDocumentContentChangeEvent;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRange ()Lcom/agentclientprotocol/model/NesRange;
+	public final fun getText ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/TextDocumentContentChangeEvent$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/TextDocumentContentChangeEvent$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/TextDocumentContentChangeEvent;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/TextDocumentContentChangeEvent;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/TextDocumentContentChangeEvent$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/TextDocumentSyncKind : java/lang/Enum {
+	public static final field Companion Lcom/agentclientprotocol/model/TextDocumentSyncKind$Companion;
+	public static final field FULL Lcom/agentclientprotocol/model/TextDocumentSyncKind;
+	public static final field INCREMENTAL Lcom/agentclientprotocol/model/TextDocumentSyncKind;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/agentclientprotocol/model/TextDocumentSyncKind;
+	public static fun values ()[Lcom/agentclientprotocol/model/TextDocumentSyncKind;
+}
+
+public final class com/agentclientprotocol/model/TextDocumentSyncKind$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
@@ -4432,6 +6135,35 @@ public final synthetic class com/agentclientprotocol/model/WaitForTerminalExitRe
 }
 
 public final class com/agentclientprotocol/model/WaitForTerminalExitResponse$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/WorkspaceFolder {
+	public static final field Companion Lcom/agentclientprotocol/model/WorkspaceFolder$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lcom/agentclientprotocol/model/WorkspaceFolder;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/WorkspaceFolder;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/agentclientprotocol/model/WorkspaceFolder;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getName ()Ljava/lang/String;
+	public final fun getUri ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/WorkspaceFolder$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/WorkspaceFolder$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/WorkspaceFolder;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/WorkspaceFolder;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/WorkspaceFolder$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
