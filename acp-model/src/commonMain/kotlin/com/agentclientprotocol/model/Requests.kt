@@ -42,6 +42,23 @@ public object AuthMethodType {
 }
 
 /**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Describes a single environment variable for an [AuthMethod.EnvVarAuth] authentication method.
+ */
+@UnstableApi
+@Serializable
+public data class AuthEnvVar(
+    val name: String,
+    val label: String? = null,
+    val secret: Boolean = true,
+    val optional: Boolean = false,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
  * Describes an available authentication method.
  */
 @Serializable(with = AuthMethodSerializer::class)
@@ -69,7 +86,7 @@ public sealed class AuthMethod : AcpWithMeta {
      * This capability is not part of the spec yet, and may be removed or changed at any point.
      *
      * Environment variable-based authentication.
-     * A user can enter a key and a client will pass it to the agent as an env variable.
+     * The client sets the specified environment variables when launching the agent.
      */
     @UnstableApi
     @Serializable
@@ -78,7 +95,7 @@ public sealed class AuthMethod : AcpWithMeta {
         override val id: AuthMethodId,
         override val name: String,
         override val description: String? = null,
-        val varName: String,
+        val vars: List<AuthEnvVar>,
         val link: String? = null,
         override val _meta: JsonElement? = null
     ) : AuthMethod()
