@@ -251,8 +251,9 @@ public final class com/agentclientprotocol/common/FileSystemOperations$DefaultIm
 }
 
 public final class com/agentclientprotocol/common/SessionCreationParameters {
-	public fun <init> (Ljava/lang/String;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getAdditionalDirectories ()Ljava/util/List;
 	public final fun getCwd ()Ljava/lang/String;
 	public final fun getMcpServers ()Ljava/util/List;
 	public final fun get_meta ()Lkotlinx/serialization/json/JsonElement;
