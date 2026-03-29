@@ -57,7 +57,7 @@ class AuthMethodSerializerTest {
                 "name": "API Key",
                 "description": "Set API key environment variable",
                 "type": "env_var",
-                "varName": "API_KEY",
+                "vars": [{"name": "API_KEY"}],
                 "link": "https://example.com/get-key"
             }
         """.trimIndent()
@@ -68,25 +68,43 @@ class AuthMethodSerializerTest {
         assertEquals("auth-3", authMethod.id.value)
         assertEquals("API Key", authMethod.name)
         assertEquals("Set API key environment variable", authMethod.description)
-        assertEquals("API_KEY", authMethod.varName)
+        assertEquals(1, authMethod.vars.size)
+        assertEquals("API_KEY", authMethod.vars[0].name)
         assertEquals("https://example.com/get-key", authMethod.link)
     }
 
     @Test
-    fun `decodes EnvVarAuth without optional link field`() {
+    fun `decodes EnvVarAuth with multiple vars and all fields`() {
         val payload = """
             {
                 "id": "auth-env",
-                "name": "OpenAI Key",
+                "name": "Azure OpenAI",
                 "type": "env_var",
-                "varName": "OPENAI_API_KEY"
+                "vars": [
+                    {"name": "AZURE_API_KEY", "label": "API Key"},
+                    {"name": "AZURE_ENDPOINT", "label": "Endpoint URL", "secret": false},
+                    {"name": "AZURE_VERSION", "label": "API Version", "secret": false, "optional": true}
+                ]
             }
         """.trimIndent()
 
         val authMethod = ACPJson.decodeFromString(AuthMethod.serializer(), payload)
 
         assertTrue(authMethod is AuthMethod.EnvVarAuth)
-        assertEquals("OPENAI_API_KEY", authMethod.varName)
+        assertEquals(3, authMethod.vars.size)
+
+        assertEquals("AZURE_API_KEY", authMethod.vars[0].name)
+        assertEquals("API Key", authMethod.vars[0].label)
+        assertEquals(true, authMethod.vars[0].secret)
+        assertEquals(false, authMethod.vars[0].optional)
+
+        assertEquals("AZURE_ENDPOINT", authMethod.vars[1].name)
+        assertEquals(false, authMethod.vars[1].secret)
+
+        assertEquals("AZURE_VERSION", authMethod.vars[2].name)
+        assertEquals(false, authMethod.vars[2].secret)
+        assertEquals(true, authMethod.vars[2].optional)
+
         assertEquals(null, authMethod.link)
     }
 
@@ -198,20 +216,23 @@ class AuthMethodSerializerTest {
         val original = AuthMethod.EnvVarAuth(
             id = AuthMethodId("auth-rt-2"),
             name = "Round Trip EnvVar",
-            varName = "MY_VAR",
+            vars = listOf(
+                AuthEnvVar(name = "MY_VAR"),
+                AuthEnvVar(name = "OTHER_VAR", label = "Other", secret = false, optional = true)
+            ),
             link = "https://example.com"
         )
 
         val encoded = ACPJson.encodeToString(AuthMethod.serializer(), original)
         assertTrue(encoded.contains("\"type\":\"env_var\""))
-        assertTrue(encoded.contains("\"varName\":\"MY_VAR\""))
+        assertTrue(encoded.contains("\"vars\""))
 
         val decoded = ACPJson.decodeFromString(AuthMethod.serializer(), encoded)
         assertTrue(decoded is AuthMethod.EnvVarAuth)
         val decodedEnvVar = decoded as AuthMethod.EnvVarAuth
         assertEquals(original.id, decodedEnvVar.id)
         assertEquals(original.name, decodedEnvVar.name)
-        assertEquals(original.varName, decodedEnvVar.varName)
+        assertEquals(original.vars, decodedEnvVar.vars)
         assertEquals(original.link, decodedEnvVar.link)
     }
 
@@ -245,7 +266,7 @@ class AuthMethodSerializerTest {
                 "agentCapabilities": {},
                 "authMethods": [
                     {"id": "a1", "name": "Agent Only"},
-                    {"id": "a2", "name": "Env Auth", "type": "env_var", "varName": "TOKEN"},
+                    {"id": "a2", "name": "Env Auth", "type": "env_var", "vars": [{"name": "TOKEN"}]},
                     {"id": "a3", "name": "Terminal Auth", "type": "terminal"}
                 ]
             }
@@ -306,7 +327,7 @@ class AuthMethodSerializerTest {
                 "id": "auth-env-meta",
                 "name": "EnvVar With Meta",
                 "type": "env_var",
-                "varName": "KEY",
+                "vars": [{"name": "KEY"}],
                 "_meta": {"source": "config"}
             }
         """.trimIndent()
