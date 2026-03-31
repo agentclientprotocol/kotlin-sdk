@@ -121,6 +121,18 @@ public sealed class SessionUpdate {
     ) : SessionUpdate()
 
     /**
+     * Clears the accumulated streamed content for the current agent message.
+     *
+     * Instructs the client to clear the content built from previous [AgentMessageChunk] updates.
+     * Subsequent [AgentMessageChunk] updates will append from empty again.
+     *
+     * See: [agent_message_clear RFD](https://github.com/agentclientprotocol/agent-client-protocol/pull/465)
+     */
+    @Serializable
+    @SerialName("agent_message_clear")
+    public data class AgentMessageClear() : SessionUpdate()
+
+    /**
      * Notification that a new tool call has been initiated.
      */
     @Serializable
@@ -285,6 +297,13 @@ internal object SessionUpdateSerializer : KSerializer<SessionUpdate> {
                     base.forEach { (k, v) -> put(k, v) }
                 }
             }
+            is SessionUpdate.AgentMessageClear -> {
+                val base = ACPJson.encodeToJsonElement(SessionUpdate.AgentMessageClear.serializer(), value).jsonObject
+                buildJsonObject {
+                    put(SESSION_UPDATE_DISCRIMINATOR, "agent_message_clear")
+                    base.forEach { (k, v) -> put(k, v) }
+                }
+            }
             is SessionUpdate.ToolCall -> {
                 val base = ACPJson.encodeToJsonElement(SessionUpdate.ToolCall.serializer(), value).jsonObject
                 buildJsonObject {
@@ -371,6 +390,10 @@ internal object SessionUpdateSerializer : KSerializer<SessionUpdate> {
             )
             "agent_thought_chunk" -> ACPJson.decodeFromJsonElement(
                 SessionUpdate.AgentThoughtChunk.serializer(),
+                jsonObject
+            )
+            "agent_message_clear" -> ACPJson.decodeFromJsonElement(
+                SessionUpdate.AgentMessageClear.serializer(),
                 jsonObject
             )
             "tool_call" -> ACPJson.decodeFromJsonElement(
