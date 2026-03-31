@@ -788,6 +788,7 @@ public data class ForkSessionResponse(
 @Serializable
 public data class ListSessionsRequest(
     val cwd: String? = null,
+    val additionalDirectories: List<String>? = null,
     override val cursor: String? = null,
     override val _meta: JsonElement? = null
 ) : AcpRequest, AcpPaginatedRequest

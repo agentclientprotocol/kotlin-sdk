@@ -1649,7 +1649,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 )
             }
 
-            override suspend fun listSessions(cwd: String?, _meta: kotlinx.serialization.json.JsonElement?): Sequence<SessionInfo> {
+            override suspend fun listSessions(cwd: String?, additionalDirectories: List<String>?, _meta: kotlinx.serialization.json.JsonElement?): Sequence<SessionInfo> {
                 return if (cwd != null) {
                     testSessions.filter { it.cwd.contains(cwd) }.asSequence()
                 } else {
@@ -1700,7 +1700,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 )
             }
 
-            override suspend fun listSessions(cwd: String?, _meta: kotlinx.serialization.json.JsonElement?): Sequence<SessionInfo> {
+            override suspend fun listSessions(cwd: String?, additionalDirectories: List<String>?, _meta: kotlinx.serialization.json.JsonElement?): Sequence<SessionInfo> {
                 return if (cwd != null) {
                     testSessions.filter { it.cwd.contains(cwd) }.asSequence()
                 } else {
@@ -1731,6 +1731,63 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
     @OptIn(UnstableApi::class)
     @Test
+    fun `list sessions filters by additionalDirectories`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val testSessions = listOf(
+            SessionInfo(sessionId = SessionId("session-1"), cwd = "/project", additionalDirectories = listOf("/extra/a", "/extra/b")),
+            SessionInfo(sessionId = SessionId("session-2"), cwd = "/project", additionalDirectories = listOf("/extra/c")),
+            SessionInfo(sessionId = SessionId("session-3"), cwd = "/project", additionalDirectories = null),
+        )
+
+        var receivedAdditionalDirectories: List<String>? = null
+
+        val client = Client(protocol = clientProtocol)
+        val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(
+                    clientInfo.protocolVersion,
+                    capabilities = AgentCapabilities(
+                        sessionCapabilities = SessionCapabilities(list = SessionListCapabilities())
+                    )
+                )
+            }
+
+            override suspend fun listSessions(cwd: String?, additionalDirectories: List<String>?, _meta: kotlinx.serialization.json.JsonElement?): Sequence<SessionInfo> {
+                receivedAdditionalDirectories = additionalDirectories
+                return if (additionalDirectories != null) {
+                    testSessions.filter { session ->
+                        session.additionalDirectories != null &&
+                            additionalDirectories.all { it in session.additionalDirectories!! }
+                    }.asSequence()
+                } else {
+                    testSessions.asSequence()
+                }
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                TODO("Not yet implemented")
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val filterDirs = listOf("/extra/a")
+        val flow = client.listSessions(additionalDirectories = filterDirs)
+        val filteredSessions = flow.toList()
+
+        assertEquals(filterDirs, receivedAdditionalDirectories)
+        assertEquals(1, filteredSessions.size)
+        assertEquals("session-1", filteredSessions.first().sessionId.value)
+    }
+
+    @OptIn(UnstableApi::class)
+    @Test
     fun `list sessions with partial iteration works correctly`() = testWithProtocols { clientProtocol, agentProtocol ->
         // Create 30 test sessions
         val allSessions = (1..30).map { i ->
@@ -1748,7 +1805,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 )
             }
 
-            override suspend fun listSessions(cwd: String?, _meta: JsonElement?): Sequence<SessionInfo> {
+            override suspend fun listSessions(cwd: String?, additionalDirectories: List<String>?, _meta: JsonElement?): Sequence<SessionInfo> {
                 // Return all sessions - the adapter will handle pagination
                 return allSessions.asSequence()
             }
@@ -1794,7 +1851,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 )
             }
 
-            override suspend fun listSessions(cwd: String?, _meta: JsonElement?): Sequence<SessionInfo> {
+            override suspend fun listSessions(cwd: String?, additionalDirectories: List<String>?, _meta: JsonElement?): Sequence<SessionInfo> {
                 resourcesAcquired++
                 
                 return sequence {
@@ -1853,7 +1910,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 )
             }
 
-            override suspend fun listSessions(cwd: String?, _meta: JsonElement?): Sequence<SessionInfo> {
+            override suspend fun listSessions(cwd: String?, additionalDirectories: List<String>?, _meta: JsonElement?): Sequence<SessionInfo> {
                 // The Agent's setPaginatedRequestHandler with batchSize=10 will consume
                 // items from this sequence in batches of 10
                 return sequence {
@@ -1909,7 +1966,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 )
             }
 
-            override suspend fun listSessions(cwd: String?, _meta: JsonElement?): Sequence<SessionInfo> {
+            override suspend fun listSessions(cwd: String?, additionalDirectories: List<String>?, _meta: JsonElement?): Sequence<SessionInfo> {
                 fetchStarted = true
                 return sequenceOf(
                     SessionInfo(sessionId = SessionId("session-1"), cwd = "/project")
