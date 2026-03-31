@@ -314,16 +314,18 @@ public class Client(
      * Sequences don't support suspending operations between value yields.
      *
      * @param cwd optional current working directory filter
+     * @param additionalDirectories optional additional directories filter
      * @param _meta optional metadata
      * @return a cold [Flow] of [SessionInfo] that lazily fetches pages as needed
      */
     @UnstableApi
     public fun listSessions(
         cwd: String? = null,
+        additionalDirectories: List<String>? = null,
         _meta: JsonElement? = null
     ): Flow<SessionInfo> {
         return PaginatedResponseToFlowAdapter.asFlow { cursor ->
-            AcpMethod.AgentMethods.SessionList(protocol, ListSessionsRequest(cwd, cursor, _meta))
+            AcpMethod.AgentMethods.SessionList(protocol, ListSessionsRequest(cwd, additionalDirectories, cursor, _meta))
         }
     }
 

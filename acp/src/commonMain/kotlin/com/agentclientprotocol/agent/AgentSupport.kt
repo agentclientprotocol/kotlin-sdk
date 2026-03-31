@@ -58,11 +58,12 @@ public interface AgentSupport {
      * Pagination is automatically handled by [com.agentclientprotocol.util.SequenceToPaginatedResponseAdapter].
      *
      * @param cwd optional current working directory filter
+     * @param additionalDirectories optional additional directories filter
      * @param _meta optional metadata
      * @return a sequence of [SessionInfo]
      */
     @UnstableApi
-    public suspend fun listSessions(cwd: String?, _meta: JsonElement?): Sequence<SessionInfo> {
+    public suspend fun listSessions(cwd: String?, additionalDirectories: List<String>?, _meta: JsonElement?): Sequence<SessionInfo> {
         throw NotImplementedError("listSessions is not implemented. The capability is declared in AgentCapabilities.sessionCapabilities.list")
     }
 

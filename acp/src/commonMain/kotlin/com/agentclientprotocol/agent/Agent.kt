@@ -158,7 +158,7 @@ public class Agent(
             // TODO: move to some global agent/client settings
             batchSize = 10,
             batchedResultFactory = { _, batch, newCursor -> ListSessionsResponse(batch, newCursor) },
-            sequenceFactory = { p -> agentSupport.listSessions(p.cwd, p._meta) }
+            sequenceFactory = { p -> agentSupport.listSessions(p.cwd, p.additionalDirectories, p._meta) }
         )
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionNew) { params: NewSessionRequest ->
