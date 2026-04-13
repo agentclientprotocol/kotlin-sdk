@@ -4,6 +4,7 @@ package com.agentclientprotocol.client
 
 import com.agentclientprotocol.agent.AgentInfo
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.common.ElicitationOperations
 import com.agentclientprotocol.common.FileSystemOperations
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.common.TerminalOperations
@@ -37,8 +38,11 @@ public typealias ClientInstance = Client
  *
  * See protocol docs: [Client](https://agentclientprotocol.com/protocol/overview#client)
  */
+@OptIn(UnstableApi::class)
 public class Client(
-    public val protocol: Protocol
+    public val protocol: Protocol,
+    @property:UnstableApi
+    public val globalElicitationHandler: GlobalElicitationHandler? = null
 ) {
     private class ClientSessionHolder {
         private val sessionDeferred: CompletableDeferred<ClientSessionImpl> = CompletableDeferred()
@@ -85,6 +89,8 @@ public class Client(
 
     private val _sessions = atomic(SessionsStorage())
     private val _nesSessions = atomic(persistentMapOf<SessionId, ClientNesSessionImpl>())
+    @OptIn(UnstableApi::class)
+    private val _elicitationToSession = ElicitationSessionStore()
 
     /**
      * Creates a new entry only if there are some currently initializing sessions. Otherwise, throws in the case of missing session.
@@ -117,6 +123,8 @@ public class Client(
         _sessions.update { currentMap ->
             currentMap.copy(sessions = currentMap.sessions.remove(sessionId))
         }
+        @OptIn(UnstableApi::class)
+        _elicitationToSession.removeBySession(sessionId)
     }
 
     @OptIn(UnstableApi::class)
@@ -202,6 +210,65 @@ public class Client(
         protocol.setNotificationHandler(AcpMethod.ClientMethods.SessionUpdate) { params: SessionNotification ->
             val sessionHolder = getOrCreateSessionHolder(params.sessionId)
             sessionHolder.handleOrQueue(params.update, params._meta)
+        }
+
+        @OptIn(UnstableApi::class)
+        protocol.setRequestHandler(AcpMethod.ClientMethods.ElicitationCreate) { params: CreateElicitationRequest ->
+            when (val scope = params.scope) {
+                is ElicitationScope.Session -> {
+                    val session = getSessionOrThrow(scope.sessionId)
+                    val ops = session.operations as? ElicitationOperations
+                        ?: sessionMethodNotFound<ElicitationOperations>(AcpMethod.ClientMethods.ElicitationCreate)
+                    val response = session.executeWithSession { ops.createElicitation(params) }
+                    // Only track URL-mode elicitation → session after a successful Accept response,
+                    // since elicitation/complete only follows an accepted URL elicitation
+                    trackUrlElicitationIfAccepted(params.mode, response, scope.sessionId)
+                    response
+                }
+                is ElicitationScope.Request -> {
+                    val sessionId = protocol.getOutgoingRequestSessionId(scope.requestId)
+                    if (sessionId != null) {
+                        val session = getSessionOrThrow(sessionId)
+                        val ops = session.operations as? ElicitationOperations
+                            ?: sessionMethodNotFound<ElicitationOperations>(AcpMethod.ClientMethods.ElicitationCreate)
+                        val response = session.executeWithSession { ops.createElicitation(params) }
+                        trackUrlElicitationIfAccepted(params.mode, response, sessionId)
+                        response
+                    } else {
+                        @OptIn(UnstableApi::class)
+                        val handler = globalElicitationHandler
+                            ?: acpFail("No handler for non-session elicitation")
+                        handler.createElicitation(params)
+                    }
+                }
+            }
+        }
+
+        @OptIn(UnstableApi::class)
+        protocol.setNotificationHandler(AcpMethod.ClientMethods.ElicitationComplete) { params: CompleteElicitationNotification ->
+            var sessionId: SessionId? = _elicitationToSession.remove(params.elicitationId)
+
+            if (sessionId != null) {
+                // Session may have been closed between the elicitation and the completion;
+                // per the RFD, ignore unknown/already-completed IDs gracefully
+                val holder = _sessions.value.sessions[sessionId]
+                if (holder != null && holder.session.isCompleted) {
+                    @Suppress("SwallowedException")
+                    val session = try {
+                        @OptIn(ExperimentalCoroutinesApi::class)
+                        holder.session.getCompleted()
+                    } catch (_: IllegalStateException) {
+                        null
+                    }
+                    if (session != null) {
+                        val ops = session.operations as? ElicitationOperations
+                        if (ops != null) {
+                            session.executeWithSession { ops.completeElicitation(params) }
+                        }
+                    }
+                }
+            }
+            // else: unknown or already-completed elicitation ID — silently ignore per RFD
         }
     }
 
@@ -466,6 +533,13 @@ public class Client(
 
     private suspend fun getSessionOrThrow(sessionId: SessionId): ClientSessionImpl {
         return getOrCreateSessionHolder(sessionId).session.await()
+    }
+
+    @OptIn(UnstableApi::class)
+    private fun trackUrlElicitationIfAccepted(mode: ElicitationMode, response: CreateElicitationResponse, sessionId: SessionId) {
+        if (mode is ElicitationMode.Url && response.action is ElicitationAction.Accept) {
+            _elicitationToSession.put(mode.elicitationId, sessionId)
+        }
     }
 
     private suspend fun<T> withInitializingSession(block: suspend () -> T): T {

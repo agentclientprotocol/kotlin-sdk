@@ -104,6 +104,12 @@ public open class AcpMethod(public val methodName: MethodName) {
         public object TerminalRelease : AcpSessionRequestResponseMethod<ReleaseTerminalRequest, ReleaseTerminalResponse>("terminal/release", ReleaseTerminalRequest.serializer(), ReleaseTerminalResponse.serializer())
         public object TerminalWaitForExit : AcpSessionRequestResponseMethod<WaitForTerminalExitRequest, WaitForTerminalExitResponse>("terminal/wait_for_exit", WaitForTerminalExitRequest.serializer(), WaitForTerminalExitResponse.serializer())
         public object TerminalKill : AcpSessionRequestResponseMethod<KillTerminalCommandRequest, KillTerminalCommandResponse>("terminal/kill", KillTerminalCommandRequest.serializer(), KillTerminalCommandResponse.serializer())
+
+        // Elicitation methods
+        @UnstableApi
+        public object ElicitationCreate : AcpRequestResponseMethod<CreateElicitationRequest, CreateElicitationResponse>("elicitation/create", CreateElicitationRequest.serializer(), CreateElicitationResponse.serializer())
+        @UnstableApi
+        public object ElicitationComplete : AcpNotificationMethod<CompleteElicitationNotification>("elicitation/complete", CompleteElicitationNotification.serializer())
     }
 
 

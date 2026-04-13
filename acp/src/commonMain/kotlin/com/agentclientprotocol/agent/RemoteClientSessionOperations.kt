@@ -1,5 +1,6 @@
 package com.agentclientprotocol.agent
 
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.RpcMethodsOperations
@@ -83,5 +84,58 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
     ): KillTerminalCommandResponse {
         if (!clientCapabilities.terminal) error("Client does not support terminal capability")
         return AcpMethod.ClientMethods.TerminalKill(rpc, KillTerminalCommandRequest(sessionId, terminalId, _meta))
+    }
+
+    @OptIn(UnstableApi::class)
+    override suspend fun createElicitation(
+        request: CreateElicitationRequest
+    ): CreateElicitationResponse {
+        val elicitation = clientCapabilities.elicitation
+            ?: error("Client does not support elicitation capability")
+        when (request.mode) {
+            is ElicitationMode.Form -> {
+                if (!elicitation.supportsForm) error("Client does not support form-based elicitation")
+            }
+            is ElicitationMode.Url -> {
+                if (!elicitation.supportsUrl) error("Client does not support URL-based elicitation")
+            }
+        }
+        return AcpMethod.ClientMethods.ElicitationCreate(rpc, request)
+    }
+
+    /**
+     * Convenience method that creates an elicitation request with session scope auto-filled.
+     */
+    @OptIn(UnstableApi::class)
+    public suspend fun createSessionElicitation(
+        mode: ElicitationMode,
+        message: String,
+        toolCallId: ToolCallId? = null,
+        _meta: JsonElement? = null
+    ): CreateElicitationResponse {
+        return createElicitation(CreateElicitationRequest(
+            scope = ElicitationScope.Session(sessionId, toolCallId),
+            mode = mode,
+            message = message,
+            _meta = _meta
+        ))
+    }
+
+    @OptIn(UnstableApi::class)
+    override suspend fun completeElicitation(
+        notification: CompleteElicitationNotification
+    ) {
+        AcpMethod.ClientMethods.ElicitationComplete(rpc, notification)
+    }
+
+    /**
+     * Convenience method to complete a URL-mode elicitation.
+     */
+    @OptIn(UnstableApi::class)
+    public suspend fun completeElicitation(
+        elicitationId: ElicitationId,
+        _meta: JsonElement? = null
+    ) {
+        completeElicitation(CompleteElicitationNotification(elicitationId, _meta))
     }
 }

@@ -4,6 +4,7 @@ package com.agentclientprotocol.protocol
 
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.CancelRequestNotification
+import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.rpc.*
 import com.agentclientprotocol.transport.Transport
 import com.agentclientprotocol.transport.asMessageChannel
@@ -29,6 +30,11 @@ private val logger = KotlinLogging.logger {}
 internal value class IncomingRequestId(val id: RequestId)
 @JvmInline
 internal value class OutgoingRequestId(val id: RequestId)
+
+internal data class OutgoingRequest(
+    val deferred: CompletableDeferred<JsonElement>,
+    val sessionId: SessionId? = null
+)
 
 /**
  * An exception that gracefully handled and passed to the counterpart.
@@ -103,7 +109,8 @@ public interface RpcMethodsOperations {
      */
     public suspend fun sendRequestRaw(
         method: MethodName,
-        params: JsonElement? = null
+        params: JsonElement? = null,
+        sessionId: SessionId? = null
     ): JsonElement
 
     /**
@@ -130,7 +137,7 @@ public class Protocol(
             + Dispatchers.Default.limitedParallelism(parallelism = 1) + CoroutineName(options.protocolDebugName))
     // now the incoming and outgoing requests can clash by ids, but it should not be a problem
     private val requestIdCounter: AtomicInt = atomic(0)
-    private val pendingOutgoingRequests: AtomicRef<PersistentMap<OutgoingRequestId, CompletableDeferred<JsonElement>>> =
+    private val pendingOutgoingRequests: AtomicRef<PersistentMap<OutgoingRequestId, OutgoingRequest>> =
         atomic(persistentMapOf())
     private val pendingIncomingRequests: AtomicRef<PersistentMap<IncomingRequestId, Job>> =
         atomic(persistentMapOf())
@@ -185,12 +192,14 @@ public class Protocol(
      */
     public override suspend fun sendRequestRaw(
         method: MethodName,
-        params: JsonElement?
+        params: JsonElement?,
+        sessionId: SessionId?
     ): JsonElement {
         val requestId = OutgoingRequestId(RequestId.create(requestIdCounter.incrementAndGet()))
         val deferred = CompletableDeferred<JsonElement>()
+        val outgoingRequest = OutgoingRequest(deferred, sessionId)
 
-        pendingOutgoingRequests.update { it.put(requestId, deferred) }
+        pendingOutgoingRequests.update { it.put(requestId, outgoingRequest) }
 
         try {
             val request = JsonRpcRequest(
@@ -297,6 +306,15 @@ public class Protocol(
     }
 
     /**
+     * Looks up the session ID associated with an outgoing request that is currently in-flight.
+     *
+     * Returns null if the request is not found or was not associated with a session.
+     */
+    public fun getOutgoingRequestSessionId(requestId: RequestId): SessionId? {
+        return pendingOutgoingRequests.value[OutgoingRequestId(requestId)]?.sessionId
+    }
+
+    /**
      * Close the protocol and cleanup resources.
      */
     public fun close() {
@@ -340,9 +358,9 @@ public class Protocol(
      */
     public fun cancelPendingOutgoingRequests(ce: CancellationException? = null) {
         val requests = pendingOutgoingRequests.getAndUpdate { it.clear() }
-        for (deferred in requests.values) {
-            logger.trace { "Canceling pending outgoing request: ${deferred.key}" }
-            deferred.cancel(ce)
+        for (outgoing in requests.values) {
+            logger.trace { "Canceling pending outgoing request: ${outgoing.deferred.key}" }
+            outgoing.deferred.cancel(ce)
         }
     }
 
@@ -453,11 +471,12 @@ public class Protocol(
 
     private fun handleResponse(response: JsonRpcResponse) {
         val outgoingRequestId = OutgoingRequestId(response.id)
-        var deferred: CompletableDeferred<JsonElement>? = null
+        var outgoing: OutgoingRequest? = null
         pendingOutgoingRequests.update { currentRequests ->
-            deferred = currentRequests[outgoingRequestId]
+            outgoing = currentRequests[outgoingRequestId]
             currentRequests.remove(outgoingRequestId)
         }
+        val deferred = outgoing?.deferred
         if (deferred != null) {
             val responseError = response.error
             if (responseError != null) {

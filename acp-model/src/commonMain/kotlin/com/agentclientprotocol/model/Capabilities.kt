@@ -73,6 +73,8 @@ public data class ClientCapabilities(
     val nes: ClientNesCapabilities? = null,
     @property:UnstableApi
     val positionEncodings: List<PositionEncodingKind>? = null,
+    @property:UnstableApi
+    val elicitation: ElicitationCapabilities? = null,
     override val _meta: JsonElement? = null
 ) : AcpCapabilities, AcpWithMeta
 
