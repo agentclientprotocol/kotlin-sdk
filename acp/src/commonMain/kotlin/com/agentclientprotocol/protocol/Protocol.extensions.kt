@@ -7,6 +7,7 @@ import com.agentclientprotocol.model.AcpPaginatedRequest
 import com.agentclientprotocol.model.AcpPaginatedResponse
 import com.agentclientprotocol.model.AcpRequest
 import com.agentclientprotocol.model.AcpResponse
+import com.agentclientprotocol.model.AcpWithSessionId
 import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.util.PaginatedResponseToFlowAdapter
@@ -27,8 +28,9 @@ public suspend fun <TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOp
     request: TRequest?
 ): TResponse {
     val params = request?.let { ACPJson.encodeToJsonElement(method.requestSerializer, request) }
+    val sessionId = (request as? AcpWithSessionId)?.sessionId
     // if we've got null, we can interpret it as {}
-    val responseJson = this.sendRequestRaw(method.methodName, params).takeIf { it != JsonNull } ?: buildJsonObject {  }
+    val responseJson = this.sendRequestRaw(method.methodName, params, sessionId).takeIf { it != JsonNull } ?: buildJsonObject {  }
     return ACPJson.decodeFromJsonElement(method.responseSerializer, responseJson)
 }
 

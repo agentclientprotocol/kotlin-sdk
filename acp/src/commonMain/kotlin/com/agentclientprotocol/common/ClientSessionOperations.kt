@@ -1,5 +1,6 @@
 package com.agentclientprotocol.common
 
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.PermissionOption
 import com.agentclientprotocol.model.RequestPermissionResponse
 import com.agentclientprotocol.model.SessionUpdate
@@ -11,8 +12,10 @@ import kotlinx.serialization.json.JsonElement
  *
  * @see FileSystemOperations
  * @see TerminalOperations
+ * @see ElicitationOperations
  */
-public interface ClientSessionOperations : FileSystemOperations, TerminalOperations {
+@OptIn(UnstableApi::class)
+public interface ClientSessionOperations : FileSystemOperations, TerminalOperations, ElicitationOperations {
     /**
      * Requests permissions
      */
