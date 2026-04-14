@@ -151,12 +151,14 @@ public final class com/agentclientprotocol/agent/NesAgentSession$DefaultImpls {
 }
 
 public final class com/agentclientprotocol/client/Client {
-	public fun <init> (Lcom/agentclientprotocol/protocol/Protocol;)V
+	public fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/GlobalElicitationHandler;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/GlobalElicitationHandler;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun authenticate-fMnwWJU (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun authenticate-fMnwWJU$default (Lcom/agentclientprotocol/client/Client;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun forkSession-wPMwmcM (Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lcom/agentclientprotocol/client/ClientOperationsFactory;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun getAgentInfo ()Lcom/agentclientprotocol/agent/AgentInfo;
 	public final fun getClientInfo ()Lcom/agentclientprotocol/client/ClientInfo;
+	public final fun getGlobalElicitationHandler ()Lcom/agentclientprotocol/client/GlobalElicitationHandler;
 	public final fun getNesSession-0izbxq0 (Ljava/lang/String;)Lcom/agentclientprotocol/client/ClientNesSession;
 	public final fun getProtocol ()Lcom/agentclientprotocol/protocol/Protocol;
 	public final fun getSession-0izbxq0 (Ljava/lang/String;)Lcom/agentclientprotocol/client/ClientSession;
@@ -280,7 +282,11 @@ public final class com/agentclientprotocol/client/ClientSessionKt {
 	public static synthetic fun setConfigOption-lh9iGNw$default (Lcom/agentclientprotocol/client/ClientSession;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
-public abstract interface class com/agentclientprotocol/common/ClientSessionOperations : com/agentclientprotocol/common/FileSystemOperations, com/agentclientprotocol/common/TerminalOperations {
+public abstract interface class com/agentclientprotocol/client/GlobalElicitationHandler {
+	public abstract fun createElicitation (Lcom/agentclientprotocol/model/CreateElicitationRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class com/agentclientprotocol/common/ClientSessionOperations : com/agentclientprotocol/common/ElicitationOperations, com/agentclientprotocol/common/FileSystemOperations, com/agentclientprotocol/common/TerminalOperations {
 	public abstract fun notify (Lcom/agentclientprotocol/model/SessionUpdate;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun notify$default (Lcom/agentclientprotocol/common/ClientSessionOperations;Lcom/agentclientprotocol/model/SessionUpdate;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public abstract fun requestPermissions (Lcom/agentclientprotocol/model/SessionUpdate$ToolCallUpdate;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -288,6 +294,8 @@ public abstract interface class com/agentclientprotocol/common/ClientSessionOper
 }
 
 public final class com/agentclientprotocol/common/ClientSessionOperations$DefaultImpls {
+	public static fun completeElicitation (Lcom/agentclientprotocol/common/ClientSessionOperations;Lcom/agentclientprotocol/model/CompleteElicitationNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun createElicitation (Lcom/agentclientprotocol/common/ClientSessionOperations;Lcom/agentclientprotocol/model/CreateElicitationRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun fsReadTextFile-i6TIkSo (Lcom/agentclientprotocol/common/ClientSessionOperations;Ljava/lang/String;Lkotlin/UInt;Lkotlin/UInt;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun fsWriteTextFile (Lcom/agentclientprotocol/common/ClientSessionOperations;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun notify$default (Lcom/agentclientprotocol/common/ClientSessionOperations;Lcom/agentclientprotocol/model/SessionUpdate;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
@@ -297,6 +305,18 @@ public final class com/agentclientprotocol/common/ClientSessionOperations$Defaul
 	public static fun terminalOutput (Lcom/agentclientprotocol/common/ClientSessionOperations;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun terminalRelease (Lcom/agentclientprotocol/common/ClientSessionOperations;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun terminalWaitForExit (Lcom/agentclientprotocol/common/ClientSessionOperations;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class com/agentclientprotocol/common/ElicitationOperations {
+	public fun completeElicitation (Lcom/agentclientprotocol/model/CompleteElicitationNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun completeElicitation$suspendImpl (Lcom/agentclientprotocol/common/ElicitationOperations;Lcom/agentclientprotocol/model/CompleteElicitationNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun createElicitation (Lcom/agentclientprotocol/model/CreateElicitationRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun createElicitation$suspendImpl (Lcom/agentclientprotocol/common/ElicitationOperations;Lcom/agentclientprotocol/model/CreateElicitationRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class com/agentclientprotocol/common/ElicitationOperations$DefaultImpls {
+	public static fun completeElicitation (Lcom/agentclientprotocol/common/ElicitationOperations;Lcom/agentclientprotocol/model/CompleteElicitationNotification;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun createElicitation (Lcom/agentclientprotocol/common/ElicitationOperations;Lcom/agentclientprotocol/model/CreateElicitationRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
 public abstract class com/agentclientprotocol/common/Event {
@@ -396,8 +416,9 @@ public final class com/agentclientprotocol/protocol/Protocol : com/agentclientpr
 	public static synthetic fun cancelPendingOutgoingRequests$default (Lcom/agentclientprotocol/protocol/Protocol;Ljava/util/concurrent/CancellationException;ILjava/lang/Object;)V
 	public final fun close ()V
 	public final fun getOptions ()Lcom/agentclientprotocol/protocol/ProtocolOptions;
+	public final fun getOutgoingRequestSessionId-uYPZQ4A (Lcom/agentclientprotocol/rpc/RequestId;)Ljava/lang/String;
 	public fun sendNotificationRaw (Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lkotlinx/serialization/json/JsonElement;)V
-	public fun sendRequestRaw-TF-lsE4 (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun sendRequestRaw-LE58_i8 (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun setNotificationHandlerRaw (Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
 	public fun setRequestHandlerRaw (Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
 	public final fun start ()V
@@ -437,8 +458,8 @@ public final class com/agentclientprotocol/protocol/Protocol_extensionsKt {
 public abstract interface class com/agentclientprotocol/protocol/RpcMethodsOperations {
 	public abstract fun sendNotificationRaw (Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lkotlinx/serialization/json/JsonElement;)V
 	public static synthetic fun sendNotificationRaw$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)V
-	public abstract fun sendRequestRaw-TF-lsE4 (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public static synthetic fun sendRequestRaw-TF-lsE4$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public abstract fun sendRequestRaw-LE58_i8 (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun sendRequestRaw-LE58_i8$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Ljava/lang/String;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public abstract fun setNotificationHandlerRaw (Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
 	public static synthetic fun setNotificationHandlerRaw$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
 	public abstract fun setRequestHandlerRaw (Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
@@ -447,7 +468,7 @@ public abstract interface class com/agentclientprotocol/protocol/RpcMethodsOpera
 
 public final class com/agentclientprotocol/protocol/RpcMethodsOperations$DefaultImpls {
 	public static synthetic fun sendNotificationRaw$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)V
-	public static synthetic fun sendRequestRaw-TF-lsE4$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun sendRequestRaw-LE58_i8$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Ljava/lang/String;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun setNotificationHandlerRaw$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
 	public static synthetic fun setRequestHandlerRaw$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
 }
