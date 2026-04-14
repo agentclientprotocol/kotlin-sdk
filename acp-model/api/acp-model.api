@@ -1645,6 +1645,8 @@ public final class com/agentclientprotocol/model/ElicitationCapabilities : com/a
 	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/ElicitationCapabilities;Lcom/agentclientprotocol/model/ElicitationFormCapabilities;Lcom/agentclientprotocol/model/ElicitationUrlCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/ElicitationCapabilities;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getForm ()Lcom/agentclientprotocol/model/ElicitationFormCapabilities;
+	public final fun getSupportsForm ()Z
+	public final fun getSupportsUrl ()Z
 	public final fun getUrl ()Lcom/agentclientprotocol/model/ElicitationUrlCapabilities;
 	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
 	public fun hashCode ()I
