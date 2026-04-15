@@ -251,15 +251,11 @@ public class Client(
             if (sessionId != null) {
                 // Session may have been closed between the elicitation and the completion;
                 // per the RFD, ignore unknown/already-completed IDs gracefully
+
+
                 val holder = _sessions.value.sessions[sessionId]
                 if (holder != null && holder.session.isCompleted) {
-                    @Suppress("SwallowedException")
-                    val session = try {
-                        @OptIn(ExperimentalCoroutinesApi::class)
-                        holder.session.getCompleted()
-                    } catch (_: IllegalStateException) {
-                        null
-                    }
+                    val session = runCatching { getSessionOrThrow(sessionId) }.getOrNull()
                     if (session != null) {
                         val ops = session.operations as? ElicitationOperations
                         if (ops != null) {
