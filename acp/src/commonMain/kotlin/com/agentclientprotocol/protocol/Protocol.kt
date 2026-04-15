@@ -358,8 +358,8 @@ public class Protocol(
      */
     public fun cancelPendingOutgoingRequests(ce: CancellationException? = null) {
         val requests = pendingOutgoingRequests.getAndUpdate { it.clear() }
-        for (outgoing in requests.values) {
-            logger.trace { "Canceling pending outgoing request: ${outgoing.deferred.key}" }
+        for ((requestId, outgoing) in requests) {
+            logger.trace { "Canceling pending outgoing request: $requestId" }
             outgoing.deferred.cancel(ce)
         }
     }
