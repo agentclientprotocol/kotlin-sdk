@@ -192,8 +192,8 @@ public class Protocol(
      */
     public override suspend fun sendRequestRaw(
         method: MethodName,
-        params: JsonElement?,
-        sessionId: SessionId?
+        params: JsonElement? = null,
+        sessionId: SessionId? = null
     ): JsonElement {
         val requestId = OutgoingRequestId(RequestId.create(requestIdCounter.incrementAndGet()))
         val deferred = CompletableDeferred<JsonElement>()
