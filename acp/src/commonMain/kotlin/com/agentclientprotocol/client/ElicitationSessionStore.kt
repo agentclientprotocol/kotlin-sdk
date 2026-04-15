@@ -4,6 +4,8 @@ import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.ElicitationId
 import com.agentclientprotocol.model.SessionId
 import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.update
+import kotlinx.collections.immutable.persistentMapOf
 
 /**
  * A mutable, bounded map from [ElicitationId] to [SessionId] with bulk eviction.
@@ -19,34 +21,38 @@ internal class ElicitationSessionStore(
     private data class Entry(val sessionId: SessionId, val ordinal: Long)
 
     private val counter = atomic(0L)
-    private val entries: MutableMap<ElicitationId, Entry> = mutableMapOf()
+    private val entries = atomic(persistentMapOf<ElicitationId, Entry>())
 
-    operator fun get(elicitationId: ElicitationId): SessionId? = entries[elicitationId]?.sessionId
+    operator fun get(elicitationId: ElicitationId): SessionId? = entries.value[elicitationId]?.sessionId
 
     fun put(elicitationId: ElicitationId, sessionId: SessionId) {
-        entries[elicitationId] = Entry(sessionId, counter.getAndIncrement())
-        if (entries.size > maxCapacity) {
+        entries.update { it.put(elicitationId, Entry(sessionId, counter.getAndIncrement())) }
+        if (entries.value.size > maxCapacity) {
             evictOldestHalf()
         }
     }
 
     fun remove(elicitationId: ElicitationId): SessionId? {
-        return entries.remove(elicitationId)?.sessionId
+        val sessionId = entries.value[elicitationId]?.sessionId
+        entries.update { it.remove(elicitationId) }
+        return sessionId
     }
 
     fun removeBySession(sessionId: SessionId) {
-        entries.entries.removeAll { it.value.sessionId == sessionId }
+        val toRemove = entries.value.filter { it.value.sessionId == sessionId }.map { it.key }
+        entries.update {
+            toRemove.fold(it) { acc, elicitationId -> acc.remove(elicitationId) }
+        }
     }
 
     private fun evictOldestHalf() {
-        val toRemove = entries.entries
+        val value = entries.value
+        val toRemove = value.entries
             .sortedBy { it.value.ordinal }
-            .take(entries.size / 2)
+            .take(value.size / 2)
             .map { it.key }
-        if (entries.size > maxCapacity) {
-            for (key in toRemove) {
-                entries.remove(key)
-            }
+        entries.update {
+            toRemove.fold(it) { acc, elicitationId -> acc.remove(elicitationId) }
         }
     }
 
