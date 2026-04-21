@@ -2001,6 +2001,88 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
         assertEquals(1, sessions.size)
     }
 
+    @OptIn(UnstableApi::class)
+    @Test
+    fun `providers capability and methods are wired through client api`() = testWithProtocols { clientProtocol, agentProtocol ->
+        var lastSetProvider: SetProvidersRequest? = null
+        var lastDisabledProviderId: String? = null
+
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(
+                    clientInfo.protocolVersion,
+                    capabilities = AgentCapabilities(providers = ProvidersCapabilities())
+                )
+            }
+
+            override suspend fun listProviders(_meta: JsonElement?): ListProvidersResponse {
+                return ListProvidersResponse(
+                    providers = listOf(
+                        ProviderInfo(
+                            id = "main",
+                            supported = listOf(LlmProtocol.OPENAI, LlmProtocol.ANTHROPIC),
+                            required = false,
+                            current = ProviderCurrentConfig(
+                                apiType = LlmProtocol.OPENAI,
+                                baseUrl = "https://api.openai.com/v1"
+                            )
+                        ),
+                        ProviderInfo(
+                            id = "backup",
+                            supported = listOf(LlmProtocol.OPENAI),
+                            required = false
+                        )
+                    )
+                )
+            }
+
+            override suspend fun setProvider(
+                id: String,
+                apiType: LlmProtocol,
+                baseUrl: String,
+                headers: Map<String, String>?,
+                _meta: JsonElement?
+            ): SetProvidersResponse {
+                lastSetProvider = SetProvidersRequest(id, apiType, baseUrl, headers, _meta)
+                return SetProvidersResponse()
+            }
+
+            override suspend fun disableProvider(id: String, _meta: JsonElement?): DisableProvidersResponse {
+                lastDisabledProviderId = id
+                return DisableProvidersResponse()
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                TODO("Not needed for providers test")
+            }
+        })
+
+        val agentInfo = client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+        assertNotNull(agentInfo.capabilities.providers)
+
+        val providersResponse = client.listProviders()
+        assertEquals(2, providersResponse.providers.size)
+        assertEquals("main", providersResponse.providers[0].id)
+        assertEquals(LlmProtocol.OPENAI, providersResponse.providers[0].current?.apiType)
+        assertNull(providersResponse.providers[1].current)
+
+        client.setProvider(
+            id = "main",
+            apiType = LlmProtocol.ANTHROPIC,
+            baseUrl = "https://api.anthropic.com",
+            headers = mapOf("x-api-key" to "test-key")
+        )
+        assertNotNull(lastSetProvider)
+        assertEquals("main", lastSetProvider.id)
+        assertEquals(LlmProtocol.ANTHROPIC, lastSetProvider.apiType)
+        assertEquals("https://api.anthropic.com", lastSetProvider.baseUrl)
+        assertEquals("test-key", lastSetProvider.headers?.get("x-api-key"))
+
+        client.disableProvider("main")
+        assertEquals("main", lastDisabledProviderId)
+    }
+
     @Test
     @OptIn(UnstableApi::class)
     fun `session ready notifies available commands`() = testWithProtocols { clientProtocol, agentProtocol ->

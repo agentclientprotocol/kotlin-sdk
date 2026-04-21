@@ -26,6 +26,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlin.jvm.JvmInline
 
 /**
  * Type discriminator key for AuthMethod serialization.
@@ -498,6 +499,50 @@ public data class SetSessionModelRequest(
     override val _meta: JsonElement? = null
 ) : AcpRequest, AcpWithSessionId
 
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Request parameters for `providers/list`.
+ */
+@UnstableApi
+@Serializable
+public data class ListProvidersRequest(
+    override val _meta: JsonElement? = null
+) : AcpRequest
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Request parameters for `providers/set`.
+ */
+@UnstableApi
+@Serializable
+public data class SetProvidersRequest(
+    val id: String,
+    val apiType: LlmProtocol,
+    val baseUrl: String,
+    val headers: Map<String, String>? = null,
+    override val _meta: JsonElement? = null
+) : AcpRequest
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Request parameters for `providers/disable`.
+ */
+@UnstableApi
+@Serializable
+public data class DisableProvidersRequest(
+    val id: String,
+    override val _meta: JsonElement? = null
+) : AcpRequest
+
 // === Response Types ===
 
 /**
@@ -567,6 +612,61 @@ public data class ModelInfo(
 public data class SessionModelState(
     val currentModelId: ModelId,
     val availableModels: List<ModelInfo>,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Well-known API protocol identifiers for LLM providers.
+ *
+ * Agents and clients MUST handle unknown protocol identifiers gracefully.
+ */
+@UnstableApi
+@JvmInline
+@Serializable
+public value class LlmProtocol(public val value: String) {
+    override fun toString(): String = value
+
+    public companion object {
+        public val ANTHROPIC: LlmProtocol = LlmProtocol("anthropic")
+        public val OPENAI: LlmProtocol = LlmProtocol("openai")
+        public val AZURE: LlmProtocol = LlmProtocol("azure")
+        public val VERTEX: LlmProtocol = LlmProtocol("vertex")
+        public val BEDROCK: LlmProtocol = LlmProtocol("bedrock")
+    }
+}
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Current effective non-secret routing configuration for a provider.
+ */
+@UnstableApi
+@Serializable
+public data class ProviderCurrentConfig(
+    val apiType: LlmProtocol,
+    val baseUrl: String
+)
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Information about a configurable LLM provider.
+ */
+@UnstableApi
+@Serializable
+public data class ProviderInfo(
+    val id: String,
+    val supported: List<LlmProtocol>,
+    val required: Boolean,
+    val current: ProviderCurrentConfig? = null,
     override val _meta: JsonElement? = null
 ) : AcpWithMeta
 
@@ -687,6 +787,46 @@ public data class SetSessionModeResponse(
 @UnstableApi
 @Serializable
 public data class SetSessionModelResponse(
+    override val _meta: JsonElement? = null
+) : AcpResponse
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Response to `providers/list`.
+ */
+@UnstableApi
+@Serializable
+public data class ListProvidersResponse(
+    val providers: List<ProviderInfo>,
+    override val _meta: JsonElement? = null
+) : AcpResponse
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Response to `providers/set`.
+ */
+@UnstableApi
+@Serializable
+public data class SetProvidersResponse(
+    override val _meta: JsonElement? = null
+) : AcpResponse
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Response to `providers/disable`.
+ */
+@UnstableApi
+@Serializable
+public data class DisableProvidersResponse(
     override val _meta: JsonElement? = null
 ) : AcpResponse
 

@@ -46,6 +46,12 @@ public open class AcpMethod(public val methodName: MethodName) {
         public object Authenticate : AcpRequestResponseMethod<AuthenticateRequest, AuthenticateResponse>("authenticate", AuthenticateRequest.serializer(), AuthenticateResponse.serializer())
         @UnstableApi
         public object Logout : AcpRequestResponseMethod<LogoutRequest, LogoutResponse>("logout", LogoutRequest.serializer(), LogoutResponse.serializer())
+        @UnstableApi
+        public object ProvidersList : AcpRequestResponseMethod<ListProvidersRequest, ListProvidersResponse>("providers/list", ListProvidersRequest.serializer(), ListProvidersResponse.serializer())
+        @UnstableApi
+        public object ProvidersSet : AcpRequestResponseMethod<SetProvidersRequest, SetProvidersResponse>("providers/set", SetProvidersRequest.serializer(), SetProvidersResponse.serializer())
+        @UnstableApi
+        public object ProvidersDisable : AcpRequestResponseMethod<DisableProvidersRequest, DisableProvidersResponse>("providers/disable", DisableProvidersRequest.serializer(), DisableProvidersResponse.serializer())
         public object SessionNew : AcpRequestResponseMethod<NewSessionRequest, NewSessionResponse>("session/new", NewSessionRequest.serializer(), NewSessionResponse.serializer())
         public object SessionLoad : AcpRequestResponseMethod<LoadSessionRequest, LoadSessionResponse>("session/load", LoadSessionRequest.serializer(), LoadSessionResponse.serializer())
 

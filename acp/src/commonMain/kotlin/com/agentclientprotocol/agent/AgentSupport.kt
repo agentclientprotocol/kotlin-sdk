@@ -5,9 +5,13 @@ import com.agentclientprotocol.client.ClientInfo
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.AuthMethodId
 import com.agentclientprotocol.model.AuthenticateResponse
+import com.agentclientprotocol.model.DisableProvidersResponse
+import com.agentclientprotocol.model.ListProvidersResponse
+import com.agentclientprotocol.model.LlmProtocol
 import com.agentclientprotocol.model.LogoutResponse
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionInfo
+import com.agentclientprotocol.model.SetProvidersResponse
 import com.agentclientprotocol.model.StartNesRequest
 import kotlinx.serialization.json.JsonElement
 
@@ -47,6 +51,62 @@ public interface AgentSupport {
     @UnstableApi
     public suspend fun logout(_meta: JsonElement?): LogoutResponse {
         throw NotImplementedError("logout is not implemented. The capability is declared in AgentCapabilities.auth.logout")
+    }
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Lists providers that can be configured by the client.
+     *
+     * @param _meta optional metadata
+     * @return a [ListProvidersResponse] with configurable providers and current routing info
+     */
+    @UnstableApi
+    public suspend fun listProviders(_meta: JsonElement?): ListProvidersResponse {
+        throw NotImplementedError("listProviders is not implemented. The capability is declared in AgentCapabilities.providers")
+    }
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Replaces the full configuration for one provider id.
+     *
+     * @param id provider id to configure
+     * @param apiType protocol type for this provider
+     * @param baseUrl base URL for requests sent through this provider
+     * @param headers optional headers map for this provider
+     * @param _meta optional metadata
+     * @return a [SetProvidersResponse] indicating the update result
+     */
+    @UnstableApi
+    public suspend fun setProvider(
+        id: String,
+        apiType: LlmProtocol,
+        baseUrl: String,
+        headers: Map<String, String>?,
+        _meta: JsonElement?
+    ): SetProvidersResponse {
+        throw NotImplementedError("setProvider is not implemented. The capability is declared in AgentCapabilities.providers")
+    }
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Disables a provider.
+     *
+     * @param id provider id to disable
+     * @param _meta optional metadata
+     * @return a [DisableProvidersResponse] indicating the disable result
+     */
+    @UnstableApi
+    public suspend fun disableProvider(id: String, _meta: JsonElement?): DisableProvidersResponse {
+        throw NotImplementedError("disableProvider is not implemented. The capability is declared in AgentCapabilities.providers")
     }
 
     /**
