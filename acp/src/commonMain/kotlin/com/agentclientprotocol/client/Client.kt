@@ -314,6 +314,57 @@ public class Client(
     }
 
     /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Lists providers that can be configured by the client.
+     */
+    @UnstableApi
+    public suspend fun listProviders(_meta: JsonElement? = null): ListProvidersResponse {
+        return AcpMethod.AgentMethods.ProvidersList(protocol, ListProvidersRequest(_meta))
+    }
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Replaces the full configuration for one provider id.
+     *
+     * @param id provider id to configure
+     * @param apiType protocol type for this provider
+     * @param baseUrl base URL for requests sent through this provider
+     * @param headers optional headers map for this provider
+     * @param _meta optional metadata
+     */
+    @UnstableApi
+    public suspend fun setProvider(
+        id: String,
+        apiType: LlmProtocol,
+        baseUrl: String,
+        headers: Map<String, String>? = null,
+        _meta: JsonElement? = null
+    ): SetProvidersResponse {
+        return AcpMethod.AgentMethods.ProvidersSet(protocol, SetProvidersRequest(id, apiType, baseUrl, headers, _meta))
+    }
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Disables a provider by id.
+     *
+     * @param id provider id to disable
+     * @param _meta optional metadata
+     */
+    @UnstableApi
+    public suspend fun disableProvider(id: String, _meta: JsonElement? = null): DisableProvidersResponse {
+        return AcpMethod.AgentMethods.ProvidersDisable(protocol, DisableProvidersRequest(id, _meta))
+    }
+
+    /**
      * Creates a new session with specified [sessionParameters].
      *
      * @param sessionParameters parameters for creating a new session

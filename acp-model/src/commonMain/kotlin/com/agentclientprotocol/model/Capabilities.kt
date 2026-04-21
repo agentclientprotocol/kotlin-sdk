@@ -204,6 +204,21 @@ public data class AgentAuthCapabilities(
 ) : AcpWithMeta
 
 /**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Provider configuration capabilities supported by the agent.
+ *
+ * By supplying `{}` it means that the agent supports provider configuration methods.
+ */
+@UnstableApi
+@Serializable
+public data class ProvidersCapabilities(
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
  * Capabilities supported by the agent.
  *
  * Advertised during initialization to inform the client about
@@ -224,5 +239,7 @@ public data class AgentCapabilities(
     val nes: NesCapabilities? = null,
     @property:UnstableApi
     val positionEncoding: PositionEncodingKind? = null,
+    @property:UnstableApi
+    val providers: ProvidersCapabilities? = null,
     override val _meta: JsonElement? = null
 ) : AcpCapabilities, AcpWithMeta

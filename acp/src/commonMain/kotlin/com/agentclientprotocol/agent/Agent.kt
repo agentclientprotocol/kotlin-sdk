@@ -153,6 +153,21 @@ public class Agent(
             return@setRequestHandler agentSupport.logout(params._meta)
         }
 
+        @OptIn(UnstableApi::class)
+        protocol.setRequestHandler(AcpMethod.AgentMethods.ProvidersList) { params: ListProvidersRequest ->
+            return@setRequestHandler agentSupport.listProviders(params._meta)
+        }
+
+        @OptIn(UnstableApi::class)
+        protocol.setRequestHandler(AcpMethod.AgentMethods.ProvidersSet) { params: SetProvidersRequest ->
+            return@setRequestHandler agentSupport.setProvider(params.id, params.apiType, params.baseUrl, params.headers, params._meta)
+        }
+
+        @OptIn(UnstableApi::class)
+        protocol.setRequestHandler(AcpMethod.AgentMethods.ProvidersDisable) { params: DisableProvidersRequest ->
+            return@setRequestHandler agentSupport.disableProvider(params.id, params._meta)
+        }
+
         protocol.setPaginatedRequestHandler(
             AcpMethod.AgentMethods.SessionList,
             // TODO: move to some global agent/client settings
