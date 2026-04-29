@@ -173,9 +173,10 @@ public class Protocol(
         }
 
         // Start processing incoming messages
+        val messageChannel = transport.asMessageChannel()
         scope.launch(CoroutineName("${Protocol::class.simpleName!!}.read-messages")) {
             runCatching {
-                for (message in transport.asMessageChannel()) {
+                for (message in messageChannel) {
                     handleIncomingMessage(message)
                 }
             }.checkCancelled().onFailure {
