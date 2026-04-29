@@ -13,13 +13,16 @@ import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.min
 import kotlin.uuid.ExperimentalUuidApi
 
@@ -58,47 +61,52 @@ public class Agent(
         val clientOperations: ClientSessionOperations,
         protocol: Protocol
     ) : BaseSessionWrapper(agent, protocol) {
-        private class PromptSession(val currentRequestId: RequestId)
+        private class PromptSession(val currentRequestId: RequestId, val promptJob: Job)
         private val _activePrompt = atomic<PromptSession?>(null)
 
         suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): PromptResponse {
             val currentRpcRequest = currentCoroutineContext().jsonRpcRequest
-            if (!_activePrompt.compareAndSet(null, PromptSession(currentRpcRequest.id))) error("There is already active prompt execution")
-            try {
-                var response: PromptResponse? = null
+            var response: PromptResponse? = null
+            return coroutineScope {
+                try {
+                    val promptJob = launch(start = CoroutineStart.LAZY) {
+                        agentSession.prompt(content, _meta).collect { event ->
+                            when (event) {
+                                is Event.PromptResponseEvent -> {
+                                    if (response != null) {
+                                        logger.error { "Received repeated prompt response: ${event.response} (previous: $response). The last is used" }
+                                    }
+                                    response = event.response
+                                }
 
-                agentSession.prompt(content, _meta).collect { event ->
-                    when (event) {
-                        is Event.PromptResponseEvent -> {
-                            if (response != null) {
-                                logger.error { "Received repeated prompt response: ${event.response} (previous: $response). The last is used" }
+                                is Event.SessionUpdateEvent -> {
+                                    clientOperations.notify(event.update, _meta)
+                                }
                             }
-                            response = event.response
-                        }
-
-                        is Event.SessionUpdateEvent -> {
-                            clientOperations.notify(event.update, _meta)
                         }
                     }
-                }
 
-                return response ?: PromptResponse(StopReason.END_TURN)
-            }
-            catch (ce: CancellationException) {
-                logger.trace(ce) { "Prompt job cancelled" }
-                return PromptResponse(StopReason.CANCELLED)
-            }
-            finally {
-                _activePrompt.getAndSet(null)
+                    val promptSession = PromptSession(currentRpcRequest.id, promptJob)
+                    if (!_activePrompt.compareAndSet(null, promptSession)) {
+                        error("There is already active prompt execution")
+                    }
+                    promptJob.join()
+                    response ?: PromptResponse(
+                        stopReason = if (promptJob.isCancelled) StopReason.CANCELLED else StopReason.END_TURN
+                    )
+                } finally {
+                    _activePrompt.getAndSet(null)
+                }
             }
         }
 
         suspend fun cancel() {
-            // TODO do we need it while the cancellation can be handled by coroutine mechanism (catching CE inside `prompt`)
+            // notify AgentSession about upcoming cancellation, this way implementations can gracefully stop ongoing requests
             agentSession.cancel()
 
             val activePrompt = _activePrompt.getAndSet(null)
             if (activePrompt != null) {
+                logger.trace { "Cancelling prompt" }
                 // we expect that all nested outgoing jobs will be cancelled automatically due to structured concurrency
                 // -> prompt task
                 //   <- [request] read file
@@ -106,7 +114,7 @@ public class Agent(
                 //   <- [request] permissions
                 //   |suspended|
                 // cancelling the whole prompt should cancel all nested outgoing requests. These requests on CE will propagate cancellation to the other side
-                protocol.cancelPendingIncomingRequest(activePrompt.currentRequestId)
+                activePrompt.promptJob.cancel()
             }
         }
     }
