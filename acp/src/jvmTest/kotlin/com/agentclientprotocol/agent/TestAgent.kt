@@ -34,7 +34,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonElement
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 class TestAgent(val agent: Agent, val agentSupport: TestAgentSupport, val transport: TestTransport) {
@@ -124,10 +123,6 @@ fun withTestAgent(
     val agentSupport = TestAgentSupport(promptHandler)
     val agent = Agent(protocol, agentSupport)
     protocol.start()
-
-    // wait a little after protocol start, if messages get sent right away they can get lost
-    delay(100.milliseconds)
-
     val testAgent = TestAgent(agent, agentSupport, transport)
     block(testAgent)
     testAgent.close()
