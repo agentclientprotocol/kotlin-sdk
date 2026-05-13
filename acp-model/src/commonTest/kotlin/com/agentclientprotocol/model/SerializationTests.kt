@@ -3,6 +3,7 @@ package com.agentclientprotocol.model
 import com.agentclientprotocol.rpc.ACPJson
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SerializationTests {
@@ -139,5 +140,74 @@ class SerializationTests {
         assertEquals(12345L, update.used)
         assertEquals(500000L, update.size)
         assertEquals(null, update.cost)
+    }
+
+    @Test
+    fun `decodes PromptResponse with usage`() {
+        val payload = """
+            {
+              "stopReason": "end_turn",
+              "usage": {
+                "inputTokens": 100,
+                "outputTokens": 200,
+                "totalTokens": 300,
+                "thoughtTokens": 50,
+                "cachedReadTokens": 10,
+                "cachedWriteTokens": 5
+              }
+            }
+        """.trimIndent()
+
+        val response = ACPJson.decodeFromString(PromptResponse.serializer(), payload)
+
+        assertEquals(StopReason.END_TURN, response.stopReason)
+        val usage = response.usage
+        assertTrue(usage != null)
+        assertEquals(100L, usage.inputTokens)
+        assertEquals(200L, usage.outputTokens)
+        assertEquals(300L, usage.totalTokens)
+        assertEquals(50L, usage.thoughtTokens)
+        assertEquals(10L, usage.cachedReadTokens)
+        assertEquals(5L, usage.cachedWriteTokens)
+    }
+
+    @Test
+    fun `decodes PromptResponse with usage omitting optional fields`() {
+        val payload = """
+            {
+              "stopReason": "end_turn",
+              "usage": {
+                "inputTokens": 100,
+                "outputTokens": 200,
+                "totalTokens": 300
+              }
+            }
+        """.trimIndent()
+
+        val response = ACPJson.decodeFromString(PromptResponse.serializer(), payload)
+
+        assertEquals(StopReason.END_TURN, response.stopReason)
+        val usage = response.usage
+        assertTrue(usage != null)
+        assertEquals(100L, usage.inputTokens)
+        assertEquals(200L, usage.outputTokens)
+        assertEquals(300L, usage.totalTokens)
+        assertNull(usage.thoughtTokens)
+        assertNull(usage.cachedReadTokens)
+        assertNull(usage.cachedWriteTokens)
+    }
+
+    @Test
+    fun `decodes PromptResponse without usage`() {
+        val payload = """
+            {
+              "stopReason": "end_turn"
+            }
+        """.trimIndent()
+
+        val response = ACPJson.decodeFromString(PromptResponse.serializer(), payload)
+
+        assertEquals(StopReason.END_TURN, response.stopReason)
+        assertNull(response.usage)
     }
 }

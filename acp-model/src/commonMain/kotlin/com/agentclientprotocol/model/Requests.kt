@@ -688,6 +688,25 @@ public data class NewSessionResponse(
 ) : AcpCreatedSessionResponse, AcpResponse, AcpWithSessionId
 
 /**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Token usage for a prompt turn.
+ */
+@UnstableApi
+@Serializable
+public data class Usage(
+    val inputTokens: Long,
+    val outputTokens: Long,
+    val totalTokens: Long,
+    val thoughtTokens: Long? = null,
+    val cachedReadTokens: Long? = null,
+    val cachedWriteTokens: Long? = null,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
  * Response from processing a user prompt.
  *
  * See protocol docs: [Check for Completion](https://agentclientprotocol.com/protocol/prompt-turn#4-check-for-completion)
@@ -698,6 +717,8 @@ public data class PromptResponse(
     val stopReason: StopReason,
     @property:UnstableApi
     val userMessageId: MessageId? = null,
+    @property:UnstableApi
+    val usage: Usage? = null,
     override val _meta: JsonElement? = null
 ) : AcpResponse
 
