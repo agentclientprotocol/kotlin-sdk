@@ -13,6 +13,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class SessionConfigSelectOptionsSerializerTest {
 
@@ -106,6 +107,7 @@ class SessionConfigSelectOptionsSerializerTest {
         val options = assertIs<SessionConfigSelectOptions.Flat>(select.options)
         assertEquals(SessionConfigValueId("auto"), select.currentValue)
         assertEquals(3, options.options.size)
+        assertEquals(SessionConfigOptionCategory.MODE, select.category)
     }
 
     @Test
@@ -217,6 +219,9 @@ class SessionConfigSelectOptionsSerializerTest {
         val firstOptions = assertIs<SessionConfigSelectOptions.Flat>(first.options)
         assertEquals(SessionConfigValueId("ask"), first.currentValue)
         assertEquals(2, firstOptions.options.size)
+        assertEquals(SessionConfigOptionCategory.MODE, first.category)
+        val second = assertIs<SessionConfigOption.Select>(configOptions[1])
+        assertEquals(SessionConfigOptionCategory.MODEL, second.category)
     }
 
     @Test
@@ -650,6 +655,177 @@ class SessionConfigSelectOptionsSerializerTest {
         val request = ACPJson.decodeFromString(SetSessionConfigOptionRequest.serializer(), json)
         val boolValue = assertIs<SessionConfigOptionValue.BoolValue>(request.value)
         assertEquals(false, boolValue.value)
+    }
+
+    // --- SessionConfigOptionCategory tests ---
+
+    @Test
+    fun `decode select config option with category mode`() {
+        val json = """
+            {
+              "id": "mode",
+              "name": "Session Mode",
+              "category": "mode",
+              "type": "select",
+              "currentValue": "ask",
+              "options": [{"value": "ask", "name": "Ask"}]
+            }
+        """.trimIndent()
+        val option = ACPJson.decodeFromString(SessionConfigOption.serializer(), json)
+        val select = assertIs<SessionConfigOption.Select>(option)
+        assertEquals(SessionConfigOptionCategory.MODE, select.category)
+    }
+
+    @Test
+    fun `decode select config option with category model`() {
+        val json = """
+            {
+              "id": "models",
+              "name": "Model",
+              "category": "model",
+              "type": "select",
+              "currentValue": "m1",
+              "options": [{"value": "m1", "name": "Model 1"}]
+            }
+        """.trimIndent()
+        val option = ACPJson.decodeFromString(SessionConfigOption.serializer(), json)
+        val select = assertIs<SessionConfigOption.Select>(option)
+        assertEquals(SessionConfigOptionCategory.MODEL, select.category)
+    }
+
+    @Test
+    fun `decode select config option with category thought_level`() {
+        val json = """
+            {
+              "id": "thinking",
+              "name": "Thinking",
+              "category": "thought_level",
+              "type": "select",
+              "currentValue": "high",
+              "options": [{"value": "high", "name": "High"}]
+            }
+        """.trimIndent()
+        val option = ACPJson.decodeFromString(SessionConfigOption.serializer(), json)
+        val select = assertIs<SessionConfigOption.Select>(option)
+        assertEquals(SessionConfigOptionCategory.THOUGHT_LEVEL, select.category)
+    }
+
+    @Test
+    fun `decode select config option with custom category`() {
+        val json = """
+            {
+              "id": "custom",
+              "name": "Custom",
+              "category": "_custom_foo",
+              "type": "select",
+              "currentValue": "a",
+              "options": [{"value": "a", "name": "A"}]
+            }
+        """.trimIndent()
+        val option = ACPJson.decodeFromString(SessionConfigOption.serializer(), json)
+        val select = assertIs<SessionConfigOption.Select>(option)
+        assertEquals(SessionConfigOptionCategory("_custom_foo"), select.category)
+    }
+
+    @Test
+    fun `decode select config option without category`() {
+        val json = """
+            {
+              "id": "mode",
+              "name": "Mode",
+              "type": "select",
+              "currentValue": "a",
+              "options": [{"value": "a", "name": "A"}]
+            }
+        """.trimIndent()
+        val option = ACPJson.decodeFromString(SessionConfigOption.serializer(), json)
+        val select = assertIs<SessionConfigOption.Select>(option)
+        assertNull(select.category)
+    }
+
+    @Test
+    fun `decode boolean config option with category`() {
+        val json = """
+            {
+              "id": "auto_approve",
+              "name": "Auto Approve",
+              "category": "mode",
+              "type": "boolean",
+              "currentValue": true
+            }
+        """.trimIndent()
+        val option = ACPJson.decodeFromString(SessionConfigOption.serializer(), json)
+        val boolOption = assertIs<SessionConfigOption.BooleanOption>(option)
+        assertEquals(SessionConfigOptionCategory.MODE, boolOption.category)
+    }
+
+    @Test
+    fun `decode boolean config option without category`() {
+        val json = """
+            {
+              "id": "verbose",
+              "name": "Verbose",
+              "type": "boolean",
+              "currentValue": false
+            }
+        """.trimIndent()
+        val option = ACPJson.decodeFromString(SessionConfigOption.serializer(), json)
+        val boolOption = assertIs<SessionConfigOption.BooleanOption>(option)
+        assertNull(boolOption.category)
+    }
+
+    @Test
+    fun `encode select config option with category roundtrip`() {
+        val original = SessionConfigOption.Select(
+            id = SessionConfigId("mode"),
+            name = "Session Mode",
+            category = SessionConfigOptionCategory.MODE,
+            currentValue = SessionConfigValueId("ask"),
+            options = SessionConfigSelectOptions.Flat(listOf(
+                SessionConfigSelectOption(SessionConfigValueId("ask"), "Ask")
+            ))
+        )
+        val encoded = ACPJson.encodeToString(SessionConfigOption.serializer(), original)
+        val decoded = ACPJson.decodeFromString(SessionConfigOption.serializer(), encoded)
+        val select = assertIs<SessionConfigOption.Select>(decoded)
+        assertEquals(SessionConfigOptionCategory.MODE, select.category)
+    }
+
+    @Test
+    fun `encode boolean config option with category roundtrip`() {
+        val original = SessionConfigOption.BooleanOption(
+            id = SessionConfigId("auto_approve"),
+            name = "Auto Approve",
+            category = SessionConfigOptionCategory.MODEL,
+            currentValue = true
+        )
+        val encoded = ACPJson.encodeToString(SessionConfigOption.serializer(), original)
+        val decoded = ACPJson.decodeFromString(SessionConfigOption.serializer(), encoded)
+        val boolOption = assertIs<SessionConfigOption.BooleanOption>(decoded)
+        assertEquals(SessionConfigOptionCategory.MODEL, boolOption.category)
+    }
+
+    @Test
+    fun `factory method select with category`() {
+        val options = SessionConfigSelectOptions.Flat(listOf(
+            SessionConfigSelectOption(SessionConfigValueId("a"), "Option A")
+        ))
+        val option = SessionConfigOption.select(
+            "mode", "Mode", "a", options,
+            description = "Pick a mode",
+            category = SessionConfigOptionCategory.MODE
+        )
+        assertEquals(SessionConfigOptionCategory.MODE, option.category)
+    }
+
+    @Test
+    fun `factory method boolean with category`() {
+        val option = SessionConfigOption.boolean(
+            "verbose", "Verbose", true,
+            description = "Enable verbose logging",
+            category = SessionConfigOptionCategory.THOUGHT_LEVEL
+        )
+        assertEquals(SessionConfigOptionCategory.THOUGHT_LEVEL, option.category)
     }
 
     @Test
