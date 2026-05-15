@@ -682,7 +682,6 @@ public data class NewSessionResponse(
     override val modes: SessionModeState? = null,
     @property:UnstableApi
     override val models: SessionModelState? = null,
-    @property:UnstableApi
     override val configOptions: List<SessionConfigOption>? = null,
     override val _meta: JsonElement? = null
 ) : AcpCreatedSessionResponse, AcpResponse, AcpWithSessionId
@@ -710,7 +709,6 @@ public data class LoadSessionResponse(
     override val modes: SessionModeState? = null,
     @property:UnstableApi
     override val models: SessionModelState? = null,
-    @property:UnstableApi
     override val configOptions: List<SessionConfigOption>? = null,
     override val _meta: JsonElement? = null
 ) : AcpCreatedSessionResponse, AcpResponse
@@ -980,7 +978,6 @@ public data class ResumeSessionResponse(
     override val modes: SessionModeState? = null,
     @property:UnstableApi
     override val models: SessionModelState? = null,
-    @property:UnstableApi
     override val configOptions: List<SessionConfigOption>? = null,
     override val _meta: JsonElement? = null
 ) : AcpCreatedSessionResponse, AcpResponse
@@ -1002,13 +999,8 @@ public data class SetSessionConfigOptionRequest(
 ) : AcpRequest, AcpWithSessionId
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * Response from setting a configuration option.
  */
-@UnstableApi
 @Serializable
 public data class SetSessionConfigOptionResponse(
     val configOptions: List<SessionConfigOption>,

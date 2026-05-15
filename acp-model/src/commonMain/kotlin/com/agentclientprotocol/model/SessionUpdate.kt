@@ -187,13 +187,8 @@ public sealed class SessionUpdate {
     ) : SessionUpdate()
 
     /**
-     * **UNSTABLE**
-     *
-     * This capability is not part of the spec yet, and may be removed or changed at any point.
-     *
      * Configuration options have been updated.
      */
-    @UnstableApi
     @Serializable
     @SerialName("config_option_update")
     public data class ConfigOptionUpdate(

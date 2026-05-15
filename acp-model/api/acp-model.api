@@ -5562,6 +5562,7 @@ public final class com/agentclientprotocol/model/SessionConfigId$Companion {
 public abstract class com/agentclientprotocol/model/SessionConfigOption : com/agentclientprotocol/model/AcpWithMeta {
 	public static final field Companion Lcom/agentclientprotocol/model/SessionConfigOption$Companion;
 	public synthetic fun <init> (ILkotlinx/serialization/internal/SerializationConstructorMarker;)V
+	public abstract fun getCategory-hVFCkWA ()Ljava/lang/String;
 	public abstract fun getDescription ()Ljava/lang/String;
 	public abstract fun getId-2Q23AbI ()Ljava/lang/String;
 	public abstract fun getName ()Ljava/lang/String;
@@ -5570,16 +5571,18 @@ public abstract class com/agentclientprotocol/model/SessionConfigOption : com/ag
 
 public final class com/agentclientprotocol/model/SessionConfigOption$BooleanOption : com/agentclientprotocol/model/SessionConfigOption {
 	public static final field Companion Lcom/agentclientprotocol/model/SessionConfigOption$BooleanOption$Companion;
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1-2Q23AbI ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Ljava/lang/String;
-	public final fun component4 ()Z
-	public final fun component5 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun copy-AHie1Zw (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/SessionConfigOption$BooleanOption;
-	public static synthetic fun copy-AHie1Zw$default (Lcom/agentclientprotocol/model/SessionConfigOption$BooleanOption;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionConfigOption$BooleanOption;
+	public final fun component4-hVFCkWA ()Ljava/lang/String;
+	public final fun component5 ()Z
+	public final fun component6 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy-pwdxzbE (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/SessionConfigOption$BooleanOption;
+	public static synthetic fun copy-pwdxzbE$default (Lcom/agentclientprotocol/model/SessionConfigOption$BooleanOption;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionConfigOption$BooleanOption;
 	public fun equals (Ljava/lang/Object;)Z
+	public fun getCategory-hVFCkWA ()Ljava/lang/String;
 	public final fun getCurrentValue ()Z
 	public fun getDescription ()Ljava/lang/String;
 	public fun getId-2Q23AbI ()Ljava/lang/String;
@@ -5605,26 +5608,28 @@ public final class com/agentclientprotocol/model/SessionConfigOption$BooleanOpti
 }
 
 public final class com/agentclientprotocol/model/SessionConfigOption$Companion {
-	public final fun boolean (Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;)Lcom/agentclientprotocol/model/SessionConfigOption$BooleanOption;
-	public static synthetic fun boolean$default (Lcom/agentclientprotocol/model/SessionConfigOption$Companion;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionConfigOption$BooleanOption;
-	public final fun select (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/SessionConfigSelectOptions;Ljava/lang/String;)Lcom/agentclientprotocol/model/SessionConfigOption$Select;
-	public static synthetic fun select$default (Lcom/agentclientprotocol/model/SessionConfigOption$Companion;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/SessionConfigSelectOptions;Ljava/lang/String;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionConfigOption$Select;
+	public final fun boolean-Zk-hV-o (Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Ljava/lang/String;)Lcom/agentclientprotocol/model/SessionConfigOption$BooleanOption;
+	public static synthetic fun boolean-Zk-hV-o$default (Lcom/agentclientprotocol/model/SessionConfigOption$Companion;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionConfigOption$BooleanOption;
+	public final fun select-tW3b3dA (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/SessionConfigSelectOptions;Ljava/lang/String;Ljava/lang/String;)Lcom/agentclientprotocol/model/SessionConfigOption$Select;
+	public static synthetic fun select-tW3b3dA$default (Lcom/agentclientprotocol/model/SessionConfigOption$Companion;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/SessionConfigSelectOptions;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionConfigOption$Select;
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class com/agentclientprotocol/model/SessionConfigOption$Select : com/agentclientprotocol/model/SessionConfigOption {
 	public static final field Companion Lcom/agentclientprotocol/model/SessionConfigOption$Select$Companion;
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/SessionConfigSelectOptions;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/SessionConfigSelectOptions;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/SessionConfigSelectOptions;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/SessionConfigSelectOptions;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1-2Q23AbI ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Ljava/lang/String;
-	public final fun component4-cDIbsdA ()Ljava/lang/String;
-	public final fun component5 ()Lcom/agentclientprotocol/model/SessionConfigSelectOptions;
-	public final fun component6 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun copy-ajXSYlw (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/SessionConfigSelectOptions;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/SessionConfigOption$Select;
-	public static synthetic fun copy-ajXSYlw$default (Lcom/agentclientprotocol/model/SessionConfigOption$Select;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/SessionConfigSelectOptions;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionConfigOption$Select;
+	public final fun component4-hVFCkWA ()Ljava/lang/String;
+	public final fun component5-cDIbsdA ()Ljava/lang/String;
+	public final fun component6 ()Lcom/agentclientprotocol/model/SessionConfigSelectOptions;
+	public final fun component7 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy-xDZ6wdk (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/SessionConfigSelectOptions;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/SessionConfigOption$Select;
+	public static synthetic fun copy-xDZ6wdk$default (Lcom/agentclientprotocol/model/SessionConfigOption$Select;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/SessionConfigSelectOptions;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionConfigOption$Select;
 	public fun equals (Ljava/lang/Object;)Z
+	public fun getCategory-hVFCkWA ()Ljava/lang/String;
 	public final fun getCurrentValue-cDIbsdA ()Ljava/lang/String;
 	public fun getDescription ()Ljava/lang/String;
 	public fun getId-2Q23AbI ()Ljava/lang/String;
@@ -5647,6 +5652,39 @@ public final synthetic class com/agentclientprotocol/model/SessionConfigOption$S
 }
 
 public final class com/agentclientprotocol/model/SessionConfigOption$Select$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/SessionConfigOptionCategory {
+	public static final field Companion Lcom/agentclientprotocol/model/SessionConfigOptionCategory$Companion;
+	public static final synthetic fun box-impl (Ljava/lang/String;)Lcom/agentclientprotocol/model/SessionConfigOptionCategory;
+	public static fun constructor-impl (Ljava/lang/String;)Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/SessionConfigOptionCategory$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/SessionConfigOptionCategory$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize-NTdcRRE (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/String;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize-5T3uW0w (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/String;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/SessionConfigOptionCategory$Companion {
+	public final fun getMODE-3ipu9Lg ()Ljava/lang/String;
+	public final fun getMODEL-3ipu9Lg ()Ljava/lang/String;
+	public final fun getTHOUGHT_LEVEL-3ipu9Lg ()Ljava/lang/String;
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 

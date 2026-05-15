@@ -89,13 +89,8 @@ public value class ModelId(public val value: String) {
 }
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * Unique identifier for a session configuration option.
  */
-@UnstableApi
 @JvmInline
 @Serializable
 public value class SessionConfigId(public val value: String) {
@@ -103,13 +98,8 @@ public value class SessionConfigId(public val value: String) {
 }
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * Unique identifier for a session configuration value.
  */
-@UnstableApi
 @JvmInline
 @Serializable
 public value class SessionConfigValueId(public val value: String) {
@@ -117,13 +107,8 @@ public value class SessionConfigValueId(public val value: String) {
 }
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * Unique identifier for a session configuration group.
  */
-@UnstableApi
 @JvmInline
 @Serializable
 public value class SessionConfigGroupId(public val value: String) {

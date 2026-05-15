@@ -31,16 +31,11 @@ import kotlinx.serialization.json.put
 import kotlin.jvm.JvmInline
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * Category for a session configuration option.
  *
  * Well-known categories are provided as constants. Custom categories are supported
  * via the constructor, matching the protocol's open string-based design.
  */
-@UnstableApi
 @JvmInline
 @Serializable
 public value class SessionConfigOptionCategory(public val value: String) {
@@ -54,13 +49,8 @@ public value class SessionConfigOptionCategory(public val value: String) {
 }
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * A single option for a session configuration select.
  */
-@UnstableApi
 @Serializable
 public data class SessionConfigSelectOption(
     val value: SessionConfigValueId,
@@ -70,13 +60,8 @@ public data class SessionConfigSelectOption(
 ) : AcpWithMeta
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * A group of options for a session configuration select.
  */
-@UnstableApi
 @Serializable
 public data class SessionConfigSelectGroup(
     val group: SessionConfigGroupId,
@@ -86,13 +71,8 @@ public data class SessionConfigSelectGroup(
 ) : AcpWithMeta
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * Options for a session configuration select, either as a flat list or grouped.
  */
-@UnstableApi
 @Serializable(with = SessionConfigSelectOptionsSerializer::class)
 public sealed class SessionConfigSelectOptions {
     /**
@@ -113,13 +93,8 @@ public sealed class SessionConfigSelectOptions {
 }
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * Polymorphic serializer for [SessionConfigSelectOptions].
  */
-@OptIn(UnstableApi::class)
 internal object SessionConfigSelectOptionsSerializer :
     KSerializer<SessionConfigSelectOptions> {
 
@@ -163,13 +138,8 @@ internal object SessionConfigSelectOptionsSerializer :
 }
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * Configuration option types for sessions.
  */
-@UnstableApi
 @Serializable
 @JsonClassDiscriminator("type")
 public sealed class SessionConfigOption : AcpWithMeta {
@@ -194,8 +164,11 @@ public sealed class SessionConfigOption : AcpWithMeta {
     ) : SessionConfigOption()
 
     /**
-     * A boolean-type configuration option.
+     * **UNSTABLE**
+     *
+     * Boolean-type configuration option. Not part of the protocol spec yet.
      */
+    @UnstableApi
     @Serializable
     @SerialName("boolean")
     public data class BooleanOption(
