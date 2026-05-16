@@ -28,15 +28,29 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
+import kotlin.jvm.JvmInline
 
 /**
- * **UNSTABLE**
+ * Category for a session configuration option.
  *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
+ * Well-known categories are provided as constants. Custom categories are supported
+ * via the constructor, matching the protocol's open string-based design.
+ */
+@JvmInline
+@Serializable
+public value class SessionConfigOptionCategory(public val value: String) {
+    override fun toString(): String = value
+
+    public companion object {
+        public val MODE: SessionConfigOptionCategory = SessionConfigOptionCategory("mode")
+        public val MODEL: SessionConfigOptionCategory = SessionConfigOptionCategory("model")
+        public val THOUGHT_LEVEL: SessionConfigOptionCategory = SessionConfigOptionCategory("thought_level")
+    }
+}
+
+/**
  * A single option for a session configuration select.
  */
-@UnstableApi
 @Serializable
 public data class SessionConfigSelectOption(
     val value: SessionConfigValueId,
@@ -46,13 +60,8 @@ public data class SessionConfigSelectOption(
 ) : AcpWithMeta
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * A group of options for a session configuration select.
  */
-@UnstableApi
 @Serializable
 public data class SessionConfigSelectGroup(
     val group: SessionConfigGroupId,
@@ -62,13 +71,8 @@ public data class SessionConfigSelectGroup(
 ) : AcpWithMeta
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * Options for a session configuration select, either as a flat list or grouped.
  */
-@UnstableApi
 @Serializable(with = SessionConfigSelectOptionsSerializer::class)
 public sealed class SessionConfigSelectOptions {
     /**
@@ -89,13 +93,8 @@ public sealed class SessionConfigSelectOptions {
 }
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * Polymorphic serializer for [SessionConfigSelectOptions].
  */
-@OptIn(UnstableApi::class)
 internal object SessionConfigSelectOptionsSerializer :
     KSerializer<SessionConfigSelectOptions> {
 
@@ -139,19 +138,15 @@ internal object SessionConfigSelectOptionsSerializer :
 }
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * Configuration option types for sessions.
  */
-@UnstableApi
 @Serializable
 @JsonClassDiscriminator("type")
 public sealed class SessionConfigOption : AcpWithMeta {
     public abstract val id: SessionConfigId
     public abstract val name: String
     public abstract val description: String?
+    public abstract val category: SessionConfigOptionCategory?
 
     /**
      * A select-type configuration option.
@@ -162,20 +157,25 @@ public sealed class SessionConfigOption : AcpWithMeta {
         override val id: SessionConfigId,
         override val name: String,
         override val description: String? = null,
+        override val category: SessionConfigOptionCategory? = null,
         val currentValue: SessionConfigValueId,
         val options: SessionConfigSelectOptions,
         override val _meta: JsonElement? = null
     ) : SessionConfigOption()
 
     /**
-     * A boolean-type configuration option.
+     * **UNSTABLE**
+     *
+     * Boolean-type configuration option. Not part of the protocol spec yet.
      */
+    @UnstableApi
     @Serializable
     @SerialName("boolean")
     public data class BooleanOption(
         override val id: SessionConfigId,
         override val name: String,
         override val description: String? = null,
+        override val category: SessionConfigOptionCategory? = null,
         val currentValue: Boolean,
         override val _meta: JsonElement? = null
     ) : SessionConfigOption()
@@ -190,10 +190,12 @@ public sealed class SessionConfigOption : AcpWithMeta {
             currentValue: String,
             options: SessionConfigSelectOptions,
             description: String? = null,
+            category: SessionConfigOptionCategory? = null,
         ): Select = Select(
             id = SessionConfigId(id),
             name = name,
             description = description,
+            category = category,
             currentValue = SessionConfigValueId(currentValue),
             options = options,
         )
@@ -206,10 +208,12 @@ public sealed class SessionConfigOption : AcpWithMeta {
             name: String,
             currentValue: Boolean,
             description: String? = null,
+            category: SessionConfigOptionCategory? = null,
         ): BooleanOption = BooleanOption(
             id = SessionConfigId(id),
             name = name,
             description = description,
+            category = category,
             currentValue = currentValue,
         )
     }
