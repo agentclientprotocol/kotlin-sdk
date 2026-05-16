@@ -116,6 +116,19 @@ class SessionUpdateSerializerTest {
     // Round-trip serialization tests
 
     @Test
+    fun `decodes agent_message_clear correctly`() {
+        val payload = """
+            {
+                "sessionUpdate": "agent_message_clear"
+            }
+        """.trimIndent()
+
+        val update = ACPJson.decodeFromString(SessionUpdate.serializer(), payload)
+
+        assertTrue(update is SessionUpdate.AgentMessageClear)
+    }
+
+    @Test
     fun `round-trip serialization for known types`() {
         val original = SessionUpdate.AgentMessageChunk(
             content = ContentBlock.Text("Test message")
@@ -127,6 +140,17 @@ class SessionUpdateSerializerTest {
         val decoded = ACPJson.decodeFromString(SessionUpdate.serializer(), encoded)
         assertTrue(decoded is SessionUpdate.AgentMessageChunk)
         assertEquals("Test message", (decoded.content as ContentBlock.Text).text)
+    }
+
+    @Test
+    fun `round-trip serialization for AgentMessageClear`() {
+        val original = SessionUpdate.AgentMessageClear()
+
+        val encoded = ACPJson.encodeToString(SessionUpdate.serializer(), original)
+        assertTrue(encoded.contains("\"sessionUpdate\":\"agent_message_clear\""))
+
+        val decoded = ACPJson.decodeFromString(SessionUpdate.serializer(), encoded)
+        assertTrue(decoded is SessionUpdate.AgentMessageClear)
     }
 
     @Test
@@ -257,6 +281,7 @@ class SessionUpdateSerializerTest {
             """{"sessionUpdate": "user_message_chunk", "content": {"type": "text", "text": "test"}}""",
             """{"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "test"}}""",
             """{"sessionUpdate": "agent_thought_chunk", "content": {"type": "text", "text": "test"}}""",
+            """{"sessionUpdate": "agent_message_clear"}""",
             """{"sessionUpdate": "tool_call", "toolCallId": "t1", "title": "test"}""",
             """{"sessionUpdate": "tool_call_update", "toolCallId": "t1"}""",
             """{"sessionUpdate": "plan", "entries": []}""",

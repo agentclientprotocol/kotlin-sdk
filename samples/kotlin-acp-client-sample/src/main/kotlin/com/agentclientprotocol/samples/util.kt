@@ -13,6 +13,10 @@ fun SessionUpdate.render() {
             println("Agent thinks: ${this.content.render()}")
         }
 
+        is SessionUpdate.AgentMessageClear -> {
+            println("Agent message cleared")
+        }
+
         is SessionUpdate.AvailableCommandsUpdate -> {
             println("Available commands updated:")
         }
