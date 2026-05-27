@@ -1,11 +1,14 @@
+
 package com.agentclientprotocol.model
 
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.rpc.ACPJson
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+@OptIn(UnstableApi::class)
 class SerializationTests {
 
     @Test
@@ -209,5 +212,49 @@ class SerializationTests {
 
         assertEquals(StopReason.END_TURN, response.stopReason)
         assertNull(response.usage)
+    }
+
+    @Test
+    fun `decodes ClientCapabilities with planCapabilities`() {
+        val payload = """
+            {
+              "fs": {"readTextFile": true, "writeTextFile": false},
+              "terminal": true,
+              "planCapabilities": {}
+            }
+        """.trimIndent()
+
+        val capabilities = ACPJson.decodeFromString(ClientCapabilities.serializer(), payload)
+
+        assertTrue(capabilities.planCapabilities != null)
+        assertTrue(capabilities.terminal)
+    }
+
+    @Test
+    fun `decodes ClientCapabilities without planCapabilities`() {
+        val payload = """
+            {
+              "fs": {"readTextFile": true, "writeTextFile": false},
+              "terminal": false
+            }
+        """.trimIndent()
+
+        val capabilities = ACPJson.decodeFromString(ClientCapabilities.serializer(), payload)
+
+        assertNull(capabilities.planCapabilities)
+    }
+
+    @Test
+    fun `round-trip serialization for ClientCapabilities with planCapabilities`() {
+        val original = ClientCapabilities(
+            terminal = true,
+            planCapabilities = PlanCapabilities()
+        )
+
+        val encoded = ACPJson.encodeToString(ClientCapabilities.serializer(), original)
+        assertTrue(encoded.contains("\"planCapabilities\""))
+
+        val decoded = ACPJson.decodeFromString(ClientCapabilities.serializer(), encoded)
+        assertTrue(decoded.planCapabilities != null)
     }
 }

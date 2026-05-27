@@ -260,6 +260,10 @@ class SessionUpdateSerializerTest {
             """{"sessionUpdate": "tool_call", "toolCallId": "t1", "title": "test"}""",
             """{"sessionUpdate": "tool_call_update", "toolCallId": "t1"}""",
             """{"sessionUpdate": "plan", "entries": []}""",
+            """{"sessionUpdate": "plan_update", "plan": {"type": "items", "id": "p1", "entries": []}}""",
+            """{"sessionUpdate": "plan_update", "plan": {"type": "markdown", "id": "p2", "content": "# Plan"}}""",
+            """{"sessionUpdate": "plan_update", "plan": {"type": "file", "id": "p3", "uri": "file:///tmp/plan.md"}}""",
+            """{"sessionUpdate": "plan_removed", "id": "p1"}""",
             """{"sessionUpdate": "available_commands_update", "availableCommands": []}""",
             """{"sessionUpdate": "current_mode_update", "currentModeId": "m1"}""",
             """{"sessionUpdate": "config_option_update", "configOptions": []}""",
@@ -271,5 +275,264 @@ class SessionUpdateSerializerTest {
             val update = ACPJson.decodeFromString(SessionUpdate.serializer(), payload)
             assertNotNull(update, "Failed to decode: $payload")
         }
+    }
+
+    // plan_update tests
+
+    @Test
+    fun `decodes plan_update with items type`() {
+        val payload = """
+            {
+                "sessionUpdate": "plan_update",
+                "plan": {
+                    "type": "items",
+                    "id": "plan-1",
+                    "entries": [
+                        {"content": "Step 1", "priority": "high", "status": "pending"},
+                        {"content": "Step 2", "priority": "medium", "status": "in_progress"}
+                    ]
+                }
+            }
+        """.trimIndent()
+
+        val update = ACPJson.decodeFromString(SessionUpdate.serializer(), payload)
+
+        assertTrue(update is SessionUpdate.PlanUpdateV2)
+        val plan = update.plan
+        assertTrue(plan is PlanVariant.Items)
+        assertEquals("plan-1", plan.id)
+        assertEquals(2, plan.entries.size)
+        assertEquals("Step 1", plan.entries[0].content)
+        assertEquals(PlanEntryPriority.HIGH, plan.entries[0].priority)
+        assertEquals(PlanEntryStatus.PENDING, plan.entries[0].status)
+        assertEquals("Step 2", plan.entries[1].content)
+        assertEquals(PlanEntryStatus.IN_PROGRESS, plan.entries[1].status)
+    }
+
+    @Test
+    fun `decodes plan_update with markdown type`() {
+        val payload = """
+            {
+                "sessionUpdate": "plan_update",
+                "plan": {
+                    "type": "markdown",
+                    "id": "plan-md",
+                    "content": "## Steps\n- [ ] Refactor module\n- [ ] Add tests"
+                }
+            }
+        """.trimIndent()
+
+        val update = ACPJson.decodeFromString(SessionUpdate.serializer(), payload)
+
+        assertTrue(update is SessionUpdate.PlanUpdateV2)
+        val plan = update.plan
+        assertTrue(plan is PlanVariant.Markdown)
+        assertEquals("plan-md", plan.id)
+        assertEquals("## Steps\n- [ ] Refactor module\n- [ ] Add tests", plan.content)
+    }
+
+    @Test
+    fun `decodes plan_update with file type`() {
+        val payload = """
+            {
+                "sessionUpdate": "plan_update",
+                "plan": {
+                    "type": "file",
+                    "id": "design-doc",
+                    "uri": "file:///tmp/plan.md"
+                }
+            }
+        """.trimIndent()
+
+        val update = ACPJson.decodeFromString(SessionUpdate.serializer(), payload)
+
+        assertTrue(update is SessionUpdate.PlanUpdateV2)
+        val plan = update.plan
+        assertTrue(plan is PlanVariant.File)
+        assertEquals("design-doc", plan.id)
+        assertEquals("file:///tmp/plan.md", plan.uri)
+    }
+
+    @Test
+    fun `decodes plan_update with _meta on both update and plan`() {
+        val payload = """
+            {
+                "sessionUpdate": "plan_update",
+                "plan": {
+                    "type": "items",
+                    "id": "plan-1",
+                    "entries": [],
+                    "_meta": {"planVersion": 2}
+                },
+                "_meta": {"source": "agent"}
+            }
+        """.trimIndent()
+
+        val update = ACPJson.decodeFromString(SessionUpdate.serializer(), payload)
+
+        assertTrue(update is SessionUpdate.PlanUpdateV2)
+        assertNotNull(update._meta)
+        assertNotNull(update.plan._meta)
+    }
+
+    @Test
+    fun `decodes plan_removed`() {
+        val payload = """
+            {
+                "sessionUpdate": "plan_removed",
+                "id": "plan-1"
+            }
+        """.trimIndent()
+
+        val update = ACPJson.decodeFromString(SessionUpdate.serializer(), payload)
+
+        assertTrue(update is SessionUpdate.PlanRemoved)
+        assertEquals("plan-1", update.id)
+    }
+
+    @Test
+    fun `decodes plan_removed with _meta`() {
+        val payload = """
+            {
+                "sessionUpdate": "plan_removed",
+                "id": "plan-1",
+                "_meta": {"reason": "completed"}
+            }
+        """.trimIndent()
+
+        val update = ACPJson.decodeFromString(SessionUpdate.serializer(), payload)
+
+        assertTrue(update is SessionUpdate.PlanRemoved)
+        assertEquals("plan-1", update.id)
+        assertNotNull(update._meta)
+    }
+
+    @Test
+    fun `round-trip serialization for plan_update items`() {
+        val original = SessionUpdate.PlanUpdateV2(
+            plan = PlanVariant.Items(
+                id = "plan-1",
+                entries = listOf(
+                    PlanEntry(content = "Step 1", priority = PlanEntryPriority.HIGH, status = PlanEntryStatus.PENDING)
+                )
+            )
+        )
+
+        val encoded = ACPJson.encodeToString(SessionUpdate.serializer(), original)
+        assertTrue(encoded.contains("\"sessionUpdate\":\"plan_update\""))
+        assertTrue(encoded.contains("\"type\":\"items\""))
+        assertTrue(encoded.contains("\"id\":\"plan-1\""))
+
+        val decoded = ACPJson.decodeFromString(SessionUpdate.serializer(), encoded)
+        assertTrue(decoded is SessionUpdate.PlanUpdateV2)
+        val plan = decoded.plan
+        assertTrue(plan is PlanVariant.Items)
+        assertEquals("plan-1", plan.id)
+        assertEquals(1, plan.entries.size)
+    }
+
+    @Test
+    fun `round-trip serialization for plan_update markdown`() {
+        val original = SessionUpdate.PlanUpdateV2(
+            plan = PlanVariant.Markdown(
+                id = "md-plan",
+                content = "# My Plan\n- Do things"
+            )
+        )
+
+        val encoded = ACPJson.encodeToString(SessionUpdate.serializer(), original)
+        assertTrue(encoded.contains("\"sessionUpdate\":\"plan_update\""))
+
+        val decoded = ACPJson.decodeFromString(SessionUpdate.serializer(), encoded)
+        assertTrue(decoded is SessionUpdate.PlanUpdateV2)
+        val plan = decoded.plan
+        assertTrue(plan is PlanVariant.Markdown)
+        assertEquals("md-plan", plan.id)
+        assertEquals("# My Plan\n- Do things", plan.content)
+    }
+
+    @Test
+    fun `round-trip serialization for plan_update file`() {
+        val original = SessionUpdate.PlanUpdateV2(
+            plan = PlanVariant.File(
+                id = "file-plan",
+                uri = "file:///tmp/plan.md"
+            )
+        )
+
+        val encoded = ACPJson.encodeToString(SessionUpdate.serializer(), original)
+        assertTrue(encoded.contains("\"sessionUpdate\":\"plan_update\""))
+
+        val decoded = ACPJson.decodeFromString(SessionUpdate.serializer(), encoded)
+        assertTrue(decoded is SessionUpdate.PlanUpdateV2)
+        val plan = decoded.plan
+        assertTrue(plan is PlanVariant.File)
+        assertEquals("file-plan", plan.id)
+        assertEquals("file:///tmp/plan.md", plan.uri)
+    }
+
+    @Test
+    fun `round-trip serialization for plan_removed`() {
+        val original = SessionUpdate.PlanRemoved(id = "plan-1")
+
+        val encoded = ACPJson.encodeToString(SessionUpdate.serializer(), original)
+        assertTrue(encoded.contains("\"sessionUpdate\":\"plan_removed\""))
+        assertTrue(encoded.contains("\"id\":\"plan-1\""))
+
+        val decoded = ACPJson.decodeFromString(SessionUpdate.serializer(), encoded)
+        assertTrue(decoded is SessionUpdate.PlanRemoved)
+        assertEquals("plan-1", decoded.id)
+    }
+
+    @Test
+    fun `plan_update and plan_removed in SessionNotification`() {
+        val planUpdatePayload = """
+            {
+                "sessionId": "session-789",
+                "update": {
+                    "sessionUpdate": "plan_update",
+                    "plan": {
+                        "type": "markdown",
+                        "id": "plan-1",
+                        "content": "# Plan"
+                    }
+                }
+            }
+        """.trimIndent()
+
+        val notification = ACPJson.decodeFromString(SessionNotification.serializer(), planUpdatePayload)
+        assertEquals("session-789", notification.sessionId.value)
+        assertTrue(notification.update is SessionUpdate.PlanUpdateV2)
+
+        val planRemovedPayload = """
+            {
+                "sessionId": "session-789",
+                "update": {
+                    "sessionUpdate": "plan_removed",
+                    "id": "plan-1"
+                }
+            }
+        """.trimIndent()
+
+        val notification2 = ACPJson.decodeFromString(SessionNotification.serializer(), planRemovedPayload)
+        assertTrue(notification2.update is SessionUpdate.PlanRemoved)
+        assertEquals("plan-1", (notification2.update as SessionUpdate.PlanRemoved).id)
+    }
+
+    @Test
+    fun `existing plan session update still works unchanged`() {
+        val payload = """
+            {
+                "sessionUpdate": "plan",
+                "entries": [
+                    {"content": "Step 1", "priority": "high", "status": "pending"}
+                ]
+            }
+        """.trimIndent()
+
+        val update = ACPJson.decodeFromString(SessionUpdate.serializer(), payload)
+        assertTrue(update is SessionUpdate.PlanUpdate)
+        assertEquals(1, update.entries.size)
+        assertEquals("Step 1", update.entries[0].content)
     }
 }

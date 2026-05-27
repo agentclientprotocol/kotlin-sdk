@@ -167,6 +167,44 @@ public sealed class SessionUpdate {
     ) : SessionUpdate(), AcpWithMeta
 
     /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * A plan update that supports multiple plan formats and concurrent plans.
+     *
+     * Uses the `plan_update` session update type. Requires the client to advertise
+     * `planCapabilities` in `ClientCapabilities`.
+     *
+     * See [PlanVariant] for available plan formats.
+     */
+    @UnstableApi
+    @Serializable
+    @SerialName("plan_update")
+    public data class PlanUpdateV2(
+        val plan: PlanVariant,
+        override val _meta: JsonElement? = null
+    ) : SessionUpdate(), AcpWithMeta
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Signals that a plan has been dismissed/removed.
+     *
+     * Uses the `plan_removed` session update type. The `id` identifies
+     * which plan to remove.
+     */
+    @UnstableApi
+    @Serializable
+    @SerialName("plan_removed")
+    public data class PlanRemoved(
+        val id: String,
+        override val _meta: JsonElement? = null
+    ) : SessionUpdate(), AcpWithMeta
+
+    /**
      * Available commands are ready or have changed
      */
     @Serializable
@@ -301,6 +339,20 @@ internal object SessionUpdateSerializer : KSerializer<SessionUpdate> {
                     base.forEach { (k, v) -> put(k, v) }
                 }
             }
+            is SessionUpdate.PlanUpdateV2 -> {
+                val base = ACPJson.encodeToJsonElement(SessionUpdate.PlanUpdateV2.serializer(), value).jsonObject
+                buildJsonObject {
+                    put(SESSION_UPDATE_DISCRIMINATOR, "plan_update")
+                    base.forEach { (k, v) -> put(k, v) }
+                }
+            }
+            is SessionUpdate.PlanRemoved -> {
+                val base = ACPJson.encodeToJsonElement(SessionUpdate.PlanRemoved.serializer(), value).jsonObject
+                buildJsonObject {
+                    put(SESSION_UPDATE_DISCRIMINATOR, "plan_removed")
+                    base.forEach { (k, v) -> put(k, v) }
+                }
+            }
             is SessionUpdate.AvailableCommandsUpdate -> {
                 val base = ACPJson.encodeToJsonElement(SessionUpdate.AvailableCommandsUpdate.serializer(), value).jsonObject
                 buildJsonObject {
@@ -378,6 +430,14 @@ internal object SessionUpdateSerializer : KSerializer<SessionUpdate> {
             )
             "plan" -> ACPJson.decodeFromJsonElement(
                 SessionUpdate.PlanUpdate.serializer(),
+                jsonObject
+            )
+            "plan_update" -> ACPJson.decodeFromJsonElement(
+                SessionUpdate.PlanUpdateV2.serializer(),
+                jsonObject
+            )
+            "plan_removed" -> ACPJson.decodeFromJsonElement(
+                SessionUpdate.PlanRemoved.serializer(),
                 jsonObject
             )
             "available_commands_update" -> ACPJson.decodeFromJsonElement(
