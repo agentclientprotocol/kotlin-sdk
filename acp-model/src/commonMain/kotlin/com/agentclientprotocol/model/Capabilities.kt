@@ -55,6 +55,23 @@ public data class AuthCapabilities(
 ): AcpWithMeta
 
 /**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * Plan capabilities supported by the client.
+ *
+ * When present, signals that the client supports `plan_update` and `plan_removed`
+ * session update types. When absent, the agent must fall back to the existing
+ * `plan` session update type.
+ */
+@UnstableApi
+@Serializable
+public data class PlanCapabilities(
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
  * Capabilities supported by the client.
  *
  * Advertised during initialization to inform the agent about
@@ -67,6 +84,8 @@ public data class AuthCapabilities(
 public data class ClientCapabilities(
     @EncodeDefault val fs: FileSystemCapability? = null,
     @EncodeDefault val terminal: Boolean = false,
+    @property:UnstableApi
+    val planCapabilities: PlanCapabilities? = null,
     @property:UnstableApi
     @EncodeDefault val auth: AuthCapabilities? = null,
     @property:UnstableApi

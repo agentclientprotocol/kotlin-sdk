@@ -1,9 +1,13 @@
 @file:Suppress("unused")
+@file:OptIn(ExperimentalSerializationApi::class)
 
 package com.agentclientprotocol.model
 
+import com.agentclientprotocol.annotations.UnstableApi
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonClassDiscriminator
 import kotlinx.serialization.json.JsonElement
 
 /**
@@ -65,3 +69,55 @@ public data class Plan(
     val entries: List<PlanEntry>,
     override val _meta: JsonElement? = null
 ) : AcpWithMeta
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * A plan variant that supports multiple formats and plan identity.
+ *
+ * Used with the `plan_update` session update type to provide richer plan
+ * representations including structured items, file references, and markdown.
+ * Each variant carries a required `id` for tracking multiple concurrent plans.
+ */
+@UnstableApi
+@Serializable
+@JsonClassDiscriminator(TYPE_DISCRIMINATOR)
+public sealed class PlanVariant {
+    public abstract val id: String
+    public abstract val _meta: JsonElement?
+
+    /**
+     * Structured plan entries (same semantics as the existing `plan` session update).
+     */
+    @Serializable
+    @SerialName("items")
+    public data class Items(
+        override val id: String,
+        val entries: List<PlanEntry>,
+        override val _meta: JsonElement? = null
+    ) : PlanVariant(), AcpWithMeta
+
+    /**
+     * A plan provided as a file URI.
+     */
+    @Serializable
+    @SerialName("file")
+    public data class File(
+        override val id: String,
+        val uri: String,
+        override val _meta: JsonElement? = null
+    ) : PlanVariant(), AcpWithMeta
+
+    /**
+     * A plan provided as raw markdown text.
+     */
+    @Serializable
+    @SerialName("markdown")
+    public data class Markdown(
+        override val id: String,
+        val content: String,
+        override val _meta: JsonElement? = null
+    ) : PlanVariant(), AcpWithMeta
+}
