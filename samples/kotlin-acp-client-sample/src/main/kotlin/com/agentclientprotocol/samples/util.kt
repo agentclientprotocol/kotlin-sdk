@@ -1,8 +1,11 @@
 package com.agentclientprotocol.samples
 
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.ContentBlock
+import com.agentclientprotocol.model.PlanVariant
 import com.agentclientprotocol.model.SessionUpdate
 
+@OptIn(UnstableApi::class)
 fun SessionUpdate.render() {
     when (this) {
         is SessionUpdate.AgentMessageChunk -> {
@@ -50,6 +53,23 @@ fun SessionUpdate.render() {
 
         is SessionUpdate.UsageUpdate -> {
             println("Usage update: used=${this.used}, size=${this.size}, cost=${this.cost?.amount} ${this.cost?.currency ?: ""}")
+        }
+
+        is SessionUpdate.PlanUpdateV2 -> {
+            println("Plan update (${this.plan.id}):")
+            when (val plan = this.plan) {
+                is PlanVariant.Items -> {
+                    for (entry in plan.entries) {
+                        println("  [${entry.status}] ${entry.content} (${entry.priority})")
+                    }
+                }
+                is PlanVariant.File -> println("  File: ${plan.uri}")
+                is PlanVariant.Markdown -> println("  ${plan.content}")
+            }
+        }
+
+        is SessionUpdate.PlanRemoved -> {
+            println("Plan removed: ${this.id}")
         }
 
         is SessionUpdate.UnknownSessionUpdate -> {
