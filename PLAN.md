@@ -174,6 +174,13 @@ Acceptance criteria:
 - Adapter tests cover a basic ACP session.
 - Existing Ktor and core tests still pass.
 
+Implementation status:
+
+- The generic WebSocket boundary and Ktor compatibility refactor were committed as the interim baseline in `62a0753`.
+- `acp-servlet-server` is the first follow-on adapter and targets Javax Servlet/JSR-356 WebSocket APIs first.
+- The adapter owns only Javax lifecycle mapping; JSON-RPC framing remains in `RemoteWebSocketTransport`.
+- Jakarta package support remains a follow-up variant if modern containers require a separate artifact.
+
 ## Phase 5: Add Streamable HTTP/SSE Remote Profile Design
 
 Deliverables:
@@ -273,7 +280,7 @@ acp-remote            optional if generic remote transport is split out
 acp-ktor
 acp-ktor-client
 acp-ktor-server
-acp-servlet-server     future
+acp-servlet-server     implemented for Javax WebSocket
 acp-servlet-client     future, only if needed
 ```
 

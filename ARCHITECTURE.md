@@ -246,6 +246,23 @@ Restrictions:
 - No duplicate protocol or JSON-RPC handling.
 - Prefer adapters that cover Kotlin-first or Atlassian-relevant JVM stacks not already covered by the Java SDK.
 
+### `acp-servlet-server`
+
+Target role: Javax Servlet/JSR-356 WebSocket server adapter.
+
+Responsibilities:
+
+- Adapt `javax.websocket.Session` to the generic WebSocket profile abstraction.
+- Register ACP WebSocket endpoints through `javax.websocket.server.ServerContainer`.
+- Provide a small `ServletContext` helper for servlet-style hosts.
+- Keep Javax Servlet/WebSocket dependencies isolated from Ktor and core consumers.
+
+Restrictions:
+
+- No protocol or JSON-RPC framing logic.
+- No Spring-specific configuration or auto-configuration.
+- No Jakarta namespace dependency until a separate Jakarta variant is justified.
+
 ## Dependency Direction
 
 Allowed dependency direction:

@@ -1,0 +1,20 @@
+public final class com/agentclientprotocol/acpservletserver/LibVersionKt {
+	public static final field LIB_VERSION Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/transport/AcpServletServerWebSocketKt {
+	public static final field ACP_SERVLET_PATH Ljava/lang/String;
+	public static final fun acpJavaxWebSocketServerEndpointConfig (Ljava/lang/String;Lkotlinx/coroutines/CoroutineScope;Lcom/agentclientprotocol/protocol/ProtocolOptions;Lkotlin/jvm/functions/Function2;)Ljavax/websocket/server/ServerEndpointConfig;
+	public static synthetic fun acpJavaxWebSocketServerEndpointConfig$default (Ljava/lang/String;Lkotlinx/coroutines/CoroutineScope;Lcom/agentclientprotocol/protocol/ProtocolOptions;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)Ljavax/websocket/server/ServerEndpointConfig;
+	public static final fun acpProtocolOnServerWebSocket (Ljavax/servlet/ServletContext;Ljava/lang/String;Lkotlinx/coroutines/CoroutineScope;Lcom/agentclientprotocol/protocol/ProtocolOptions;Lkotlin/jvm/functions/Function2;)V
+	public static synthetic fun acpProtocolOnServerWebSocket$default (Ljavax/servlet/ServletContext;Ljava/lang/String;Lkotlinx/coroutines/CoroutineScope;Lcom/agentclientprotocol/protocol/ProtocolOptions;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
+}
+
+public final class com/agentclientprotocol/transport/JavaxWebSocketConnection : com/agentclientprotocol/transport/AcpWebSocketConnection {
+	public fun <init> (Ljavax/websocket/Session;)V
+	public fun close ()V
+	public fun getIncomingTextFrames ()Lkotlinx/coroutines/flow/Flow;
+	public final fun getSession ()Ljavax/websocket/Session;
+	public fun sendText (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
