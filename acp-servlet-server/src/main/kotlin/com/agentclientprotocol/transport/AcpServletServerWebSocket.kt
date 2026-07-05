@@ -12,7 +12,9 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.servlet.ServletContext
 import javax.websocket.CloseReason
 import javax.websocket.Endpoint
@@ -25,15 +27,23 @@ import javax.websocket.server.ServerContainer
 import javax.websocket.server.ServerEndpointConfig
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCoroutine
+
+public class JavaxWebSocketConnectionOptions(
+    public val sendTimeoutMillis: Long = 30_000,
+) {
+    init {
+        require(sendTimeoutMillis >= 0) { "sendTimeoutMillis must be non-negative" }
+    }
+}
 
 public const val ACP_SERVLET_PATH: String = "/acp"
 
 /**
  * Javax WebSocket connection adapter for servlet container WebSocket sessions.
  */
-public class JavaxWebSocketConnection(
+public class JavaxWebSocketConnection @JvmOverloads constructor(
     public val session: Session,
+    public val options: JavaxWebSocketConnectionOptions = JavaxWebSocketConnectionOptions(),
 ) : AcpWebSocketConnection {
     private val inboundTextFrames = Channel<String>(Channel.UNLIMITED)
     private val textHandler = MessageHandler.Whole<String> { text ->
@@ -43,24 +53,41 @@ public class JavaxWebSocketConnection(
     override val incomingTextFrames: Flow<String> = inboundTextFrames.receiveAsFlow()
 
     init {
+        session.asyncRemote.sendTimeout = options.sendTimeoutMillis
         session.addMessageHandler(String::class.java, textHandler)
     }
 
-    override suspend fun sendText(text: String): Unit = suspendCoroutine { continuation ->
-        session.asyncRemote.sendText(text, SendHandler { result: SendResult ->
-            if (result.isOK) {
-                continuation.resume(Unit)
-            } else {
-                continuation.resumeWithException(result.exception ?: IOException("WebSocket send failed"))
+    override suspend fun sendText(text: String): Unit = suspendCancellableCoroutine { continuation ->
+        val completed = AtomicBoolean(false)
+        continuation.invokeOnCancellation {
+            if (completed.compareAndSet(false, true)) {
+                close()
             }
-        })
+        }
+
+        try {
+            session.asyncRemote.sendText(text, SendHandler { result: SendResult ->
+                if (!completed.compareAndSet(false, true)) {
+                    return@SendHandler
+                }
+                if (result.isOK) {
+                    continuation.resume(Unit)
+                } else {
+                    continuation.resumeWithException(result.exception ?: IOException("WebSocket send failed"))
+                }
+            })
+        } catch (e: Throwable) {
+            if (completed.compareAndSet(false, true)) {
+                continuation.resumeWithException(e)
+            }
+        }
     }
 
     override fun close() {
         inboundTextFrames.close()
         runCatching { session.removeMessageHandler(textHandler) }
-        if (session.isOpen) {
-            session.close()
+        if (runCatching { session.isOpen }.getOrDefault(false)) {
+            runCatching { session.close() }
         }
     }
 }

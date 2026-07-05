@@ -12,9 +12,19 @@ public final class com/agentclientprotocol/transport/AcpServletServerWebSocketKt
 
 public final class com/agentclientprotocol/transport/JavaxWebSocketConnection : com/agentclientprotocol/transport/AcpWebSocketConnection {
 	public fun <init> (Ljavax/websocket/Session;)V
+	public fun <init> (Ljavax/websocket/Session;Lcom/agentclientprotocol/transport/JavaxWebSocketConnectionOptions;)V
+	public synthetic fun <init> (Ljavax/websocket/Session;Lcom/agentclientprotocol/transport/JavaxWebSocketConnectionOptions;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun close ()V
 	public fun getIncomingTextFrames ()Lkotlinx/coroutines/flow/Flow;
+	public final fun getOptions ()Lcom/agentclientprotocol/transport/JavaxWebSocketConnectionOptions;
 	public final fun getSession ()Ljavax/websocket/Session;
 	public fun sendText (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class com/agentclientprotocol/transport/JavaxWebSocketConnectionOptions {
+	public fun <init> ()V
+	public fun <init> (J)V
+	public synthetic fun <init> (JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getSendTimeoutMillis ()J
 }
 

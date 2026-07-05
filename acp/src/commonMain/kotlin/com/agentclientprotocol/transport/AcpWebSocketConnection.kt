@@ -14,6 +14,11 @@ public interface AcpWebSocketConnection : AutoCloseable {
 
     public suspend fun sendText(text: String)
 
+    /**
+     * Closes the native connection.
+     *
+     * Implementations should be idempotent and should suppress native close
+     * exceptions caused by normal close races or already-closed sessions.
+     */
     override fun close()
 }
-

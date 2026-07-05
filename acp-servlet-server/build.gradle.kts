@@ -3,6 +3,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     kotlin("jvm")
+    kotlin("plugin.serialization")
     id("acp.publishing")
     alias(libs.plugins.kotlinx.binary.compatibility.validator)
 }

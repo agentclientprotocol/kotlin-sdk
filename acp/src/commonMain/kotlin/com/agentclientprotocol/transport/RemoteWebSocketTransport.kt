@@ -14,7 +14,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import kotlinx.io.IOException
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 
@@ -56,14 +55,14 @@ public class RemoteWebSocketTransport(
                     connection.sendText(jsonText)
                 }
                 remoteWebSocketLogger.trace { "No more messages in send channel, closing WebSocket connection" }
-                connection.close()
+                closeConnection()
             } catch (ce: CancellationException) {
                 remoteWebSocketLogger.trace(ce) { "WebSocket send job cancelled" }
-                connection.close()
+                closeConnection()
             } catch (e: Throwable) {
                 remoteWebSocketLogger.trace(e) { "Failed to send message to WebSocket" }
                 fireError(e)
-                connection.close()
+                closeConnection()
             } finally {
                 close()
             }
@@ -84,7 +83,7 @@ public class RemoteWebSocketTransport(
                 }
             } catch (ce: CancellationException) {
                 remoteWebSocketLogger.trace(ce) { "WebSocket receive job cancelled" }
-                connection.close()
+                closeConnection()
             } catch (e: Throwable) {
                 remoteWebSocketLogger.trace(e) { "Failed to receive message from WebSocket" }
                 fireError(e)
@@ -107,16 +106,18 @@ public class RemoteWebSocketTransport(
         }
 
         sendChannel.close()
-        runCatching { connection.close() }.onFailure { e ->
-            if (e !is IOException && e !is IllegalStateException) {
-                fireError(e)
-            }
-        }
+        closeConnection()
         scope.cancel()
         _state.value = Transport.State.CLOSED
 
         if (closeFired.compareAndSet(false, true)) {
             fireClose()
+        }
+    }
+
+    private fun closeConnection() {
+        runCatching { connection.close() }.onFailure { e ->
+            fireError(e)
         }
     }
 }
