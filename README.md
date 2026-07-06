@@ -32,6 +32,7 @@ ACP standardises how AI agents and clients exchange messages, negotiate capabili
 | `:acp-ktor-client`                  | Ktor HTTP/WebSocket client helper                         | `ktor.client`                              |
 | `:acp-ktor-server`                  | Ktor server-side transport utilities                      | `ktor.server`                              |
 | `:acp-ktor-test`                    | Test fixtures and fake transports for ACP flows           | `ktor.test`                                |
+| `:acp-servlet-client`               | Javax WebSocket client adapter                            | `transport`                                |
 | `:acp-servlet-server`               | Javax Servlet/WebSocket server adapter                    | `transport`                                |
 | `:samples:kotlin-acp-client-sample` | Complete runnable client + agent reference implementation | `samples`                                  |
 
@@ -56,6 +57,7 @@ dependencies {
     // Optional extras:
     // implementation("com.agentclientprotocol:acp-ktor-client:0.3.0-SNAPSHOT")
     // implementation("com.agentclientprotocol:acp-ktor-server:0.3.0-SNAPSHOT")
+    // implementation("com.agentclientprotocol:acp-servlet-client:0.3.0-SNAPSHOT")
     // implementation("com.agentclientprotocol:acp-servlet-server:0.3.0-SNAPSHOT")
 }
 ```
@@ -83,6 +85,27 @@ fun ServletContext.registerAcp(scope: CoroutineScope, agentSupport: TerminalAgen
         protocol.start()
     }
 }
+```
+
+### Javax WebSocket client
+
+Use `acp-servlet-client` when a JVM host exposes a Javax `WebSocketContainer` client instead of Ktor.
+
+```kotlin
+import com.agentclientprotocol.protocol.ProtocolOptions
+import com.agentclientprotocol.transport.acpProtocolOnClientWebSocket
+import kotlinx.coroutines.CoroutineScope
+import java.net.URI
+import javax.websocket.WebSocketContainer
+
+fun connectAcp(container: WebSocketContainer, scope: CoroutineScope) =
+    container.acpProtocolOnClientWebSocket(
+        uri = URI.create("ws://localhost:8080/acp"),
+        parentScope = scope,
+        protocolOptions = ProtocolOptions(protocolDebugName = "servlet client")
+    ).also { protocol ->
+        protocol.start()
+    }
 ```
 
 ## Quick start

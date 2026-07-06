@@ -170,7 +170,7 @@ Acceptance criteria:
 
 - Servlet/Jakarta environments can expose ACP over WebSocket without depending on Ktor.
 - The implementation uses the same generic WebSocket profile as Ktor.
-- Servlet/Jakarta dependencies are isolated in `acp-servlet-server`.
+- Servlet/Jakarta dependencies are isolated in `acp-servlet-client` and `acp-servlet-server`.
 - Adapter tests cover a basic ACP session.
 - Existing Ktor and core tests still pass.
 
@@ -281,7 +281,7 @@ acp-ktor
 acp-ktor-client
 acp-ktor-server
 acp-servlet-server     implemented for Javax WebSocket
-acp-servlet-client     future, only if needed
+acp-servlet-client     implemented for Javax WebSocket
 ```
 
 If the generic remote transport remains inside `acp`, then `acp-remote` is unnecessary. The implementation should choose the smallest module structure that preserves clean dependencies and consumer compatibility.
@@ -311,8 +311,10 @@ The Streamable HTTP/SSE milestone is complete when:
 The Servlet/Jakarta WebSocket adapter milestone is complete when:
 
 - Servlet/Jakarta environments can host ACP over WebSocket using the generic remote transport.
+- Servlet/Jakarta environments can connect to ACP over WebSocket using the generic remote transport.
 - Adapter code is isolated from Ktor code.
 - Tests demonstrate a working Servlet/Jakarta WebSocket ACP server path.
+- Tests demonstrate a working Javax WebSocket ACP client path.
 - README documents the supported Servlet/Jakarta runtime and setup path.
 
 The Servlet/Jakarta Streamable HTTP/SSE adapter milestone is complete when:

@@ -263,6 +263,24 @@ Restrictions:
 - No Spring-specific configuration or auto-configuration.
 - No Jakarta namespace dependency until a separate Jakarta variant is justified.
 
+### `acp-servlet-client`
+
+Target role: Javax/JSR-356 WebSocket client adapter.
+
+Responsibilities:
+
+- Adapt Javax `WebSocketContainer` client connections to the generic WebSocket profile abstraction.
+- Provide helpers for callers that already have a `WebSocketContainer` and for callers that want the default `ContainerProvider` container.
+- Return a `Protocol` ready for the caller to start, matching the Ktor client helper lifecycle.
+- Keep Javax WebSocket dependencies isolated from Ktor and core consumers.
+
+Restrictions:
+
+- No protocol or JSON-RPC framing logic.
+- No dependency on `acp-servlet-server`; shared behavior is the generic WebSocket transport in `acp`.
+- No Spring-specific client configuration.
+- No Jakarta namespace dependency until a separate Jakarta variant is justified.
+
 ## Dependency Direction
 
 Allowed dependency direction:
