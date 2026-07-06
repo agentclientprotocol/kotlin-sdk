@@ -25,8 +25,11 @@ This document defines the intended extension architecture for the ACP Kotlin SDK
 ```mermaid
 flowchart TB
     App["Host application"]
-    Ktor["Ktor adapter"]
-    JVM["Future JVM adapter"]
+    KtorClient["acp-ktor-client"]
+    KtorServer["acp-ktor-server"]
+    KtorShared["acp-ktor"]
+    ServletClient["acp-servlet-client"]
+    ServletServer["acp-servlet-server"]
     Future["Future framework adapter"]
     Endpoint["Remote /acp endpoint adapter"]
     WS["WebSocket profile"]
@@ -36,12 +39,19 @@ flowchart TB
     P["ACP protocol runtime"]
     M["ACP model and JSON-RPC types"]
 
-    App --> Ktor
-    App --> JVM
+    App --> KtorClient
+    App --> KtorServer
+    App --> ServletClient
+    App --> ServletServer
     App --> Future
-    Ktor --> Endpoint
-    JVM --> Endpoint
+
+    KtorClient --> KtorShared
+    KtorServer --> KtorShared
+    KtorShared --> Endpoint
+    ServletClient --> Endpoint
+    ServletServer --> Endpoint
     Future --> Endpoint
+
     Endpoint --> WS
     Endpoint --> HTTP
     WS --> Remote
@@ -106,7 +116,7 @@ Remote profiles:
 
 Target restrictions:
 
-- No direct dependency on Ktor or other framework server APIs.
+- No direct dependency on Ktor, Javax Servlet/WebSocket, or other framework APIs.
 - No framework-specific routing or authentication policy.
 - No framework-specific session type in public constructor signatures.
 
@@ -133,17 +143,17 @@ Responsibilities:
 - Ignore or reject unsupported binary frames according to the transport policy.
 - Close the remote connection when the WebSocket closes.
 
-Candidate abstraction shape:
+Implemented abstraction:
 
 ```kotlin
 public interface AcpWebSocketConnection : AutoCloseable {
     public val incomingTextFrames: Flow<String>
     public suspend fun sendText(text: String)
-    public suspend fun close()
+    override fun close()
 }
 ```
 
-The exact API may change during implementation, but it must preserve the same boundary: framework adapters translate native WebSocket APIs into this generic connection contract.
+Framework adapters translate native WebSocket APIs into this generic connection contract, then compose `RemoteWebSocketTransport` for shared ACP JSON-RPC framing, send/receive lifecycle, close, and error handling.
 
 ### Streamable HTTP/SSE Profile
 
