@@ -522,7 +522,7 @@ public data class ListProvidersRequest(
 @UnstableApi
 @Serializable
 public data class SetProvidersRequest(
-    val id: String,
+    @SerialName("providerId") val id: String,
     val apiType: LlmProtocol,
     val baseUrl: String,
     val headers: Map<String, String>? = null,
@@ -539,7 +539,7 @@ public data class SetProvidersRequest(
 @UnstableApi
 @Serializable
 public data class DisableProvidersRequest(
-    val id: String,
+    @SerialName("providerId") val id: String,
     override val _meta: JsonElement? = null
 ) : AcpRequest
 
@@ -663,7 +663,7 @@ public data class ProviderCurrentConfig(
 @UnstableApi
 @Serializable
 public data class ProviderInfo(
-    val id: String,
+    @SerialName("providerId") val id: String,
     val supported: List<LlmProtocol>,
     val required: Boolean,
     val current: ProviderCurrentConfig? = null,

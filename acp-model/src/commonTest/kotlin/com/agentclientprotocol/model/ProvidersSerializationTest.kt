@@ -57,6 +57,8 @@ class ProvidersSerializationTest {
         val encoded = ACPJson.encodeToString(ProviderInfo.serializer(), info)
         val decoded = ACPJson.decodeFromString(ProviderInfo.serializer(), encoded)
 
+        assertTrue(encoded.contains("\"providerId\""))
+        assertFalse(encoded.contains("\"id\""))
         assertEquals(info, decoded)
     }
 
@@ -80,7 +82,7 @@ class ProvidersSerializationTest {
     fun `incoming JSON with current null is accepted and mapped to disabled`() {
         val payload = """
             {
-              "id": "main",
+              "providerId": "main",
               "supported": ["openai"],
               "required": false,
               "current": null
@@ -105,6 +107,7 @@ class ProvidersSerializationTest {
         val withoutHeadersJson = ACPJson.encodeToString(SetProvidersRequest.serializer(), withoutHeaders)
         val withoutHeadersDecoded = ACPJson.decodeFromString(SetProvidersRequest.serializer(), withoutHeadersJson)
 
+        assertTrue(withoutHeadersJson.contains("\"providerId\""))
         assertFalse(withoutHeadersJson.contains("\"headers\""))
         assertNull(withoutHeadersDecoded.headers)
 
