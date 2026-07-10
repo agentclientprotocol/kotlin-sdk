@@ -2,6 +2,10 @@ package com.agentclientprotocol.model
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.rpc.ACPJson
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -127,6 +131,52 @@ class SessionUpdateSerializerTest {
         val decoded = ACPJson.decodeFromString(SessionUpdate.serializer(), encoded)
         assertTrue(decoded is SessionUpdate.AgentMessageChunk)
         assertEquals("Test message", (decoded.content as ContentBlock.Text).text)
+    }
+
+    @Test
+    fun `message chunks preserve metadata`() {
+        val metadata = buildJsonObject {
+            put("provider", buildJsonObject { put("phase", "working") })
+        }
+        val updates = listOf(
+            SessionUpdate.UserMessageChunk(ContentBlock.Text("User"), _meta = metadata),
+            SessionUpdate.AgentMessageChunk(ContentBlock.Text("Agent"), _meta = metadata),
+            SessionUpdate.AgentThoughtChunk(ContentBlock.Text("Thought"), _meta = metadata),
+        )
+
+        for (original in updates) {
+            val encoded = ACPJson.encodeToString(SessionUpdate.serializer(), original)
+            val decoded = ACPJson.decodeFromString(SessionUpdate.serializer(), encoded)
+
+            assertEquals(metadata, (decoded as AcpWithMeta)._meta)
+        }
+    }
+
+    @Test
+    fun `agent message metadata is preserved inside session notification`() {
+        val payload = """
+            {
+                "sessionId": "session-123",
+                "update": {
+                    "sessionUpdate": "agent_message_chunk",
+                    "messageId": "commentary-message",
+                    "content": {
+                        "type": "text",
+                        "text": "Checking the relevant event mapping."
+                    },
+                    "_meta": {
+                        "codex": {
+                            "phase": "commentary"
+                        }
+                    }
+                }
+            }
+        """.trimIndent()
+
+        val notification = ACPJson.decodeFromString(SessionNotification.serializer(), payload)
+        val update = notification.update as SessionUpdate.AgentMessageChunk
+
+        assertEquals("commentary", update._meta?.jsonObject?.get("codex")?.jsonObject?.get("phase")?.jsonPrimitive?.content)
     }
 
     @Test
