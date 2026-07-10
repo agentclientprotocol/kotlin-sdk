@@ -93,8 +93,9 @@ public sealed class SessionUpdate {
     public data class UserMessageChunk(
         val content: ContentBlock,
         @property:UnstableApi
-        val messageId: MessageId? = null
-    ) : SessionUpdate()
+        val messageId: MessageId? = null,
+        override val _meta: JsonElement? = null
+    ) : SessionUpdate(), AcpWithMeta
 
     /**
      * A chunk of the agent's response being streamed.
@@ -105,8 +106,9 @@ public sealed class SessionUpdate {
     public data class AgentMessageChunk(
         val content: ContentBlock,
         @property:UnstableApi
-        val messageId: MessageId? = null
-    ) : SessionUpdate()
+        val messageId: MessageId? = null,
+        override val _meta: JsonElement? = null
+    ) : SessionUpdate(), AcpWithMeta
 
     /**
      * A chunk of the agent's internal reasoning being streamed.
@@ -117,8 +119,9 @@ public sealed class SessionUpdate {
     public data class AgentThoughtChunk(
         val content: ContentBlock,
         @property:UnstableApi
-        val messageId: MessageId? = null
-    ) : SessionUpdate()
+        val messageId: MessageId? = null,
+        override val _meta: JsonElement? = null
+    ) : SessionUpdate(), AcpWithMeta
 
     /**
      * Notification that a new tool call has been initiated.
