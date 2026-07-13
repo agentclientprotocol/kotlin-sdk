@@ -36,6 +36,8 @@ kotlin {
     }
     js { nodejs() }
     wasmJs { nodejs() }
+    iosArm64 {}
+    iosSimulatorArm64 {}
     // Future multiplatform targets can be added here without changing the code
 //     linuxX64(); macosX64(); mingwX64()
 

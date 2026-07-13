@@ -229,7 +229,7 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     }
 
     @Test
-    fun `error is propagated to client (INTERNAL_ERROR)`() = testWithProtocols { clientProtocol, agentProtocol ->
+    fun `INTERNAL_ERROR is propagated to client`() = testWithProtocols { clientProtocol, agentProtocol ->
         val errorMessage = "Test error from handler"
         agentProtocol.setRequestHandler(TestMethod) { request ->
             throw IllegalStateException(errorMessage)
@@ -246,7 +246,7 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     }
 
     @Test
-    fun `error is propagated to client(INVALID_PARAMS)`() = testWithProtocols { clientProtocol, agentProtocol ->
+    fun `INVALID_PARAMS is propagated to client`() = testWithProtocols { clientProtocol, agentProtocol ->
         val errorMessage = "Invalid parameters provided"
         agentProtocol.setRequestHandler(TestMethod) { request ->
             acpFail(errorMessage)
@@ -262,7 +262,7 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     }
 
     @Test
-    fun `error is propagated to client(PARSE_ERROR)`() = testWithProtocols { clientProtocol, agentProtocol ->
+    fun `PARSE_ERROR is propagated to client`() = testWithProtocols { clientProtocol, agentProtocol ->
         agentProtocol.setRequestHandler(TestMethod) { request ->
             TestResponse("should not reach here")
         }
@@ -283,7 +283,7 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     }
 
     @Test
-    fun `error is propagated to client(METHOD_NOT_FOUND)`() = testWithProtocols { clientProtocol, agentProtocol ->
+    fun `METHOD_NOT_FOUND is propagated to client`() = testWithProtocols { clientProtocol, agentProtocol ->
         // Don't set any handler, so METHOD_NOT_FOUND is returned
         try {
             clientProtocol.sendRequest(TestMethod, TestRequest("Test"))
