@@ -246,7 +246,7 @@ class NesSerializationTest {
     }
 
     @Test
-    fun `TextDocumentContentChangeEvent full content (no range)`() {
+    fun `TextDocumentContentChangeEvent full content no range`() {
         val event = TextDocumentContentChangeEvent(
             range = null,
             text = "full file content"

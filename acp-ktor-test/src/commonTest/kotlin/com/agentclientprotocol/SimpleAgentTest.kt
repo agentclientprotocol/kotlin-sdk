@@ -259,7 +259,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
     }
 
     @Test
-    fun `cancel simple prompt from client (in flow)`() = testWithProtocols { clientProtocol, agentProtocol ->
+    fun `cancel simple prompt from client in flow`() = testWithProtocols { clientProtocol, agentProtocol ->
         val client = Client(protocol = clientProtocol)
 
         val agentSideCeDeferred = CompletableDeferred<CancellationException>()
@@ -1425,13 +1425,13 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
     }
 
     @Test
-    fun `create session should not lose events client slower agent (new session)`() = `create session should not lose events`(agentEmitDelay = 100.milliseconds, clientNotifyDelay = 200.milliseconds, isLoad = false)
+    fun `create session should not lose events client slower agent new session`() = `create session should not lose events`(agentEmitDelay = 100.milliseconds, clientNotifyDelay = 200.milliseconds, isLoad = false)
     @Test
-    fun `create session should not lose events agent slower client (new session)`() = `create session should not lose events`(agentEmitDelay = 200.milliseconds, clientNotifyDelay = 100.milliseconds, isLoad = false)
+    fun `create session should not lose events agent slower client new session`() = `create session should not lose events`(agentEmitDelay = 200.milliseconds, clientNotifyDelay = 100.milliseconds, isLoad = false)
     @Test
-    fun `create session should not lose events client slower agent (load session)`() = `create session should not lose events`(agentEmitDelay = 100.milliseconds, clientNotifyDelay = 200.milliseconds, isLoad = true)
+    fun `create session should not lose events client slower agent load session`() = `create session should not lose events`(agentEmitDelay = 100.milliseconds, clientNotifyDelay = 200.milliseconds, isLoad = true)
     @Test
-    fun `create session should not lose events agent slower client (load session)`() = `create session should not lose events`(agentEmitDelay = 200.milliseconds, clientNotifyDelay = 100.milliseconds, isLoad = true)
+    fun `create session should not lose events agent slower client load session`() = `create session should not lose events`(agentEmitDelay = 200.milliseconds, clientNotifyDelay = 100.milliseconds, isLoad = true)
     @Test
     fun `load session should handle huge replay updates when client notify is slow`() = testWithProtocols { clientProtocol, agentProtocol ->
         val sessionId = SessionId("load-session-capacity-stress-id")
