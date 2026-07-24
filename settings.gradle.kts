@@ -23,6 +23,8 @@ include(":acp-ktor")
 include(":acp-ktor-client")
 include(":acp-ktor-server")
 include(":acp-ktor-test")
+include(":acp-servlet-client")
+include(":acp-servlet-server")
 
 // Include sample projects
 include(":samples:kotlin-acp-client-sample")

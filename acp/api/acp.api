@@ -488,6 +488,12 @@ public final class com/agentclientprotocol/protocol/RpcMethodsOperations$Default
 	public static synthetic fun setRequestHandlerRaw$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
 }
 
+public abstract interface class com/agentclientprotocol/transport/AcpWebSocketConnection : java/lang/AutoCloseable {
+	public abstract fun close ()V
+	public abstract fun getIncomingTextFrames ()Lkotlinx/coroutines/flow/Flow;
+	public abstract fun sendText (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
 public abstract class com/agentclientprotocol/transport/BaseTransport : com/agentclientprotocol/transport/Transport {
 	public fun <init> ()V
 	protected final fun fireClose ()V
@@ -498,6 +504,14 @@ public abstract class com/agentclientprotocol/transport/BaseTransport : com/agen
 	public fun onClose (Lkotlin/jvm/functions/Function0;)V
 	public fun onError (Lkotlin/jvm/functions/Function1;)V
 	public fun onMessage (Lkotlin/jvm/functions/Function1;)V
+}
+
+public final class com/agentclientprotocol/transport/RemoteWebSocketTransport : com/agentclientprotocol/transport/BaseTransport {
+	public fun <init> (Lkotlinx/coroutines/CoroutineScope;Lcom/agentclientprotocol/transport/AcpWebSocketConnection;Ljava/lang/String;)V
+	public synthetic fun <init> (Lkotlinx/coroutines/CoroutineScope;Lcom/agentclientprotocol/transport/AcpWebSocketConnection;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun close ()V
+	public fun send (Lcom/agentclientprotocol/rpc/JsonRpcMessage;)V
+	public fun start ()V
 }
 
 public final class com/agentclientprotocol/transport/StdioTransport : com/agentclientprotocol/transport/BaseTransport {
