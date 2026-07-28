@@ -5,6 +5,7 @@ import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.RequestId
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -308,6 +309,38 @@ class ElicitationSerializationTest {
         val stringProp = roundtripped.properties["color"]
         assertIs<ElicitationPropertySchema.StringProperty>(stringProp)
         assertEquals(3, stringProp.enumValues!!.size)
+    }
+
+    @Test
+    fun `schema property preserves meta`() {
+        val schema = ElicitationSchema(
+            properties = mapOf(
+                "color__other1" to ElicitationPropertySchema.StringProperty(
+                    title = "Other",
+                    _meta = JsonObject(
+                        mapOf(
+                            "codex" to JsonObject(
+                                mapOf(
+                                    "questionId" to JsonPrimitive("color"),
+                                    "isOtherAnswer" to JsonPrimitive(true)
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        )
+
+        val json = ACPJson.encodeToString(ElicitationSchema.serializer(), schema)
+        val jsonObj = ACPJson.decodeFromString(JsonObject.serializer(), json)
+        val meta = jsonObj["properties"]!!.jsonObject["color__other1"]!!.jsonObject["_meta"]!!.jsonObject
+
+        assertTrue(meta["codex"]!!.jsonObject["isOtherAnswer"]!!.jsonPrimitive.boolean)
+
+        val roundtripped = ACPJson.decodeFromString(ElicitationSchema.serializer(), json)
+        val stringProp = roundtripped.properties["color__other1"]
+        assertIs<ElicitationPropertySchema.StringProperty>(stringProp)
+        assertTrue(stringProp._meta!!.jsonObject["codex"]!!.jsonObject["isOtherAnswer"]!!.jsonPrimitive.boolean)
     }
 
     @Test

@@ -254,7 +254,7 @@ public data class MultiSelectPropertySchema(
 @UnstableApi
 @Serializable
 @JsonClassDiscriminator("type")
-public sealed class ElicitationPropertySchema {
+public sealed class ElicitationPropertySchema : AcpWithMeta {
     @Serializable
     @SerialName("string")
     public data class StringProperty(
@@ -266,7 +266,8 @@ public sealed class ElicitationPropertySchema {
         val format: StringFormat? = null,
         val default: String? = null,
         @SerialName("enum") val enumValues: List<String>? = null,
-        @SerialName("oneOf") val oneOf: List<EnumOption>? = null
+        @SerialName("oneOf") val oneOf: List<EnumOption>? = null,
+        override val _meta: JsonElement? = null
     ) : ElicitationPropertySchema()
 
     @Serializable
@@ -276,7 +277,8 @@ public sealed class ElicitationPropertySchema {
         val description: String? = null,
         val minimum: Double? = null,
         val maximum: Double? = null,
-        val default: Double? = null
+        val default: Double? = null,
+        override val _meta: JsonElement? = null
     ) : ElicitationPropertySchema()
 
     @Serializable
@@ -286,7 +288,8 @@ public sealed class ElicitationPropertySchema {
         val description: String? = null,
         val minimum: Long? = null,
         val maximum: Long? = null,
-        val default: Long? = null
+        val default: Long? = null,
+        override val _meta: JsonElement? = null
     ) : ElicitationPropertySchema()
 
     @Serializable
@@ -294,7 +297,8 @@ public sealed class ElicitationPropertySchema {
     public data class BooleanProperty(
         val title: String? = null,
         val description: String? = null,
-        val default: Boolean? = null
+        val default: Boolean? = null,
+        override val _meta: JsonElement? = null
     ) : ElicitationPropertySchema()
 
     @Serializable
@@ -305,7 +309,8 @@ public sealed class ElicitationPropertySchema {
         val minItems: Long? = null,
         val maxItems: Long? = null,
         val items: MultiSelectItems,
-        val default: List<String>? = null
+        val default: List<String>? = null,
+        override val _meta: JsonElement? = null
     ) : ElicitationPropertySchema()
 }
 
