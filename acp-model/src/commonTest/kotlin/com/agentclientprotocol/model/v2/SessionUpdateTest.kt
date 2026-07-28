@@ -35,9 +35,47 @@ class SessionUpdateTest {
     }
 
     @Test
+    fun `round-trips the three message upsert variants`() {
+        val content = MaybeUndefined.Value(listOf<ContentBlock>(ContentBlock.Text(text = "hi")))
+        val payload = """"messageId":"msg_1","content":[{"type":"text","text":"hi"}]"""
+
+        val cases = listOf(
+            "user_message" to SessionUpdate.UserMessage(
+                UserMessage(messageId = MessageId("msg_1"), content = content),
+            ),
+            "agent_message" to SessionUpdate.AgentMessage(
+                AgentMessage(messageId = MessageId("msg_1"), content = content),
+            ),
+            "agent_thought" to SessionUpdate.AgentThought(
+                AgentThought(messageId = MessageId("msg_1"), content = content),
+            ),
+        )
+
+        cases.forEach { (discriminator, update) ->
+            val json = """{"sessionUpdate":"$discriminator",$payload}"""
+            assertEquals(update, decode(json), "decoding $discriminator")
+            assertEquals(json, encode(update), "encoding $discriminator")
+        }
+    }
+
+    @Test
     fun `round-trips a state update with its own nested discriminator`() {
         val json = """{"sessionUpdate":"state_update","state":"idle","stopReason":"end_turn"}"""
         val update = SessionUpdate.StateUpdate(StateUpdate.Idle(stopReason = StopReason.EndTurn))
+
+        assertEquals(update, decode(json))
+        assertEquals(json, encode(update))
+    }
+
+    @Test
+    fun `round-trips a tool call upsert`() {
+        val json = """{"sessionUpdate":"tool_call_update","toolCallId":"tc_1","status":"completed"}"""
+        val update = SessionUpdate.ToolCallUpdate(
+            ToolCallUpdate(
+                toolCallId = ToolCallId("tc_1"),
+                status = MaybeUndefined.Value(ToolCallStatus.Completed),
+            ),
+        )
 
         assertEquals(update, decode(json))
         assertEquals(json, encode(update))
@@ -95,6 +133,23 @@ class SessionUpdateTest {
         assertEquals(usage, encode(decode(usage)))
     }
 
+    @Test
+    fun `round-trips a session info update with patch semantics`() {
+        val json = """{"sessionUpdate":"session_info_update","title":null}"""
+        val update = SessionUpdate.SessionInfoUpdate(SessionInfoUpdate(title = MaybeUndefined.Null))
+
+        assertEquals(update, decode(json))
+        assertEquals(json, encode(update))
+    }
+
+    @Test
+    fun `an empty session info update encodes as the discriminator alone`() {
+        assertEquals(
+            """{"sessionUpdate":"session_info_update"}""",
+            encode(SessionUpdate.SessionInfoUpdate(SessionInfoUpdate())),
+        )
+    }
+
     // Open union behaviour
 
     @Test
@@ -140,6 +195,9 @@ class SessionUpdateTest {
 
     @Test
     fun `known discriminator with a malformed payload fails instead of falling back`() {
+        assertFailsWith<SerializationException> {
+            decode("""{"sessionUpdate":"tool_call_update","status":"completed"}""")
+        }
         assertFailsWith<SerializationException> {
             decode("""{"sessionUpdate":"usage_update","used":10}""")
         }

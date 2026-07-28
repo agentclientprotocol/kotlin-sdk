@@ -7934,6 +7934,48 @@ public final class com/agentclientprotocol/model/WriteTextFileResponse$Companion
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class com/agentclientprotocol/model/v2/AgentMessage {
+	public static final field Companion Lcom/agentclientprotocol/model/v2/AgentMessage$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Q0JOWoQ ()Ljava/lang/String;
+	public final fun component2 ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun component3 ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun copy-jGZKPAM (Ljava/lang/String;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;)Lcom/agentclientprotocol/model/v2/AgentMessage;
+	public static synthetic fun copy-jGZKPAM$default (Lcom/agentclientprotocol/model/v2/AgentMessage;Ljava/lang/String;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;ILjava/lang/Object;)Lcom/agentclientprotocol/model/v2/AgentMessage;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContent ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun getMessageId-Q0JOWoQ ()Ljava/lang/String;
+	public final fun get_meta ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/v2/AgentMessage$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/v2/AgentThought {
+	public static final field Companion Lcom/agentclientprotocol/model/v2/AgentThought$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Q0JOWoQ ()Ljava/lang/String;
+	public final fun component2 ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun component3 ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun copy-jGZKPAM (Ljava/lang/String;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;)Lcom/agentclientprotocol/model/v2/AgentThought;
+	public static synthetic fun copy-jGZKPAM$default (Lcom/agentclientprotocol/model/v2/AgentThought;Ljava/lang/String;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;ILjava/lang/Object;)Lcom/agentclientprotocol/model/v2/AgentThought;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContent ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun getMessageId-Q0JOWoQ ()Ljava/lang/String;
+	public final fun get_meta ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/v2/AgentThought$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class com/agentclientprotocol/model/v2/Annotations : com/agentclientprotocol/model/AcpWithMeta {
 	public static final field Companion Lcom/agentclientprotocol/model/v2/Annotations$Companion;
 	public fun <init> ()V
@@ -9270,6 +9312,40 @@ public final class com/agentclientprotocol/model/v2/LlmProtocol$Vertex : com/age
 	public fun toString ()Ljava/lang/String;
 }
 
+public abstract class com/agentclientprotocol/model/v2/MaybeUndefined {
+	public final fun map (Lkotlin/jvm/functions/Function1;)Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun valueOrNull ()Ljava/lang/Object;
+}
+
+public final class com/agentclientprotocol/model/v2/MaybeUndefined$Null : com/agentclientprotocol/model/v2/MaybeUndefined {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/v2/MaybeUndefined$Null;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/v2/MaybeUndefined$Undefined : com/agentclientprotocol/model/v2/MaybeUndefined {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/v2/MaybeUndefined$Undefined;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/v2/MaybeUndefined$Value : com/agentclientprotocol/model/v2/MaybeUndefined {
+	public fun <init> (Ljava/lang/Object;)V
+	public final fun component1 ()Ljava/lang/Object;
+	public final fun copy (Ljava/lang/Object;)Lcom/agentclientprotocol/model/v2/MaybeUndefined$Value;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/v2/MaybeUndefined$Value;Ljava/lang/Object;ILjava/lang/Object;)Lcom/agentclientprotocol/model/v2/MaybeUndefined$Value;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getValue ()Ljava/lang/Object;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/v2/MaybeUndefinedKt {
+	public static final fun update (Lcom/agentclientprotocol/model/v2/MaybeUndefined;Ljava/lang/Object;)Ljava/lang/Object;
+}
+
 public abstract class com/agentclientprotocol/model/v2/McpServer {
 	public static final field Companion Lcom/agentclientprotocol/model/v2/McpServer$Companion;
 }
@@ -10489,8 +10565,41 @@ public final class com/agentclientprotocol/model/v2/SessionConfigSelectOptions$U
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/agentclientprotocol/model/v2/SessionInfoUpdate {
+	public static final field Companion Lcom/agentclientprotocol/model/v2/SessionInfoUpdate$Companion;
+	public fun <init> ()V
+	public fun <init> (Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun component2 ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun component3 ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun copy (Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;)Lcom/agentclientprotocol/model/v2/SessionInfoUpdate;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/v2/SessionInfoUpdate;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;ILjava/lang/Object;)Lcom/agentclientprotocol/model/v2/SessionInfoUpdate;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getTitle ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun getUpdatedAt ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun get_meta ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/v2/SessionInfoUpdate$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public abstract class com/agentclientprotocol/model/v2/SessionUpdate {
 	public static final field Companion Lcom/agentclientprotocol/model/v2/SessionUpdate$Companion;
+}
+
+public final class com/agentclientprotocol/model/v2/SessionUpdate$AgentMessage : com/agentclientprotocol/model/v2/SessionUpdate {
+	public fun <init> (Lcom/agentclientprotocol/model/v2/AgentMessage;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/v2/AgentMessage;
+	public final fun copy (Lcom/agentclientprotocol/model/v2/AgentMessage;)Lcom/agentclientprotocol/model/v2/SessionUpdate$AgentMessage;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/v2/SessionUpdate$AgentMessage;Lcom/agentclientprotocol/model/v2/AgentMessage;ILjava/lang/Object;)Lcom/agentclientprotocol/model/v2/SessionUpdate$AgentMessage;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMessage ()Lcom/agentclientprotocol/model/v2/AgentMessage;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class com/agentclientprotocol/model/v2/SessionUpdate$AgentMessageChunk : com/agentclientprotocol/model/v2/SessionUpdate {
@@ -10500,6 +10609,17 @@ public final class com/agentclientprotocol/model/v2/SessionUpdate$AgentMessageCh
 	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/v2/SessionUpdate$AgentMessageChunk;Lcom/agentclientprotocol/model/v2/ContentChunk;ILjava/lang/Object;)Lcom/agentclientprotocol/model/v2/SessionUpdate$AgentMessageChunk;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getChunk ()Lcom/agentclientprotocol/model/v2/ContentChunk;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/v2/SessionUpdate$AgentThought : com/agentclientprotocol/model/v2/SessionUpdate {
+	public fun <init> (Lcom/agentclientprotocol/model/v2/AgentThought;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/v2/AgentThought;
+	public final fun copy (Lcom/agentclientprotocol/model/v2/AgentThought;)Lcom/agentclientprotocol/model/v2/SessionUpdate$AgentThought;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/v2/SessionUpdate$AgentThought;Lcom/agentclientprotocol/model/v2/AgentThought;ILjava/lang/Object;)Lcom/agentclientprotocol/model/v2/SessionUpdate$AgentThought;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getThought ()Lcom/agentclientprotocol/model/v2/AgentThought;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -10563,6 +10683,17 @@ public final class com/agentclientprotocol/model/v2/SessionUpdate$PlanUpdate : c
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/agentclientprotocol/model/v2/SessionUpdate$SessionInfoUpdate : com/agentclientprotocol/model/v2/SessionUpdate {
+	public fun <init> (Lcom/agentclientprotocol/model/v2/SessionInfoUpdate;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/v2/SessionInfoUpdate;
+	public final fun copy (Lcom/agentclientprotocol/model/v2/SessionInfoUpdate;)Lcom/agentclientprotocol/model/v2/SessionUpdate$SessionInfoUpdate;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/v2/SessionUpdate$SessionInfoUpdate;Lcom/agentclientprotocol/model/v2/SessionInfoUpdate;ILjava/lang/Object;)Lcom/agentclientprotocol/model/v2/SessionUpdate$SessionInfoUpdate;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getUpdate ()Lcom/agentclientprotocol/model/v2/SessionInfoUpdate;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/agentclientprotocol/model/v2/SessionUpdate$StateUpdate : com/agentclientprotocol/model/v2/SessionUpdate {
 	public fun <init> (Lcom/agentclientprotocol/model/v2/StateUpdate;)V
 	public final fun component1 ()Lcom/agentclientprotocol/model/v2/StateUpdate;
@@ -10581,6 +10712,17 @@ public final class com/agentclientprotocol/model/v2/SessionUpdate$ToolCallConten
 	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/v2/SessionUpdate$ToolCallContentChunk;Lcom/agentclientprotocol/model/v2/ToolCallContentChunk;ILjava/lang/Object;)Lcom/agentclientprotocol/model/v2/SessionUpdate$ToolCallContentChunk;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getChunk ()Lcom/agentclientprotocol/model/v2/ToolCallContentChunk;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/v2/SessionUpdate$ToolCallUpdate : com/agentclientprotocol/model/v2/SessionUpdate {
+	public fun <init> (Lcom/agentclientprotocol/model/v2/ToolCallUpdate;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/v2/ToolCallUpdate;
+	public final fun copy (Lcom/agentclientprotocol/model/v2/ToolCallUpdate;)Lcom/agentclientprotocol/model/v2/SessionUpdate$ToolCallUpdate;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/v2/SessionUpdate$ToolCallUpdate;Lcom/agentclientprotocol/model/v2/ToolCallUpdate;ILjava/lang/Object;)Lcom/agentclientprotocol/model/v2/SessionUpdate$ToolCallUpdate;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getUpdate ()Lcom/agentclientprotocol/model/v2/ToolCallUpdate;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -10605,6 +10747,17 @@ public final class com/agentclientprotocol/model/v2/SessionUpdate$UsageUpdate : 
 	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/v2/SessionUpdate$UsageUpdate;Lcom/agentclientprotocol/model/v2/UsageUpdate;ILjava/lang/Object;)Lcom/agentclientprotocol/model/v2/SessionUpdate$UsageUpdate;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getUpdate ()Lcom/agentclientprotocol/model/v2/UsageUpdate;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/v2/SessionUpdate$UserMessage : com/agentclientprotocol/model/v2/SessionUpdate {
+	public fun <init> (Lcom/agentclientprotocol/model/v2/UserMessage;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/v2/UserMessage;
+	public final fun copy (Lcom/agentclientprotocol/model/v2/UserMessage;)Lcom/agentclientprotocol/model/v2/SessionUpdate$UserMessage;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/v2/SessionUpdate$UserMessage;Lcom/agentclientprotocol/model/v2/UserMessage;ILjava/lang/Object;)Lcom/agentclientprotocol/model/v2/SessionUpdate$UserMessage;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMessage ()Lcom/agentclientprotocol/model/v2/UserMessage;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -11014,6 +11167,40 @@ public final class com/agentclientprotocol/model/v2/ToolCallStatus$Unknown : com
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/agentclientprotocol/model/v2/ToolCallUpdate {
+	public static final field Companion Lcom/agentclientprotocol/model/v2/ToolCallUpdate$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun applyUpdate (Lcom/agentclientprotocol/model/v2/ToolCallUpdate;)Lcom/agentclientprotocol/model/v2/ToolCallUpdate;
+	public final fun component1-DimCYko ()Ljava/lang/String;
+	public final fun component2 ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun component3 ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun component4 ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun component5 ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun component6 ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun component7 ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun component8 ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun component9 ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun copy-IATGWB8 (Ljava/lang/String;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;)Lcom/agentclientprotocol/model/v2/ToolCallUpdate;
+	public static synthetic fun copy-IATGWB8$default (Lcom/agentclientprotocol/model/v2/ToolCallUpdate;Ljava/lang/String;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;ILjava/lang/Object;)Lcom/agentclientprotocol/model/v2/ToolCallUpdate;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContent ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun getKind ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun getLocations ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun getRawInput ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun getRawOutput ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun getStatus ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun getTitle ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun getToolCallId-DimCYko ()Ljava/lang/String;
+	public final fun get_meta ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/v2/ToolCallUpdate$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public abstract class com/agentclientprotocol/model/v2/ToolKind {
 	public static final field Companion Lcom/agentclientprotocol/model/v2/ToolKind$Companion;
 	public abstract fun getValue ()Ljava/lang/String;
@@ -11149,6 +11336,27 @@ public final class com/agentclientprotocol/model/v2/UsageUpdate$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class com/agentclientprotocol/model/v2/UserMessage {
+	public static final field Companion Lcom/agentclientprotocol/model/v2/UserMessage$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Q0JOWoQ ()Ljava/lang/String;
+	public final fun component2 ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun component3 ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun copy-jGZKPAM (Ljava/lang/String;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;)Lcom/agentclientprotocol/model/v2/UserMessage;
+	public static synthetic fun copy-jGZKPAM$default (Lcom/agentclientprotocol/model/v2/UserMessage;Ljava/lang/String;Lcom/agentclientprotocol/model/v2/MaybeUndefined;Lcom/agentclientprotocol/model/v2/MaybeUndefined;ILjava/lang/Object;)Lcom/agentclientprotocol/model/v2/UserMessage;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContent ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun getMessageId-Q0JOWoQ ()Ljava/lang/String;
+	public final fun get_meta ()Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/v2/UserMessage$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class com/agentclientprotocol/model/v2/conversion/ContentConversionsKt {
 	public static final fun toV1 (Lcom/agentclientprotocol/model/v2/Annotations;)Lcom/agentclientprotocol/model/Annotations;
 	public static final fun toV1 (Lcom/agentclientprotocol/model/v2/ContentBlock;)Lcom/agentclientprotocol/model/ContentBlock;
@@ -11234,19 +11442,24 @@ public final class com/agentclientprotocol/model/v2/conversion/SessionUpdateConv
 	public static final fun toV1 (Lcom/agentclientprotocol/model/v2/AvailableCommandInput;)Lcom/agentclientprotocol/model/AvailableCommandInput;
 	public static final fun toV1 (Lcom/agentclientprotocol/model/v2/AvailableCommandsUpdate;)Lcom/agentclientprotocol/model/SessionUpdate$AvailableCommandsUpdate;
 	public static final fun toV1 (Lcom/agentclientprotocol/model/v2/ConfigOptionUpdate;)Lcom/agentclientprotocol/model/SessionUpdate$ConfigOptionUpdate;
+	public static final fun toV1 (Lcom/agentclientprotocol/model/v2/SessionInfoUpdate;)Lcom/agentclientprotocol/model/SessionUpdate$SessionInfoUpdate;
 	public static final fun toV1 (Lcom/agentclientprotocol/model/v2/SessionUpdate;)Ljava/util/List;
 	public static final fun toV1 (Lcom/agentclientprotocol/model/v2/UsageUpdate;)Lcom/agentclientprotocol/model/SessionUpdate$UsageUpdate;
 	public static final fun toV2 (Lcom/agentclientprotocol/model/AvailableCommand;)Lcom/agentclientprotocol/model/v2/AvailableCommand;
 	public static final fun toV2 (Lcom/agentclientprotocol/model/AvailableCommandInput;)Lcom/agentclientprotocol/model/v2/AvailableCommandInput;
 	public static final fun toV2 (Lcom/agentclientprotocol/model/SessionUpdate$AvailableCommandsUpdate;)Lcom/agentclientprotocol/model/v2/AvailableCommandsUpdate;
 	public static final fun toV2 (Lcom/agentclientprotocol/model/SessionUpdate$ConfigOptionUpdate;)Lcom/agentclientprotocol/model/v2/ConfigOptionUpdate;
+	public static final fun toV2 (Lcom/agentclientprotocol/model/SessionUpdate$SessionInfoUpdate;)Lcom/agentclientprotocol/model/v2/SessionInfoUpdate;
 	public static final fun toV2 (Lcom/agentclientprotocol/model/SessionUpdate$UsageUpdate;)Lcom/agentclientprotocol/model/v2/UsageUpdate;
 	public static final fun toV2 (Lcom/agentclientprotocol/model/SessionUpdate;)Lcom/agentclientprotocol/model/v2/SessionUpdate;
 }
 
 public final class com/agentclientprotocol/model/v2/conversion/ToolCallConversionsKt {
 	public static final fun toV1 (Lcom/agentclientprotocol/model/v2/ToolCallStatus;)Lcom/agentclientprotocol/model/ToolCallStatus;
+	public static final fun toV1 (Lcom/agentclientprotocol/model/v2/ToolCallUpdate;)Lcom/agentclientprotocol/model/SessionUpdate$ToolCallUpdate;
 	public static final fun toV1 (Lcom/agentclientprotocol/model/v2/ToolKind;)Lcom/agentclientprotocol/model/ToolKind;
+	public static final fun toV2 (Lcom/agentclientprotocol/model/SessionUpdate$ToolCall;)Lcom/agentclientprotocol/model/v2/ToolCallUpdate;
+	public static final fun toV2 (Lcom/agentclientprotocol/model/SessionUpdate$ToolCallUpdate;)Lcom/agentclientprotocol/model/v2/ToolCallUpdate;
 	public static final fun toV2 (Lcom/agentclientprotocol/model/ToolCallStatus;)Lcom/agentclientprotocol/model/v2/ToolCallStatus;
 	public static final fun toV2 (Lcom/agentclientprotocol/model/ToolKind;)Lcom/agentclientprotocol/model/v2/ToolKind;
 }
