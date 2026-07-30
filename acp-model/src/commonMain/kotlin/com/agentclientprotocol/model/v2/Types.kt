@@ -35,14 +35,6 @@ public sealed class Role {
 
     /**
      * Custom or future role.
-     *
-     * Values beginning with `_` are reserved for implementation-specific extensions.
-     * Unknown values that do not begin with `_` are reserved for future ACP variants
-     * and MUST NOT be treated as custom extensions.
-     *
-     * Receivers that cannot act on an unknown role SHOULD preserve it when storing,
-     * replaying, proxying, or forwarding protocol data, and otherwise degrade gracefully
-     * according to the field's semantics.
      */
     public data class Unknown(override val value: String) : Role()
 

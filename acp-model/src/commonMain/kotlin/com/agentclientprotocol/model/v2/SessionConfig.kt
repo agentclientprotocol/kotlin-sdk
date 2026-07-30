@@ -77,14 +77,6 @@ public sealed class SessionConfigOptionCategory {
 
     /**
      * Custom or future category.
-     *
-     * Values beginning with `_` are reserved for implementation-specific extensions.
-     * Unknown values that do not begin with `_` are reserved for future ACP variants
-     * and MUST NOT be treated as custom extensions.
-     *
-     * Receivers that cannot act on an unknown category SHOULD preserve it when storing,
-     * replaying, proxying, or forwarding protocol data, and otherwise degrade gracefully
-     * according to the field's semantics.
      */
     public data class Unknown(override val value: String) : SessionConfigOptionCategory()
 
@@ -223,10 +215,6 @@ public sealed class SessionConfigKind {
     /**
      * Custom or future session configuration option payload.
      *
-     * Type values beginning with `_` are reserved for implementation-specific
-     * extensions. Unknown values that do not begin with `_` are reserved for future ACP
-     * variants and MUST NOT be treated as custom extensions.
-     *
      * [fields] holds the kind-specific payload as received, excluding the fields of the
      * enclosing [SessionConfigOption]. Clients that do not understand this option type
      * SHOULD preserve it when storing, replaying, proxying, or forwarding configuration
@@ -350,20 +338,24 @@ public sealed class SessionConfigOptionValue {
      * A [SessionConfigValueId] string value, used for select-type options.
      */
     @Serializable
-    public data class Id(val value: SessionConfigValueId) : SessionConfigOptionValue()
+    public data class Id(val value: SessionConfigValueId) : SessionConfigOptionValue() {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "id"
+        }
+    }
 
     /**
      * A boolean value, used for boolean-type options.
      */
     @Serializable
-    public data class Boolean(val value: kotlin.Boolean) : SessionConfigOptionValue()
+    public data class Boolean(val value: kotlin.Boolean) : SessionConfigOptionValue() {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "boolean"
+        }
+    }
 
     /**
      * Custom or future session configuration option value.
-     *
-     * Discriminator values beginning with `_` are reserved for implementation-specific
-     * extensions. Unknown values that do not begin with `_` are reserved for future ACP
-     * variants and MUST NOT be treated as custom extensions.
      *
      * Even unknown values must carry a `value` payload — decoding fails otherwise.
      * [rawJson] holds the complete payload as received (including the discriminator), so
@@ -381,13 +373,13 @@ internal object SessionConfigOptionValueSerializer : OpenTaggedUnionSerializer<S
     serialName = "com.agentclientprotocol.model.v2.SessionConfigOptionValue",
     discriminatorKey = "type",
     known = mapOf(
-        "id" to SessionConfigOptionValue.Id.serializer(),
-        "boolean" to SessionConfigOptionValue.Boolean.serializer(),
+        SessionConfigOptionValue.Id.DISCRIMINATOR to SessionConfigOptionValue.Id.serializer(),
+        SessionConfigOptionValue.Boolean.DISCRIMINATOR to SessionConfigOptionValue.Boolean.serializer(),
     ),
     discriminator = { value ->
         when (value) {
-            is SessionConfigOptionValue.Id -> "id"
-            is SessionConfigOptionValue.Boolean -> "boolean"
+            is SessionConfigOptionValue.Id -> SessionConfigOptionValue.Id.DISCRIMINATOR
+            is SessionConfigOptionValue.Boolean -> SessionConfigOptionValue.Boolean.DISCRIMINATOR
             is SessionConfigOptionValue.Unknown -> value.type
         }
     },

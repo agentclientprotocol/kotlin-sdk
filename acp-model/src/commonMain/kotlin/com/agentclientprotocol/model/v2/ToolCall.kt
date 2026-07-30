@@ -116,14 +116,6 @@ public sealed class ToolKind {
 
     /**
      * Custom or future tool kind.
-     *
-     * Values beginning with `_` are reserved for implementation-specific extensions.
-     * Unknown values that do not begin with `_` are reserved for future ACP variants
-     * and MUST NOT be treated as custom extensions.
-     *
-     * Receivers that cannot act on an unknown kind SHOULD preserve it when storing,
-     * replaying, proxying, or forwarding protocol data, and otherwise degrade gracefully
-     * according to the field's semantics.
      */
     public data class Unknown(override val value: String) : ToolKind()
 
@@ -213,14 +205,6 @@ public sealed class ToolCallStatus {
 
     /**
      * Custom or future tool call status.
-     *
-     * Values beginning with `_` are reserved for implementation-specific extensions.
-     * Unknown values that do not begin with `_` are reserved for future ACP variants
-     * and MUST NOT be treated as custom extensions.
-     *
-     * Receivers that cannot act on an unknown status SHOULD preserve it when storing,
-     * replaying, proxying, or forwarding protocol data, and otherwise degrade gracefully
-     * according to the field's semantics.
      */
     public data class Unknown(override val value: String) : ToolCallStatus()
 
@@ -278,14 +262,6 @@ public sealed class DiffPatchFormat {
 
     /**
      * Custom or future diff format.
-     *
-     * Values beginning with `_` are reserved for implementation-specific extensions.
-     * Unknown values that do not begin with `_` are reserved for future ACP variants
-     * and MUST NOT be treated as custom extensions.
-     *
-     * Receivers that cannot act on an unknown format SHOULD preserve it when storing,
-     * replaying, proxying, or forwarding protocol data, and otherwise degrade gracefully
-     * according to the field's semantics.
      */
     public data class Unknown(override val value: String) : DiffPatchFormat()
 
@@ -361,14 +337,6 @@ public sealed class DiffFileType {
 
     /**
      * Custom or future file type.
-     *
-     * Values beginning with `_` are reserved for implementation-specific extensions.
-     * Unknown values that do not begin with `_` are reserved for future ACP variants
-     * and MUST NOT be treated as custom extensions.
-     *
-     * Receivers that cannot act on an unknown file type SHOULD preserve it when storing,
-     * replaying, proxying, or forwarding protocol data, and otherwise degrade gracefully
-     * according to the field's semantics.
      */
     public data class Unknown(override val value: String) : DiffFileType()
 
@@ -438,10 +406,6 @@ public sealed class DiffChangeOperation {
 
     /**
      * Custom or future file operation.
-     *
-     * Operation values beginning with `_` are reserved for implementation-specific
-     * extensions. Unknown values that do not begin with `_` are reserved for future ACP
-     * variants and MUST NOT be treated as custom extensions.
      *
      * [fields] holds the operation-specific payload as received, excluding the
      * `operation`, `fileType`, `mimeType`, and `_meta` keys, which belong to the
@@ -597,7 +561,11 @@ public sealed class ToolCallContent {
     public data class Content(
         val content: ContentBlock,
         override val _meta: JsonElement? = null,
-    ) : ToolCallContent(), AcpWithMeta
+    ) : ToolCallContent(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "content"
+        }
+    }
 
     /**
      * File modification shown as a diff.
@@ -610,14 +578,14 @@ public sealed class ToolCallContent {
         val changes: List<DiffChange>,
         val patch: DiffPatch? = null,
         override val _meta: JsonElement? = null,
-    ) : ToolCallContent(), AcpWithMeta
+    ) : ToolCallContent(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "diff"
+        }
+    }
 
     /**
      * Custom or future tool call content.
-     *
-     * Discriminator values beginning with `_` are reserved for implementation-specific
-     * extensions. Unknown values that do not begin with `_` are reserved for future ACP
-     * variants and MUST NOT be treated as custom extensions.
      *
      * [rawJson] holds the complete payload as received (including the discriminator), so
      * re-serializing emits it byte-identically. Receivers that do not understand this
@@ -632,13 +600,13 @@ internal object ToolCallContentSerializer : OpenTaggedUnionSerializer<ToolCallCo
     serialName = "com.agentclientprotocol.model.v2.ToolCallContent",
     discriminatorKey = "type",
     known = mapOf(
-        "content" to ToolCallContent.Content.serializer(),
-        "diff" to ToolCallContent.Diff.serializer(),
+        ToolCallContent.Content.DISCRIMINATOR to ToolCallContent.Content.serializer(),
+        ToolCallContent.Diff.DISCRIMINATOR to ToolCallContent.Diff.serializer(),
     ),
     discriminator = { value ->
         when (value) {
-            is ToolCallContent.Content -> "content"
-            is ToolCallContent.Diff -> "diff"
+            is ToolCallContent.Content -> ToolCallContent.Content.DISCRIMINATOR
+            is ToolCallContent.Diff -> ToolCallContent.Diff.DISCRIMINATOR
             is ToolCallContent.Unknown -> value.type
         }
     },

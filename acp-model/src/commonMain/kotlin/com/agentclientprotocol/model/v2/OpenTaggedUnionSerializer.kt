@@ -21,16 +21,8 @@ import kotlinx.serialization.json.jsonObject
  *
  * Open tagged unions are JSON objects discriminated by a string field (usually `type`).
  * Known discriminators delegate to the matching variant serializer; an unrecognized
- * discriminator deserializes to an `Unknown` fallback variant that preserves the **entire
- * raw JSON object**, so it re-serializes byte-identically and survives storing, replaying,
- * proxying, and forwarding:
- *
- * - Discriminator values beginning with `_` are reserved for implementation-specific
- *   extensions. Values that do not begin with `_` are reserved for ACP, including future
- *   ACP variants.
- * - A **known** discriminator whose payload fails its variant serializer still fails —
- *   the fallback must not mask malformed data.
- * - A missing or non-string discriminator fails instead of guessing a variant.
+ * discriminator deserializes to an `Unknown` fallback variant that preserves the entire
+ * raw JSON object, so it re-serializes byte-identically.
  *
  * See the v2 [Enum Variant Extension](https://agentclientprotocol.com/rfds/v2/enum-variant-extension) RFD.
  *

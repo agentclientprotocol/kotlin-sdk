@@ -47,14 +47,6 @@ public sealed class NesTriggerKind {
 
     /**
      * Custom or future suggestion trigger kind.
-     *
-     * Values beginning with `_` are reserved for implementation-specific extensions.
-     * Unknown values that do not begin with `_` are reserved for future ACP variants
-     * and MUST NOT be treated as custom extensions.
-     *
-     * Receivers that cannot act on an unknown trigger kind SHOULD preserve it when storing,
-     * replaying, proxying, or forwarding protocol data, and otherwise degrade gracefully
-     * according to the field's semantics.
      */
     public data class Unknown(override val value: String) : NesTriggerKind()
 
@@ -132,14 +124,6 @@ public sealed class NesRejectReason {
 
     /**
      * Custom or future rejection reason.
-     *
-     * Values beginning with `_` are reserved for implementation-specific extensions.
-     * Unknown values that do not begin with `_` are reserved for future ACP variants
-     * and MUST NOT be treated as custom extensions.
-     *
-     * Receivers that cannot act on an unknown reject reason SHOULD preserve it when storing,
-     * replaying, proxying, or forwarding protocol data, and otherwise degrade gracefully
-     * according to the field's semantics.
      */
     public data class Unknown(override val value: String) : NesRejectReason()
 
@@ -218,14 +202,6 @@ public sealed class NesDiagnosticSeverity {
 
     /**
      * Custom or future diagnostic severity.
-     *
-     * Values beginning with `_` are reserved for implementation-specific extensions.
-     * Unknown values that do not begin with `_` are reserved for future ACP variants
-     * and MUST NOT be treated as custom extensions.
-     *
-     * Receivers that cannot act on an unknown severity SHOULD preserve it when storing,
-     * replaying, proxying, or forwarding protocol data, and otherwise degrade gracefully
-     * according to the field's semantics.
      */
     public data class Unknown(override val value: String) : NesDiagnosticSeverity()
 
@@ -287,7 +263,11 @@ public sealed class NesSuggestion {
         val uri: String,
         val edits: List<NesTextEdit>,
         val cursorPosition: NesPosition? = null,
-    ) : NesSuggestion()
+    ) : NesSuggestion() {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "edit"
+        }
+    }
 
     /**
      * A jump-to-location suggestion.
@@ -297,7 +277,11 @@ public sealed class NesSuggestion {
         override val suggestionId: String,
         val uri: String,
         val position: NesPosition,
-    ) : NesSuggestion()
+    ) : NesSuggestion() {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "jump"
+        }
+    }
 
     /**
      * A rename symbol suggestion.
@@ -308,7 +292,11 @@ public sealed class NesSuggestion {
         val uri: String,
         val position: NesPosition,
         val newName: String,
-    ) : NesSuggestion()
+    ) : NesSuggestion() {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "rename"
+        }
+    }
 
     /**
      * A search-and-replace suggestion.
@@ -320,14 +308,14 @@ public sealed class NesSuggestion {
         val search: String,
         val replace: String,
         val isRegex: Boolean? = null,
-    ) : NesSuggestion()
+    ) : NesSuggestion() {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "searchAndReplace"
+        }
+    }
 
     /**
      * Custom or future NES suggestion.
-     *
-     * Discriminator values beginning with `_` are reserved for implementation-specific
-     * extensions. Unknown values that do not begin with `_` are reserved for future ACP
-     * variants and MUST NOT be treated as custom extensions.
      *
      * Even unknown suggestions must carry `suggestionId` — decoding fails otherwise.
      * [rawJson] holds the complete payload as received (including the discriminator), so
@@ -347,17 +335,17 @@ internal object NesSuggestionSerializer : OpenTaggedUnionSerializer<NesSuggestio
     serialName = "com.agentclientprotocol.model.v2.NesSuggestion",
     discriminatorKey = "kind",
     known = mapOf(
-        "edit" to NesSuggestion.Edit.serializer(),
-        "jump" to NesSuggestion.Jump.serializer(),
-        "rename" to NesSuggestion.Rename.serializer(),
-        "searchAndReplace" to NesSuggestion.SearchAndReplace.serializer(),
+        NesSuggestion.Edit.DISCRIMINATOR to NesSuggestion.Edit.serializer(),
+        NesSuggestion.Jump.DISCRIMINATOR to NesSuggestion.Jump.serializer(),
+        NesSuggestion.Rename.DISCRIMINATOR to NesSuggestion.Rename.serializer(),
+        NesSuggestion.SearchAndReplace.DISCRIMINATOR to NesSuggestion.SearchAndReplace.serializer(),
     ),
     discriminator = { value ->
         when (value) {
-            is NesSuggestion.Edit -> "edit"
-            is NesSuggestion.Jump -> "jump"
-            is NesSuggestion.Rename -> "rename"
-            is NesSuggestion.SearchAndReplace -> "searchAndReplace"
+            is NesSuggestion.Edit -> NesSuggestion.Edit.DISCRIMINATOR
+            is NesSuggestion.Jump -> NesSuggestion.Jump.DISCRIMINATOR
+            is NesSuggestion.Rename -> NesSuggestion.Rename.DISCRIMINATOR
+            is NesSuggestion.SearchAndReplace -> NesSuggestion.SearchAndReplace.DISCRIMINATOR
             is NesSuggestion.Unknown -> value.kind
         }
     },

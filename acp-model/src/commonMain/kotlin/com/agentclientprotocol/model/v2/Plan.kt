@@ -53,14 +53,6 @@ public sealed class PlanEntryPriority {
 
     /**
      * Custom or future plan entry priority.
-     *
-     * Values beginning with `_` are reserved for implementation-specific extensions.
-     * Unknown values that do not begin with `_` are reserved for future ACP variants
-     * and MUST NOT be treated as custom extensions.
-     *
-     * Receivers that cannot act on an unknown priority SHOULD preserve it when storing,
-     * replaying, proxying, or forwarding protocol data, and otherwise degrade gracefully
-     * according to the field's semantics.
      */
     public data class Unknown(override val value: String) : PlanEntryPriority()
 
@@ -135,14 +127,6 @@ public sealed class PlanEntryStatus {
 
     /**
      * Custom or future plan entry status.
-     *
-     * Values beginning with `_` are reserved for implementation-specific extensions.
-     * Unknown values that do not begin with `_` are reserved for future ACP variants
-     * and MUST NOT be treated as custom extensions.
-     *
-     * Receivers that cannot act on an unknown status SHOULD preserve it when storing,
-     * replaying, proxying, or forwarding protocol data, and otherwise degrade gracefully
-     * according to the field's semantics.
      */
     public data class Unknown(override val value: String) : PlanEntryStatus()
 
@@ -241,7 +225,11 @@ public sealed class PlanUpdateContent {
         override val planId: PlanId,
         val entries: List<PlanEntry>,
         override val _meta: JsonElement? = null,
-    ) : PlanUpdateContent(), AcpWithMeta
+    ) : PlanUpdateContent(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "items"
+        }
+    }
 
     /**
      * **UNSTABLE**
@@ -258,7 +246,11 @@ public sealed class PlanUpdateContent {
          */
         val uri: String,
         override val _meta: JsonElement? = null,
-    ) : PlanUpdateContent(), AcpWithMeta
+    ) : PlanUpdateContent(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "file"
+        }
+    }
 
     /**
      * **UNSTABLE**
@@ -275,14 +267,14 @@ public sealed class PlanUpdateContent {
          */
         val content: String,
         override val _meta: JsonElement? = null,
-    ) : PlanUpdateContent(), AcpWithMeta
+    ) : PlanUpdateContent(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "markdown"
+        }
+    }
 
     /**
      * Custom or future plan update content.
-     *
-     * Discriminator values beginning with `_` are reserved for implementation-specific
-     * extensions. Unknown values that do not begin with `_` are reserved for future ACP
-     * variants and MUST NOT be treated as custom extensions.
      *
      * Even unknown content must carry `planId` — decoding fails otherwise. [rawJson] holds
      * the complete payload as received (including the discriminator), so re-serializing
@@ -302,15 +294,15 @@ internal object PlanUpdateContentSerializer : OpenTaggedUnionSerializer<PlanUpda
     serialName = "com.agentclientprotocol.model.v2.PlanUpdateContent",
     discriminatorKey = "type",
     known = mapOf(
-        "items" to PlanUpdateContent.Items.serializer(),
-        "file" to PlanUpdateContent.File.serializer(),
-        "markdown" to PlanUpdateContent.Markdown.serializer(),
+        PlanUpdateContent.Items.DISCRIMINATOR to PlanUpdateContent.Items.serializer(),
+        PlanUpdateContent.File.DISCRIMINATOR to PlanUpdateContent.File.serializer(),
+        PlanUpdateContent.Markdown.DISCRIMINATOR to PlanUpdateContent.Markdown.serializer(),
     ),
     discriminator = { value ->
         when (value) {
-            is PlanUpdateContent.Items -> "items"
-            is PlanUpdateContent.File -> "file"
-            is PlanUpdateContent.Markdown -> "markdown"
+            is PlanUpdateContent.Items -> PlanUpdateContent.Items.DISCRIMINATOR
+            is PlanUpdateContent.File -> PlanUpdateContent.File.DISCRIMINATOR
+            is PlanUpdateContent.Markdown -> PlanUpdateContent.Markdown.DISCRIMINATOR
             is PlanUpdateContent.Unknown -> value.type
         }
     },

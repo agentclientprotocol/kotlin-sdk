@@ -54,7 +54,11 @@ public sealed class AuthMethod {
         override val name: String,
         override val description: String? = null,
         override val _meta: JsonElement? = null,
-    ) : AuthMethod(), AcpWithMeta
+    ) : AuthMethod(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "agent"
+        }
+    }
 
     /**
      * **UNSTABLE**
@@ -71,7 +75,11 @@ public sealed class AuthMethod {
         val vars: List<AuthEnvVar>,
         val link: String? = null,
         override val _meta: JsonElement? = null,
-    ) : AuthMethod(), AcpWithMeta
+    ) : AuthMethod(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "env_var"
+        }
+    }
 
     /**
      * **UNSTABLE**
@@ -88,14 +96,14 @@ public sealed class AuthMethod {
         val args: List<String> = emptyList(),
         val env: List<EnvVariable> = emptyList(),
         override val _meta: JsonElement? = null,
-    ) : AuthMethod(), AcpWithMeta
+    ) : AuthMethod(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "terminal"
+        }
+    }
 
     /**
      * Custom or future authentication method.
-     *
-     * Discriminator values beginning with `_` are reserved for implementation-specific
-     * extensions. Unknown values that do not begin with `_` are reserved for future ACP
-     * variants and MUST NOT be treated as custom extensions.
      *
      * Even unknown methods must carry `methodId` and `name` — decoding fails otherwise.
      * [rawJson] holds the complete payload as received (including the discriminator), so
@@ -117,15 +125,15 @@ internal object AuthMethodSerializer : OpenTaggedUnionSerializer<AuthMethod>(
     serialName = "com.agentclientprotocol.model.v2.AuthMethod",
     discriminatorKey = "type",
     known = mapOf(
-        "agent" to AuthMethod.Agent.serializer(),
-        "env_var" to AuthMethod.EnvVar.serializer(),
-        "terminal" to AuthMethod.Terminal.serializer(),
+        AuthMethod.Agent.DISCRIMINATOR to AuthMethod.Agent.serializer(),
+        AuthMethod.EnvVar.DISCRIMINATOR to AuthMethod.EnvVar.serializer(),
+        AuthMethod.Terminal.DISCRIMINATOR to AuthMethod.Terminal.serializer(),
     ),
     discriminator = { value ->
         when (value) {
-            is AuthMethod.Agent -> "agent"
-            is AuthMethod.EnvVar -> "env_var"
-            is AuthMethod.Terminal -> "terminal"
+            is AuthMethod.Agent -> AuthMethod.Agent.DISCRIMINATOR
+            is AuthMethod.EnvVar -> AuthMethod.EnvVar.DISCRIMINATOR
+            is AuthMethod.Terminal -> AuthMethod.Terminal.DISCRIMINATOR
             is AuthMethod.Unknown -> value.type
         }
     },
@@ -172,7 +180,11 @@ public sealed class McpServer {
         val url: String,
         val headers: List<HttpHeader> = emptyList(),
         override val _meta: JsonElement? = null,
-    ) : McpServer(), AcpWithMeta
+    ) : McpServer(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "http"
+        }
+    }
 
     /**
      * Stdio transport configuration
@@ -186,14 +198,14 @@ public sealed class McpServer {
         val args: List<String> = emptyList(),
         val env: List<EnvVariable> = emptyList(),
         override val _meta: JsonElement? = null,
-    ) : McpServer(), AcpWithMeta
+    ) : McpServer(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "stdio"
+        }
+    }
 
     /**
      * Custom or future MCP server transport configuration.
-     *
-     * Discriminator values beginning with `_` are reserved for implementation-specific
-     * extensions. Unknown values that do not begin with `_` are reserved for future ACP
-     * variants and MUST NOT be treated as custom extensions.
      *
      * [rawJson] holds the complete payload as received (including the discriminator), so
      * re-serializing emits it byte-identically. Receivers that do not understand this
@@ -208,13 +220,13 @@ internal object McpServerSerializer : OpenTaggedUnionSerializer<McpServer>(
     serialName = "com.agentclientprotocol.model.v2.McpServer",
     discriminatorKey = "type",
     known = mapOf(
-        "http" to McpServer.Http.serializer(),
-        "stdio" to McpServer.Stdio.serializer(),
+        McpServer.Http.DISCRIMINATOR to McpServer.Http.serializer(),
+        McpServer.Stdio.DISCRIMINATOR to McpServer.Stdio.serializer(),
     ),
     discriminator = { value ->
         when (value) {
-            is McpServer.Http -> "http"
-            is McpServer.Stdio -> "stdio"
+            is McpServer.Http -> McpServer.Http.DISCRIMINATOR
+            is McpServer.Stdio -> McpServer.Stdio.DISCRIMINATOR
             is McpServer.Unknown -> value.type
         }
     },
@@ -278,14 +290,6 @@ public sealed class StopReason {
 
     /**
      * Custom or future stop reason.
-     *
-     * Values beginning with `_` are reserved for implementation-specific extensions.
-     * Unknown values that do not begin with `_` are reserved for future ACP variants
-     * and MUST NOT be treated as custom extensions.
-     *
-     * Receivers that cannot act on an unknown stop reason SHOULD preserve it when storing,
-     * replaying, proxying, or forwarding protocol data, and otherwise degrade gracefully
-     * according to the field's semantics.
      */
     public data class Unknown(override val value: String) : StopReason()
 
@@ -368,14 +372,7 @@ public sealed class PermissionOptionKind {
     /**
      * Custom or future permission option kind.
      *
-     * Values beginning with `_` are reserved for implementation-specific extensions.
-     * Unknown values that do not begin with `_` are reserved for future ACP variants
-     * and MUST NOT be treated as custom extensions.
-     *
-     * Receivers that cannot act on an unknown kind SHOULD preserve it when storing,
-     * replaying, proxying, or forwarding protocol data, and otherwise degrade gracefully
-     * according to the field's semantics — in particular, an unknown kind MUST NOT be
-     * treated as any form of approval.
+     * An unknown kind MUST NOT be treated as any form of approval.
      */
     public data class Unknown(override val value: String) : PermissionOptionKind()
 
@@ -467,14 +464,6 @@ public sealed class LlmProtocol {
 
     /**
      * Custom or future protocol.
-     *
-     * Values beginning with `_` are reserved for implementation-specific extensions.
-     * Unknown values that do not begin with `_` are reserved for future ACP variants
-     * and MUST NOT be treated as custom extensions.
-     *
-     * Receivers that cannot act on an unknown protocol SHOULD preserve it when storing,
-     * replaying, proxying, or forwarding protocol data, and otherwise degrade gracefully
-     * according to the field's semantics.
      */
     public data class Unknown(override val value: String) : LlmProtocol()
 
@@ -530,7 +519,9 @@ public sealed class RequestPermissionOutcome {
      * See protocol docs: [Cancellation](https://agentclientprotocol.com/protocol/prompt-lifecycle#cancellation)
      */
     @Serializable
-    public data object Cancelled : RequestPermissionOutcome()
+    public data object Cancelled : RequestPermissionOutcome() {
+        internal const val DISCRIMINATOR: String = "cancelled"
+    }
 
     /**
      * The user selected one of the provided options.
@@ -539,14 +530,14 @@ public sealed class RequestPermissionOutcome {
     public data class Selected(
         val optionId: PermissionOptionId,
         override val _meta: JsonElement? = null,
-    ) : RequestPermissionOutcome(), AcpWithMeta
+    ) : RequestPermissionOutcome(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "selected"
+        }
+    }
 
     /**
      * Custom or future permission outcome.
-     *
-     * Discriminator values beginning with `_` are reserved for implementation-specific
-     * extensions. Unknown values that do not begin with `_` are reserved for future ACP
-     * variants and MUST NOT be treated as custom extensions.
      *
      * Agents that do not understand this outcome MUST NOT treat it as approval.
      * [rawJson] holds the complete payload as received (including the discriminator), so
@@ -562,13 +553,13 @@ internal object RequestPermissionOutcomeSerializer : OpenTaggedUnionSerializer<R
     serialName = "com.agentclientprotocol.model.v2.RequestPermissionOutcome",
     discriminatorKey = "outcome",
     known = mapOf(
-        "cancelled" to RequestPermissionOutcome.Cancelled.serializer(),
-        "selected" to RequestPermissionOutcome.Selected.serializer(),
+        RequestPermissionOutcome.Cancelled.DISCRIMINATOR to RequestPermissionOutcome.Cancelled.serializer(),
+        RequestPermissionOutcome.Selected.DISCRIMINATOR to RequestPermissionOutcome.Selected.serializer(),
     ),
     discriminator = { value ->
         when (value) {
-            is RequestPermissionOutcome.Cancelled -> "cancelled"
-            is RequestPermissionOutcome.Selected -> "selected"
+            is RequestPermissionOutcome.Cancelled -> RequestPermissionOutcome.Cancelled.DISCRIMINATOR
+            is RequestPermissionOutcome.Selected -> RequestPermissionOutcome.Selected.DISCRIMINATOR
             is RequestPermissionOutcome.Unknown -> value.outcome
         }
     },

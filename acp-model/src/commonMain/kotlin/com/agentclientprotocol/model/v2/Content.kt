@@ -49,14 +49,6 @@ public sealed class IconTheme {
 
     /**
      * Custom or future icon theme.
-     *
-     * Values beginning with `_` are reserved for implementation-specific extensions.
-     * Unknown values that do not begin with `_` are reserved for future ACP variants
-     * and MUST NOT be treated as custom extensions.
-     *
-     * Receivers that cannot act on an unknown theme SHOULD preserve it when storing,
-     * replaying, proxying, or forwarding protocol data, and otherwise degrade gracefully
-     * according to the field's semantics.
      */
     public data class Unknown(override val value: String) : IconTheme()
 
@@ -210,7 +202,11 @@ public sealed class ContentBlock {
         val text: String,
         val annotations: Annotations? = null,
         override val _meta: JsonElement? = null,
-    ) : ContentBlock(), AcpWithMeta
+    ) : ContentBlock(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "text"
+        }
+    }
 
     /**
      * Images for visual context or analysis.
@@ -224,7 +220,11 @@ public sealed class ContentBlock {
         val uri: String? = null,
         val annotations: Annotations? = null,
         override val _meta: JsonElement? = null,
-    ) : ContentBlock(), AcpWithMeta
+    ) : ContentBlock(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "image"
+        }
+    }
 
     /**
      * Audio data for transcription or analysis.
@@ -237,7 +237,11 @@ public sealed class ContentBlock {
         val mimeType: String,
         val annotations: Annotations? = null,
         override val _meta: JsonElement? = null,
-    ) : ContentBlock(), AcpWithMeta
+    ) : ContentBlock(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "audio"
+        }
+    }
 
     /**
      * References to resources that the agent can access.
@@ -255,7 +259,11 @@ public sealed class ContentBlock {
         val icons: List<Icon>? = null,
         val annotations: Annotations? = null,
         override val _meta: JsonElement? = null,
-    ) : ContentBlock(), AcpWithMeta
+    ) : ContentBlock(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "resource_link"
+        }
+    }
 
     /**
      * Complete resource contents embedded directly in the message.
@@ -269,14 +277,14 @@ public sealed class ContentBlock {
         val resource: EmbeddedResourceResource,
         val annotations: Annotations? = null,
         override val _meta: JsonElement? = null,
-    ) : ContentBlock(), AcpWithMeta
+    ) : ContentBlock(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "resource"
+        }
+    }
 
     /**
      * Custom or future content block.
-     *
-     * Discriminator values beginning with `_` are reserved for implementation-specific
-     * extensions. Unknown values that do not begin with `_` are reserved for future ACP
-     * variants and MUST NOT be treated as custom extensions.
      *
      * [rawJson] holds the complete payload as received (including the discriminator), so
      * re-serializing emits it byte-identically. Receivers that do not understand this
@@ -291,19 +299,19 @@ internal object ContentBlockSerializer : OpenTaggedUnionSerializer<ContentBlock>
     serialName = "com.agentclientprotocol.model.v2.ContentBlock",
     discriminatorKey = "type",
     known = mapOf(
-        "text" to ContentBlock.Text.serializer(),
-        "image" to ContentBlock.Image.serializer(),
-        "audio" to ContentBlock.Audio.serializer(),
-        "resource_link" to ContentBlock.ResourceLink.serializer(),
-        "resource" to ContentBlock.Resource.serializer(),
+        ContentBlock.Text.DISCRIMINATOR to ContentBlock.Text.serializer(),
+        ContentBlock.Image.DISCRIMINATOR to ContentBlock.Image.serializer(),
+        ContentBlock.Audio.DISCRIMINATOR to ContentBlock.Audio.serializer(),
+        ContentBlock.ResourceLink.DISCRIMINATOR to ContentBlock.ResourceLink.serializer(),
+        ContentBlock.Resource.DISCRIMINATOR to ContentBlock.Resource.serializer(),
     ),
     discriminator = { value ->
         when (value) {
-            is ContentBlock.Text -> "text"
-            is ContentBlock.Image -> "image"
-            is ContentBlock.Audio -> "audio"
-            is ContentBlock.ResourceLink -> "resource_link"
-            is ContentBlock.Resource -> "resource"
+            is ContentBlock.Text -> ContentBlock.Text.DISCRIMINATOR
+            is ContentBlock.Image -> ContentBlock.Image.DISCRIMINATOR
+            is ContentBlock.Audio -> ContentBlock.Audio.DISCRIMINATOR
+            is ContentBlock.ResourceLink -> ContentBlock.ResourceLink.DISCRIMINATOR
+            is ContentBlock.Resource -> ContentBlock.Resource.DISCRIMINATOR
             is ContentBlock.Unknown -> value.type
         }
     },

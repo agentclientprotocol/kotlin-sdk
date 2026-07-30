@@ -71,14 +71,6 @@ public sealed class StringFormat {
 
     /**
      * Custom or future string format.
-     *
-     * Values beginning with `_` are reserved for implementation-specific extensions.
-     * Unknown values that do not begin with `_` are reserved for future ACP variants
-     * and MUST NOT be treated as custom extensions.
-     *
-     * Receivers that cannot act on an unknown format SHOULD preserve it when storing,
-     * replaying, proxying, or forwarding protocol data, and otherwise degrade gracefully
-     * according to the field's semantics.
      */
     public data class Unknown(override val value: String) : StringFormat()
 
@@ -141,10 +133,6 @@ public sealed class MultiSelectItems {
 
     /**
      * Custom or future typed multi-select items.
-     *
-     * Type values beginning with `_` are reserved for implementation-specific
-     * extensions. Unknown values that do not begin with `_` are reserved for future ACP
-     * variants and MUST NOT be treated as custom extensions.
      *
      * [rawJson] holds the complete payload as received (including the discriminator), so
      * re-serializing emits it byte-identically.
@@ -220,7 +208,11 @@ public sealed class ElicitationPropertySchema {
         val default: String? = null,
         @SerialName("enum") val enumValues: List<String>? = null,
         @SerialName("oneOf") val oneOf: List<EnumOption>? = null,
-    ) : ElicitationPropertySchema()
+    ) : ElicitationPropertySchema() {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "string"
+        }
+    }
 
     /**
      * Number (floating-point) property.
@@ -232,7 +224,11 @@ public sealed class ElicitationPropertySchema {
         val minimum: Double? = null,
         val maximum: Double? = null,
         val default: Double? = null,
-    ) : ElicitationPropertySchema()
+    ) : ElicitationPropertySchema() {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "number"
+        }
+    }
 
     /**
      * Integer property.
@@ -244,7 +240,11 @@ public sealed class ElicitationPropertySchema {
         val minimum: Long? = null,
         val maximum: Long? = null,
         val default: Long? = null,
-    ) : ElicitationPropertySchema()
+    ) : ElicitationPropertySchema() {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "integer"
+        }
+    }
 
     /**
      * Boolean property.
@@ -254,7 +254,11 @@ public sealed class ElicitationPropertySchema {
         val title: String? = null,
         val description: String? = null,
         val default: Boolean? = null,
-    ) : ElicitationPropertySchema()
+    ) : ElicitationPropertySchema() {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "boolean"
+        }
+    }
 
     /**
      * Multi-select array property.
@@ -267,14 +271,14 @@ public sealed class ElicitationPropertySchema {
         val maxItems: Long? = null,
         val items: MultiSelectItems,
         val default: List<String>? = null,
-    ) : ElicitationPropertySchema()
+    ) : ElicitationPropertySchema() {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "array"
+        }
+    }
 
     /**
      * Custom or future elicitation property schema.
-     *
-     * Discriminator values beginning with `_` are reserved for implementation-specific
-     * extensions. Unknown values that do not begin with `_` are reserved for future ACP
-     * variants and MUST NOT be treated as custom extensions.
      *
      * [rawJson] holds the complete payload as received (including the discriminator), so
      * re-serializing emits it byte-identically.
@@ -287,19 +291,19 @@ internal object ElicitationPropertySchemaSerializer : OpenTaggedUnionSerializer<
     serialName = "com.agentclientprotocol.model.v2.ElicitationPropertySchema",
     discriminatorKey = "type",
     known = mapOf(
-        "string" to ElicitationPropertySchema.StringProperty.serializer(),
-        "number" to ElicitationPropertySchema.NumberProperty.serializer(),
-        "integer" to ElicitationPropertySchema.IntegerProperty.serializer(),
-        "boolean" to ElicitationPropertySchema.BooleanProperty.serializer(),
-        "array" to ElicitationPropertySchema.ArrayProperty.serializer(),
+        ElicitationPropertySchema.StringProperty.DISCRIMINATOR to ElicitationPropertySchema.StringProperty.serializer(),
+        ElicitationPropertySchema.NumberProperty.DISCRIMINATOR to ElicitationPropertySchema.NumberProperty.serializer(),
+        ElicitationPropertySchema.IntegerProperty.DISCRIMINATOR to ElicitationPropertySchema.IntegerProperty.serializer(),
+        ElicitationPropertySchema.BooleanProperty.DISCRIMINATOR to ElicitationPropertySchema.BooleanProperty.serializer(),
+        ElicitationPropertySchema.ArrayProperty.DISCRIMINATOR to ElicitationPropertySchema.ArrayProperty.serializer(),
     ),
     discriminator = { value ->
         when (value) {
-            is ElicitationPropertySchema.StringProperty -> "string"
-            is ElicitationPropertySchema.NumberProperty -> "number"
-            is ElicitationPropertySchema.IntegerProperty -> "integer"
-            is ElicitationPropertySchema.BooleanProperty -> "boolean"
-            is ElicitationPropertySchema.ArrayProperty -> "array"
+            is ElicitationPropertySchema.StringProperty -> ElicitationPropertySchema.StringProperty.DISCRIMINATOR
+            is ElicitationPropertySchema.NumberProperty -> ElicitationPropertySchema.NumberProperty.DISCRIMINATOR
+            is ElicitationPropertySchema.IntegerProperty -> ElicitationPropertySchema.IntegerProperty.DISCRIMINATOR
+            is ElicitationPropertySchema.BooleanProperty -> ElicitationPropertySchema.BooleanProperty.DISCRIMINATOR
+            is ElicitationPropertySchema.ArrayProperty -> ElicitationPropertySchema.ArrayProperty.DISCRIMINATOR
             is ElicitationPropertySchema.Unknown -> value.type
         }
     },
@@ -337,26 +341,30 @@ public sealed class ElicitationAction {
     @Serializable
     public data class Accept(
         val content: Map<String, ElicitationContentValue>? = null,
-    ) : ElicitationAction()
+    ) : ElicitationAction() {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "accept"
+        }
+    }
 
     /**
      * The user declined the elicitation.
      */
     @Serializable
-    public data object Decline : ElicitationAction()
+    public data object Decline : ElicitationAction() {
+        internal const val DISCRIMINATOR: String = "decline"
+    }
 
     /**
      * The elicitation was cancelled.
      */
     @Serializable
-    public data object Cancel : ElicitationAction()
+    public data object Cancel : ElicitationAction() {
+        internal const val DISCRIMINATOR: String = "cancel"
+    }
 
     /**
      * Custom or future elicitation action.
-     *
-     * Discriminator values beginning with `_` are reserved for implementation-specific
-     * extensions. Unknown values that do not begin with `_` are reserved for future ACP
-     * variants and MUST NOT be treated as custom extensions.
      *
      * [rawJson] holds the complete payload as received (including the discriminator), so
      * re-serializing emits it byte-identically. Agents SHOULD preserve it when storing,
@@ -370,15 +378,15 @@ internal object ElicitationActionSerializer : OpenTaggedUnionSerializer<Elicitat
     serialName = "com.agentclientprotocol.model.v2.ElicitationAction",
     discriminatorKey = "action",
     known = mapOf(
-        "accept" to ElicitationAction.Accept.serializer(),
-        "decline" to ElicitationAction.Decline.serializer(),
-        "cancel" to ElicitationAction.Cancel.serializer(),
+        ElicitationAction.Accept.DISCRIMINATOR to ElicitationAction.Accept.serializer(),
+        ElicitationAction.Decline.DISCRIMINATOR to ElicitationAction.Decline.serializer(),
+        ElicitationAction.Cancel.DISCRIMINATOR to ElicitationAction.Cancel.serializer(),
     ),
     discriminator = { value ->
         when (value) {
-            is ElicitationAction.Accept -> "accept"
-            is ElicitationAction.Decline -> "decline"
-            is ElicitationAction.Cancel -> "cancel"
+            is ElicitationAction.Accept -> ElicitationAction.Accept.DISCRIMINATOR
+            is ElicitationAction.Decline -> ElicitationAction.Decline.DISCRIMINATOR
+            is ElicitationAction.Cancel -> ElicitationAction.Cancel.DISCRIMINATOR
             is ElicitationAction.Unknown -> value.action
         }
     },
@@ -431,10 +439,6 @@ public sealed class ElicitationMode {
 
     /**
      * Custom or future elicitation mode.
-     *
-     * Discriminator values beginning with `_` are reserved for implementation-specific
-     * extensions. Unknown values that do not begin with `_` are reserved for future ACP
-     * variants and MUST NOT be treated as custom extensions.
      *
      * Even unknown modes must carry a resolvable scope — decoding fails otherwise.
      * [rawJson] holds the complete payload as received (including the discriminator), so

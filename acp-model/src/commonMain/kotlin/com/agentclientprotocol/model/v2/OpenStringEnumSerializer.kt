@@ -12,12 +12,7 @@ import kotlinx.serialization.encoding.Encoder
  *
  * Open enums list their known values explicitly and capture any unrecognized string in an
  * `Unknown` fallback variant instead of failing deserialization. This keeps older
- * implementations forward-compatible when newer ACP versions or extensions add variants:
- *
- * - Values beginning with `_` are reserved for implementation-specific extensions.
- * - Values that do not begin with `_` are reserved for ACP, including future ACP variants.
- * - Unknown values are preserved as-is so they survive storing, replaying, proxying,
- *   and forwarding.
+ * implementations forward-compatible when newer ACP versions or extensions add variants.
  *
  * See the v2 [Enum Variant Extension](https://agentclientprotocol.com/rfds/v2/enum-variant-extension) RFD.
  *

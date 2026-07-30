@@ -49,14 +49,14 @@ public sealed class AvailableCommandInput {
     public data class Text(
         val hint: String,
         override val _meta: JsonElement? = null,
-    ) : AvailableCommandInput(), AcpWithMeta
+    ) : AvailableCommandInput(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "text"
+        }
+    }
 
     /**
      * Custom or future command input specification.
-     *
-     * Discriminator values beginning with `_` are reserved for implementation-specific
-     * extensions. Unknown values that do not begin with `_` are reserved for future ACP
-     * variants and MUST NOT be treated as custom extensions.
      *
      * [rawJson] holds the complete payload as received (including the discriminator), so
      * re-serializing emits it byte-identically. Clients that do not understand this input
@@ -72,11 +72,11 @@ internal object AvailableCommandInputSerializer : OpenTaggedUnionSerializer<Avai
     serialName = "com.agentclientprotocol.model.v2.AvailableCommandInput",
     discriminatorKey = "type",
     known = mapOf(
-        "text" to AvailableCommandInput.Text.serializer(),
+        AvailableCommandInput.Text.DISCRIMINATOR to AvailableCommandInput.Text.serializer(),
     ),
     discriminator = { value ->
         when (value) {
-            is AvailableCommandInput.Text -> "text"
+            is AvailableCommandInput.Text -> AvailableCommandInput.Text.DISCRIMINATOR
             is AvailableCommandInput.Unknown -> value.type
         }
     },
@@ -196,7 +196,11 @@ public sealed class StateUpdate {
     @Serializable
     public data class Running(
         override val _meta: JsonElement? = null,
-    ) : StateUpdate(), AcpWithMeta
+    ) : StateUpdate(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "running"
+        }
+    }
 
     /**
      * The agent is not currently processing work in the session.
@@ -222,7 +226,11 @@ public sealed class StateUpdate {
         @property:UnstableApi
         val usage: Usage? = null,
         override val _meta: JsonElement? = null,
-    ) : StateUpdate(), AcpWithMeta
+    ) : StateUpdate(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "idle"
+        }
+    }
 
     /**
      * The agent is waiting on user action before it can continue.
@@ -230,14 +238,14 @@ public sealed class StateUpdate {
     @Serializable
     public data class RequiresAction(
         override val _meta: JsonElement? = null,
-    ) : StateUpdate(), AcpWithMeta
+    ) : StateUpdate(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "requires_action"
+        }
+    }
 
     /**
      * Custom or future session state.
-     *
-     * Discriminator values beginning with `_` are reserved for implementation-specific
-     * extensions. Unknown values that do not begin with `_` are reserved for future ACP
-     * variants and MUST NOT be treated as custom extensions.
      *
      * [rawJson] holds the complete payload as received (including the `state`
      * discriminator), so re-serializing emits it byte-identically. Clients that do not
@@ -252,15 +260,15 @@ internal object StateUpdateSerializer : OpenTaggedUnionSerializer<StateUpdate>(
     serialName = "com.agentclientprotocol.model.v2.StateUpdate",
     discriminatorKey = "state",
     known = mapOf(
-        "running" to StateUpdate.Running.serializer(),
-        "idle" to StateUpdate.Idle.serializer(),
-        "requires_action" to StateUpdate.RequiresAction.serializer(),
+        StateUpdate.Running.DISCRIMINATOR to StateUpdate.Running.serializer(),
+        StateUpdate.Idle.DISCRIMINATOR to StateUpdate.Idle.serializer(),
+        StateUpdate.RequiresAction.DISCRIMINATOR to StateUpdate.RequiresAction.serializer(),
     ),
     discriminator = { value ->
         when (value) {
-            is StateUpdate.Running -> "running"
-            is StateUpdate.Idle -> "idle"
-            is StateUpdate.RequiresAction -> "requires_action"
+            is StateUpdate.Running -> StateUpdate.Running.DISCRIMINATOR
+            is StateUpdate.Idle -> StateUpdate.Idle.DISCRIMINATOR
+            is StateUpdate.RequiresAction -> StateUpdate.RequiresAction.DISCRIMINATOR
             is StateUpdate.Unknown -> value.state
         }
     },
@@ -293,32 +301,56 @@ public sealed class SessionUpdate {
     /**
      * A chunk of the user's message being streamed.
      */
-    public data class UserMessageChunk(val chunk: ContentChunk) : SessionUpdate()
+    public data class UserMessageChunk(val chunk: ContentChunk) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "user_message_chunk"
+        }
+    }
 
     /**
      * A chunk of the agent's response being streamed.
      */
-    public data class AgentMessageChunk(val chunk: ContentChunk) : SessionUpdate()
+    public data class AgentMessageChunk(val chunk: ContentChunk) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "agent_message_chunk"
+        }
+    }
 
     /**
      * A chunk of the agent's internal reasoning being streamed.
      */
-    public data class AgentThoughtChunk(val chunk: ContentChunk) : SessionUpdate()
+    public data class AgentThoughtChunk(val chunk: ContentChunk) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "agent_thought_chunk"
+        }
+    }
 
     /**
      * The agent's session state has changed.
      */
-    public data class StateUpdate(val state: StateUpdatePayload) : SessionUpdate()
+    public data class StateUpdate(val state: StateUpdatePayload) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "state_update"
+        }
+    }
 
     /**
      * A chunk of tool call content, appended to the tool call's current content.
      */
-    public data class ToolCallContentChunk(val chunk: ToolCallContentChunkPayload) : SessionUpdate()
+    public data class ToolCallContentChunk(val chunk: ToolCallContentChunkPayload) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "tool_call_content_chunk"
+        }
+    }
 
     /**
      * A plan's content changed.
      */
-    public data class PlanUpdate(val update: PlanUpdatePayload) : SessionUpdate()
+    public data class PlanUpdate(val update: PlanUpdatePayload) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "plan_update"
+        }
+    }
 
     /**
      * **UNSTABLE**
@@ -327,29 +359,41 @@ public sealed class SessionUpdate {
      *
      * A plan was removed.
      */
-    public data class PlanRemoved(val removed: PlanRemovedPayload) : SessionUpdate()
+    public data class PlanRemoved(val removed: PlanRemovedPayload) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "plan_removed"
+        }
+    }
 
     /**
      * Available commands are ready or have changed.
      */
-    public data class AvailableCommandsUpdate(val update: AvailableCommandsUpdatePayload) : SessionUpdate()
+    public data class AvailableCommandsUpdate(val update: AvailableCommandsUpdatePayload) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "available_commands_update"
+        }
+    }
 
     /**
      * Session configuration options have been updated.
      */
-    public data class ConfigOptionUpdate(val update: ConfigOptionUpdatePayload) : SessionUpdate()
+    public data class ConfigOptionUpdate(val update: ConfigOptionUpdatePayload) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "config_option_update"
+        }
+    }
 
     /**
      * Context window and cost usage has been updated.
      */
-    public data class UsageUpdate(val update: UsageUpdatePayload) : SessionUpdate()
+    public data class UsageUpdate(val update: UsageUpdatePayload) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "usage_update"
+        }
+    }
 
     /**
      * Custom or future session update.
-     *
-     * Discriminator values beginning with `_` are reserved for implementation-specific
-     * extensions. Unknown values that do not begin with `_` are reserved for future ACP
-     * variants and MUST NOT be treated as custom extensions.
      *
      * [rawJson] holds the complete payload as received (including the discriminator), so
      * re-serializing emits it byte-identically. Clients that do not understand this update
@@ -392,59 +436,59 @@ internal object SessionUpdateSerializer : OpenTaggedUnionSerializer<SessionUpdat
     serialName = "com.agentclientprotocol.model.v2.SessionUpdate",
     discriminatorKey = "sessionUpdate",
     known = mapOf(
-        "user_message_chunk" to SessionUpdateVariantSerializer(
+        SessionUpdate.UserMessageChunk.DISCRIMINATOR to SessionUpdateVariantSerializer(
             "UserMessageChunk", ContentChunk.serializer(),
             SessionUpdate::UserMessageChunk, SessionUpdate.UserMessageChunk::chunk,
         ),
-        "agent_message_chunk" to SessionUpdateVariantSerializer(
+        SessionUpdate.AgentMessageChunk.DISCRIMINATOR to SessionUpdateVariantSerializer(
             "AgentMessageChunk", ContentChunk.serializer(),
             SessionUpdate::AgentMessageChunk, SessionUpdate.AgentMessageChunk::chunk,
         ),
-        "agent_thought_chunk" to SessionUpdateVariantSerializer(
+        SessionUpdate.AgentThoughtChunk.DISCRIMINATOR to SessionUpdateVariantSerializer(
             "AgentThoughtChunk", ContentChunk.serializer(),
             SessionUpdate::AgentThoughtChunk, SessionUpdate.AgentThoughtChunk::chunk,
         ),
-        "state_update" to SessionUpdateVariantSerializer(
+        SessionUpdate.StateUpdate.DISCRIMINATOR to SessionUpdateVariantSerializer(
             "StateUpdate", StateUpdatePayload.serializer(),
             SessionUpdate::StateUpdate, SessionUpdate.StateUpdate::state,
         ),
-        "tool_call_content_chunk" to SessionUpdateVariantSerializer(
+        SessionUpdate.ToolCallContentChunk.DISCRIMINATOR to SessionUpdateVariantSerializer(
             "ToolCallContentChunk", ToolCallContentChunkPayload.serializer(),
             SessionUpdate::ToolCallContentChunk, SessionUpdate.ToolCallContentChunk::chunk,
         ),
-        "plan_update" to SessionUpdateVariantSerializer(
+        SessionUpdate.PlanUpdate.DISCRIMINATOR to SessionUpdateVariantSerializer(
             "PlanUpdate", PlanUpdatePayload.serializer(),
             SessionUpdate::PlanUpdate, SessionUpdate.PlanUpdate::update,
         ),
-        "plan_removed" to SessionUpdateVariantSerializer(
+        SessionUpdate.PlanRemoved.DISCRIMINATOR to SessionUpdateVariantSerializer(
             "PlanRemoved", PlanRemovedPayload.serializer(),
             SessionUpdate::PlanRemoved, SessionUpdate.PlanRemoved::removed,
         ),
-        "available_commands_update" to SessionUpdateVariantSerializer(
+        SessionUpdate.AvailableCommandsUpdate.DISCRIMINATOR to SessionUpdateVariantSerializer(
             "AvailableCommandsUpdate", AvailableCommandsUpdatePayload.serializer(),
             SessionUpdate::AvailableCommandsUpdate, SessionUpdate.AvailableCommandsUpdate::update,
         ),
-        "config_option_update" to SessionUpdateVariantSerializer(
+        SessionUpdate.ConfigOptionUpdate.DISCRIMINATOR to SessionUpdateVariantSerializer(
             "ConfigOptionUpdate", ConfigOptionUpdatePayload.serializer(),
             SessionUpdate::ConfigOptionUpdate, SessionUpdate.ConfigOptionUpdate::update,
         ),
-        "usage_update" to SessionUpdateVariantSerializer(
+        SessionUpdate.UsageUpdate.DISCRIMINATOR to SessionUpdateVariantSerializer(
             "UsageUpdate", UsageUpdatePayload.serializer(),
             SessionUpdate::UsageUpdate, SessionUpdate.UsageUpdate::update,
         ),
     ),
     discriminator = { value ->
         when (value) {
-            is SessionUpdate.UserMessageChunk -> "user_message_chunk"
-            is SessionUpdate.AgentMessageChunk -> "agent_message_chunk"
-            is SessionUpdate.AgentThoughtChunk -> "agent_thought_chunk"
-            is SessionUpdate.StateUpdate -> "state_update"
-            is SessionUpdate.ToolCallContentChunk -> "tool_call_content_chunk"
-            is SessionUpdate.PlanUpdate -> "plan_update"
-            is SessionUpdate.PlanRemoved -> "plan_removed"
-            is SessionUpdate.AvailableCommandsUpdate -> "available_commands_update"
-            is SessionUpdate.ConfigOptionUpdate -> "config_option_update"
-            is SessionUpdate.UsageUpdate -> "usage_update"
+            is SessionUpdate.UserMessageChunk -> SessionUpdate.UserMessageChunk.DISCRIMINATOR
+            is SessionUpdate.AgentMessageChunk -> SessionUpdate.AgentMessageChunk.DISCRIMINATOR
+            is SessionUpdate.AgentThoughtChunk -> SessionUpdate.AgentThoughtChunk.DISCRIMINATOR
+            is SessionUpdate.StateUpdate -> SessionUpdate.StateUpdate.DISCRIMINATOR
+            is SessionUpdate.ToolCallContentChunk -> SessionUpdate.ToolCallContentChunk.DISCRIMINATOR
+            is SessionUpdate.PlanUpdate -> SessionUpdate.PlanUpdate.DISCRIMINATOR
+            is SessionUpdate.PlanRemoved -> SessionUpdate.PlanRemoved.DISCRIMINATOR
+            is SessionUpdate.AvailableCommandsUpdate -> SessionUpdate.AvailableCommandsUpdate.DISCRIMINATOR
+            is SessionUpdate.ConfigOptionUpdate -> SessionUpdate.ConfigOptionUpdate.DISCRIMINATOR
+            is SessionUpdate.UsageUpdate -> SessionUpdate.UsageUpdate.DISCRIMINATOR
             is SessionUpdate.Unknown -> value.sessionUpdate
         }
     },
