@@ -186,7 +186,7 @@ internal object EmbeddedResourceResourceSerializer : KSerializer<EmbeddedResourc
  * [Unknown] with the full raw JSON preserved, so newer ACP variants and `_`-prefixed
  * extensions degrade gracefully.
  *
- * See protocol docs: [Content](https://agentclientprotocol.com/protocol/content)
+ * See protocol docs: [Content](https://agentclientprotocol.com/protocol/v2/content)
  */
 @UnstableApi
 @Serializable(with = ContentBlockSerializer::class)

@@ -61,7 +61,7 @@ public data class PromptEmbeddedContextCapabilities(
  * `!= null`, never with truthiness — an explicit `null` on the wire is a legal
  * "unsupported" encoding.
  *
- * See protocol docs: [Prompt Capabilities](https://agentclientprotocol.com/protocol/initialization#prompt-capabilities)
+ * See protocol docs: [Prompt Capabilities](https://agentclientprotocol.com/protocol/v2/initialization#prompt-capabilities)
  */
 @UnstableApi
 @Serializable
@@ -155,7 +155,7 @@ public data class SessionDeleteCapabilities(
  * Prompt and MCP capabilities — top-level fields of v1's `AgentCapabilities` — are
  * nested here in v2.
  *
- * See protocol docs: [Session Capabilities](https://agentclientprotocol.com/protocol/initialization#session-capabilities)
+ * See protocol docs: [Session Capabilities](https://agentclientprotocol.com/protocol/v2/initialization#session-capabilities)
  */
 @UnstableApi
 @Serializable
@@ -200,7 +200,7 @@ public data class AgentAuthCapabilities(
  * surface at all (reserved for non-session agents, such as an NES-only agent), while `{}`
  * means it supports the full session baseline.
  *
- * See protocol docs: [Agent Capabilities](https://agentclientprotocol.com/protocol/initialization#agent-capabilities)
+ * See protocol docs: [Agent Capabilities](https://agentclientprotocol.com/protocol/v2/initialization#agent-capabilities)
  */
 @UnstableApi
 @Serializable
@@ -258,7 +258,7 @@ public data class AuthCapabilities(
  * removed along with the `fs` and `terminal` method families, `session.configOptions.boolean`
  * and `plan` became baseline, and [elicitation] is the only stable field left.
  *
- * See protocol docs: [Client Capabilities](https://agentclientprotocol.com/protocol/initialization#client-capabilities)
+ * See protocol docs: [Client Capabilities](https://agentclientprotocol.com/protocol/v2/initialization#client-capabilities)
  */
 @UnstableApi
 @Serializable

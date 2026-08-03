@@ -168,7 +168,7 @@ internal object AuthMethodSerializer : OpenTaggedUnionSerializer<AuthMethod>(
  * extensions degrade gracefully. Unlike v1, the `type` discriminator is **required** —
  * a configuration without it is rejected instead of silently assumed to be stdio.
  *
- * See protocol docs: [MCP Servers](https://agentclientprotocol.com/protocol/session-setup#mcp-servers)
+ * See protocol docs: [MCP Servers](https://agentclientprotocol.com/protocol/v2/session-setup#mcp-servers)
  */
 @UnstableApi
 @Serializable(with = McpServerSerializer::class)
@@ -244,7 +244,7 @@ internal object McpServerSerializer : OpenTaggedUnionSerializer<McpServer>(
  * This is an open enum: unrecognized wire values deserialize to [Unknown] instead of
  * failing, so newer ACP variants and `_`-prefixed extensions degrade gracefully.
  *
- * See protocol docs: [Stop Reasons](https://agentclientprotocol.com/protocol/prompt-lifecycle#stop-reasons)
+ * See protocol docs: [Stop Reasons](https://agentclientprotocol.com/protocol/v2/prompt-lifecycle#stop-reasons)
  */
 @UnstableApi
 @Serializable(with = StopReasonSerializer::class)
@@ -520,7 +520,7 @@ public sealed class RequestPermissionOutcome {
      * session work, it MUST respond to all pending `session/request_permission`
      * requests with this `Cancelled` outcome.
      *
-     * See protocol docs: [Cancellation](https://agentclientprotocol.com/protocol/prompt-lifecycle#cancellation)
+     * See protocol docs: [Cancellation](https://agentclientprotocol.com/protocol/v2/prompt-lifecycle#cancellation)
      */
     @Serializable
     public data object Cancelled : RequestPermissionOutcome() {
@@ -582,7 +582,7 @@ internal object RequestPermissionOutcomeSerializer : OpenTaggedUnionSerializer<R
  * `clientCapabilities`) and [info] is **required** (renamed from the optional
  * `clientInfo`).
  *
- * See protocol docs: [Initialization](https://agentclientprotocol.com/protocol/initialization)
+ * See protocol docs: [Initialization](https://agentclientprotocol.com/protocol/v2/initialization)
  */
 @UnstableApi
 @Serializable
@@ -607,7 +607,7 @@ public data class InitializeRequest(
  * means clients MUST NOT call either. The v1 `agentCapabilities.auth.logout` marker that
  * used to advertise logout support is gone.
  *
- * See protocol docs: [Initialization](https://agentclientprotocol.com/protocol/initialization)
+ * See protocol docs: [Initialization](https://agentclientprotocol.com/protocol/v2/initialization)
  */
 @UnstableApi
 @Serializable
