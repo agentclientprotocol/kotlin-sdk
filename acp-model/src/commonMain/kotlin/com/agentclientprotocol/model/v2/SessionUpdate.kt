@@ -9,6 +9,9 @@ import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.Usage
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
@@ -17,17 +20,24 @@ import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonEncoder
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 
 // The SessionUpdate variants are named after their payloads. Inside
 // the sealed class those names resolve to the variants themselves, so the payload types get
 // file-local aliases. (An aliased `import` cannot be used here: these types live in this
 // same package, and importing them would shadow their own declarations below.)
+@OptIn(UnstableApi::class) private typealias UserMessagePayload = UserMessage
+@OptIn(UnstableApi::class) private typealias AgentMessagePayload = AgentMessage
+@OptIn(UnstableApi::class) private typealias AgentThoughtPayload = AgentThought
 @OptIn(UnstableApi::class) private typealias StateUpdatePayload = StateUpdate
 @OptIn(UnstableApi::class) private typealias ToolCallContentChunkPayload = ToolCallContentChunk
+@OptIn(UnstableApi::class) private typealias ToolCallUpdatePayload = ToolCallUpdate
 @OptIn(UnstableApi::class) private typealias PlanUpdatePayload = PlanUpdate
 @OptIn(UnstableApi::class) private typealias PlanRemovedPayload = PlanRemoved
 @OptIn(UnstableApi::class) private typealias AvailableCommandsUpdatePayload = AvailableCommandsUpdate
 @OptIn(UnstableApi::class) private typealias ConfigOptionUpdatePayload = ConfigOptionUpdate
+@OptIn(UnstableApi::class) private typealias SessionInfoUpdatePayload = SessionInfoUpdate
 @OptIn(UnstableApi::class) private typealias UsageUpdatePayload = UsageUpdate
 
 /**
@@ -277,6 +287,182 @@ internal object StateUpdateSerializer : OpenTaggedUnionSerializer<StateUpdate>(
 )
 
 /**
+ * An upsert for a message the user sent.
+ *
+ * Messages are keyed by [messageId]: repeated updates with the same ID patch the stored
+ * message. A [content] value **replaces** everything accumulated for the message so far,
+ * including content from earlier [ContentChunk]s; later chunks with the same [messageId]
+ * append to it again.
+ *
+ * Has no v1 counterpart — v1 streams message content only through chunks.
+ */
+@UnstableApi
+@Serializable(with = UserMessageSerializer::class)
+public data class UserMessage(
+    val messageId: MessageId,
+    /**
+     * Complete replacement content for this message.
+     */
+    val content: MaybeUndefined<List<ContentBlock>> = MaybeUndefined.Undefined,
+    val _meta: MaybeUndefined<JsonElement> = MaybeUndefined.Undefined,
+)
+
+/**
+ * An upsert for a message the agent sent.
+ *
+ * Same patch semantics as [UserMessage].
+ */
+@UnstableApi
+@Serializable(with = AgentMessageSerializer::class)
+public data class AgentMessage(
+    val messageId: MessageId,
+    /**
+     * Complete replacement content for this message.
+     */
+    val content: MaybeUndefined<List<ContentBlock>> = MaybeUndefined.Undefined,
+    val _meta: MaybeUndefined<JsonElement> = MaybeUndefined.Undefined,
+)
+
+/**
+ * An upsert for the agent's internal reasoning.
+ *
+ * Same patch semantics as [UserMessage].
+ */
+@UnstableApi
+@Serializable(with = AgentThoughtSerializer::class)
+public data class AgentThought(
+    val messageId: MessageId,
+    /**
+     * Complete replacement content for this message.
+     */
+    val content: MaybeUndefined<List<ContentBlock>> = MaybeUndefined.Undefined,
+    val _meta: MaybeUndefined<JsonElement> = MaybeUndefined.Undefined,
+)
+
+/**
+ * Shared serializer for the three message upserts, which have identical wire shapes.
+ *
+ * They need hand-written serializers because [MaybeUndefined] fields are decided by key
+ * presence rather than by field value; see [MaybeUndefined] for why.
+ */
+@OptIn(UnstableApi::class)
+internal abstract class MessageUpsertSerializer<T : Any>(
+    serialName: String,
+    private val construct: (
+        messageId: MessageId,
+        content: MaybeUndefined<List<ContentBlock>>,
+        meta: MaybeUndefined<JsonElement>,
+    ) -> T,
+    private val messageId: (T) -> MessageId,
+    private val content: (T) -> MaybeUndefined<List<ContentBlock>>,
+    private val meta: (T) -> MaybeUndefined<JsonElement>,
+) : KSerializer<T> {
+    override val descriptor: SerialDescriptor = buildClassSerialDescriptor(serialName)
+
+    override fun serialize(encoder: Encoder, value: T) {
+        val jsonEncoder = encoder as JsonEncoder
+        val json = jsonEncoder.json
+        jsonEncoder.encodeJsonElement(
+            buildJsonObject {
+                put("messageId", json.encodeToJsonElement(MessageId.serializer(), messageId(value)))
+                putMaybeUndefined(json, "content", content(value), ListSerializer(ContentBlock.serializer()))
+                putMaybeUndefined(json, "_meta", meta(value), JsonElement.serializer())
+            }
+        )
+    }
+
+    override fun deserialize(decoder: Decoder): T {
+        val jsonDecoder = decoder as JsonDecoder
+        val json = jsonDecoder.json
+        val jsonObject = jsonDecoder.decodeJsonElement().jsonObject
+        val messageId = jsonObject["messageId"]
+            ?: throw SerializationException("Missing 'messageId' in ${descriptor.serialName}")
+        return construct(
+            json.decodeFromJsonElement(MessageId.serializer(), messageId),
+            jsonObject.decodeMaybeUndefinedList(json, "content", ContentBlock.serializer()),
+            jsonObject.decodeMaybeUndefined(json, "_meta", JsonElement.serializer()),
+        )
+    }
+}
+
+@OptIn(UnstableApi::class)
+internal object UserMessageSerializer : MessageUpsertSerializer<UserMessage>(
+    serialName = "com.agentclientprotocol.model.v2.UserMessage",
+    construct = ::UserMessage,
+    messageId = UserMessage::messageId,
+    content = UserMessage::content,
+    meta = UserMessage::_meta,
+)
+
+@OptIn(UnstableApi::class)
+internal object AgentMessageSerializer : MessageUpsertSerializer<AgentMessage>(
+    serialName = "com.agentclientprotocol.model.v2.AgentMessage",
+    construct = ::AgentMessage,
+    messageId = AgentMessage::messageId,
+    content = AgentMessage::content,
+    meta = AgentMessage::_meta,
+)
+
+@OptIn(UnstableApi::class)
+internal object AgentThoughtSerializer : MessageUpsertSerializer<AgentThought>(
+    serialName = "com.agentclientprotocol.model.v2.AgentThought",
+    construct = ::AgentThought,
+    messageId = AgentThought::messageId,
+    content = AgentThought::content,
+    meta = AgentThought::_meta,
+)
+
+/**
+ * Update to session metadata.
+ *
+ * All fields have patch semantics: an omitted field leaves the existing session info
+ * unchanged, and `null` clears the corresponding value. Unlike v1's session info update,
+ * clearing is therefore distinguishable from "no update".
+ */
+@UnstableApi
+@Serializable(with = SessionInfoUpdateSerializer::class)
+public data class SessionInfoUpdate(
+    /**
+     * Human-readable title for the session.
+     */
+    val title: MaybeUndefined<String> = MaybeUndefined.Undefined,
+    /**
+     * ISO 8601 timestamp of last activity.
+     */
+    val updatedAt: MaybeUndefined<String> = MaybeUndefined.Undefined,
+    val _meta: MaybeUndefined<JsonElement> = MaybeUndefined.Undefined,
+)
+
+@OptIn(UnstableApi::class)
+internal object SessionInfoUpdateSerializer : KSerializer<SessionInfoUpdate> {
+    override val descriptor: SerialDescriptor =
+        buildClassSerialDescriptor("com.agentclientprotocol.model.v2.SessionInfoUpdate")
+
+    override fun serialize(encoder: Encoder, value: SessionInfoUpdate) {
+        val jsonEncoder = encoder as JsonEncoder
+        val json = jsonEncoder.json
+        jsonEncoder.encodeJsonElement(
+            buildJsonObject {
+                putMaybeUndefined(json, "title", value.title, String.serializer())
+                putMaybeUndefined(json, "updatedAt", value.updatedAt, String.serializer())
+                putMaybeUndefined(json, "_meta", value._meta, JsonElement.serializer())
+            }
+        )
+    }
+
+    override fun deserialize(decoder: Decoder): SessionInfoUpdate {
+        val jsonDecoder = decoder as JsonDecoder
+        val json = jsonDecoder.json
+        val jsonObject = jsonDecoder.decodeJsonElement().jsonObject
+        return SessionInfoUpdate(
+            title = jsonObject.decodeMaybeUndefined(json, "title", String.serializer()),
+            updatedAt = jsonObject.decodeMaybeUndefined(json, "updatedAt", String.serializer()),
+            _meta = jsonObject.decodeMaybeUndefined(json, "_meta", JsonElement.serializer()),
+        )
+    }
+}
+
+/**
  * Different types of updates that can be sent during session processing.
  *
  * These updates provide real-time feedback about the agent's progress. Each variant wraps
@@ -288,9 +474,10 @@ internal object StateUpdateSerializer : OpenTaggedUnionSerializer<StateUpdate>(
  * degrade gracefully.
  *
  * Restructured from v1 in several ways:
+ * - v1's separate `tool_call` and `tool_call_update` collapse into [ToolCallUpdate].
+ * - Message content can now be sent as a whole ([UserMessage], [AgentMessage],
+ *   [AgentThought]) rather than only as chunks.
  * - [StateUpdate] replaces reporting a turn's outcome through the prompt response.
- * - Tool call output can be appended chunk by chunk ([ToolCallContentChunk]) instead of
- *   resending the whole content collection.
  * - Plans are identified by ID and can be removed.
  *
  * See protocol docs: [Agent Reports Output](https://agentclientprotocol.com/protocol/prompt-turn#3-agent-reports-output)
@@ -308,6 +495,15 @@ public sealed class SessionUpdate {
     }
 
     /**
+     * A complete or partial upsert of the user's message.
+     */
+    public data class UserMessage(val message: UserMessagePayload) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "user_message"
+        }
+    }
+
+    /**
      * A chunk of the agent's response being streamed.
      */
     public data class AgentMessageChunk(val chunk: ContentChunk) : SessionUpdate() {
@@ -317,11 +513,29 @@ public sealed class SessionUpdate {
     }
 
     /**
+     * A complete or partial upsert of the agent's message.
+     */
+    public data class AgentMessage(val message: AgentMessagePayload) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "agent_message"
+        }
+    }
+
+    /**
      * A chunk of the agent's internal reasoning being streamed.
      */
     public data class AgentThoughtChunk(val chunk: ContentChunk) : SessionUpdate() {
         internal companion object {
             internal const val DISCRIMINATOR: String = "agent_thought_chunk"
+        }
+    }
+
+    /**
+     * A complete or partial upsert of the agent's internal reasoning.
+     */
+    public data class AgentThought(val thought: AgentThoughtPayload) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "agent_thought"
         }
     }
 
@@ -340,6 +554,15 @@ public sealed class SessionUpdate {
     public data class ToolCallContentChunk(val chunk: ToolCallContentChunkPayload) : SessionUpdate() {
         internal companion object {
             internal const val DISCRIMINATOR: String = "tool_call_content_chunk"
+        }
+    }
+
+    /**
+     * A tool call was created or changed.
+     */
+    public data class ToolCallUpdate(val update: ToolCallUpdatePayload) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "tool_call_update"
         }
     }
 
@@ -380,6 +603,15 @@ public sealed class SessionUpdate {
     public data class ConfigOptionUpdate(val update: ConfigOptionUpdatePayload) : SessionUpdate() {
         internal companion object {
             internal const val DISCRIMINATOR: String = "config_option_update"
+        }
+    }
+
+    /**
+     * Session metadata has been updated.
+     */
+    public data class SessionInfoUpdate(val update: SessionInfoUpdatePayload) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "session_info_update"
         }
     }
 
@@ -440,13 +672,25 @@ internal object SessionUpdateSerializer : OpenTaggedUnionSerializer<SessionUpdat
             "UserMessageChunk", ContentChunk.serializer(),
             SessionUpdate::UserMessageChunk, SessionUpdate.UserMessageChunk::chunk,
         ),
+        SessionUpdate.UserMessage.DISCRIMINATOR to SessionUpdateVariantSerializer(
+            "UserMessage", UserMessagePayload.serializer(),
+            SessionUpdate::UserMessage, SessionUpdate.UserMessage::message,
+        ),
         SessionUpdate.AgentMessageChunk.DISCRIMINATOR to SessionUpdateVariantSerializer(
             "AgentMessageChunk", ContentChunk.serializer(),
             SessionUpdate::AgentMessageChunk, SessionUpdate.AgentMessageChunk::chunk,
         ),
+        SessionUpdate.AgentMessage.DISCRIMINATOR to SessionUpdateVariantSerializer(
+            "AgentMessage", AgentMessagePayload.serializer(),
+            SessionUpdate::AgentMessage, SessionUpdate.AgentMessage::message,
+        ),
         SessionUpdate.AgentThoughtChunk.DISCRIMINATOR to SessionUpdateVariantSerializer(
             "AgentThoughtChunk", ContentChunk.serializer(),
             SessionUpdate::AgentThoughtChunk, SessionUpdate.AgentThoughtChunk::chunk,
+        ),
+        SessionUpdate.AgentThought.DISCRIMINATOR to SessionUpdateVariantSerializer(
+            "AgentThought", AgentThoughtPayload.serializer(),
+            SessionUpdate::AgentThought, SessionUpdate.AgentThought::thought,
         ),
         SessionUpdate.StateUpdate.DISCRIMINATOR to SessionUpdateVariantSerializer(
             "StateUpdate", StateUpdatePayload.serializer(),
@@ -455,6 +699,10 @@ internal object SessionUpdateSerializer : OpenTaggedUnionSerializer<SessionUpdat
         SessionUpdate.ToolCallContentChunk.DISCRIMINATOR to SessionUpdateVariantSerializer(
             "ToolCallContentChunk", ToolCallContentChunkPayload.serializer(),
             SessionUpdate::ToolCallContentChunk, SessionUpdate.ToolCallContentChunk::chunk,
+        ),
+        SessionUpdate.ToolCallUpdate.DISCRIMINATOR to SessionUpdateVariantSerializer(
+            "ToolCallUpdate", ToolCallUpdatePayload.serializer(),
+            SessionUpdate::ToolCallUpdate, SessionUpdate.ToolCallUpdate::update,
         ),
         SessionUpdate.PlanUpdate.DISCRIMINATOR to SessionUpdateVariantSerializer(
             "PlanUpdate", PlanUpdatePayload.serializer(),
@@ -472,6 +720,10 @@ internal object SessionUpdateSerializer : OpenTaggedUnionSerializer<SessionUpdat
             "ConfigOptionUpdate", ConfigOptionUpdatePayload.serializer(),
             SessionUpdate::ConfigOptionUpdate, SessionUpdate.ConfigOptionUpdate::update,
         ),
+        SessionUpdate.SessionInfoUpdate.DISCRIMINATOR to SessionUpdateVariantSerializer(
+            "SessionInfoUpdate", SessionInfoUpdatePayload.serializer(),
+            SessionUpdate::SessionInfoUpdate, SessionUpdate.SessionInfoUpdate::update,
+        ),
         SessionUpdate.UsageUpdate.DISCRIMINATOR to SessionUpdateVariantSerializer(
             "UsageUpdate", UsageUpdatePayload.serializer(),
             SessionUpdate::UsageUpdate, SessionUpdate.UsageUpdate::update,
@@ -480,14 +732,19 @@ internal object SessionUpdateSerializer : OpenTaggedUnionSerializer<SessionUpdat
     discriminator = { value ->
         when (value) {
             is SessionUpdate.UserMessageChunk -> SessionUpdate.UserMessageChunk.DISCRIMINATOR
+            is SessionUpdate.UserMessage -> SessionUpdate.UserMessage.DISCRIMINATOR
             is SessionUpdate.AgentMessageChunk -> SessionUpdate.AgentMessageChunk.DISCRIMINATOR
+            is SessionUpdate.AgentMessage -> SessionUpdate.AgentMessage.DISCRIMINATOR
             is SessionUpdate.AgentThoughtChunk -> SessionUpdate.AgentThoughtChunk.DISCRIMINATOR
+            is SessionUpdate.AgentThought -> SessionUpdate.AgentThought.DISCRIMINATOR
             is SessionUpdate.StateUpdate -> SessionUpdate.StateUpdate.DISCRIMINATOR
             is SessionUpdate.ToolCallContentChunk -> SessionUpdate.ToolCallContentChunk.DISCRIMINATOR
+            is SessionUpdate.ToolCallUpdate -> SessionUpdate.ToolCallUpdate.DISCRIMINATOR
             is SessionUpdate.PlanUpdate -> SessionUpdate.PlanUpdate.DISCRIMINATOR
             is SessionUpdate.PlanRemoved -> SessionUpdate.PlanRemoved.DISCRIMINATOR
             is SessionUpdate.AvailableCommandsUpdate -> SessionUpdate.AvailableCommandsUpdate.DISCRIMINATOR
             is SessionUpdate.ConfigOptionUpdate -> SessionUpdate.ConfigOptionUpdate.DISCRIMINATOR
+            is SessionUpdate.SessionInfoUpdate -> SessionUpdate.SessionInfoUpdate.DISCRIMINATOR
             is SessionUpdate.UsageUpdate -> SessionUpdate.UsageUpdate.DISCRIMINATOR
             is SessionUpdate.Unknown -> value.sessionUpdate
         }

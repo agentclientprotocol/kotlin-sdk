@@ -4,6 +4,7 @@
 package com.agentclientprotocol.model.v2.conversion
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.model.ContentBlock as V1ContentBlock
 import com.agentclientprotocol.model.AvailableCommand as V1AvailableCommand
 import com.agentclientprotocol.model.AvailableCommandInput as V1AvailableCommandInput
 import com.agentclientprotocol.model.SessionUpdate as V1SessionUpdate
@@ -11,7 +12,10 @@ import com.agentclientprotocol.model.v2.AvailableCommand
 import com.agentclientprotocol.model.v2.AvailableCommandInput
 import com.agentclientprotocol.model.v2.AvailableCommandsUpdate
 import com.agentclientprotocol.model.v2.ConfigOptionUpdate
+import com.agentclientprotocol.model.v2.ContentBlock
 import com.agentclientprotocol.model.v2.ContentChunk
+import com.agentclientprotocol.model.v2.MaybeUndefined
+import com.agentclientprotocol.model.v2.SessionInfoUpdate
 import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.model.v2.UsageUpdate
 import com.agentclientprotocol.model.MessageId
@@ -139,6 +143,37 @@ public fun V1SessionUpdate.ConfigOptionUpdate.toV2(): ConfigOptionUpdate = Confi
 )
 
 /**
+ * Converts this v2 session info update to the v1 session update that carries it.
+ *
+ * v1 has no patch semantics, so both "no update" and an explicit clear become an unset
+ * field.
+ *
+ * @throws ProtocolConversionException if [SessionInfoUpdate._meta] is an explicit clear,
+ * which v1 cannot express
+ */
+@UnstableApi
+public fun SessionInfoUpdate.toV1(): V1SessionUpdate.SessionInfoUpdate =
+    V1SessionUpdate.SessionInfoUpdate(
+        title = title.valueOrNull(),
+        updatedAt = updatedAt.valueOrNull(),
+        _meta = _meta.metaValueOrThrow("SessionInfoUpdate"),
+    )
+
+/**
+ * Converts this v1 session info update to its v2 equivalent.
+ *
+ * An unset v1 field becomes "no update" rather than an explicit clear.
+ *
+ * This conversion is total: every v1 value has a v2 representation.
+ */
+@UnstableApi
+public fun V1SessionUpdate.SessionInfoUpdate.toV2(): SessionInfoUpdate = SessionInfoUpdate(
+    title = title.toV2MaybeUndefined(),
+    updatedAt = updatedAt.toV2MaybeUndefined(),
+    _meta = _meta.toV2MaybeUndefined(),
+)
+
+/**
  * Converts this v2 usage update to the v1 session update that carries it.
  *
  * This conversion is total: every v2 value has a v1 representation.
@@ -157,15 +192,34 @@ public fun V1SessionUpdate.UsageUpdate.toV2(): UsageUpdate =
     UsageUpdate(used = used, size = size, cost = cost, _meta = _meta)
 
 /**
+ * The metadata value of a patch state, rejecting an explicit clear.
+ *
+ * v1 cannot distinguish "leave metadata alone" from "clear it", so an explicit clear has no
+ * faithful v1 form.
+ */
+private fun MaybeUndefined<JsonElement>.metaValueOrThrow(context: String): JsonElement? =
+    when (this) {
+        is MaybeUndefined.Value -> value
+        MaybeUndefined.Null -> throw ProtocolConversionException(
+            "v2 $context with null _meta cannot be represented in v1"
+        )
+
+        MaybeUndefined.Undefined -> null
+    }
+
+/**
  * Converts this v2 session update to the v1 session updates that represent it.
  *
- * The result is a **list** because the two unions are not one-to-one: a single v2 update can
- * require several v1 updates, which the Rust schema models as `IntoV1Many`.
+ * The result is a **list** because one v2 update can require several v1 updates: v1 has no
+ * whole-message upsert, so [SessionUpdate.UserMessage], [SessionUpdate.AgentMessage], and
+ * [SessionUpdate.AgentThought] expand into one v1 chunk per content block. Every other
+ * variant yields exactly one update.
  *
  * @throws ProtocolConversionException if this update has no v1 representation:
  * [SessionUpdate.StateUpdate] (v1 reports completion in the `session/prompt` response),
  * [SessionUpdate.ToolCallContentChunk] (v1 content updates replace rather than append),
- * [SessionUpdate.Unknown], or a nested payload that cannot itself be converted
+ * [SessionUpdate.Unknown], a message upsert whose content is absent, cleared, or empty, or
+ * a nested payload that cannot itself be converted
  */
 @UnstableApi
 public fun SessionUpdate.toV1(): List<V1SessionUpdate> = when (this) {
@@ -178,6 +232,30 @@ public fun SessionUpdate.toV1(): List<V1SessionUpdate> = when (this) {
     is SessionUpdate.AgentThoughtChunk ->
         listOf(chunk.toV1ContentChunk(V1SessionUpdate::AgentThoughtChunk))
 
+    is SessionUpdate.UserMessage -> messageToV1Chunks(
+        variant = "user_message",
+        messageId = message.messageId,
+        content = message.content,
+        meta = message._meta,
+        wrap = V1SessionUpdate::UserMessageChunk,
+    )
+
+    is SessionUpdate.AgentMessage -> messageToV1Chunks(
+        variant = "agent_message",
+        messageId = message.messageId,
+        content = message.content,
+        meta = message._meta,
+        wrap = V1SessionUpdate::AgentMessageChunk,
+    )
+
+    is SessionUpdate.AgentThought -> messageToV1Chunks(
+        variant = "agent_thought",
+        messageId = thought.messageId,
+        content = thought.content,
+        meta = thought._meta,
+        wrap = V1SessionUpdate::AgentThoughtChunk,
+    )
+
     is SessionUpdate.StateUpdate -> throw ProtocolConversionException(
         "v2 SessionUpdate variant `state_update` cannot be represented in v1 because v1 " +
             "reports completion in the session/prompt response"
@@ -188,10 +266,12 @@ public fun SessionUpdate.toV1(): List<V1SessionUpdate> = when (this) {
             "because v1 tool-call content updates replace content instead of appending"
     )
 
+    is SessionUpdate.ToolCallUpdate -> listOf(update.toV1())
     is SessionUpdate.PlanUpdate -> listOf(update.toV1())
     is SessionUpdate.PlanRemoved -> listOf(removed.toV1())
     is SessionUpdate.AvailableCommandsUpdate -> listOf(update.toV1())
     is SessionUpdate.ConfigOptionUpdate -> listOf(update.toV1())
+    is SessionUpdate.SessionInfoUpdate -> listOf(update.toV1())
     is SessionUpdate.UsageUpdate -> listOf(update.toV1())
     is SessionUpdate.Unknown -> throw unknownV2EnumVariant("SessionUpdate", sessionUpdate)
 }
@@ -199,13 +279,13 @@ public fun SessionUpdate.toV1(): List<V1SessionUpdate> = when (this) {
 /**
  * Converts this v1 session update to its v2 equivalent.
  *
- * v1's identifier-less `plan` becomes a plan update for [LEGACY_V1_PLAN_ID].
+ * v1's separate `tool_call` and `tool_call_update` both become [SessionUpdate.ToolCallUpdate],
+ * and v1's identifier-less `plan` becomes a plan update for [LEGACY_V1_PLAN_ID].
  *
  * An unrecognized v1 update crosses unchanged: both versions preserve one as raw JSON.
  *
- * @throws ProtocolConversionException if this is a `current_mode_update`, which v2 removed, a
- * message chunk with no `messageId`, which v2 requires, or an update whose v2 counterpart is
- * one of the upsert payloads this model does not cover yet
+ * @throws ProtocolConversionException if this is a `current_mode_update`, which v2 removed,
+ * or a message chunk with no `messageId`, which v2 requires
  */
 @UnstableApi
 public fun V1SessionUpdate.toV2(): SessionUpdate = when (this) {
@@ -221,18 +301,15 @@ public fun V1SessionUpdate.toV2(): SessionUpdate = when (this) {
         toV2ContentChunk("agent_thought_chunk", content, messageId, _meta),
     )
 
+    is V1SessionUpdate.ToolCall -> SessionUpdate.ToolCallUpdate(toV2())
+    is V1SessionUpdate.ToolCallUpdate -> SessionUpdate.ToolCallUpdate(toV2())
     is V1SessionUpdate.PlanUpdate -> SessionUpdate.PlanUpdate(toV2())
     is V1SessionUpdate.PlanUpdateV2 -> SessionUpdate.PlanUpdate(toV2())
     is V1SessionUpdate.PlanRemoved -> SessionUpdate.PlanRemoved(toV2())
     is V1SessionUpdate.AvailableCommandsUpdate -> SessionUpdate.AvailableCommandsUpdate(toV2())
     is V1SessionUpdate.ConfigOptionUpdate -> SessionUpdate.ConfigOptionUpdate(toV2())
+    is V1SessionUpdate.SessionInfoUpdate -> SessionUpdate.SessionInfoUpdate(toV2())
     is V1SessionUpdate.UsageUpdate -> SessionUpdate.UsageUpdate(toV2())
-
-    // v2 collapses v1's two tool-call variants into a single upsert and gives its session
-    // info update patch semantics. Those payloads are not modeled here yet.
-    is V1SessionUpdate.ToolCall -> throw v2UpsertNotModeled("tool_call")
-    is V1SessionUpdate.ToolCallUpdate -> throw v2UpsertNotModeled("tool_call_update")
-    is V1SessionUpdate.SessionInfoUpdate -> throw v2UpsertNotModeled("session_info_update")
 
     is V1SessionUpdate.CurrentModeUpdate ->
         throw removedV1EnumVariant("SessionUpdate", "current_mode_update")
@@ -242,23 +319,13 @@ public fun V1SessionUpdate.toV2(): SessionUpdate = when (this) {
         SessionUpdate.Unknown(sessionUpdate = sessionUpdateType, rawJson = rawJson)
 }
 
-/**
- * The error for a v1 update whose v2 counterpart is an upsert payload with patch semantics,
- * which this model does not cover yet.
- */
-private fun v2UpsertNotModeled(variant: String): ProtocolConversionException =
-    ProtocolConversionException(
-        "v1 SessionUpdate variant `$variant` cannot be represented in v2 yet: its v2 " +
-            "counterpart is an upsert payload with patch semantics, which is not modeled"
-    )
-
 private inline fun ContentChunk.toV1ContentChunk(
-    wrap: (com.agentclientprotocol.model.ContentBlock, MessageId?, JsonElement?) -> V1SessionUpdate,
+    wrap: (V1ContentBlock, MessageId?, JsonElement?) -> V1SessionUpdate,
 ): V1SessionUpdate = wrap(content.toV1(), messageId, _meta)
 
 private fun toV2ContentChunk(
     variant: String,
-    content: com.agentclientprotocol.model.ContentBlock,
+    content: V1ContentBlock,
     messageId: MessageId?,
     meta: JsonElement?,
 ): ContentChunk = ContentChunk(
@@ -269,3 +336,37 @@ private fun toV2ContentChunk(
     content = content.toV2(),
     _meta = meta,
 )
+
+private inline fun messageToV1Chunks(
+    variant: String,
+    messageId: MessageId,
+    content: MaybeUndefined<List<ContentBlock>>,
+    meta: MaybeUndefined<JsonElement>,
+    wrap: (V1ContentBlock, MessageId?, JsonElement?) -> V1SessionUpdate,
+): List<V1SessionUpdate> {
+    val blocks = when (content) {
+        is MaybeUndefined.Value -> content.value.ifEmpty {
+            throw ProtocolConversionException(
+                "v2 SessionUpdate variant `$variant` with empty content cannot be represented " +
+                    "in v1 chunks"
+            )
+        }
+
+        MaybeUndefined.Null -> throw ProtocolConversionException(
+            "v2 SessionUpdate variant `$variant` with null content cannot be represented in v1 chunks"
+        )
+
+        MaybeUndefined.Undefined -> throw ProtocolConversionException(
+            "v2 SessionUpdate variant `$variant` without content cannot be represented in v1 chunks"
+        )
+    }
+    val v1Meta = when (meta) {
+        is MaybeUndefined.Value -> meta.value
+        MaybeUndefined.Null -> throw ProtocolConversionException(
+            "v2 SessionUpdate variant `$variant` with null _meta cannot be represented in v1 chunks"
+        )
+
+        MaybeUndefined.Undefined -> null
+    }
+    return blocks.map { block -> wrap(block.toV1(), messageId, v1Meta) }
+}

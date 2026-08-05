@@ -6,10 +6,13 @@ package com.agentclientprotocol.model.v2
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.AcpWithMeta
 import com.agentclientprotocol.model.ToolCallId
+import com.agentclientprotocol.model.ToolCallLocation
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
@@ -615,10 +618,112 @@ internal object ToolCallContentSerializer : OpenTaggedUnionSerializer<ToolCallCo
 )
 
 /**
+ * An upsert for a tool call that the language model has requested.
+ *
+ * Replaces v1's separate `tool_call` / `tool_call_update` variants: creation and update use
+ * the same `tool_call_update` session update, keyed by [toolCallId].
+ *
+ * Only [toolCallId] is required. Other fields have patch semantics via [MaybeUndefined]:
+ * an omitted field leaves the existing tool call value unchanged, `null` clears or unsets
+ * the value, and a concrete value replaces the previous value. For collection fields,
+ * concrete arrays replace the previous collection, and both `null` and `[]` clear it. When
+ * a client receives a tool call ID it has not seen before, omitted fields use client
+ * defaults.
+ *
+ * Deserialization degrades gracefully like the Rust schema: a malformed optional field
+ * decodes as [MaybeUndefined.Undefined] instead of failing, and malformed [content] or
+ * [locations] items are skipped.
+ *
+ * See protocol docs: [Tool Calls](https://agentclientprotocol.com/protocol/tool-calls)
+ */
+@UnstableApi
+@Serializable(with = ToolCallUpdateSerializer::class)
+public data class ToolCallUpdate(
+    val toolCallId: ToolCallId,
+    val title: MaybeUndefined<String> = MaybeUndefined.Undefined,
+    val kind: MaybeUndefined<ToolKind> = MaybeUndefined.Undefined,
+    val status: MaybeUndefined<ToolCallStatus> = MaybeUndefined.Undefined,
+    val content: MaybeUndefined<List<ToolCallContent>> = MaybeUndefined.Undefined,
+    val locations: MaybeUndefined<List<ToolCallLocation>> = MaybeUndefined.Undefined,
+    val rawInput: MaybeUndefined<JsonElement> = MaybeUndefined.Undefined,
+    val rawOutput: MaybeUndefined<JsonElement> = MaybeUndefined.Undefined,
+    val _meta: MaybeUndefined<JsonElement> = MaybeUndefined.Undefined,
+) {
+    /**
+     * Applies a later tool-call patch to this stored tool-call state.
+     *
+     * Fields set to [MaybeUndefined.Null] are preserved as [MaybeUndefined.Null] so callers
+     * can decide how to render an explicitly cleared value.
+     *
+     * @throws IllegalArgumentException if [update] targets a different [toolCallId]
+     */
+    public fun applyUpdate(update: ToolCallUpdate): ToolCallUpdate {
+        require(toolCallId == update.toolCallId) {
+            "Cannot apply update for tool call '${update.toolCallId}' to tool call '$toolCallId'"
+        }
+        return ToolCallUpdate(
+            toolCallId = toolCallId,
+            title = update.title.orElse(title),
+            kind = update.kind.orElse(kind),
+            status = update.status.orElse(status),
+            content = update.content.orElse(content),
+            locations = update.locations.orElse(locations),
+            rawInput = update.rawInput.orElse(rawInput),
+            rawOutput = update.rawOutput.orElse(rawOutput),
+            _meta = update._meta.orElse(_meta),
+        )
+    }
+}
+
+@OptIn(UnstableApi::class)
+internal object ToolCallUpdateSerializer : KSerializer<ToolCallUpdate> {
+    override val descriptor: SerialDescriptor =
+        buildClassSerialDescriptor("com.agentclientprotocol.model.v2.ToolCallUpdate")
+
+    override fun serialize(encoder: Encoder, value: ToolCallUpdate) {
+        val jsonEncoder = encoder as JsonEncoder
+        val json = jsonEncoder.json
+        jsonEncoder.encodeJsonElement(
+            buildJsonObject {
+                put("toolCallId", json.encodeToJsonElement(ToolCallId.serializer(), value.toolCallId))
+                putMaybeUndefined(json, "title", value.title, String.serializer())
+                putMaybeUndefined(json, "kind", value.kind, ToolKind.serializer())
+                putMaybeUndefined(json, "status", value.status, ToolCallStatus.serializer())
+                putMaybeUndefined(json, "content", value.content, ListSerializer(ToolCallContent.serializer()))
+                putMaybeUndefined(json, "locations", value.locations, ListSerializer(ToolCallLocation.serializer()))
+                putMaybeUndefined(json, "rawInput", value.rawInput, JsonElement.serializer())
+                putMaybeUndefined(json, "rawOutput", value.rawOutput, JsonElement.serializer())
+                putMaybeUndefined(json, "_meta", value._meta, JsonElement.serializer())
+            }
+        )
+    }
+
+    override fun deserialize(decoder: Decoder): ToolCallUpdate {
+        val jsonDecoder = decoder as JsonDecoder
+        val json = jsonDecoder.json
+        val jsonObject = jsonDecoder.decodeJsonElement().jsonObject
+        val toolCallId = jsonObject["toolCallId"]
+            ?: throw SerializationException("Missing 'toolCallId' in ${descriptor.serialName}")
+        return ToolCallUpdate(
+            toolCallId = json.decodeFromJsonElement(ToolCallId.serializer(), toolCallId),
+            title = jsonObject.decodeMaybeUndefined(json, "title", String.serializer()),
+            kind = jsonObject.decodeMaybeUndefined(json, "kind", ToolKind.serializer()),
+            status = jsonObject.decodeMaybeUndefined(json, "status", ToolCallStatus.serializer()),
+            content = jsonObject.decodeMaybeUndefinedList(json, "content", ToolCallContent.serializer()),
+            locations = jsonObject.decodeMaybeUndefinedList(json, "locations", ToolCallLocation.serializer()),
+            rawInput = jsonObject.decodeMaybeUndefined(json, "rawInput", JsonElement.serializer()),
+            rawOutput = jsonObject.decodeMaybeUndefined(json, "rawOutput", JsonElement.serializer()),
+            _meta = jsonObject.decodeMaybeUndefined(json, "_meta", JsonElement.serializer()),
+        )
+    }
+}
+
+/**
  * A streamed item of tool-call content.
  *
  * A chunk appends one [ToolCallContent] item to the content already streamed for
- * [toolCallId].
+ * [toolCallId]. Agents that need to replace the whole collection instead send
+ * [ToolCallUpdate.content].
  *
  * Has no v1 counterpart: v1 reports tool call output by resending the full content
  * collection on every `tool_call_update`.
