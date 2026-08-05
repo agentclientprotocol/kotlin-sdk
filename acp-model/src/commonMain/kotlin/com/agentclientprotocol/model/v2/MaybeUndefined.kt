@@ -59,6 +59,17 @@ public sealed class MaybeUndefined<out T> {
         Undefined -> Undefined
         Null -> Null
     }
+
+    /**
+     * This state unless it is [Undefined], in which case [other].
+     *
+     * An explicit [Null] is a present state and wins over [other], so folding a patch onto a
+     * stored state is `newer.orElse(older)`: the patch's [Null] survives as [Null] and callers
+     * can decide how to render an explicitly cleared value (mirrors Rust's `apply_update` field
+     * handling). Use [update] instead to collapse the fold to a plain nullable.
+     */
+    public fun orElse(other: MaybeUndefined<@UnsafeVariance T>): MaybeUndefined<T> =
+        if (this is Undefined) other else this
 }
 
 /**
@@ -71,16 +82,6 @@ public fun <T> MaybeUndefined<T>.update(previous: T?): T? = when (this) {
     MaybeUndefined.Undefined -> previous
     MaybeUndefined.Null -> null
 }
-
-/**
- * This patch state unless it is [MaybeUndefined.Undefined], in which case [previous] is kept.
- *
- * Unlike [update], an explicit clear stays [MaybeUndefined.Null] so callers can decide how to
- * render an explicitly cleared value (mirrors Rust's `apply_update` field handling).
- */
-@UnstableApi
-internal fun <T> MaybeUndefined<T>.orPrevious(previous: MaybeUndefined<T>): MaybeUndefined<T> =
-    if (this is MaybeUndefined.Undefined) previous else this
 
 // Shared building blocks for the hand-written serializers of structs with [MaybeUndefined]
 // fields. Field semantics mirror the Rust schema's serde attributes:

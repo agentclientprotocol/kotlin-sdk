@@ -4,11 +4,10 @@
 package com.agentclientprotocol.model.v2.conversion
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.model.ContentBlock as V1ContentBlock
 import com.agentclientprotocol.model.AvailableCommand as V1AvailableCommand
 import com.agentclientprotocol.model.AvailableCommandInput as V1AvailableCommandInput
 import com.agentclientprotocol.model.SessionUpdate as V1SessionUpdate
-import com.agentclientprotocol.model.v2.AgentMessage
-import com.agentclientprotocol.model.v2.AgentThought
 import com.agentclientprotocol.model.v2.AvailableCommand
 import com.agentclientprotocol.model.v2.AvailableCommandInput
 import com.agentclientprotocol.model.v2.AvailableCommandsUpdate
@@ -19,7 +18,6 @@ import com.agentclientprotocol.model.v2.MaybeUndefined
 import com.agentclientprotocol.model.v2.SessionInfoUpdate
 import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.model.v2.UsageUpdate
-import com.agentclientprotocol.model.v2.UserMessage
 import com.agentclientprotocol.model.MessageId
 import kotlinx.serialization.json.JsonElement
 
@@ -322,12 +320,12 @@ public fun V1SessionUpdate.toV2(): SessionUpdate = when (this) {
 }
 
 private inline fun ContentChunk.toV1ContentChunk(
-    wrap: (com.agentclientprotocol.model.ContentBlock, MessageId?, JsonElement?) -> V1SessionUpdate,
+    wrap: (V1ContentBlock, MessageId?, JsonElement?) -> V1SessionUpdate,
 ): V1SessionUpdate = wrap(content.toV1(), messageId, _meta)
 
 private fun toV2ContentChunk(
     variant: String,
-    content: com.agentclientprotocol.model.ContentBlock,
+    content: V1ContentBlock,
     messageId: MessageId?,
     meta: JsonElement?,
 ): ContentChunk = ContentChunk(
@@ -344,7 +342,7 @@ private inline fun messageToV1Chunks(
     messageId: MessageId,
     content: MaybeUndefined<List<ContentBlock>>,
     meta: MaybeUndefined<JsonElement>,
-    wrap: (com.agentclientprotocol.model.ContentBlock, MessageId?, JsonElement?) -> V1SessionUpdate,
+    wrap: (V1ContentBlock, MessageId?, JsonElement?) -> V1SessionUpdate,
 ): List<V1SessionUpdate> {
     val blocks = when (content) {
         is MaybeUndefined.Value -> content.value.ifEmpty {

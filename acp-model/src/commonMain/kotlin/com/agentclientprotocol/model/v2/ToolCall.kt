@@ -663,14 +663,14 @@ public data class ToolCallUpdate(
         }
         return ToolCallUpdate(
             toolCallId = toolCallId,
-            title = update.title.orPrevious(title),
-            kind = update.kind.orPrevious(kind),
-            status = update.status.orPrevious(status),
-            content = update.content.orPrevious(content),
-            locations = update.locations.orPrevious(locations),
-            rawInput = update.rawInput.orPrevious(rawInput),
-            rawOutput = update.rawOutput.orPrevious(rawOutput),
-            _meta = update._meta.orPrevious(_meta),
+            title = update.title.orElse(title),
+            kind = update.kind.orElse(kind),
+            status = update.status.orElse(status),
+            content = update.content.orElse(content),
+            locations = update.locations.orElse(locations),
+            rawInput = update.rawInput.orElse(rawInput),
+            rawOutput = update.rawOutput.orElse(rawOutput),
+            _meta = update._meta.orElse(_meta),
         )
     }
 }

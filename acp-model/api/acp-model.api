@@ -9314,6 +9314,7 @@ public final class com/agentclientprotocol/model/v2/LlmProtocol$Vertex : com/age
 
 public abstract class com/agentclientprotocol/model/v2/MaybeUndefined {
 	public final fun map (Lkotlin/jvm/functions/Function1;)Lcom/agentclientprotocol/model/v2/MaybeUndefined;
+	public final fun orElse (Lcom/agentclientprotocol/model/v2/MaybeUndefined;)Lcom/agentclientprotocol/model/v2/MaybeUndefined;
 	public final fun valueOrNull ()Ljava/lang/Object;
 }
 

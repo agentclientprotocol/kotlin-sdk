@@ -182,6 +182,16 @@ class ToolCallUpdateTest {
     }
 
     @Test
+    fun `orElse falls through only for Undefined`() {
+        val previous: MaybeUndefined<String> = MaybeUndefined.Value("old")
+        val undefined: MaybeUndefined<String> = MaybeUndefined.Undefined
+        val cleared: MaybeUndefined<String> = MaybeUndefined.Null
+        assertEquals(MaybeUndefined.Value("new"), MaybeUndefined.Value("new").orElse(previous))
+        assertEquals(previous, undefined.orElse(previous))
+        assertEquals(MaybeUndefined.Null, cleared.orElse(previous))
+    }
+
+    @Test
     fun `update resolves patch states against a previous value`() {
         assertEquals("new", MaybeUndefined.Value("new").update("old"))
         assertEquals("old", MaybeUndefined.Undefined.update("old"))
