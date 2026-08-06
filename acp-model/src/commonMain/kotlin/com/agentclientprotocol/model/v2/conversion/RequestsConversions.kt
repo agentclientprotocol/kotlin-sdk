@@ -4,13 +4,18 @@ package com.agentclientprotocol.model.v2.conversion
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.EnvVariable
+import com.agentclientprotocol.model.LogoutCapabilities
 import com.agentclientprotocol.model.AuthMethod as V1AuthMethod
+import com.agentclientprotocol.model.InitializeRequest as V1InitializeRequest
+import com.agentclientprotocol.model.InitializeResponse as V1InitializeResponse
 import com.agentclientprotocol.model.LlmProtocol as V1LlmProtocol
 import com.agentclientprotocol.model.McpServer as V1McpServer
 import com.agentclientprotocol.model.PermissionOptionKind as V1PermissionOptionKind
 import com.agentclientprotocol.model.RequestPermissionOutcome as V1RequestPermissionOutcome
 import com.agentclientprotocol.model.StopReason as V1StopReason
 import com.agentclientprotocol.model.v2.AuthMethod
+import com.agentclientprotocol.model.v2.InitializeRequest
+import com.agentclientprotocol.model.v2.InitializeResponse
 import com.agentclientprotocol.model.v2.LlmProtocol
 import com.agentclientprotocol.model.v2.McpServer
 import com.agentclientprotocol.model.v2.PermissionOptionKind
@@ -228,4 +233,102 @@ public fun V1LlmProtocol.toV2(): LlmProtocol = when (this) {
     V1LlmProtocol.VERTEX -> LlmProtocol.Vertex
     V1LlmProtocol.BEDROCK -> LlmProtocol.Bedrock
     else -> LlmProtocol.Unknown(value)
+}
+
+// === Initialization ===
+
+/**
+ * Converts this v2 initialize request to its v1 equivalent.
+ *
+ * v2's role-agnostic `capabilities` and `info` map back onto v1's `clientCapabilities` and
+ * `clientInfo`.
+ *
+ * @throws ProtocolConversionException if a nested capability has no v1 representation
+ */
+@UnstableApi
+public fun InitializeRequest.toV1(): V1InitializeRequest = V1InitializeRequest(
+    protocolVersion = protocolVersion,
+    clientCapabilities = capabilities.toV1(),
+    clientInfo = info,
+    _meta = _meta,
+)
+
+/**
+ * Converts this v1 initialize request to its v2 equivalent.
+ *
+ * @throws ProtocolConversionException if `clientInfo` is absent — v2 requires `info` — or
+ * if a nested capability has no v2 representation
+ */
+@UnstableApi
+public fun V1InitializeRequest.toV2(): InitializeRequest = InitializeRequest(
+    protocolVersion = protocolVersion,
+    info = clientInfo
+        ?: throw ProtocolConversionException("v1 InitializeRequest without `clientInfo` cannot be represented in v2"),
+    capabilities = clientCapabilities.toV2(),
+    _meta = _meta,
+)
+
+/**
+ * Converts this v2 initialize response to its v1 equivalent.
+ *
+ * A non-empty [InitializeResponse.authMethods] list means the agent supports `auth/logout`
+ * in v2, so the v1 `agentCapabilities.auth.logout` marker that carries the same signal is
+ * materialized here.
+ *
+ * @throws ProtocolConversionException if a nested capability or authentication method has
+ * no v1 representation
+ */
+@UnstableApi
+public fun InitializeResponse.toV1(): V1InitializeResponse {
+    val agentCapabilities = capabilities.toV1()
+    return V1InitializeResponse(
+        protocolVersion = protocolVersion,
+        agentCapabilities = if (authMethods.isEmpty()) {
+            agentCapabilities
+        } else {
+            agentCapabilities.copy(auth = agentCapabilities.auth.copy(logout = LogoutCapabilities()))
+        },
+        authMethods = authMethods.map { it.toV1() },
+        agentInfo = info,
+        _meta = _meta,
+    )
+}
+
+/**
+ * Converts this v1 initialize response to its v2 equivalent.
+ *
+ * v2 dropped the `agentCapabilities.auth.logout` marker and derives logout support from a
+ * non-empty `authMethods` list instead, so the two encodings must already agree.
+ *
+ * @throws ProtocolConversionException if `agentInfo` is absent — v2 requires `info` — if
+ * the `logout` marker and `authMethods` disagree about logout support or the marker
+ * carries `_meta`, or if a nested capability or authentication method has no v2
+ * representation
+ */
+@UnstableApi
+public fun V1InitializeResponse.toV2(): InitializeResponse {
+    val info = agentInfo
+        ?: throw ProtocolConversionException("v1 InitializeResponse without `agentInfo` cannot be represented in v2")
+    val logout = agentCapabilities.auth.logout
+    when {
+        authMethods.isNotEmpty() && logout != null ->
+            rejectV1MarkerMeta("InitializeResponse.agentCapabilities.auth", "logout", logout._meta)
+        authMethods.isNotEmpty() -> throw ProtocolConversionException(
+            "v1 InitializeResponse with non-empty `authMethods` and no " +
+                "`agentCapabilities.auth.logout` cannot be represented in v2",
+        )
+        logout != null -> throw ProtocolConversionException(
+            "v1 InitializeResponse with `agentCapabilities.auth.logout` and empty " +
+                "`authMethods` cannot be represented in v2",
+        )
+    }
+    return InitializeResponse(
+        protocolVersion = protocolVersion,
+        info = info,
+        capabilities = agentCapabilities
+            .copy(auth = agentCapabilities.auth.copy(logout = null))
+            .toV2(),
+        authMethods = authMethods.map { it.toV2() },
+        _meta = _meta,
+    )
 }

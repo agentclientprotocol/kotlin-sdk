@@ -20,7 +20,7 @@ import kotlin.jvm.JvmInline
  * This is an open enum: unrecognized wire values deserialize to [Unknown] instead of
  * failing, so newer ACP variants and `_`-prefixed extensions degrade gracefully.
  *
- * See protocol docs: [Plan Entries](https://agentclientprotocol.com/protocol/agent-plan#plan-entries)
+ * See protocol docs: [Plan Entries](https://agentclientprotocol.com/protocol/v2/agent-plan#plan-entries)
  */
 @UnstableApi
 @Serializable(with = PlanEntryPrioritySerializer::class)
@@ -94,7 +94,7 @@ internal object PlanEntryPrioritySerializer : OpenStringEnumSerializer<PlanEntry
  * This is an open enum: unrecognized wire values deserialize to [Unknown] instead of
  * failing, so newer ACP variants and `_`-prefixed extensions degrade gracefully.
  *
- * See protocol docs: [Plan Entries](https://agentclientprotocol.com/protocol/agent-plan#plan-entries)
+ * See protocol docs: [Plan Entries](https://agentclientprotocol.com/protocol/v2/agent-plan#plan-entries)
  */
 @UnstableApi
 @Serializable(with = PlanEntryStatusSerializer::class)
@@ -179,7 +179,7 @@ public value class PlanId(public val value: String) {
  * user's request. Same shape as v1's entry, but [priority] and [status] reference the v2
  * open enums.
  *
- * See protocol docs: [Plan Entries](https://agentclientprotocol.com/protocol/agent-plan#plan-entries)
+ * See protocol docs: [Plan Entries](https://agentclientprotocol.com/protocol/v2/agent-plan#plan-entries)
  */
 @UnstableApi
 @Serializable
@@ -320,7 +320,7 @@ internal object PlanUpdateContentSerializer : OpenTaggedUnionSerializer<PlanUpda
  * v1's plan update carried the entries directly; v2 wraps them in [PlanUpdateContent] so a
  * session can track several plans and describe them in more than one form.
  *
- * See protocol docs: [Agent Plan](https://agentclientprotocol.com/protocol/agent-plan)
+ * See protocol docs: [Agent Plan](https://agentclientprotocol.com/protocol/v2/agent-plan)
  */
 @UnstableApi
 @Serializable

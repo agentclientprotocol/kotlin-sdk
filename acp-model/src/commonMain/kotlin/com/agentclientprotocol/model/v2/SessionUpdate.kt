@@ -480,7 +480,7 @@ internal object SessionInfoUpdateSerializer : KSerializer<SessionInfoUpdate> {
  * - [StateUpdate] replaces reporting a turn's outcome through the prompt response.
  * - Plans are identified by ID and can be removed.
  *
- * See protocol docs: [Agent Reports Output](https://agentclientprotocol.com/protocol/prompt-turn#3-agent-reports-output)
+ * See protocol docs: [Agent Reports Output](https://agentclientprotocol.com/protocol/v2/prompt-turn#3-agent-reports-output)
  */
 @UnstableApi
 @Serializable(with = SessionUpdateSerializer::class)

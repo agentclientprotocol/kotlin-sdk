@@ -34,7 +34,7 @@ import kotlinx.serialization.json.jsonObject
  * This is an open enum: unrecognized wire values deserialize to [Unknown] instead of
  * failing, so newer ACP variants and `_`-prefixed extensions degrade gracefully.
  *
- * See protocol docs: [Creating](https://agentclientprotocol.com/protocol/tool-calls#creating)
+ * See protocol docs: [Creating](https://agentclientprotocol.com/protocol/v2/tool-calls#creating)
  */
 @UnstableApi
 @Serializable(with = ToolKindSerializer::class)
@@ -167,7 +167,7 @@ internal object ToolKindSerializer : OpenStringEnumSerializer<ToolKind>(
  * This is an open enum: unrecognized wire values deserialize to [Unknown] instead of
  * failing, so newer ACP variants and `_`-prefixed extensions degrade gracefully.
  *
- * See protocol docs: [Status](https://agentclientprotocol.com/protocol/tool-calls#status)
+ * See protocol docs: [Status](https://agentclientprotocol.com/protocol/v2/tool-calls#status)
  */
 @UnstableApi
 @Serializable(with = ToolCallStatusSerializer::class)
@@ -552,7 +552,7 @@ public data class DiffPatch(
  * representation, and v1's `terminal` variant was removed in v2. Convert the
  * [Content] payload with the [ContentBlock] conversions where needed.
  *
- * See protocol docs: [Content](https://agentclientprotocol.com/protocol/tool-calls#content)
+ * See protocol docs: [Content](https://agentclientprotocol.com/protocol/v2/tool-calls#content)
  */
 @UnstableApi
 @Serializable(with = ToolCallContentSerializer::class)
@@ -728,7 +728,7 @@ internal object ToolCallUpdateSerializer : KSerializer<ToolCallUpdate> {
  * Has no v1 counterpart: v1 reports tool call output by resending the full content
  * collection on every `tool_call_update`.
  *
- * See protocol docs: [Tool Calls](https://agentclientprotocol.com/protocol/tool-calls)
+ * See protocol docs: [Tool Calls](https://agentclientprotocol.com/protocol/v2/tool-calls)
  */
 @UnstableApi
 @Serializable
