@@ -142,88 +142,88 @@ public class Client(
 
     init {
         // Set up request handlers for incoming agent requests
-        protocol.setRequestHandler(AcpMethod.ClientMethods.SessionRequestPermission) { params: RequestPermissionRequest ->
+        protocol.setRequestHandler(AcpMethod.ClientMethods.V1.SessionRequestPermission) { params: RequestPermissionRequest ->
             val session = getSessionOrThrow(params.sessionId)
             return@setRequestHandler session.executeWithSession {
                 session.handlePermissionResponse(params.toolCall, params.options, params._meta)
             }
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.FsReadTextFile) { params ->
+        protocol.setRequestHandler(AcpMethod.ClientMethods.V1.FsReadTextFile) { params ->
             val session = getSessionOrThrow(params.sessionId)
             val fs = session.operations as? FileSystemOperations
-                ?: sessionMethodNotFound<FileSystemOperations>(AcpMethod.ClientMethods.FsReadTextFile)
+                ?: sessionMethodNotFound<FileSystemOperations>(AcpMethod.ClientMethods.V1.FsReadTextFile)
             return@setRequestHandler session.executeWithSession {
                 return@executeWithSession fs.fsReadTextFile(params.path, params.line, params.limit, params._meta)
             }
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.FsWriteTextFile) { params ->
+        protocol.setRequestHandler(AcpMethod.ClientMethods.V1.FsWriteTextFile) { params ->
             val session = getSessionOrThrow(params.sessionId)
             val fs = session.operations as? FileSystemOperations
-                ?: sessionMethodNotFound<FileSystemOperations>(AcpMethod.ClientMethods.FsWriteTextFile)
+                ?: sessionMethodNotFound<FileSystemOperations>(AcpMethod.ClientMethods.V1.FsWriteTextFile)
             return@setRequestHandler session.executeWithSession {
                 return@executeWithSession fs.fsWriteTextFile(params.path, params.content, params._meta)
             }
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalCreate) { params ->
+        protocol.setRequestHandler(AcpMethod.ClientMethods.V1.TerminalCreate) { params ->
             val session = getSessionOrThrow(params.sessionId)
             val terminal = session.operations as? TerminalOperations
-                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.TerminalCreate)
+                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.V1.TerminalCreate)
             return@setRequestHandler session.executeWithSession {
                 return@executeWithSession terminal.terminalCreate(params.command, params.args, params.cwd, params.env, params.outputByteLimit, params._meta)
             }
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalKill) { params ->
+        protocol.setRequestHandler(AcpMethod.ClientMethods.V1.TerminalKill) { params ->
             val session = getSessionOrThrow(params.sessionId)
             val terminal = session.operations as? TerminalOperations
-                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.TerminalKill)
+                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.V1.TerminalKill)
             return@setRequestHandler session.executeWithSession {
                 return@executeWithSession terminal.terminalKill(params.terminalId, params._meta)
             }
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalOutput) { params ->
+        protocol.setRequestHandler(AcpMethod.ClientMethods.V1.TerminalOutput) { params ->
             val session = getSessionOrThrow(params.sessionId)
             val terminal = session.operations as? TerminalOperations
-                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.TerminalOutput)
+                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.V1.TerminalOutput)
             return@setRequestHandler session.executeWithSession {
                 return@executeWithSession terminal.terminalOutput(params.terminalId, params._meta)
             }
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalRelease) { params ->
+        protocol.setRequestHandler(AcpMethod.ClientMethods.V1.TerminalRelease) { params ->
             val session = getSessionOrThrow(params.sessionId)
             val terminal = session.operations as? TerminalOperations
-                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.TerminalRelease)
+                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.V1.TerminalRelease)
             return@setRequestHandler session.executeWithSession {
                 return@executeWithSession terminal.terminalRelease(params.terminalId, params._meta)
             }
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.TerminalWaitForExit) { params ->
+        protocol.setRequestHandler(AcpMethod.ClientMethods.V1.TerminalWaitForExit) { params ->
             val session = getSessionOrThrow(params.sessionId)
             val terminal = session.operations as? TerminalOperations
-                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.TerminalWaitForExit)
+                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.V1.TerminalWaitForExit)
             return@setRequestHandler session.executeWithSession {
                 return@executeWithSession terminal.terminalWaitForExit(params.terminalId, params._meta)
             }
         }
 
-        protocol.setNotificationHandler(AcpMethod.ClientMethods.SessionUpdate) { params: SessionNotification ->
+        protocol.setNotificationHandler(AcpMethod.ClientMethods.V1.SessionUpdate) { params: SessionNotification ->
             val sessionHolder = getOrCreateSessionHolder(params.sessionId)
             sessionHolder.handleOrQueue(params.update, params._meta)
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setRequestHandler(AcpMethod.ClientMethods.ElicitationCreate) { params: CreateElicitationRequest ->
+        protocol.setRequestHandler(AcpMethod.ClientMethods.V1.ElicitationCreate) { params: CreateElicitationRequest ->
             when (val scope = params.scope) {
                 is ElicitationScope.Session -> {
                     val session = getSessionOrThrow(scope.sessionId)
                     val ops = session.operations as? ElicitationOperations
-                        ?: sessionMethodNotFound<ElicitationOperations>(AcpMethod.ClientMethods.ElicitationCreate)
+                        ?: sessionMethodNotFound<ElicitationOperations>(AcpMethod.ClientMethods.V1.ElicitationCreate)
                     val response = session.executeWithSession { ops.createElicitation(params) }
                     // Only track URL-mode elicitation → session after a successful Accept response,
                     // since elicitation/complete only follows an accepted URL elicitation
@@ -235,7 +235,7 @@ public class Client(
                     if (sessionId != null) {
                         val session = getSessionOrThrow(sessionId)
                         val ops = session.operations as? ElicitationOperations
-                            ?: sessionMethodNotFound<ElicitationOperations>(AcpMethod.ClientMethods.ElicitationCreate)
+                            ?: sessionMethodNotFound<ElicitationOperations>(AcpMethod.ClientMethods.V1.ElicitationCreate)
                         val response = session.executeWithSession { ops.createElicitation(params) }
                         trackUrlElicitationIfAccepted(params.mode, response, sessionId)
                         response
@@ -250,7 +250,7 @@ public class Client(
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setNotificationHandler(AcpMethod.ClientMethods.ElicitationComplete) { params: CompleteElicitationNotification ->
+        protocol.setNotificationHandler(AcpMethod.ClientMethods.V1.ElicitationComplete) { params: CompleteElicitationNotification ->
             var sessionId: SessionId? = _elicitationToSession.remove(params.elicitationId)
 
             if (sessionId != null) {
@@ -287,20 +287,63 @@ public class Client(
             return _agentInfo.getCompleted()
         }
 
+    /**
+     * The protocol version this connection speaks: the version the agent chose in its `initialize`
+     * response, which may be lower or higher than the one that was requested.
+     *
+     * Held by [protocol], which is what needs it to pick the wire format, so code that branches on
+     * the version does not care which side of the connection it is on.
+     *
+     * @throws IllegalStateException if `initialize` has not completed yet
+     */
+    public val negotiatedProtocolVersion: ProtocolVersion
+        get() = protocol.negotiatedProtocolVersionOrNull ?: error("Client is not initialized yet")
+
+    /**
+     * Initializes the connection and negotiates the protocol version.
+     *
+     * @throws UnsupportedProtocolVersionException if the agent answers with a version outside
+     *   [ClientInfo.supportedProtocolVersions]; the connection is closed before throwing
+     */
     public suspend fun initialize(clientInfo: ClientInfo, _meta: JsonElement? = null): AgentInfo {
         _clientInfo.complete(clientInfo)
-        val initializeResponse = AcpMethod.AgentMethods.Initialize(protocol, InitializeRequest(clientInfo.protocolVersion, clientInfo.capabilities, clientInfo.implementation, _meta))
-        val agentInfo = AgentInfo(initializeResponse.protocolVersion, initializeResponse.agentCapabilities, initializeResponse.authMethods, initializeResponse.agentInfo, initializeResponse._meta)
+        val initializeResponse = AcpMethod.AgentMethods.V1.Initialize(
+            protocol,
+            InitializeRequest(clientInfo.protocolVersion, clientInfo.capabilities, clientInfo.implementation, _meta)
+        )
+        val offeredVersion = initializeResponse.protocolVersion
+        if (offeredVersion !in clientInfo.supportedProtocolVersions) {
+            // see https://agentclientprotocol.com/protocol/v2/initialization#version-negotiation
+            logger.error {
+                "Agent answered protocol version $offeredVersion, which is not in " +
+                    "${clientInfo.supportedProtocolVersions}; closing the connection"
+            }
+            protocol.close()
+            throw UnsupportedProtocolVersionException(
+                requestedVersion = clientInfo.protocolVersion,
+                offeredVersion = offeredVersion,
+                supportedVersions = clientInfo.supportedProtocolVersions,
+            )
+        }
+        val negotiatedVersion = protocol.recordNegotiatedProtocolVersion(offeredVersion)
+        if (negotiatedVersion != offeredVersion) {
+            logger.warn {
+                "Repeated initialize answered protocol version $offeredVersion, but this connection already " +
+                    "speaks $negotiatedVersion; keeping $negotiatedVersion"
+            }
+        }
+        val agentInfo = AgentInfo(offeredVersion, initializeResponse.agentCapabilities, initializeResponse.authMethods, initializeResponse.agentInfo, initializeResponse._meta)
         _agentInfo.complete(agentInfo)
         return agentInfo
     }
+
 
     /**
      * Performs authentication of the agent with the specified [methodId].
      * The method may throw an exception if the authentication fails.
      */
     public suspend fun authenticate(methodId: AuthMethodId, _meta: JsonElement? = null): AuthenticateResponse {
-        return AcpMethod.AgentMethods.Authenticate(protocol, AuthenticateRequest(methodId, _meta))
+        return AcpMethod.AgentMethods.V1.Authenticate(protocol, AuthenticateRequest(methodId, _meta))
     }
 
     /**
@@ -315,7 +358,7 @@ public class Client(
      */
     @UnstableApi
     public suspend fun logout(_meta: JsonElement? = null): LogoutResponse {
-        return AcpMethod.AgentMethods.Logout(protocol, LogoutRequest(_meta))
+        return AcpMethod.AgentMethods.V1.Logout(protocol, LogoutRequest(_meta))
     }
 
     /**
@@ -327,7 +370,7 @@ public class Client(
      */
     @UnstableApi
     public suspend fun listProviders(_meta: JsonElement? = null): ListProvidersResponse {
-        return AcpMethod.AgentMethods.ProvidersList(protocol, ListProvidersRequest(_meta))
+        return AcpMethod.AgentMethods.V1.ProvidersList(protocol, ListProvidersRequest(_meta))
     }
 
     /**
@@ -351,7 +394,7 @@ public class Client(
         headers: Map<String, String>? = null,
         _meta: JsonElement? = null
     ): SetProvidersResponse {
-        return AcpMethod.AgentMethods.ProvidersSet(protocol, SetProvidersRequest(id, apiType, baseUrl, headers, _meta))
+        return AcpMethod.AgentMethods.V1.ProvidersSet(protocol, SetProvidersRequest(id, apiType, baseUrl, headers, _meta))
     }
 
     /**
@@ -366,7 +409,7 @@ public class Client(
      */
     @UnstableApi
     public suspend fun disableProvider(id: String, _meta: JsonElement? = null): DisableProvidersResponse {
-        return AcpMethod.AgentMethods.ProvidersDisable(protocol, DisableProvidersRequest(id, _meta))
+        return AcpMethod.AgentMethods.V1.ProvidersDisable(protocol, DisableProvidersRequest(id, _meta))
     }
 
     /**
@@ -380,7 +423,7 @@ public class Client(
      */
     public suspend fun newSession(sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
         return withInitializingSession {
-            val newSessionResponse = AcpMethod.AgentMethods.SessionNew(
+            val newSessionResponse = AcpMethod.AgentMethods.V1.SessionNew(
                 protocol,
                 NewSessionRequest(
                     sessionParameters.cwd,
@@ -406,7 +449,7 @@ public class Client(
      */
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
         return withInitializingSession {
-            val loadSessionResponse = AcpMethod.AgentMethods.SessionLoad(
+            val loadSessionResponse = AcpMethod.AgentMethods.V1.SessionLoad(
                 protocol,
                 LoadSessionRequest(
                     sessionId,
@@ -430,7 +473,7 @@ public class Client(
      * @return the agent's [DeleteSessionResponse]
      */
     public suspend fun deleteSession(sessionId: SessionId, _meta: JsonElement? = null): DeleteSessionResponse {
-        return AcpMethod.AgentMethods.SessionDelete(protocol, DeleteSessionRequest(sessionId, _meta))
+        return AcpMethod.AgentMethods.V1.SessionDelete(protocol, DeleteSessionRequest(sessionId, _meta))
     }
 
     /**
@@ -457,7 +500,7 @@ public class Client(
         _meta: JsonElement? = null
     ): Flow<SessionInfo> {
         return PaginatedResponseToFlowAdapter.asFlow { cursor ->
-            AcpMethod.AgentMethods.SessionList(protocol, ListSessionsRequest(cwd, additionalDirectories, cursor, _meta))
+            AcpMethod.AgentMethods.V1.SessionList(protocol, ListSessionsRequest(cwd, additionalDirectories, cursor, _meta))
         }
     }
 
@@ -478,7 +521,7 @@ public class Client(
     @UnstableApi
     public suspend fun forkSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
         return withInitializingSession {
-            val forkSessionResponse = AcpMethod.AgentMethods.SessionFork(
+            val forkSessionResponse = AcpMethod.AgentMethods.V1.SessionFork(
                 protocol,
                 ForkSessionRequest(
                     sessionId,
@@ -512,7 +555,7 @@ public class Client(
     @UnstableApi
     public suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
         return withInitializingSession {
-            val resumeSessionResponse = AcpMethod.AgentMethods.SessionResume(
+            val resumeSessionResponse = AcpMethod.AgentMethods.V1.SessionResume(
                 protocol,
                 ResumeSessionRequest(
                     sessionId,
@@ -548,7 +591,7 @@ public class Client(
         repository: NesRepository? = null,
         _meta: JsonElement? = null
     ): ClientNesSession {
-        val response = AcpMethod.AgentMethods.NesStart(protocol, StartNesRequest(workspaceUri, workspaceFolders, repository, _meta))
+        val response = AcpMethod.AgentMethods.V1.NesStart(protocol, StartNesRequest(workspaceUri, workspaceFolders, repository, _meta))
         val session = ClientNesSessionImpl(this, response.sessionId, protocol)
         _nesSessions.update { it.put(response.sessionId, session) }
         return session

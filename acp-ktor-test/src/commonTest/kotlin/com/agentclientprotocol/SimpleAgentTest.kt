@@ -1,9 +1,12 @@
+@file:OptIn(UnstableApi::class)
+
 package com.agentclientprotocol
 
 import com.agentclientprotocol.agent.*
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.Client
 import com.agentclientprotocol.client.ClientInfo
+import com.agentclientprotocol.client.UnsupportedProtocolVersionException
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
@@ -11,6 +14,8 @@ import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.JsonRpcException
 import com.agentclientprotocol.protocol.invoke
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -46,7 +51,48 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
         val testVersion = 10
         val clientInfo = ClientInfo(protocolVersion = testVersion)
         val agentInfo = client.initialize(clientInfo)
-        assertEquals(testVersion, agentInfo.protocolVersion)
+        // The agent sees the version the client asked for, but it declares no support for it, so
+        // it answers with the latest version it does support instead of echoing the request.
+        // https://agentclientprotocol.com/protocol/v2/initialization#version-negotiation
+        assertEquals(testVersion, agentInitialized.await().protocolVersion)
+        assertEquals(LATEST_PROTOCOL_VERSION, agentInfo.protocolVersion)
+        // Both sides retain the same negotiated version for the connection.
+        assertEquals(LATEST_PROTOCOL_VERSION, client.negotiatedProtocolVersion)
+        assertEquals(LATEST_PROTOCOL_VERSION, agent.negotiatedProtocolVersion)
+    }
+
+    @Test
+    fun `client rejects a version it does not support and closes the connection`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val client = Client(protocol = clientProtocol)
+        // An agent from the future: it answers with a version this client has never heard of. Wired as a
+        // raw handler because no real implementation can produce this.
+        agentProtocol.setRequestHandlerRaw(AcpMethod.AgentMethods.V1.Initialize) {
+            buildJsonObject { put("protocolVersion", 99) }
+        }
+
+        val clientInfo = ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION)
+        val failure = assertFailsWith<UnsupportedProtocolVersionException> { client.initialize(clientInfo) }
+        assertEquals(LATEST_PROTOCOL_VERSION, failure.requestedVersion)
+        assertEquals(99, failure.offeredVersion)
+        assertEquals(clientInfo.supportedProtocolVersions, failure.supportedVersions)
+        // Nothing is retained for the connection.
+        assertFailsWith<IllegalStateException> { client.negotiatedProtocolVersion }
+        // And it is gone: a follow-up request must not go through. Bounded, because a request on a
+        // closed protocol is not guaranteed to fail fast.
+        val followUp = withTimeoutOrNull(500.milliseconds) { runCatching { client.initialize(clientInfo) } }
+        assertTrue(followUp?.isSuccess != true, "a request after close must not succeed")
+    }
+
+    /** An agent that only takes part in initialization; sessions are out of scope for these tests. */
+    private fun versionOnlyAgentSupport(): AgentSupport = object : AgentSupport {
+        override suspend fun initialize(clientInfo: ClientInfo): AgentInfo =
+            AgentInfo(clientInfo.protocolVersion, implementation = Implementation(name = "test-agent", version = "1.0.0"))
+
+        override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession =
+            TODO("Not yet implemented")
+
+        override suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters): AgentSession =
+            TODO("Not yet implemented")
     }
 
     @Test
@@ -413,7 +459,6 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
     fun `permission request should be cancelled by prompt cancellation on client`() = testWithProtocols { clientProtocol, agentProtocol ->
         val permissionResponseCeDeferred = CompletableDeferred<CancellationException>()
         val client = Client(protocol = clientProtocol)
-
         val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
             override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
                 return AgentInfo(clientInfo.protocolVersion)
@@ -460,7 +505,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
             }
         })
         client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
-        val responses = mutableListOf<String>()
+
         val session = client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
             object : ClientSessionOperations {
                 override suspend fun requestPermissions(
@@ -495,7 +540,6 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
         delay(500)
         promptJob.cancel(CancellationException("Test cancellation"))
-//        val permissionResponseCe = withTimeout(100000) { permissionResponseCeDeferred.await() }
         val permissionResponseCe = permissionResponseCeDeferred.await()
         assertEquals("Test cancellation", permissionResponseCe.message, "Cancellation exception should be propagated to agent")
     }
@@ -587,7 +631,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
         delay(500)
         promptJob.cancel(CancellationException("Test cancellation"))
-//        val permissionResponseCe = withTimeout(100000) { permissionResponseCeDeferred.await() }
+
         val permissionResponseCe = permissionResponseCeDeferred.await()
         assertEquals("Test cancellation", permissionResponseCe.message, "Cancellation exception should be propagated to agent")
     }
@@ -607,7 +651,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 val id = SessionId("test-session-id")
                 this@testWithProtocols.launch {
                     delay(200.milliseconds)
-                    AcpMethod.ClientMethods.SessionUpdate(agentProtocol, SessionNotification(id, SessionUpdate.AvailableCommandsUpdate(listOf())))
+                    AcpMethod.ClientMethods.V1.SessionUpdate(agentProtocol, SessionNotification(id, SessionUpdate.AvailableCommandsUpdate(listOf())))
                 }
 
                 return object : AgentSession {
@@ -678,7 +722,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 sessionId: SessionId,
                 sessionParameters: SessionCreationParameters,
             ): AgentSession {
-                AcpMethod.ClientMethods.SessionUpdate(
+                AcpMethod.ClientMethods.V1.SessionUpdate(
                     agentProtocol,
                     SessionNotification(
                         sessionId = sessionId,
@@ -743,7 +787,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
             }
 
             override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
-                AcpMethod.ClientMethods.SessionUpdate(
+                AcpMethod.ClientMethods.V1.SessionUpdate(
                     agentProtocol,
                     SessionNotification(
                         sessionId = unknownSessionId,
@@ -765,7 +809,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 sessionId: SessionId,
                 sessionParameters: SessionCreationParameters,
             ): AgentSession {
-                AcpMethod.ClientMethods.SessionUpdate(
+                AcpMethod.ClientMethods.V1.SessionUpdate(
                     agentProtocol,
                     SessionNotification(
                         sessionId = sessionId,
@@ -846,7 +890,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
             override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
                 this@testWithProtocols.launch {
                     try {
-                        AcpMethod.ClientMethods.FsReadTextFile(
+                        AcpMethod.ClientMethods.V1.FsReadTextFile(
                             agentProtocol,
                             ReadTextFileRequest(unknownSessionId, "/test/path", null, null, null)
                         )
@@ -922,7 +966,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
             override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
                 loadStarted.await()
-                AcpMethod.ClientMethods.SessionUpdate(
+                AcpMethod.ClientMethods.V1.SessionUpdate(
                     agentProtocol,
                     SessionNotification(
                         sessionId = delayedLoadSessionId,
@@ -1047,7 +1091,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 sessionParameters: SessionCreationParameters,
             ): AgentSession {
                 assertEquals(sourceSessionId, sessionId)
-                AcpMethod.ClientMethods.SessionUpdate(
+                AcpMethod.ClientMethods.V1.SessionUpdate(
                     agentProtocol,
                     SessionNotification(
                         sessionId = forkedSessionId,
@@ -1129,7 +1173,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 sessionParameters: SessionCreationParameters,
             ): AgentSession {
                 assertEquals(resumedSessionId, sessionId)
-                AcpMethod.ClientMethods.SessionUpdate(
+                AcpMethod.ClientMethods.V1.SessionUpdate(
                     agentProtocol,
                     SessionNotification(
                         sessionId = sessionId,
@@ -1199,7 +1243,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 sessionParameters: SessionCreationParameters,
             ): AgentSession {
                 loadAttempt += 1
-                AcpMethod.ClientMethods.SessionUpdate(
+                AcpMethod.ClientMethods.V1.SessionUpdate(
                     agentProtocol,
                     SessionNotification(
                         sessionId = sessionId,
@@ -1278,7 +1322,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
             override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
                 createAttempt += 1
-                AcpMethod.ClientMethods.SessionUpdate(
+                AcpMethod.ClientMethods.V1.SessionUpdate(
                     agentProtocol,
                     SessionNotification(
                         sessionId = sessionId,
@@ -1369,7 +1413,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
             override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
                 for (text in replayTexts) {
-                    AcpMethod.ClientMethods.SessionUpdate(
+                    AcpMethod.ClientMethods.V1.SessionUpdate(
                         agentProtocol,
                         SessionNotification(
                             sessionId = sessionId,
@@ -1461,7 +1505,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 sessionParameters: SessionCreationParameters,
             ): AgentSession {
                 for (message in updates) {
-                    AcpMethod.ClientMethods.SessionUpdate(
+                    AcpMethod.ClientMethods.V1.SessionUpdate(
                         agentProtocol,
                         SessionNotification(
                             sessionId,
@@ -1552,7 +1596,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
 
             private suspend fun newSession(sessionId: SessionId): AgentSession {
                 for (update in replayUpdates) {
-                    AcpMethod.ClientMethods.SessionUpdate(
+                    AcpMethod.ClientMethods.V1.SessionUpdate(
                         agentProtocol,
                         SessionNotification(sessionId, update)
                     )

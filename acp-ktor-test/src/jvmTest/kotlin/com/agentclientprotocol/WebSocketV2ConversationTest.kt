@@ -1,0 +1,5 @@
+package com.agentclientprotocol
+
+import com.agentclientprotocol.framework.WebSocketKtorProtocolDriver
+
+class WebSocketV2ConversationTest : V2ConversationTest(WebSocketKtorProtocolDriver())

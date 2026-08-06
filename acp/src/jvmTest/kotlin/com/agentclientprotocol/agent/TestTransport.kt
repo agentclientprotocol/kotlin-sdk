@@ -36,8 +36,12 @@ class TestTransport(val timeout: Duration) : BaseTransport() {
         _state.value = Transport.State.CLOSED
     }
 
-    suspend fun fireTestRequest(methodName: MethodName, params: JsonElement): List<JsonRpcMessage> {
-        val reqId = RequestId.create(requestId.incrementAndGet())
+    suspend fun fireTestRequest(
+        methodName: MethodName,
+        params: JsonElement,
+        /** Explicit id for tests that have to refer to the in-flight request, e.g. to cancel it. */
+        reqId: RequestId = RequestId.create(requestId.incrementAndGet()),
+    ): List<JsonRpcMessage> {
         val jsonReq = JsonRpcRequest(reqId, methodName, params)
 
         return coroutineScope {
@@ -59,4 +63,9 @@ class TestTransport(val timeout: Duration) : BaseTransport() {
     fun fireTestNotification(methodName: MethodName, params: JsonElement) {
         fireMessage(JsonRpcNotification(methodName, params))
     }
+
+    suspend fun receiveTestMessages(count: Int): List<JsonRpcMessage> =
+        withTimeoutOrNull(timeout) {
+            List(count) { responses.receive() }
+        } ?: emptyList()
 }

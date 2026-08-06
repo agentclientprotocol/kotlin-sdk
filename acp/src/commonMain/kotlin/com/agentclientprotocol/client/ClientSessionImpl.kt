@@ -69,7 +69,7 @@ internal class ClientSessionImpl(
         }
         try {
             logger.trace { "Sending prompt request: $content" }
-            val promptResponse = AcpMethod.AgentMethods.SessionPrompt(protocol, PromptRequest(sessionId, content, _meta = _meta))
+            val promptResponse = AcpMethod.AgentMethods.V1.SessionPrompt(protocol, PromptRequest(sessionId, content, _meta = _meta))
             logger.trace { "Received prompt response: $promptResponse" }
 
             // after receiving prompt response we immediately close the current prompt channel
@@ -89,12 +89,12 @@ internal class ClientSessionImpl(
     }
 
     override suspend fun cancel() {
-        AcpMethod.AgentMethods.SessionCancel(protocol, CancelNotification(sessionId))
+        AcpMethod.AgentMethods.V1.SessionCancel(protocol, CancelNotification(sessionId))
     }
 
     @UnstableApi
     override suspend fun close(_meta: JsonElement?): CloseSessionResponse {
-        val response = AcpMethod.AgentMethods.SessionClose(protocol, CloseSessionRequest(sessionId, _meta))
+        val response = AcpMethod.AgentMethods.V1.SessionClose(protocol, CloseSessionRequest(sessionId, _meta))
         client.removeSessionHolder(sessionId)
         return response
     }
@@ -110,7 +110,7 @@ internal class ClientSessionImpl(
 
 
     override suspend fun setMode(modeId: SessionModeId, _meta: JsonElement?): SetSessionModeResponse {
-        return AcpMethod.AgentMethods.SessionSetMode(protocol, SetSessionModeRequest(sessionId, modeId, _meta))
+        return AcpMethod.AgentMethods.V1.SessionSetMode(protocol, SetSessionModeRequest(sessionId, modeId, _meta))
     }
 
     @UnstableApi
@@ -127,7 +127,7 @@ internal class ClientSessionImpl(
 
     @UnstableApi
     override suspend fun setModel(modelId: ModelId, _meta: JsonElement?): SetSessionModelResponse {
-        return AcpMethod.AgentMethods.SessionSetModel(protocol, SetSessionModelRequest(sessionId, modelId, _meta))
+        return AcpMethod.AgentMethods.V1.SessionSetModel(protocol, SetSessionModelRequest(sessionId, modelId, _meta))
     }
 
     @UnstableApi
@@ -140,7 +140,7 @@ internal class ClientSessionImpl(
 
     @UnstableApi
     override suspend fun setConfigOption(configId: SessionConfigId, value: SessionConfigOptionValue, _meta: JsonElement?): SetSessionConfigOptionResponse {
-        val response = AcpMethod.AgentMethods.SessionSetConfigOption(protocol, SetSessionConfigOptionRequest(sessionId, configId, value, _meta))
+        val response = AcpMethod.AgentMethods.V1.SessionSetConfigOption(protocol, SetSessionConfigOptionRequest(sessionId, configId, value, _meta))
         _configOptions.value = response.configOptions
         return response
     }

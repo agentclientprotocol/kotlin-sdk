@@ -4,6 +4,8 @@ package com.agentclientprotocol.protocol
 
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.CancelRequestNotification
+import com.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
+import com.agentclientprotocol.model.ProtocolVersion
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.rpc.*
 import com.agentclientprotocol.transport.Transport
@@ -154,6 +156,28 @@ public class Protocol(
     private val notificationHandlers: AtomicRef<PersistentMap<MethodName, suspend (JsonRpcNotification) -> Unit>> =
         atomic(persistentMapOf())
 
+    private val _negotiatedProtocolVersion: AtomicRef<ProtocolVersion?> = atomic(null)
+
+    /**
+     * The protocol version negotiated for this connection, or `null` before `initialize` resolves.
+     *
+     * Lives here because it is the wire format's version: dispatch and serialization need it, and a
+     * connection speaks exactly one version. `Agent.negotiatedProtocolVersion` and
+     * `Client.negotiatedProtocolVersion` read through to this.
+     */
+    internal val negotiatedProtocolVersionOrNull: ProtocolVersion?
+        get() = _negotiatedProtocolVersion.value
+
+    /**
+     * Records [version] as the version of this connection and returns the version the connection
+     * actually speaks — the first recorded value wins, so a repeated `initialize` cannot move it.
+     */
+    internal fun recordNegotiatedProtocolVersion(version: ProtocolVersion): ProtocolVersion =
+        if (_negotiatedProtocolVersion.compareAndSet(null, version))
+            version
+        else
+            checkNotNull(_negotiatedProtocolVersion.value)
+
     /**
      * Connect to a transport and start processing messages.
      */
@@ -278,13 +302,12 @@ public class Protocol(
         additionalContext: CoroutineContext,
         handler: suspend (JsonRpcRequest) -> JsonElement?
     ) {
-        requestHandlers.update {
-            it.put(method.methodName) { params ->
-                withContext(additionalContext) {
-                    handler(params)
-                }
+        val wrapped: suspend (JsonRpcRequest) -> JsonElement? = { params ->
+            withContext(additionalContext) {
+                handler(params)
             }
         }
+        requestHandlers.update { it.put(method.methodName, wrapped) }
     }
 
     /**
@@ -297,13 +320,12 @@ public class Protocol(
         additionalContext: CoroutineContext,
         handler: suspend (JsonRpcNotification) -> Unit
     ) {
-        notificationHandlers.update {
-            it.put(method.methodName) { params ->
-                withContext(additionalContext) {
-                    handler(params)
-                }
+        val wrapped: suspend (JsonRpcNotification) -> Unit = { params ->
+            withContext(additionalContext) {
+                handler(params)
             }
         }
+        notificationHandlers.update { it.put(method.methodName, wrapped) }
     }
 
     /**

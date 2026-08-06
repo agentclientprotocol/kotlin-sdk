@@ -6,6 +6,9 @@ import com.agentclientprotocol.annotations.UnstableApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.jvm.JvmInline
 
 /**
@@ -22,9 +25,71 @@ public typealias ProtocolVersion = Int
 public const val LATEST_PROTOCOL_VERSION: ProtocolVersion = 1
 
 /**
- * All supported protocol versions.
+ * **UNSTABLE**
+ *
+ * Version `2` of the protocol: an unstable draft used for protocol iteration.
+ *
+ * [LATEST_PROTOCOL_VERSION] deliberately stays at `1` and this version is deliberately absent
+ * from [SUPPORTED_PROTOCOL_VERSIONS], so speaking v2 is always an explicit choice by the caller.
+ *
+ * A connection speaks v2 only when a v2 implementation is supplied to the agent or client; v1 and v2
+ * are separate handler sets with their own payload types, and nothing is translated between them.
  */
-public val SUPPORTED_PROTOCOL_VERSIONS: Array<ProtocolVersion> = arrayOf(LATEST_PROTOCOL_VERSION)
+@UnstableApi
+public const val PROTOCOL_VERSION_V2: ProtocolVersion = 2
+
+/**
+ * The stable protocol versions this SDK speaks.
+ *
+ * An unstable draft such as [PROTOCOL_VERSION_V2] is absent, so it is never spoken unless a peer
+ * supplies an implementation for it.
+ */
+public val SUPPORTED_PROTOCOL_VERSIONS: Set<ProtocolVersion> = setOf(LATEST_PROTOCOL_VERSION)
+
+/**
+ * **UNSTABLE**
+ *
+ * Every protocol version this SDK knows how to negotiate, including unstable drafts.
+ *
+ * A version outside this set cannot be spoken by the SDK at all. Membership here means the SDK has the
+ * types for it, which is weaker than a given peer having an implementation of it.
+ */
+@UnstableApi
+public val KNOWN_PROTOCOL_VERSIONS: Set<ProtocolVersion> = SUPPORTED_PROTOCOL_VERSIONS + PROTOCOL_VERSION_V2
+
+/**
+ * Chooses the protocol version to speak, given the version a client [requested] and the versions
+ * the responding peer [supported].
+ *
+ * Implements the rule from
+ * [version negotiation](https://agentclientprotocol.com/protocol/v2/initialization#version-negotiation):
+ * if the requested version is supported it MUST be echoed back, otherwise the latest supported
+ * version MUST be returned.
+ *
+ * Note that the result may be *higher* than [requested]: a peer that only speaks newer versions
+ * answers with its own latest, and it is then up to the client to close the connection.
+ *
+ * @throws IllegalStateException if [supported] is empty, since there is no version to answer with
+ */
+public fun negotiateProtocolVersion(
+    requested: ProtocolVersion,
+    supported: Set<ProtocolVersion>,
+): ProtocolVersion {
+    if (supported.isEmpty()) error("Cannot negotiate a protocol version: no supported versions were declared")
+    return if (requested in supported) requested else supported.max()
+}
+
+/**
+ * Reads the `protocolVersion` field out of a raw `initialize` payload, or `null` if it is absent or
+ * not an integer.
+ *
+ * `initialize` is what establishes the version of a connection, so it is the one message that has to be
+ * routed by a number read out of the payload rather than by what the connection already speaks.
+ */
+public fun readProtocolVersionOrNull(payload: JsonElement?): ProtocolVersion? {
+    val field = (payload as? JsonObject)?.get("protocolVersion") ?: return null
+    return runCatching { field.jsonPrimitive.intOrNull }.getOrNull()
+}
 
 /**
  * A unique identifier for a conversation session between a client and agent.
