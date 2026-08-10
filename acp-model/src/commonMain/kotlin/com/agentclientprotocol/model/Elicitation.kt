@@ -98,14 +98,16 @@ public enum class ElicitationUrlOnlyMode {
 // === Property Schemas ===
 
 /**
- * A titled enum option with a const value and human-readable title.
+ * A titled enum option with a const value, human-readable title, optional description, and metadata.
  */
 @UnstableApi
 @Serializable
 public data class EnumOption(
     @SerialName("const") val value: String,
-    val title: String
-)
+    val title: String,
+    val description: String? = null,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
 
 /**
  * Schema for string properties in an elicitation form.

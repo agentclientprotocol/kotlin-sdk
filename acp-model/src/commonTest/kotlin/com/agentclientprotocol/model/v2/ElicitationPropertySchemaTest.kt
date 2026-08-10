@@ -12,6 +12,7 @@ import com.agentclientprotocol.model.v2.conversion.toV2
 import com.agentclientprotocol.rpc.ACPJson
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -52,11 +53,21 @@ class ElicitationPropertySchemaTest {
     @Test
     fun `titled multi-select items are untagged and round-trip`() {
         val schema = ElicitationPropertySchema.ArrayProperty(
-            items = MultiSelectItems.Titled(options = listOf(EnumOption(value = "a", title = "Option A"))),
+            items = MultiSelectItems.Titled(
+                options = listOf(
+                    EnumOption(
+                        value = "a",
+                        title = "Option A",
+                        description = "The first option",
+                        _meta = buildJsonObject { put("icon", "alpha") },
+                    ),
+                    EnumOption(value = "b", title = "Option B"),
+                ),
+            ),
         )
 
         assertEquals(
-            """{"type":"array","items":{"anyOf":[{"const":"a","title":"Option A"}]}}""",
+            """{"type":"array","items":{"anyOf":[{"const":"a","title":"Option A","description":"The first option","_meta":{"icon":"alpha"}},{"const":"b","title":"Option B"}]}}""",
             encode(schema),
         )
         assertEquals(schema, decode(encode(schema)))
