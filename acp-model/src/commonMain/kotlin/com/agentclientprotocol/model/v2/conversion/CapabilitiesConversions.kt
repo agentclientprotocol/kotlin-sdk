@@ -5,6 +5,7 @@ package com.agentclientprotocol.model.v2.conversion
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.FileSystemCapability
 import com.agentclientprotocol.model.SessionCloseCapabilities
+import com.agentclientprotocol.model.SessionDeleteCapabilities
 import com.agentclientprotocol.model.SessionListCapabilities
 import com.agentclientprotocol.model.SessionResumeCapabilities
 import com.agentclientprotocol.model.v2.AgentAuthCapabilities
@@ -19,6 +20,7 @@ import com.agentclientprotocol.model.v2.PromptCapabilities
 import com.agentclientprotocol.model.v2.PromptEmbeddedContextCapabilities
 import com.agentclientprotocol.model.v2.PromptImageCapabilities
 import com.agentclientprotocol.model.v2.SessionCapabilities
+import com.agentclientprotocol.model.v2.SessionDeleteCapabilities as V2SessionDeleteCapabilities
 import com.agentclientprotocol.model.AgentAuthCapabilities as V1AgentAuthCapabilities
 import com.agentclientprotocol.model.AgentCapabilities as V1AgentCapabilities
 import com.agentclientprotocol.model.AuthCapabilities as V1AuthCapabilities
@@ -136,17 +138,16 @@ public data class V1SessionCapabilityParts(
  * markers for the methods that became baseline — `list`, `resume`, `close` and
  * `loadSession` — are synthesized here.
  *
- * @throws ProtocolConversionException if [SessionCapabilities.delete] is set — the v1
- * Kotlin model has no `delete` field — or if a nested capability has no v1 representation
+ * @throws ProtocolConversionException if a nested capability has no v1 representation
  */
 @UnstableApi
 public fun SessionCapabilities.toV1Parts(): V1SessionCapabilityParts {
-    if (delete != null) throw unrepresentableV2Field("SessionCapabilities", "delete")
     return V1SessionCapabilityParts(
         sessionCapabilities = V1SessionCapabilities(
             fork = fork,
             list = SessionListCapabilities(),
             resume = SessionResumeCapabilities(),
+            delete = delete?.let { SessionDeleteCapabilities(_meta = it._meta) },
             close = SessionCloseCapabilities(),
             additionalDirectories = additionalDirectories,
             _meta = _meta,
@@ -189,7 +190,7 @@ public fun SessionCapabilities.Companion.fromV1(
     return SessionCapabilities(
         prompt = promptCapabilities.toV2(),
         mcp = mcpCapabilities.toV2(),
-        delete = null,
+        delete = sessionCapabilities.delete?.let { V2SessionDeleteCapabilities(_meta = it._meta) },
         additionalDirectories = sessionCapabilities.additionalDirectories,
         fork = sessionCapabilities.fork,
         _meta = sessionCapabilities._meta,

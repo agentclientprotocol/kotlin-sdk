@@ -9,10 +9,14 @@ import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.*
+import com.agentclientprotocol.protocol.JsonRpcException
 import com.agentclientprotocol.protocol.invoke
+import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlin.test.*
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -1624,6 +1628,65 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
             postInitializeDeferred.await()
         }
         assertContentEquals(expectedMessages, receivedMessages)
+    }
+
+    @Test
+    fun `session delete capability and method are wired through client api`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val sessionId = SessionId("session-to-delete")
+        val requestMeta = buildJsonObject { put("request", JsonPrimitive("history")) }
+        val responseMeta = buildJsonObject { put("deleted", JsonPrimitive(true)) }
+        var deletedSessionId: SessionId? = null
+        var receivedMeta: JsonElement? = null
+
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(
+                    clientInfo.protocolVersion,
+                    capabilities = AgentCapabilities(
+                        sessionCapabilities = SessionCapabilities(delete = SessionDeleteCapabilities())
+                    )
+                )
+            }
+
+            override suspend fun deleteSession(sessionId: SessionId, _meta: JsonElement?): DeleteSessionResponse {
+                deletedSessionId = sessionId
+                receivedMeta = _meta
+                return DeleteSessionResponse(_meta = responseMeta)
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                TODO("Not needed for session delete test")
+            }
+        })
+
+        val agentInfo = client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+        assertNotNull(agentInfo.capabilities.sessionCapabilities.delete)
+
+        val response = client.deleteSession(sessionId, requestMeta)
+
+        assertEquals(sessionId, deletedSessionId)
+        assertEquals(requestMeta, receivedMeta)
+        assertEquals(responseMeta, response._meta)
+    }
+
+    @Test
+    fun `session delete defaults to method not found when unsupported`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo = AgentInfo(clientInfo.protocolVersion)
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                TODO("Not needed for session delete test")
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val exception = assertFailsWith<JsonRpcException> {
+            client.deleteSession(SessionId("unknown-session"))
+        }
+        assertEquals(JsonRpcErrorCode.METHOD_NOT_FOUND.code, exception.code)
     }
 
 

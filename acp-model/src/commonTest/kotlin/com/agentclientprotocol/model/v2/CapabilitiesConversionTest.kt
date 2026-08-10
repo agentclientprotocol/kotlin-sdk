@@ -34,6 +34,7 @@ import com.agentclientprotocol.model.InitializeResponse as V1InitializeResponse
 import com.agentclientprotocol.model.McpCapabilities as V1McpCapabilities
 import com.agentclientprotocol.model.PromptCapabilities as V1PromptCapabilities
 import com.agentclientprotocol.model.SessionCapabilities as V1SessionCapabilities
+import com.agentclientprotocol.model.SessionDeleteCapabilities as V1SessionDeleteCapabilities
 
 class CapabilitiesConversionTest {
 
@@ -121,12 +122,28 @@ class CapabilitiesConversionTest {
     }
 
     @Test
-    fun `converting v2 session delete support to v1 fails because v1 has no such field`() {
-        val exception = assertFailsWith<ProtocolConversionException> {
-            SessionCapabilities(delete = SessionDeleteCapabilities()).toV1Parts()
-        }
+    fun `session delete capability round trips between v1 and v2 with meta`() {
+        val meta = buildJsonObject { put("k", JsonPrimitive("v")) }
+        val v2 = baselineV2AgentCapabilities().session!!.copy(
+            delete = SessionDeleteCapabilities(_meta = meta),
+        )
 
-        assertEquals("v2 SessionCapabilities.delete cannot be represented in v1", exception.message)
+        val parts = v2.toV1Parts()
+        val roundTripped = SessionCapabilities.fromV1(
+            sessionCapabilities = parts.sessionCapabilities,
+            promptCapabilities = parts.promptCapabilities,
+            loadSession = parts.loadSession,
+            mcpCapabilities = parts.mcpCapabilities,
+        )
+
+        assertEquals(V1SessionDeleteCapabilities(_meta = meta), parts.sessionCapabilities.delete)
+        assertEquals(v2, roundTripped)
+    }
+
+    @Test
+    fun `session delete capability remains absent across v1 and v2 conversions`() {
+        assertNull(baselineV2AgentCapabilities().toV1().sessionCapabilities.delete)
+        assertNull(baselineV1AgentCapabilities().toV2().session!!.delete)
     }
 
     @Test

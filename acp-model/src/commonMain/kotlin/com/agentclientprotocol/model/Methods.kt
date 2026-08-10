@@ -54,6 +54,7 @@ public open class AcpMethod(public val methodName: MethodName) {
         public object ProvidersDisable : AcpRequestResponseMethod<DisableProvidersRequest, DisableProvidersResponse>("providers/disable", DisableProvidersRequest.serializer(), DisableProvidersResponse.serializer())
         public object SessionNew : AcpRequestResponseMethod<NewSessionRequest, NewSessionResponse>("session/new", NewSessionRequest.serializer(), NewSessionResponse.serializer())
         public object SessionLoad : AcpRequestResponseMethod<LoadSessionRequest, LoadSessionResponse>("session/load", LoadSessionRequest.serializer(), LoadSessionResponse.serializer())
+        public object SessionDelete : AcpRequestResponseMethod<DeleteSessionRequest, DeleteSessionResponse>("session/delete", DeleteSessionRequest.serializer(), DeleteSessionResponse.serializer())
 
         // session specific
         public object SessionPrompt : AcpSessionRequestResponseMethod<PromptRequest, PromptResponse>("session/prompt", PromptRequest.serializer(), PromptResponse.serializer())

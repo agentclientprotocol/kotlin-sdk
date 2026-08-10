@@ -5,6 +5,7 @@ import com.agentclientprotocol.client.ClientInfo
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.AuthMethodId
 import com.agentclientprotocol.model.AuthenticateResponse
+import com.agentclientprotocol.model.DeleteSessionResponse
 import com.agentclientprotocol.model.DisableProvidersResponse
 import com.agentclientprotocol.model.ListProvidersResponse
 import com.agentclientprotocol.model.LlmProtocol
@@ -13,6 +14,7 @@ import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionInfo
 import com.agentclientprotocol.model.SetProvidersResponse
 import com.agentclientprotocol.model.StartNesRequest
+import com.agentclientprotocol.protocol.jsonRpcMethodNotFound
 import kotlinx.serialization.json.JsonElement
 
 public interface AgentSupport {
@@ -125,6 +127,20 @@ public interface AgentSupport {
     @UnstableApi
     public suspend fun listSessions(cwd: String?, additionalDirectories: List<String>?, _meta: JsonElement?): Sequence<SessionInfo> {
         throw NotImplementedError("listSessions is not implemented. The capability is declared in AgentCapabilities.sessionCapabilities.list")
+    }
+
+    /**
+     * Deletes a session from history.
+     *
+     * Implementations advertising this capability must succeed when the session id is unknown
+     * or has already been deleted.
+     *
+     * @param sessionId the id of the session to delete
+     * @param _meta optional metadata
+     * @return a [DeleteSessionResponse] indicating the deletion result
+     */
+    public suspend fun deleteSession(sessionId: SessionId, _meta: JsonElement?): DeleteSessionResponse {
+        jsonRpcMethodNotFound("deleteSession is not implemented. The capability is declared in AgentCapabilities.sessionCapabilities.delete")
     }
 
     /**

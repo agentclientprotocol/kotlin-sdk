@@ -147,6 +147,16 @@ public data class SessionResumeCapabilities(
 ) : AcpWithMeta
 
 /**
+ * Capabilities for deleting sessions from history.
+ *
+ * By supplying `{}` it means that the agent supports the `session/delete` method.
+ */
+@Serializable
+public data class SessionDeleteCapabilities(
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
  * **UNSTABLE**
  *
  * This capability is not part of the spec yet, and may be removed or changed at any point.
@@ -186,6 +196,7 @@ public data class SessionCapabilities(
     val fork: SessionForkCapabilities? = null,
     val list: SessionListCapabilities? = null,
     val resume: SessionResumeCapabilities? = null,
+    val delete: SessionDeleteCapabilities? = null,
     @property:UnstableApi
     val close: SessionCloseCapabilities? = null,
     @property:UnstableApi

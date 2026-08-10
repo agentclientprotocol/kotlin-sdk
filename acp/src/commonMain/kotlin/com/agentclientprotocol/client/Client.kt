@@ -416,6 +416,19 @@ public class Client(
     }
 
     /**
+     * Deletes a session from the agent's history.
+     *
+     * This operation does not modify sessions loaded into this client runtime.
+     *
+     * @param sessionId the id of the session to delete
+     * @param _meta optional metadata
+     * @return the agent's [DeleteSessionResponse]
+     */
+    public suspend fun deleteSession(sessionId: SessionId, _meta: JsonElement? = null): DeleteSessionResponse {
+        return AcpMethod.AgentMethods.SessionDelete(protocol, DeleteSessionRequest(sessionId, _meta))
+    }
+
+    /**
      * **UNSTABLE**
      *
      * This capability is not part of the spec yet, and may be removed or changed at any point.
