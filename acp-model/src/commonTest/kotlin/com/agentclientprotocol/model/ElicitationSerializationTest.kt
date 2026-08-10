@@ -349,7 +349,7 @@ class ElicitationSerializationTest {
             properties = mapOf(
                 "country" to ElicitationPropertySchema.StringProperty(
                     oneOf = listOf(
-                        EnumOption("us", "United States"),
+                        EnumOption("us", "United States", "Country code for the United States"),
                         EnumOption("uk", "United Kingdom")
                     )
                 )
@@ -366,11 +366,19 @@ class ElicitationSerializationTest {
         assertEquals(2, oneOf.size)
         assertEquals("us", oneOf[0].jsonObject["const"]?.jsonPrimitive?.content)
         assertEquals("United States", oneOf[0].jsonObject["title"]?.jsonPrimitive?.content)
+        assertEquals("Country code for the United States", oneOf[0].jsonObject["description"]?.jsonPrimitive?.content)
+        assertFalse("description" in oneOf[1].jsonObject)
 
         val roundtripped = ACPJson.decodeFromString(ElicitationSchema.serializer(), json)
         val stringProp = roundtripped.properties["country"]
         assertIs<ElicitationPropertySchema.StringProperty>(stringProp)
-        assertEquals(2, stringProp.oneOf!!.size)
+        assertEquals(
+            listOf(
+                EnumOption("us", "United States", "Country code for the United States"),
+                EnumOption("uk", "United Kingdom")
+            ),
+            stringProp.oneOf
+        )
     }
 
     @Test
