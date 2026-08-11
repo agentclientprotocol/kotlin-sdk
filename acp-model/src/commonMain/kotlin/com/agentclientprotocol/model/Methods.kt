@@ -37,7 +37,7 @@ public open class AcpMethod(public val methodName: MethodName) {
             where TNotification : AcpNotification, TNotification : AcpWithSessionId
 
     public object MetaMethods {
-        public object CancelRequest : AcpNotificationMethod<CancelRequestNotification>("\$/cancelRequest", CancelRequestNotification.serializer())
+        public object CancelRequest : AcpNotificationMethod<CancelRequestNotification>("\$/cancel_request", CancelRequestNotification.serializer())
     }
 
     public object AgentMethods {
