@@ -184,6 +184,10 @@ public class Agent(
             sequenceFactory = { p -> agentSupport.listSessions(p.cwd, p.additionalDirectories, p._meta) }
         )
 
+        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionDelete) { params: DeleteSessionRequest ->
+            return@setRequestHandler agentSupport.deleteSession(params.sessionId, params._meta)
+        }
+
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionNew) { params: NewSessionRequest ->
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val session = createSession(sessionParameters) { agentSupport.createSession(it) }

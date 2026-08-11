@@ -866,6 +866,23 @@ public data class ReleaseTerminalResponse(
 ) : AcpResponse
 
 /**
+ * Request to delete a session from history.
+ */
+@Serializable
+public data class DeleteSessionRequest(
+    override val sessionId: SessionId,
+    override val _meta: JsonElement? = null
+) : AcpRequest, AcpWithSessionId
+
+/**
+ * Response from deleting a session from history.
+ */
+@Serializable
+public data class DeleteSessionResponse(
+    override val _meta: JsonElement? = null
+) : AcpResponse
+
+/**
  * **UNSTABLE**
  *
  * This capability is not part of the spec yet, and may be removed or changed at any point.

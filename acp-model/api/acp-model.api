@@ -147,6 +147,10 @@ public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$SessionC
 	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$SessionClose;
 }
 
+public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$SessionDelete : com/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$SessionDelete;
+}
+
 public final class com/agentclientprotocol/model/AcpMethod$AgentMethods$SessionFork : com/agentclientprotocol/model/AcpMethod$AcpSessionRequestResponseMethod {
 	public static final field INSTANCE Lcom/agentclientprotocol/model/AcpMethod$AgentMethods$SessionFork;
 }
@@ -1415,6 +1419,65 @@ public final synthetic class com/agentclientprotocol/model/CreateTerminalRespons
 }
 
 public final class com/agentclientprotocol/model/CreateTerminalResponse$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/DeleteSessionRequest : com/agentclientprotocol/model/AcpRequest, com/agentclientprotocol/model/AcpWithSessionId {
+	public static final field Companion Lcom/agentclientprotocol/model/DeleteSessionRequest$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-7EW-EgU ()Ljava/lang/String;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy-HxD9utI (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/DeleteSessionRequest;
+	public static synthetic fun copy-HxD9utI$default (Lcom/agentclientprotocol/model/DeleteSessionRequest;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/DeleteSessionRequest;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getSessionId-7EW-EgU ()Ljava/lang/String;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/DeleteSessionRequest$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/DeleteSessionRequest$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/DeleteSessionRequest;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/DeleteSessionRequest;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/DeleteSessionRequest$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/DeleteSessionResponse : com/agentclientprotocol/model/AcpResponse {
+	public static final field Companion Lcom/agentclientprotocol/model/DeleteSessionResponse$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/DeleteSessionResponse;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/DeleteSessionResponse;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/DeleteSessionResponse;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/DeleteSessionResponse$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/DeleteSessionResponse$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/DeleteSessionResponse;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/DeleteSessionResponse;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/DeleteSessionResponse$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
@@ -5585,19 +5648,21 @@ public final class com/agentclientprotocol/model/SessionAdditionalDirectoriesCap
 public final class com/agentclientprotocol/model/SessionCapabilities : com/agentclientprotocol/model/AcpWithMeta {
 	public static final field Companion Lcom/agentclientprotocol/model/SessionCapabilities$Companion;
 	public fun <init> ()V
-	public fun <init> (Lcom/agentclientprotocol/model/SessionForkCapabilities;Lcom/agentclientprotocol/model/SessionListCapabilities;Lcom/agentclientprotocol/model/SessionResumeCapabilities;Lcom/agentclientprotocol/model/SessionCloseCapabilities;Lcom/agentclientprotocol/model/SessionAdditionalDirectoriesCapabilities;Lkotlinx/serialization/json/JsonElement;)V
-	public synthetic fun <init> (Lcom/agentclientprotocol/model/SessionForkCapabilities;Lcom/agentclientprotocol/model/SessionListCapabilities;Lcom/agentclientprotocol/model/SessionResumeCapabilities;Lcom/agentclientprotocol/model/SessionCloseCapabilities;Lcom/agentclientprotocol/model/SessionAdditionalDirectoriesCapabilities;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/agentclientprotocol/model/SessionForkCapabilities;Lcom/agentclientprotocol/model/SessionListCapabilities;Lcom/agentclientprotocol/model/SessionResumeCapabilities;Lcom/agentclientprotocol/model/SessionDeleteCapabilities;Lcom/agentclientprotocol/model/SessionCloseCapabilities;Lcom/agentclientprotocol/model/SessionAdditionalDirectoriesCapabilities;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/SessionForkCapabilities;Lcom/agentclientprotocol/model/SessionListCapabilities;Lcom/agentclientprotocol/model/SessionResumeCapabilities;Lcom/agentclientprotocol/model/SessionDeleteCapabilities;Lcom/agentclientprotocol/model/SessionCloseCapabilities;Lcom/agentclientprotocol/model/SessionAdditionalDirectoriesCapabilities;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lcom/agentclientprotocol/model/SessionForkCapabilities;
 	public final fun component2 ()Lcom/agentclientprotocol/model/SessionListCapabilities;
 	public final fun component3 ()Lcom/agentclientprotocol/model/SessionResumeCapabilities;
-	public final fun component4 ()Lcom/agentclientprotocol/model/SessionCloseCapabilities;
-	public final fun component5 ()Lcom/agentclientprotocol/model/SessionAdditionalDirectoriesCapabilities;
-	public final fun component6 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun copy (Lcom/agentclientprotocol/model/SessionForkCapabilities;Lcom/agentclientprotocol/model/SessionListCapabilities;Lcom/agentclientprotocol/model/SessionResumeCapabilities;Lcom/agentclientprotocol/model/SessionCloseCapabilities;Lcom/agentclientprotocol/model/SessionAdditionalDirectoriesCapabilities;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/SessionCapabilities;
-	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/SessionCapabilities;Lcom/agentclientprotocol/model/SessionForkCapabilities;Lcom/agentclientprotocol/model/SessionListCapabilities;Lcom/agentclientprotocol/model/SessionResumeCapabilities;Lcom/agentclientprotocol/model/SessionCloseCapabilities;Lcom/agentclientprotocol/model/SessionAdditionalDirectoriesCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionCapabilities;
+	public final fun component4 ()Lcom/agentclientprotocol/model/SessionDeleteCapabilities;
+	public final fun component5 ()Lcom/agentclientprotocol/model/SessionCloseCapabilities;
+	public final fun component6 ()Lcom/agentclientprotocol/model/SessionAdditionalDirectoriesCapabilities;
+	public final fun component7 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lcom/agentclientprotocol/model/SessionForkCapabilities;Lcom/agentclientprotocol/model/SessionListCapabilities;Lcom/agentclientprotocol/model/SessionResumeCapabilities;Lcom/agentclientprotocol/model/SessionDeleteCapabilities;Lcom/agentclientprotocol/model/SessionCloseCapabilities;Lcom/agentclientprotocol/model/SessionAdditionalDirectoriesCapabilities;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/SessionCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/SessionCapabilities;Lcom/agentclientprotocol/model/SessionForkCapabilities;Lcom/agentclientprotocol/model/SessionListCapabilities;Lcom/agentclientprotocol/model/SessionResumeCapabilities;Lcom/agentclientprotocol/model/SessionDeleteCapabilities;Lcom/agentclientprotocol/model/SessionCloseCapabilities;Lcom/agentclientprotocol/model/SessionAdditionalDirectoriesCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionCapabilities;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getAdditionalDirectories ()Lcom/agentclientprotocol/model/SessionAdditionalDirectoriesCapabilities;
 	public final fun getClose ()Lcom/agentclientprotocol/model/SessionCloseCapabilities;
+	public final fun getDelete ()Lcom/agentclientprotocol/model/SessionDeleteCapabilities;
 	public final fun getFork ()Lcom/agentclientprotocol/model/SessionForkCapabilities;
 	public final fun getList ()Lcom/agentclientprotocol/model/SessionListCapabilities;
 	public final fun getResume ()Lcom/agentclientprotocol/model/SessionResumeCapabilities;
@@ -6039,6 +6104,35 @@ public final synthetic class com/agentclientprotocol/model/SessionConfigValueId$
 }
 
 public final class com/agentclientprotocol/model/SessionConfigValueId$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/SessionDeleteCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/SessionDeleteCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/SessionDeleteCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/SessionDeleteCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionDeleteCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/SessionDeleteCapabilities$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/SessionDeleteCapabilities$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/SessionDeleteCapabilities;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/SessionDeleteCapabilities;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/SessionDeleteCapabilities$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
