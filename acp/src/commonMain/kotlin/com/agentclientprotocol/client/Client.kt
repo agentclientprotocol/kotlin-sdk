@@ -96,24 +96,29 @@ public class Client(
      * Creates a new entry only if there are some currently initializing sessions. Otherwise, throws in the case of missing session.
      */
     private fun getOrCreateSessionHolder(sessionId: SessionId): ClientSessionHolder {
-        val sessionsStorage = _sessions.value
-        val holder = sessionsStorage.sessions[sessionId]
-        if (holder != null) return holder
+        // Fast path for the common case of an already registered session.
+        _sessions.value.sessions[sessionId]?.let { return it }
         var clientSessionHolder: ClientSessionHolder? = null
+        // Every branch below has to look the session up in `currentStorage` rather than rely on the read above:
+        // `_sessions` can change between that read and the CAS, and it can change again between two attempts of
+        // the CAS loop. A session that a concurrent newSession/loadSession registers in such a window - together
+        // with decrementing `initializingSessionsCount` back to zero - would otherwise be reported as missing.
         _sessions.update { currentStorage ->
-            if (currentStorage.initializingSessionsCount > 0) {
-                val existingHolder = currentStorage.sessions[sessionId]
-                if (existingHolder != null) {
+            val existingHolder = currentStorage.sessions[sessionId]
+            when {
+                existingHolder != null -> {
                     clientSessionHolder = existingHolder
                     currentStorage
-                } else {
+                }
+                currentStorage.initializingSessionsCount > 0 -> {
                     val newHolder = ClientSessionHolder()
                     clientSessionHolder = newHolder
                     currentStorage.copy(sessions = currentStorage.sessions.put(sessionId, newHolder))
                 }
-            } else {
-                clientSessionHolder = null
-                currentStorage
+                else -> {
+                    clientSessionHolder = null
+                    currentStorage
+                }
             }
         }
         return clientSessionHolder ?: acpFail("Session $sessionId not found")
