@@ -2,18 +2,25 @@ package com.agentclientprotocol
 
 import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.AcpMethod
+import com.agentclientprotocol.model.AcpNotification
 import com.agentclientprotocol.model.AcpRequest
 import com.agentclientprotocol.model.AcpResponse
+import com.agentclientprotocol.model.CancelRequestNotification
 import com.agentclientprotocol.protocol.AcpExpectedError
 import com.agentclientprotocol.protocol.JsonRpcException
 import com.agentclientprotocol.protocol.acpFail
+import com.agentclientprotocol.protocol.jsonRpcRequest
+import com.agentclientprotocol.protocol.sendNotification
 import com.agentclientprotocol.protocol.sendRequest
+import com.agentclientprotocol.protocol.setNotificationHandler
 import com.agentclientprotocol.protocol.setRequestHandler
 import com.agentclientprotocol.rpc.JsonRpcErrorCode
+import com.agentclientprotocol.rpc.RequestId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestResult
@@ -37,12 +44,15 @@ import kotlin.time.measureTimedValue
 data class TestRequest(val message: String, override val _meta: JsonElement? = null) : AcpRequest
 @Serializable
 data class TestResponse(val message: String, override val _meta: JsonElement? = null) : AcpResponse
+@Serializable
+data class TestNotification(val message: String, override val _meta: JsonElement? = null) : AcpNotification
 
 abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by protocolDriver {
     val cancellationMessage = "Cancelled from test"
 
     companion object {
         object TestMethod : AcpMethod.AcpRequestResponseMethod<TestRequest, TestResponse>("test/testRequest", TestRequest.serializer(), TestResponse.serializer())
+        object TestNotificationMethod : AcpMethod.AcpNotificationMethod<TestNotification>("test/testNotification", TestNotification.serializer())
     }
 
     @Test
@@ -53,6 +63,180 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
 
         val response = clientProtocol.sendRequest(TestMethod, TestRequest("Test"))
         assertEquals("Test", response.message)
+    }
+
+    @Test
+    fun `response is processed while notification handler is suspended`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val notificationStarted = CompletableDeferred<Unit>()
+        val releaseNotification = CompletableDeferred<Unit>()
+        val notificationCompleted = CompletableDeferred<Unit>()
+        val responseCompleted = CompletableDeferred<TestResponse>()
+
+        clientProtocol.setNotificationHandler(TestNotificationMethod) {
+            notificationStarted.complete(Unit)
+            releaseNotification.await()
+            notificationCompleted.complete(Unit)
+        }
+        agentProtocol.setRequestHandler(TestMethod) { request ->
+            TestResponse(request.message)
+        }
+
+        agentProtocol.sendNotification(TestNotificationMethod, TestNotification("suspend"))
+        withTimeout(5_000) { notificationStarted.await() }
+
+        val requestJob = launch {
+            responseCompleted.complete(clientProtocol.sendRequest(TestMethod, TestRequest("response")))
+        }
+        val response = withTimeout(5_000) { responseCompleted.await() }
+
+        assertEquals("response", response.message)
+        assertTrue(!releaseNotification.isCompleted, "Notification handler should still be suspended")
+
+        releaseNotification.complete(Unit)
+        withTimeout(5_000) { notificationCompleted.await() }
+        requestJob.join()
+    }
+
+    @Test
+    fun `later notifications and requests progress while notification handler is suspended`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val notificationStarted = CompletableDeferred<Unit>()
+        val releaseNotification = CompletableDeferred<Unit>()
+        val notificationCompleted = CompletableDeferred<Unit>()
+        val laterNotificationHandled = CompletableDeferred<Unit>()
+        val requestCompleted = CompletableDeferred<TestResponse>()
+
+        clientProtocol.setNotificationHandler(TestNotificationMethod) { notification ->
+            if (notification.message == "suspend") {
+                notificationStarted.complete(Unit)
+                releaseNotification.await()
+                notificationCompleted.complete(Unit)
+            } else {
+                laterNotificationHandled.complete(Unit)
+            }
+        }
+        clientProtocol.setRequestHandler(TestMethod) { request ->
+            TestResponse(request.message)
+        }
+
+        agentProtocol.sendNotification(TestNotificationMethod, TestNotification("suspend"))
+        withTimeout(5_000) { notificationStarted.await() }
+        agentProtocol.sendNotification(TestNotificationMethod, TestNotification("later"))
+
+        val requestJob = launch {
+            requestCompleted.complete(agentProtocol.sendRequest(TestMethod, TestRequest("request")))
+        }
+        val response = withTimeout(5_000) {
+            laterNotificationHandled.await()
+            requestCompleted.await()
+        }
+
+        assertEquals("request", response.message)
+        assertTrue(!releaseNotification.isCompleted, "First notification handler should still be suspended")
+
+        releaseNotification.complete(Unit)
+        withTimeout(5_000) { notificationCompleted.await() }
+        requestJob.join()
+    }
+
+    @Test
+    fun `cancel request notification progresses while notification handler is suspended`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val notificationStarted = CompletableDeferred<Unit>()
+        val releaseNotification = CompletableDeferred<Unit>()
+        val notificationCompleted = CompletableDeferred<Unit>()
+        val requestStarted = CompletableDeferred<RequestId>()
+        val requestCancelled = CompletableDeferred<CancellationException>()
+
+        clientProtocol.setNotificationHandler(TestNotificationMethod) {
+            notificationStarted.complete(Unit)
+            releaseNotification.await()
+            notificationCompleted.complete(Unit)
+        }
+        clientProtocol.setRequestHandler(TestMethod) {
+            requestStarted.complete(currentCoroutineContext().jsonRpcRequest.id)
+            try {
+                awaitCancellation()
+            } catch (ce: CancellationException) {
+                requestCancelled.complete(ce)
+                throw ce
+            }
+        }
+
+        agentProtocol.sendNotification(TestNotificationMethod, TestNotification("suspend"))
+        withTimeout(5_000) { notificationStarted.await() }
+
+        val requestJob = launch {
+            agentProtocol.sendRequest(TestMethod, TestRequest("cancel"))
+        }
+        val requestId = withTimeout(5_000) { requestStarted.await() }
+        agentProtocol.sendNotification(
+            AcpMethod.MetaMethods.CancelRequest,
+            CancelRequestNotification(requestId, cancellationMessage)
+        )
+
+        val cancellationException = withTimeout(5_000) { requestCancelled.await() }
+        assertEquals(cancellationMessage, cancellationException.message)
+        assertTrue(!releaseNotification.isCompleted, "Notification handler should still be suspended")
+
+        releaseNotification.complete(Unit)
+        withTimeout(5_000) { notificationCompleted.await() }
+        agentProtocol.cancelPendingOutgoingRequests(CancellationException("Test request completed"))
+        requestJob.join()
+    }
+
+    @Test
+    fun `notification handler failure does not stop later protocol traffic`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val failingNotificationStarted = CompletableDeferred<Unit>()
+        val laterNotificationHandled = CompletableDeferred<Unit>()
+        val requestCompleted = CompletableDeferred<TestResponse>()
+
+        clientProtocol.setNotificationHandler(TestNotificationMethod) { notification ->
+            if (notification.message == "fail") {
+                failingNotificationStarted.complete(Unit)
+                error("Notification handler failure")
+            } else {
+                laterNotificationHandled.complete(Unit)
+            }
+        }
+        clientProtocol.setRequestHandler(TestMethod) { request ->
+            TestResponse(request.message)
+        }
+
+        agentProtocol.sendNotification(TestNotificationMethod, TestNotification("fail"))
+        withTimeout(5_000) { failingNotificationStarted.await() }
+        agentProtocol.sendNotification(TestNotificationMethod, TestNotification("later"))
+
+        val requestJob = launch {
+            requestCompleted.complete(agentProtocol.sendRequest(TestMethod, TestRequest("request")))
+        }
+        val response = withTimeout(5_000) {
+            laterNotificationHandled.await()
+            requestCompleted.await()
+        }
+
+        assertEquals("request", response.message)
+        requestJob.join()
+    }
+
+    @Test
+    fun `closing protocol cancels suspended notification handler`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val notificationStarted = CompletableDeferred<Unit>()
+        val notificationFinalized = CompletableDeferred<Unit>()
+
+        clientProtocol.setNotificationHandler(TestNotificationMethod) {
+            notificationStarted.complete(Unit)
+            try {
+                awaitCancellation()
+            } finally {
+                notificationFinalized.complete(Unit)
+            }
+        }
+
+        agentProtocol.sendNotification(TestNotificationMethod, TestNotification("suspend"))
+        withTimeout(5_000) { notificationStarted.await() }
+
+        clientProtocol.close()
+
+        withTimeout(5_000) { notificationFinalized.await() }
     }
 
 
