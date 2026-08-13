@@ -132,8 +132,8 @@ public class Protocol(
     public val options: ProtocolOptions = ProtocolOptions()
 ) : RpcMethodsOperations {
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]) + CoroutineName(options.protocolDebugName))
-    // a scope and dispatcher that executes requests to avoid blocking of message processing
-    private val requestsScope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job])
+    // a scope and dispatcher that executes handlers to avoid blocking of message processing
+    private val handlerScope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job])
             + Dispatchers.Default.limitedParallelism(parallelism = 1) + CoroutineName(options.protocolDebugName))
     // now the incoming and outgoing requests can clash by ids, but it should not be a problem
     private val requestIdCounter: AtomicInt = atomic(0)
@@ -369,11 +369,13 @@ public class Protocol(
         runCatching {
             when (message) {
                 is JsonRpcNotification -> {
-                    handleNotification(message)
+                    handlerScope.launch {
+                        handleNotification(message)
+                    }
                 }
                 is JsonRpcRequest -> {
                     val requestId = IncomingRequestId(message.id)
-                    requestsScope.launch {
+                    handlerScope.launch {
                         handleRequest(message)
                     }.also { job ->
                         pendingIncomingRequests.update { map -> map.put(requestId, job) }
