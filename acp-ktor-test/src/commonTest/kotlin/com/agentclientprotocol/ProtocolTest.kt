@@ -98,6 +98,44 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     }
 
     @Test
+    fun `non suspending notification is handled before later response`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val notificationHandled = CompletableDeferred<Unit>()
+
+        clientProtocol.setNotificationHandler(TestNotificationMethod) {
+            notificationHandled.complete(Unit)
+        }
+        agentProtocol.setRequestHandler(TestMethod) { request ->
+            agentProtocol.sendNotification(TestNotificationMethod, TestNotification("before response"))
+            TestResponse(request.message)
+        }
+
+        val response = clientProtocol.sendRequest(TestMethod, TestRequest("response"))
+
+        assertEquals("response", response.message)
+        assertTrue(notificationHandled.isCompleted, "Notification should be handled before the later response")
+    }
+
+    @Test
+    fun `notification handler can await outgoing request`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val notificationStarted = CompletableDeferred<Unit>()
+        val requestCompleted = CompletableDeferred<TestResponse>()
+
+        clientProtocol.setNotificationHandler(TestNotificationMethod) {
+            notificationStarted.complete(Unit)
+            requestCompleted.complete(clientProtocol.sendRequest(TestMethod, TestRequest("from notification")))
+        }
+        agentProtocol.setRequestHandler(TestMethod) { request ->
+            TestResponse(request.message)
+        }
+
+        agentProtocol.sendNotification(TestNotificationMethod, TestNotification("request"))
+
+        withTimeout(5_000) { notificationStarted.await() }
+        val response = withTimeout(5_000) { requestCompleted.await() }
+        assertEquals("from notification", response.message)
+    }
+
+    @Test
     fun `later notifications and requests progress while notification handler is suspended`() = testWithProtocols { clientProtocol, agentProtocol ->
         val notificationStarted = CompletableDeferred<Unit>()
         val releaseNotification = CompletableDeferred<Unit>()
