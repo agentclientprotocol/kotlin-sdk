@@ -132,9 +132,10 @@ public class Protocol(
     public val options: ProtocolOptions = ProtocolOptions()
 ) : RpcMethodsOperations {
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]) + CoroutineName(options.protocolDebugName))
+    private val handlerDispatcher = Dispatchers.Default.limitedParallelism(parallelism = 1)
     // a scope and dispatcher that executes handlers to avoid blocking of message processing
     private val handlerScope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job])
-            + Dispatchers.Default.limitedParallelism(parallelism = 1) + CoroutineName(options.protocolDebugName))
+            + handlerDispatcher + CoroutineName(options.protocolDebugName))
     // now the incoming and outgoing requests can clash by ids, but it should not be a problem
     private val requestIdCounter: AtomicInt = atomic(0)
     private val pendingOutgoingRequests: AtomicRef<PersistentMap<OutgoingRequestId, OutgoingRequest>> =
@@ -372,6 +373,7 @@ public class Protocol(
                     handlerScope.launch {
                         handleNotification(message)
                     }
+                    yieldToHandlerDispatcher()
                 }
                 is JsonRpcRequest -> {
                     val requestId = IncomingRequestId(message.id)
@@ -470,6 +472,11 @@ public class Protocol(
         } else {
             logger.debug { "No handler for notification: ${notification.method}" }
         }
+    }
+
+    private suspend fun yieldToHandlerDispatcher() {
+        // Preserve wire order for handlers that do not suspend without awaiting handlers that do.
+        withContext(handlerDispatcher) { Unit }
     }
 
     private fun handleResponse(response: JsonRpcResponse) {
