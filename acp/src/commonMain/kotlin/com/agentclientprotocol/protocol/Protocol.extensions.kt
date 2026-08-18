@@ -91,6 +91,32 @@ public fun<TRequest : AcpPaginatedRequest, TResponse : AcpPaginatedResponse<TIte
         )
     }
 }
+
+/**
+ * Register a handler for incoming paginated requests where [pageFactory] fetches one page directly —
+ * for example, from a database — instead of a materialized [Sequence].
+ *
+ * Unlike [setPaginatedRequestHandler], no iterator or cursor state is kept here: [pageFactory] receives
+ * exactly the request a client sent, including whatever cursor it carries, and returns the batch together
+ * with the next cursor. The cursor is entirely opaque to this function; it is never stored, inspected, or
+ * validated here, so it can only be as durable or as short-lived as [pageFactory] makes it — an agent that
+ * encodes it as a stable position (a database keyset, an offset) gets a cursor that survives a reconnect
+ * and can be reused indefinitely, unlike the single-use, server-memory cursors [setPaginatedRequestHandler]
+ * hands out.
+ */
+@OptIn(UnstableApi::class)
+public fun<TRequest : AcpPaginatedRequest, TResponse : AcpPaginatedResponse<TItem>, TItem> RpcMethodsOperations.setSuspendPaginatedRequestHandler(
+    method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
+    additionalContext: CoroutineContext = EmptyCoroutineContext,
+    resultFactory: (request: TRequest, batch: List<TItem>, newCursor: String?) -> TResponse,
+    pageFactory: suspend (request: TRequest) -> Pair<List<TItem>, String?>
+) {
+    this.setRequestHandler(method, additionalContext) { request ->
+        val (batch, newCursor) = pageFactory(request)
+        resultFactory(request, batch, newCursor)
+    }
+}
+
 /**
  * Register a handler for incoming notifications.
  */

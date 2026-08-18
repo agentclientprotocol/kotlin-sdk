@@ -8,6 +8,7 @@ import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.*
 import com.agentclientprotocol.rpc.RequestId
+import com.agentclientprotocol.util.SequenceToPaginatedResponseAdapter
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
@@ -176,13 +177,28 @@ public class Agent(
             return@setRequestHandler agentSupport.disableProvider(params.id, params._meta)
         }
 
-        protocol.setPaginatedRequestHandler(
-            AcpMethod.AgentMethods.SessionList,
+        // `listSessionsPage` is tried first on every request; a `null` result means the agent hasn't
+        // overridden it, so this falls back to the `listSessions`/`Sequence` adapter below. The adapter is
+        // built once, same as before, since its iterator/cursor state must persist across the fallback
+        // path's own calls regardless of how many requests took the `listSessionsPage` branch in between.
+        @OptIn(UnstableApi::class)
+        val legacySessionListAdapter = SequenceToPaginatedResponseAdapter<SessionInfo, ListSessionsRequest, ListSessionsResponse>(
             // TODO: move to some global agent/client settings
             batchSize = 10,
-            batchedResultFactory = { _, batch, newCursor -> ListSessionsResponse(batch, newCursor) },
-            sequenceFactory = { p -> agentSupport.listSessions(p.cwd, p.additionalDirectories, p._meta) }
         )
+        @OptIn(UnstableApi::class)
+        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionList) { params: ListSessionsRequest ->
+            val page = agentSupport.listSessionsPage(params.cwd, params.additionalDirectories, params.cursor, params._meta)
+            if (page != null) {
+                val (batch, newCursor) = page
+                return@setRequestHandler ListSessionsResponse(batch, newCursor)
+            }
+            return@setRequestHandler legacySessionListAdapter.next(
+                params = params,
+                sequenceFactory = { p -> agentSupport.listSessions(p.cwd, p.additionalDirectories, p._meta) },
+                resultFactory = { _, batch, newCursor -> ListSessionsResponse(batch, newCursor) }
+            )
+        }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.SessionDelete) { params: DeleteSessionRequest ->
             return@setRequestHandler agentSupport.deleteSession(params.sessionId, params._meta)

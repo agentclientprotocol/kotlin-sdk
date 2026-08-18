@@ -130,6 +130,37 @@ public interface AgentSupport {
     }
 
     /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * An alternative to [listSessions] for a source that can fetch one page directly — for example, a
+     * database — instead of materializing a [Sequence] up front. When overridden, `session/list` is served
+     * through [com.agentclientprotocol.protocol.setSuspendPaginatedRequestHandler] instead of
+     * [com.agentclientprotocol.protocol.setPaginatedRequestHandler]: no server-side iterator is kept, so
+     * [cursor] must be self-describing and is never inspected or validated by the SDK, and the batch size is
+     * entirely up to the implementation.
+     *
+     * The default returns `null`, meaning "not overridden" — `session/list` then falls back to [listSessions].
+     * An override must never return `null` itself; doing so is indistinguishable from not overriding this
+     * method and will silently fall back to [listSessions] for that request.
+     *
+     * @param cwd optional current working directory filter
+     * @param additionalDirectories optional additional directories filter
+     * @param cursor the cursor from the incoming request, or `null` for the first page
+     * @param _meta optional metadata
+     * @return the batch together with the next cursor (`null` if this is the last page), or `null` if this
+     *   hook is not implemented and [listSessions] should be used instead
+     */
+    @UnstableApi
+    public suspend fun listSessionsPage(
+        cwd: String?,
+        additionalDirectories: List<String>?,
+        cursor: String?,
+        _meta: JsonElement?,
+    ): Pair<List<SessionInfo>, String?>? = null
+
+    /**
      * Deletes a session from history.
      *
      * Implementations advertising this capability must succeed when the session id is unknown
