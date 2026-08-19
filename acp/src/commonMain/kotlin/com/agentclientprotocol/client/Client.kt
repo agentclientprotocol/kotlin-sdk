@@ -47,6 +47,7 @@ public class Client(
     @property:UnstableApi
     public val globalSessionUpdateHandler: GlobalSessionUpdateHandler?
 ) {
+    // kept for backwards ABI compatibility after adding globalSessionUpdateHandler
     public constructor(
         protocol: Protocol,
         globalElicitationHandler: GlobalElicitationHandler? = null,
@@ -117,7 +118,7 @@ public class Client(
     /**
      * Looks up the holder for [sessionId], creating a new entry only if there are some currently initializing
      * sessions. Returns `null` if the session is neither registered nor being initialized, instead of throwing -
-     * callers that need a session to exist (e.g. to service a request against it) should use
+     * callers that need a session to exist (e.g., to service a request against it) should use
      * [getOrCreateSessionHolder] instead.
      */
     private fun findSessionHolder(sessionId: SessionId): ClientSessionHolder? {
@@ -244,8 +245,8 @@ public class Client(
         }
 
         protocol.setNotificationHandler(AcpMethod.ClientMethods.V1.SessionUpdate) { params: SessionNotification ->
-            // The agent may report an update (e.g. a status change on `session/list`) for a session this client
-            // never called `session/new` / `session/load` / `session/resume` for - it can live on the server,
+            // The agent may report an update (e.g., a status change on `session/list`) for a session this client
+            // never called `session/new` / `session/load` / `session/resume` for. It can live on the server,
             // created from another IDE window, the web, or another machine. That's not a protocol violation, so
             // unlike other session-scoped methods, an unknown/unconnected session here must not fail the call.
             val sessionHolder = findSessionHolder(params.sessionId)
@@ -727,7 +728,7 @@ public class Client(
             if (hangingSessions != null) {
                 for ((id, holder) in hangingSessions) {
                     logger.trace { "Removing hanging session $id" }
-                    // report it as non existent session
+                    // report it as a non-existent session
                     val queuedUpdates = holder.completeExceptionallyAndDrainQueue(AcpExpectedError("Session $id not found"))
                     // These were buffered on the assumption they might belong to this (or another concurrent)
                     // initialization; since none claimed `id`, it's an unconnected session, same as if no

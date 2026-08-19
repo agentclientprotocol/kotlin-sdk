@@ -3,24 +3,14 @@
 package com.agentclientprotocol.client
 
 import com.agentclientprotocol.annotations.UnstableApi
-import com.agentclientprotocol.model.AcpMethod
-import com.agentclientprotocol.model.ContentBlock
-import com.agentclientprotocol.model.SessionId
-import com.agentclientprotocol.model.SessionNotification
-import com.agentclientprotocol.model.SessionUpdate
+import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.transport.BaseTransport
 import com.agentclientprotocol.transport.Transport
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -44,10 +34,10 @@ class ClientGlobalSessionUpdateHandlerTest {
             transport.start()
 
             val received = CompletableDeferred<Pair<SessionId, SessionUpdate>>()
-            val client = Client(
+            Client(
                 protocol,
                 globalElicitationHandler = null,
-                globalSessionUpdateHandler = GlobalSessionUpdateHandler { sessionId, update, _ ->
+                globalSessionUpdateHandler = { sessionId, update, _ ->
                     received.complete(sessionId to update)
                 },
             )

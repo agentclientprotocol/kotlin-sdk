@@ -59,7 +59,7 @@ class ClientHangingSessionUpdateDeliveryTest {
             val client = Client(
                 protocol,
                 globalElicitationHandler = null,
-                globalSessionUpdateHandler = GlobalSessionUpdateHandler { sessionId, update, _ ->
+                globalSessionUpdateHandler = { sessionId, update, _ ->
                     received.complete(sessionId to update)
                 },
             )

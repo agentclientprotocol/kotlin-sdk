@@ -1,5 +1,8 @@
+@file:OptIn(UnstableApi::class)
+
 package com.agentclientprotocol.client
 
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.AcpMethod
