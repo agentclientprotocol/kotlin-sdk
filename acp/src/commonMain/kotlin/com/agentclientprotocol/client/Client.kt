@@ -43,10 +43,15 @@ public typealias ClientInstance = Client
 public class Client(
     public val protocol: Protocol,
     @property:UnstableApi
-    public val globalElicitationHandler: GlobalElicitationHandler? = null,
+    public val globalElicitationHandler: GlobalElicitationHandler?,
     @property:UnstableApi
-    public val globalSessionUpdateHandler: GlobalSessionUpdateHandler? = null
+    public val globalSessionUpdateHandler: GlobalSessionUpdateHandler?
 ) {
+    public constructor(
+        protocol: Protocol,
+        globalElicitationHandler: GlobalElicitationHandler? = null,
+    ) : this(protocol, globalElicitationHandler, null)
+
     private class ClientSessionHolder {
         private val sessionDeferred: CompletableDeferred<ClientSessionImpl> = CompletableDeferred()
         // Don't make the channel limited, because it leads to a deadlock also:
