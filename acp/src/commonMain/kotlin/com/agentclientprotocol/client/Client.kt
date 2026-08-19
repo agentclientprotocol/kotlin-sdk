@@ -79,6 +79,20 @@ public class Client(
             sessionDeferred.completeExceptionally(cause)
         }
 
+        /**
+         * Like [completeExceptionally], but also returns whatever was queued before this call - for a holder
+         * that was speculatively created for a session that never actually got claimed (see the
+         * `initializingSessionsCount > 0` branch of [findSessionHolder]), those notifications belong to no live
+         * session and would otherwise be silently discarded.
+         */
+        fun completeExceptionallyAndDrainQueue(cause: Throwable): List<Pair<SessionUpdate, JsonElement?>> {
+            val drained = buildList {
+                while (true) add(notifications.tryReceive().getOrNull() ?: break)
+            }
+            completeExceptionally(cause)
+            return drained
+        }
+
         suspend fun handleOrQueue(notification: SessionUpdate, _meta: JsonElement?) {
             val sendResult = notifications.trySend(Pair(notification, _meta))
 
@@ -714,7 +728,16 @@ public class Client(
                 for ((id, holder) in hangingSessions) {
                     logger.trace { "Removing hanging session $id" }
                     // report it as non existent session
-                    holder.completeExceptionally(AcpExpectedError("Session $id not found"))
+                    val queuedUpdates = holder.completeExceptionallyAndDrainQueue(AcpExpectedError("Session $id not found"))
+                    // These were buffered on the assumption they might belong to this (or another concurrent)
+                    // initialization; since none claimed `id`, it's an unconnected session, same as if no
+                    // initialization had been in progress when its updates arrived.
+                    val handler = globalSessionUpdateHandler
+                    if (handler != null) {
+                        for ((update, meta) in queuedUpdates) {
+                            handler.onUnconnectedSessionUpdate(id, update, meta)
+                        }
+                    }
                 }
             }
         }
