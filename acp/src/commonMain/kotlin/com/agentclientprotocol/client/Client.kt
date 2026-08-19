@@ -43,7 +43,9 @@ public typealias ClientInstance = Client
 public class Client(
     public val protocol: Protocol,
     @property:UnstableApi
-    public val globalElicitationHandler: GlobalElicitationHandler? = null
+    public val globalElicitationHandler: GlobalElicitationHandler? = null,
+    @property:UnstableApi
+    public val globalSessionUpdateHandler: GlobalSessionUpdateHandler? = null
 ) {
     private class ClientSessionHolder {
         private val sessionDeferred: CompletableDeferred<ClientSessionImpl> = CompletableDeferred()
@@ -229,7 +231,12 @@ public class Client(
             // unlike other session-scoped methods, an unknown/unconnected session here must not fail the call.
             val sessionHolder = findSessionHolder(params.sessionId)
             if (sessionHolder == null) {
-                logger.debug { "Ignoring session/update for session ${params.sessionId}: client is not connected to it" }
+                val handler = globalSessionUpdateHandler
+                if (handler != null) {
+                    handler.onUnconnectedSessionUpdate(params.sessionId, params.update, params._meta)
+                } else {
+                    logger.debug { "Ignoring session/update for session ${params.sessionId}: client is not connected to it" }
+                }
                 return@setNotificationHandler
             }
             sessionHolder.handleOrQueue(params.update, params._meta)
