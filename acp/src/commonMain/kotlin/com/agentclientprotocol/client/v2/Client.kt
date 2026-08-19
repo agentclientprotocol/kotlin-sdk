@@ -159,9 +159,8 @@ public class Client(
      * Sends the v2 handshake.
      *
      * @throws UnsupportedProtocolVersionException if the agent answers with a different version. The
-     *   connection is **not** closed, because a client that also speaks v1 can put a v1
-     *   [com.agentclientprotocol.client.Client] on the same protocol and retry; one that cannot should
-     *   close it.
+     *   connection is **not** closed; [com.agentclientprotocol.client.ClientNegotiator] can select the
+     *   matching client directly from the raw response without repeating the handshake.
      */
     public suspend fun initialize(clientInfo: ClientInfo, _meta: JsonElement? = null): AgentInfo {
         protocol.negotiatedProtocolVersionOrNull?.let { version ->
@@ -175,6 +174,12 @@ public class Client(
                 InitializeRequest(clientInfo.protocolVersion, clientInfo.implementation, clientInfo.capabilities, _meta)
             ),
         )
+        return completeInitialize(clientInfo, rawResponse)
+    }
+
+    /** Completes initialization from an `initialize` response already received by `ClientNegotiator`. */
+    internal fun completeInitialize(clientInfo: ClientInfo, rawResponse: JsonElement): AgentInfo {
+        val method = AcpMethod.AgentMethods.V2.Initialize
         // The version is read before the payload is decoded, because an agent that speaks another version
         // answers in that version's shape: v1's response carries `agentInfo` where v2 requires `info`, so
         // decoding first would report a missing field instead of the version mismatch it really is.

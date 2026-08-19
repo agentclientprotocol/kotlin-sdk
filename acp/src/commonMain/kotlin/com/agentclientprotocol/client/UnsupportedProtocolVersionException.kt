@@ -7,8 +7,8 @@ import com.agentclientprotocol.model.ProtocolVersion
  *
  * The spec says a client in this situation SHOULD close the connection and inform the user about it
  * ([version negotiation](https://agentclientprotocol.com/protocol/v2/initialization#version-negotiation)).
- * The connection is already closed when this is thrown; this exception is the "inform" half, so it
- * carries everything needed to explain the mismatch.
+ * Whether it is closed before this exception is thrown depends on the caller: a negotiator may keep it
+ * open to retry with a version the agent offered.
  *
  * @property requestedVersion the version the client asked for
  * @property offeredVersion the version the agent answered with
@@ -20,5 +20,5 @@ public class UnsupportedProtocolVersionException(
     public val supportedVersions: Set<ProtocolVersion>,
 ) : Exception(
     "The agent answered protocol version $offeredVersion, which this client does not support " +
-        "(requested $requestedVersion, supports $supportedVersions). The connection has been closed."
+        "(requested $requestedVersion, supports $supportedVersions)."
 )

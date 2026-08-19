@@ -340,6 +340,12 @@ public final class com/agentclientprotocol/client/ClientInfo$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class com/agentclientprotocol/client/ClientNegotiator {
+	public fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/V1ClientConfig;Lcom/agentclientprotocol/client/V2ClientConfig;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/V1ClientConfig;Lcom/agentclientprotocol/client/V2ClientConfig;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun negotiate (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
 public abstract interface class com/agentclientprotocol/client/ClientNesSession {
 	public abstract fun accept (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun accept$default (Lcom/agentclientprotocol/client/ClientNesSession;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
@@ -425,11 +431,44 @@ public abstract interface class com/agentclientprotocol/client/GlobalElicitation
 	public abstract fun createElicitation (Lcom/agentclientprotocol/model/CreateElicitationRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
+public abstract interface class com/agentclientprotocol/client/NegotiatedClient {
+	public abstract fun getProtocolVersion ()I
+}
+
+public final class com/agentclientprotocol/client/NegotiatedClient$V1 : com/agentclientprotocol/client/NegotiatedClient {
+	public fun <init> (Lcom/agentclientprotocol/client/Client;Lcom/agentclientprotocol/agent/AgentInfo;)V
+	public final fun getAgentInfo ()Lcom/agentclientprotocol/agent/AgentInfo;
+	public final fun getClient ()Lcom/agentclientprotocol/client/Client;
+	public fun getProtocolVersion ()I
+}
+
+public final class com/agentclientprotocol/client/NegotiatedClient$V2 : com/agentclientprotocol/client/NegotiatedClient {
+	public fun <init> (Lcom/agentclientprotocol/client/v2/Client;Lcom/agentclientprotocol/agent/v2/AgentInfo;)V
+	public final fun getAgentInfo ()Lcom/agentclientprotocol/agent/v2/AgentInfo;
+	public final fun getClient ()Lcom/agentclientprotocol/client/v2/Client;
+	public fun getProtocolVersion ()I
+}
+
 public final class com/agentclientprotocol/client/UnsupportedProtocolVersionException : java/lang/Exception {
 	public fun <init> (IILjava/util/Set;)V
 	public final fun getOfferedVersion ()I
 	public final fun getRequestedVersion ()I
 	public final fun getSupportedVersions ()Ljava/util/Set;
+}
+
+public final class com/agentclientprotocol/client/V1ClientConfig {
+	public fun <init> ()V
+	public fun <init> (Lcom/agentclientprotocol/client/ClientInfo;Lcom/agentclientprotocol/client/GlobalElicitationHandler;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/client/ClientInfo;Lcom/agentclientprotocol/client/GlobalElicitationHandler;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getClientInfo ()Lcom/agentclientprotocol/client/ClientInfo;
+	public final fun getGlobalElicitationHandler ()Lcom/agentclientprotocol/client/GlobalElicitationHandler;
+}
+
+public final class com/agentclientprotocol/client/V2ClientConfig {
+	public fun <init> (Lcom/agentclientprotocol/client/v2/ClientInfo;Lcom/agentclientprotocol/client/v2/ElicitationHandler;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/client/v2/ClientInfo;Lcom/agentclientprotocol/client/v2/ElicitationHandler;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getClientInfo ()Lcom/agentclientprotocol/client/v2/ClientInfo;
+	public final fun getElicitationHandler ()Lcom/agentclientprotocol/client/v2/ElicitationHandler;
 }
 
 public final class com/agentclientprotocol/client/v2/Client {

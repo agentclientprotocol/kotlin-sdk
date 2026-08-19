@@ -10,6 +10,7 @@ import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.common.TerminalOperations
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.*
+import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.util.PaginatedResponseToFlowAdapter
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
@@ -306,12 +307,21 @@ public class Client(
      *   [ClientInfo.supportedProtocolVersions]; the connection is closed before throwing
      */
     public suspend fun initialize(clientInfo: ClientInfo, _meta: JsonElement? = null): AgentInfo {
-        _clientInfo.complete(clientInfo)
-        val initializeResponse = AcpMethod.AgentMethods.V1.Initialize(
-            protocol,
-            InitializeRequest(clientInfo.protocolVersion, clientInfo.capabilities, clientInfo.implementation, _meta)
+        val method = AcpMethod.AgentMethods.V1.Initialize
+        val rawResponse = protocol.sendRequestRaw(
+            method.methodName,
+            ACPJson.encodeToJsonElement(
+                method.requestSerializer,
+                InitializeRequest(clientInfo.protocolVersion, clientInfo.capabilities, clientInfo.implementation, _meta),
+            ),
         )
-        val offeredVersion = initializeResponse.protocolVersion
+        return completeInitialize(clientInfo, rawResponse)
+    }
+
+    /** Completes initialization from an `initialize` response already received by [ClientNegotiator]. */
+    internal fun completeInitialize(clientInfo: ClientInfo, rawResponse: JsonElement): AgentInfo {
+        val offeredVersion = readProtocolVersionOrNull(rawResponse)
+            ?: acpFail("The agent's initialize response is missing the required `protocolVersion` field")
         if (offeredVersion !in clientInfo.supportedProtocolVersions) {
             // see https://agentclientprotocol.com/protocol/v2/initialization#version-negotiation
             logger.error {
@@ -325,13 +335,16 @@ public class Client(
                 supportedVersions = clientInfo.supportedProtocolVersions,
             )
         }
+        val method = AcpMethod.AgentMethods.V1.Initialize
+        val initializeResponse = ACPJson.decodeFromJsonElement(method.responseSerializer, rawResponse)
         val negotiatedVersion = protocol.recordNegotiatedProtocolVersion(offeredVersion)
         if (negotiatedVersion != offeredVersion) {
             logger.warn {
                 "Repeated initialize answered protocol version $offeredVersion, but this connection already " +
-                    "speaks $negotiatedVersion; keeping $negotiatedVersion"
+                "speaks $negotiatedVersion; keeping $negotiatedVersion"
             }
         }
+        _clientInfo.complete(clientInfo)
         val agentInfo = AgentInfo(offeredVersion, initializeResponse.agentCapabilities, initializeResponse.authMethods, initializeResponse.agentInfo, initializeResponse._meta)
         _agentInfo.complete(agentInfo)
         return agentInfo
