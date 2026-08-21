@@ -13,7 +13,10 @@ dependencies {
 }
 
 application {
-    mainClass.set("com.agentclientprotocol.samples.client.ClientSampleKt")
+    mainClass.set(
+        providers.gradleProperty("mainClass")
+            .orElse("com.agentclientprotocol.samples.SimpleAgentAppKt")
+    )
 }
 
 kotlin {

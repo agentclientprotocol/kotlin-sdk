@@ -24,14 +24,14 @@ public interface AgentSession {
      * Sends a message to the agent for execution and waits for the whole turn to be completed.
      * During execution, the agent can send notifications or requests to the client.
      *
-     * Corresponds to the [AcpMethod.AgentMethods.SessionPrompt]
+     * Corresponds to the [AcpMethod.AgentMethods.V1.SessionPrompt]
      */
     public suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): Flow<Event>
 
     /**
      * Cancels the current agent turn and returns after the agent canceled all activities of the current turn.
      *
-     * Corresponds to the [AcpMethod.AgentMethods.SessionCancel]
+     * Corresponds to the [AcpMethod.AgentMethods.V1.SessionCancel]
      */
     public suspend fun cancel() {}
 
@@ -46,7 +46,7 @@ public interface AgentSession {
      *
      * Only called if the agent advertises the `session.close` capability.
      *
-     * Corresponds to the [AcpMethod.AgentMethods.SessionClose]
+     * Corresponds to the [AcpMethod.AgentMethods.V1.SessionClose]
      */
     @UnstableApi
     public suspend fun close(_meta: JsonElement?): CloseSessionResponse {

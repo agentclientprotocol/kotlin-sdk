@@ -162,6 +162,119 @@ public final class com/agentclientprotocol/agent/NesAgentSession$DefaultImpls {
 	public static synthetic fun reject$default (Lcom/agentclientprotocol/agent/NesAgentSession;Ljava/lang/String;Lcom/agentclientprotocol/model/NesRejectReason;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
+public final class com/agentclientprotocol/agent/v2/Agent {
+	public fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/agent/v2/AgentSupport;)V
+	public final fun getClientInfo ()Lkotlinx/coroutines/Deferred;
+	public final fun getProtocol ()Lcom/agentclientprotocol/protocol/Protocol;
+}
+
+public final class com/agentclientprotocol/agent/v2/AgentInfo {
+	public fun <init> (Lcom/agentclientprotocol/model/Implementation;Lcom/agentclientprotocol/model/v2/AgentCapabilities;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/Implementation;Lcom/agentclientprotocol/model/v2/AgentCapabilities;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getAuthMethods ()Ljava/util/List;
+	public final fun getCapabilities ()Lcom/agentclientprotocol/model/v2/AgentCapabilities;
+	public final fun getImplementation ()Lcom/agentclientprotocol/model/Implementation;
+	public final fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+}
+
+public abstract interface class com/agentclientprotocol/agent/v2/AgentSession {
+	public fun cancel (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun cancel$suspendImpl (Lcom/agentclientprotocol/agent/v2/AgentSession;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun getConfigOptions ()Ljava/util/List;
+	public abstract fun getSessionId-7EW-EgU ()Ljava/lang/String;
+	public abstract fun prompt (Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)Lkotlinx/coroutines/flow/Flow;
+	public static synthetic fun prompt$default (Lcom/agentclientprotocol/agent/v2/AgentSession;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
+	public fun setConfigOption-A2gp-xI (Ljava/lang/String;Lcom/agentclientprotocol/model/v2/SessionConfigOptionValue;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun setConfigOption-A2gp-xI$default (Lcom/agentclientprotocol/agent/v2/AgentSession;Ljava/lang/String;Lcom/agentclientprotocol/model/v2/SessionConfigOptionValue;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun setConfigOption-A2gp-xI$suspendImpl (Lcom/agentclientprotocol/agent/v2/AgentSession;Ljava/lang/String;Lcom/agentclientprotocol/model/v2/SessionConfigOptionValue;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class com/agentclientprotocol/agent/v2/AgentSession$DefaultImpls {
+	public static fun cancel (Lcom/agentclientprotocol/agent/v2/AgentSession;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun getConfigOptions (Lcom/agentclientprotocol/agent/v2/AgentSession;)Ljava/util/List;
+	public static synthetic fun prompt$default (Lcom/agentclientprotocol/agent/v2/AgentSession;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
+	public static fun setConfigOption-A2gp-xI (Lcom/agentclientprotocol/agent/v2/AgentSession;Ljava/lang/String;Lcom/agentclientprotocol/model/v2/SessionConfigOptionValue;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun setConfigOption-A2gp-xI$default (Lcom/agentclientprotocol/agent/v2/AgentSession;Ljava/lang/String;Lcom/agentclientprotocol/model/v2/SessionConfigOptionValue;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public abstract interface class com/agentclientprotocol/agent/v2/AgentSupport {
+	public fun closeSession-nk3TnMc (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun closeSession-nk3TnMc$default (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun closeSession-nk3TnMc$suspendImpl (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun createSession (Lcom/agentclientprotocol/agent/v2/SessionCreationParameters;Lcom/agentclientprotocol/agent/v2/ClientOperations;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun deleteSession-nk3TnMc (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun deleteSession-nk3TnMc$default (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun deleteSession-nk3TnMc$suspendImpl (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun disableProvider--cwnx-4 (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun disableProvider--cwnx-4$default (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun disableProvider--cwnx-4$suspendImpl (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun forkSession-wPMwmcM (Ljava/lang/String;Lcom/agentclientprotocol/agent/v2/SessionCreationParameters;Lcom/agentclientprotocol/agent/v2/ClientOperations;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun forkSession-wPMwmcM$suspendImpl (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/agent/v2/SessionCreationParameters;Lcom/agentclientprotocol/agent/v2/ClientOperations;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun initialize (Lcom/agentclientprotocol/client/v2/ClientInfo;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun listProviders (Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun listProviders$default (Lcom/agentclientprotocol/agent/v2/AgentSupport;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun listProviders$suspendImpl (Lcom/agentclientprotocol/agent/v2/AgentSupport;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun listSessions (Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun listSessions$default (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun listSessions$suspendImpl (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun login-fMnwWJU (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun login-fMnwWJU$default (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun login-fMnwWJU$suspendImpl (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun logout (Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun logout$default (Lcom/agentclientprotocol/agent/v2/AgentSupport;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun logout$suspendImpl (Lcom/agentclientprotocol/agent/v2/AgentSupport;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun resumeSession-8WrnS2s (Ljava/lang/String;Lcom/agentclientprotocol/agent/v2/SessionCreationParameters;Lcom/agentclientprotocol/model/v2/ReplayFrom;Lcom/agentclientprotocol/agent/v2/ClientOperations;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun resumeSession-8WrnS2s$suspendImpl (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/agent/v2/SessionCreationParameters;Lcom/agentclientprotocol/model/v2/ReplayFrom;Lcom/agentclientprotocol/agent/v2/ClientOperations;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun setProvider-IcdA4Ws (Ljava/lang/String;Lcom/agentclientprotocol/model/v2/LlmProtocol;Ljava/lang/String;Ljava/util/Map;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun setProvider-IcdA4Ws$default (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/model/v2/LlmProtocol;Ljava/lang/String;Ljava/util/Map;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun setProvider-IcdA4Ws$suspendImpl (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/model/v2/LlmProtocol;Ljava/lang/String;Ljava/util/Map;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class com/agentclientprotocol/agent/v2/AgentSupport$DefaultImpls {
+	public static fun closeSession-nk3TnMc (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun closeSession-nk3TnMc$default (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static fun deleteSession-nk3TnMc (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun deleteSession-nk3TnMc$default (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static fun disableProvider--cwnx-4 (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun disableProvider--cwnx-4$default (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static fun forkSession-wPMwmcM (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/agent/v2/SessionCreationParameters;Lcom/agentclientprotocol/agent/v2/ClientOperations;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun listProviders (Lcom/agentclientprotocol/agent/v2/AgentSupport;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun listProviders$default (Lcom/agentclientprotocol/agent/v2/AgentSupport;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static fun listSessions (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun listSessions$default (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static fun login-fMnwWJU (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun login-fMnwWJU$default (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static fun logout (Lcom/agentclientprotocol/agent/v2/AgentSupport;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun logout$default (Lcom/agentclientprotocol/agent/v2/AgentSupport;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static fun resumeSession-8WrnS2s (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/agent/v2/SessionCreationParameters;Lcom/agentclientprotocol/model/v2/ReplayFrom;Lcom/agentclientprotocol/agent/v2/ClientOperations;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun setProvider-IcdA4Ws (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/model/v2/LlmProtocol;Ljava/lang/String;Ljava/util/Map;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun setProvider-IcdA4Ws$default (Lcom/agentclientprotocol/agent/v2/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/model/v2/LlmProtocol;Ljava/lang/String;Ljava/util/Map;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public abstract interface class com/agentclientprotocol/agent/v2/ClientOperations {
+	public abstract fun completeElicitation-hBnOb4M (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)V
+	public static synthetic fun completeElicitation-hBnOb4M$default (Lcom/agentclientprotocol/agent/v2/ClientOperations;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)V
+	public abstract fun createElicitation (Ljava/lang/String;Lcom/agentclientprotocol/model/v2/ElicitationMode;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun createElicitation$default (Lcom/agentclientprotocol/agent/v2/ClientOperations;Ljava/lang/String;Lcom/agentclientprotocol/model/v2/ElicitationMode;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public abstract fun requestPermission (Ljava/lang/String;Ljava/util/List;Lcom/agentclientprotocol/model/v2/RequestPermissionSubject;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun requestPermission$default (Lcom/agentclientprotocol/agent/v2/ClientOperations;Ljava/lang/String;Ljava/util/List;Lcom/agentclientprotocol/model/v2/RequestPermissionSubject;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class com/agentclientprotocol/agent/v2/ClientOperations$DefaultImpls {
+	public static synthetic fun completeElicitation-hBnOb4M$default (Lcom/agentclientprotocol/agent/v2/ClientOperations;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)V
+	public static synthetic fun createElicitation$default (Lcom/agentclientprotocol/agent/v2/ClientOperations;Ljava/lang/String;Lcom/agentclientprotocol/model/v2/ElicitationMode;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun requestPermission$default (Lcom/agentclientprotocol/agent/v2/ClientOperations;Ljava/lang/String;Ljava/util/List;Lcom/agentclientprotocol/model/v2/RequestPermissionSubject;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class com/agentclientprotocol/agent/v2/SessionCreationParameters {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getAdditionalDirectories ()Ljava/util/List;
+	public final fun getCwd ()Ljava/lang/String;
+	public final fun getMcpServers ()Ljava/util/List;
+	public final fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+}
+
 public final class com/agentclientprotocol/client/Client {
 	public fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/GlobalElicitationHandler;)V
 	public synthetic fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/GlobalElicitationHandler;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -198,11 +311,12 @@ public final class com/agentclientprotocol/client/Client {
 public final class com/agentclientprotocol/client/ClientInfo {
 	public static final field Companion Lcom/agentclientprotocol/client/ClientInfo$Companion;
 	public fun <init> ()V
-	public fun <init> (ILcom/agentclientprotocol/model/ClientCapabilities;Lcom/agentclientprotocol/model/Implementation;Lkotlinx/serialization/json/JsonElement;)V
-	public synthetic fun <init> (ILcom/agentclientprotocol/model/ClientCapabilities;Lcom/agentclientprotocol/model/Implementation;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (ILcom/agentclientprotocol/model/ClientCapabilities;Lcom/agentclientprotocol/model/Implementation;Lkotlinx/serialization/json/JsonElement;Ljava/util/Set;)V
+	public synthetic fun <init> (ILcom/agentclientprotocol/model/ClientCapabilities;Lcom/agentclientprotocol/model/Implementation;Lkotlinx/serialization/json/JsonElement;Ljava/util/Set;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getCapabilities ()Lcom/agentclientprotocol/model/ClientCapabilities;
 	public final fun getImplementation ()Lcom/agentclientprotocol/model/Implementation;
 	public final fun getProtocolVersion ()I
+	public final fun getSupportedProtocolVersions ()Ljava/util/Set;
 	public final fun get_meta ()Lkotlinx/serialization/json/JsonElement;
 }
 
@@ -219,6 +333,12 @@ public final synthetic class com/agentclientprotocol/client/ClientInfo$$serializ
 
 public final class com/agentclientprotocol/client/ClientInfo$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/client/ClientNegotiator {
+	public fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/V1ClientConfig;Lcom/agentclientprotocol/client/V2ClientConfig;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/V1ClientConfig;Lcom/agentclientprotocol/client/V2ClientConfig;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun negotiate (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
 public abstract interface class com/agentclientprotocol/client/ClientNesSession {
@@ -304,6 +424,123 @@ public final class com/agentclientprotocol/client/ClientSessionKt {
 
 public abstract interface class com/agentclientprotocol/client/GlobalElicitationHandler {
 	public abstract fun createElicitation (Lcom/agentclientprotocol/model/CreateElicitationRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class com/agentclientprotocol/client/NegotiatedClient {
+	public abstract fun getProtocolVersion ()I
+}
+
+public final class com/agentclientprotocol/client/NegotiatedClient$V1 : com/agentclientprotocol/client/NegotiatedClient {
+	public fun <init> (Lcom/agentclientprotocol/client/Client;Lcom/agentclientprotocol/agent/AgentInfo;)V
+	public final fun getAgentInfo ()Lcom/agentclientprotocol/agent/AgentInfo;
+	public final fun getClient ()Lcom/agentclientprotocol/client/Client;
+	public fun getProtocolVersion ()I
+}
+
+public final class com/agentclientprotocol/client/NegotiatedClient$V2 : com/agentclientprotocol/client/NegotiatedClient {
+	public fun <init> (Lcom/agentclientprotocol/client/v2/Client;Lcom/agentclientprotocol/agent/v2/AgentInfo;)V
+	public final fun getAgentInfo ()Lcom/agentclientprotocol/agent/v2/AgentInfo;
+	public final fun getClient ()Lcom/agentclientprotocol/client/v2/Client;
+	public fun getProtocolVersion ()I
+}
+
+public final class com/agentclientprotocol/client/UnsupportedProtocolVersionException : java/lang/Exception {
+	public fun <init> (IILjava/util/Set;)V
+	public final fun getOfferedVersion ()I
+	public final fun getRequestedVersion ()I
+	public final fun getSupportedVersions ()Ljava/util/Set;
+}
+
+public final class com/agentclientprotocol/client/V1ClientConfig {
+	public fun <init> ()V
+	public fun <init> (Lcom/agentclientprotocol/client/ClientInfo;Lcom/agentclientprotocol/client/GlobalElicitationHandler;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/client/ClientInfo;Lcom/agentclientprotocol/client/GlobalElicitationHandler;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getClientInfo ()Lcom/agentclientprotocol/client/ClientInfo;
+	public final fun getGlobalElicitationHandler ()Lcom/agentclientprotocol/client/GlobalElicitationHandler;
+}
+
+public final class com/agentclientprotocol/client/V2ClientConfig {
+	public fun <init> (Lcom/agentclientprotocol/client/v2/ClientInfo;Lcom/agentclientprotocol/client/v2/ElicitationHandler;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/client/v2/ClientInfo;Lcom/agentclientprotocol/client/v2/ElicitationHandler;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getClientInfo ()Lcom/agentclientprotocol/client/v2/ClientInfo;
+	public final fun getElicitationHandler ()Lcom/agentclientprotocol/client/v2/ElicitationHandler;
+}
+
+public final class com/agentclientprotocol/client/v2/Client {
+	public fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/v2/ElicitationHandler;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/v2/ElicitationHandler;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun deleteSession-nk3TnMc (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun deleteSession-nk3TnMc$default (Lcom/agentclientprotocol/client/v2/Client;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun disableProvider--cwnx-4 (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun disableProvider--cwnx-4$default (Lcom/agentclientprotocol/client/v2/Client;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun forkSession-DviXOH0 (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lcom/agentclientprotocol/client/v2/ClientSessionOperations;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun forkSession-DviXOH0$default (Lcom/agentclientprotocol/client/v2/Client;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lcom/agentclientprotocol/client/v2/ClientSessionOperations;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun getAgentInfo ()Lkotlinx/coroutines/Deferred;
+	public final fun getClientInfo ()Lkotlinx/coroutines/Deferred;
+	public final fun getProtocol ()Lcom/agentclientprotocol/protocol/Protocol;
+	public final fun getSession-0izbxq0 (Ljava/lang/String;)Lcom/agentclientprotocol/client/v2/ClientSession;
+	public final fun initialize (Lcom/agentclientprotocol/client/v2/ClientInfo;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun initialize$default (Lcom/agentclientprotocol/client/v2/Client;Lcom/agentclientprotocol/client/v2/ClientInfo;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun listProviders (Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun listProviders$default (Lcom/agentclientprotocol/client/v2/Client;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun listSessions (Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun listSessions$default (Lcom/agentclientprotocol/client/v2/Client;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun login-fMnwWJU (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun login-fMnwWJU$default (Lcom/agentclientprotocol/client/v2/Client;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun logout (Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun logout$default (Lcom/agentclientprotocol/client/v2/Client;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun newSession (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lcom/agentclientprotocol/client/v2/ClientSessionOperations;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun newSession$default (Lcom/agentclientprotocol/client/v2/Client;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lcom/agentclientprotocol/client/v2/ClientSessionOperations;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun resumeSession-aXQG-3s (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lcom/agentclientprotocol/model/v2/ReplayFrom;Lcom/agentclientprotocol/client/v2/ClientSessionOperations;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun resumeSession-aXQG-3s$default (Lcom/agentclientprotocol/client/v2/Client;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lcom/agentclientprotocol/model/v2/ReplayFrom;Lcom/agentclientprotocol/client/v2/ClientSessionOperations;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun setProvider-IcdA4Ws (Ljava/lang/String;Lcom/agentclientprotocol/model/v2/LlmProtocol;Ljava/lang/String;Ljava/util/Map;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun setProvider-IcdA4Ws$default (Lcom/agentclientprotocol/client/v2/Client;Ljava/lang/String;Lcom/agentclientprotocol/model/v2/LlmProtocol;Ljava/lang/String;Ljava/util/Map;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class com/agentclientprotocol/client/v2/ClientInfo {
+	public fun <init> (ILcom/agentclientprotocol/model/Implementation;Lcom/agentclientprotocol/model/v2/ClientCapabilities;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (ILcom/agentclientprotocol/model/Implementation;Lcom/agentclientprotocol/model/v2/ClientCapabilities;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getCapabilities ()Lcom/agentclientprotocol/model/v2/ClientCapabilities;
+	public final fun getImplementation ()Lcom/agentclientprotocol/model/Implementation;
+	public final fun getProtocolVersion ()I
+	public final fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+}
+
+public final class com/agentclientprotocol/client/v2/ClientSession {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/v2/ClientSessionOperations;Lkotlinx/coroutines/flow/Flow;Lkotlin/jvm/functions/Function0;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun cancel (Lkotlinx/serialization/json/JsonElement;)V
+	public static synthetic fun cancel$default (Lcom/agentclientprotocol/client/v2/ClientSession;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)V
+	public final fun close (Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun close$default (Lcom/agentclientprotocol/client/v2/ClientSession;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun getConfigOptions ()Ljava/util/List;
+	public final fun getSessionId-7EW-EgU ()Ljava/lang/String;
+	public final fun getUpdates ()Lkotlinx/coroutines/flow/Flow;
+	public final fun prompt (Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun prompt$default (Lcom/agentclientprotocol/client/v2/ClientSession;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun setConfigOption-A2gp-xI (Ljava/lang/String;Lcom/agentclientprotocol/model/v2/SessionConfigOptionValue;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun setConfigOption-A2gp-xI$default (Lcom/agentclientprotocol/client/v2/ClientSession;Ljava/lang/String;Lcom/agentclientprotocol/model/v2/SessionConfigOptionValue;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class com/agentclientprotocol/client/v2/ClientSession$UpdateWithMeta {
+	public fun <init> (Lcom/agentclientprotocol/model/v2/SessionUpdate;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/v2/SessionUpdate;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getUpdate ()Lcom/agentclientprotocol/model/v2/SessionUpdate;
+	public final fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+}
+
+public abstract interface class com/agentclientprotocol/client/v2/ClientSessionOperations {
+	public abstract fun requestPermission (Lcom/agentclientprotocol/model/v2/RequestPermissionRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class com/agentclientprotocol/client/v2/ElicitationHandler {
+	public abstract fun createElicitation (Lcom/agentclientprotocol/model/v2/CreateElicitationRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun elicitationCompleted-hBnOb4M (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)V
+	public static synthetic fun elicitationCompleted-hBnOb4M$default (Lcom/agentclientprotocol/client/v2/ElicitationHandler;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)V
+}
+
+public final class com/agentclientprotocol/client/v2/ElicitationHandler$DefaultImpls {
+	public static fun elicitationCompleted-hBnOb4M (Lcom/agentclientprotocol/client/v2/ElicitationHandler;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)V
+	public static synthetic fun elicitationCompleted-hBnOb4M$default (Lcom/agentclientprotocol/client/v2/ElicitationHandler;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)V
 }
 
 public abstract interface class com/agentclientprotocol/common/ClientSessionOperations : com/agentclientprotocol/common/ElicitationOperations, com/agentclientprotocol/common/FileSystemOperations, com/agentclientprotocol/common/TerminalOperations {

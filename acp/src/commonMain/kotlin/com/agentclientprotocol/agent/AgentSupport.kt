@@ -23,6 +23,10 @@ public interface AgentSupport {
      *
      * Called when a client connects and sends an initialize request.
      *
+     * Note that [AgentInfo.protocolVersion] is not what decides the version of the connection. This
+     * interface is served by the v1 [Agent], and the SDK replaces whatever this method returns with
+     * the version negotiated by that runtime. See [AgentInfo.protocolVersion].
+     *
      * @param clientInfo information about the connecting client
      * @return an [AgentInfo] containing the agent's capabilities and information
      */

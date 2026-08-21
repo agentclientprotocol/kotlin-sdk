@@ -294,7 +294,15 @@ Prefer a fully wired example? Launch the repository sample that pairs the agent 
 
 # Gemini interactive client (requires external Gemini ACP agent)
 ./gradlew :samples:kotlin-acp-client-sample:run \
-    -PmainClass=com.agentclientprotocol.samples.client.GeminiClientAppKt
+    -PmainClass=com.agentclientprotocol.samples.GeminiClientAppKt
+
+# Direct v2 client and agent
+./gradlew :samples:kotlin-acp-client-sample:run \
+    -PmainClass=com.agentclientprotocol.samples.V2SimpleAgentAppKt
+
+# Select v1 or v2 with ClientNegotiator, then run the v2 conversation
+./gradlew :samples:kotlin-acp-client-sample:run \
+    -PmainClass=com.agentclientprotocol.samples.V2NegotiationAppKt
 ```
 
 ## Sample projects
@@ -302,7 +310,9 @@ Prefer a fully wired example? Launch the repository sample that pairs the agent 
 | Project | Shows | Command |
 | --- | --- | --- |
 | `samples:kotlin-acp-client-sample` | End-to-end agent + client with STDIO transport | `./gradlew :samples:kotlin-acp-client-sample:run` |
-| `samples/client/GeminiClientApp.kt` | Interactive CLI client that talks to an external Gemini ACP agent | `./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=...GeminiClientAppKt` |
+| `GeminiClientApp.kt` | Interactive CLI client that talks to an external Gemini ACP agent | `./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=...GeminiClientAppKt` |
+| `V2SimpleAgentApp.kt` | Direct v2 client and agent conversation | `./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=...V2SimpleAgentAppKt` |
+| `V2NegotiationApp.kt` | Client negotiation followed by a v2 conversation | `./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=...V2NegotiationAppKt` |
 
 Each sample includes comments that explain the protocol lifecycle and can be used as templates for real applications.
 

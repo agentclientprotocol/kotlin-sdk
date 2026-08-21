@@ -17,7 +17,7 @@ private val logger = KotlinLogging.logger {}
  * 
  * Usage:
  * ```
- * ./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=com.agentclientprotocol.samples.client.GeminiClientAppKt
+ * ./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=com.agentclientprotocol.samples.GeminiClientAppKt
  * ```
  */
 suspend fun main() = coroutineScope {

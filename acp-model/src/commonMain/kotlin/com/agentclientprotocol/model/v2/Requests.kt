@@ -3,16 +3,12 @@
 package com.agentclientprotocol.model.v2
 
 import com.agentclientprotocol.annotations.UnstableApi
-import com.agentclientprotocol.model.AcpRequest
-import com.agentclientprotocol.model.AcpResponse
 import com.agentclientprotocol.model.AcpWithMeta
 import com.agentclientprotocol.model.AuthEnvVar
 import com.agentclientprotocol.model.AuthMethodId
 import com.agentclientprotocol.model.EnvVariable
 import com.agentclientprotocol.model.HttpHeader
-import com.agentclientprotocol.model.Implementation
 import com.agentclientprotocol.model.PermissionOptionId
-import com.agentclientprotocol.model.ProtocolVersion
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonElement
@@ -570,51 +566,3 @@ internal object RequestPermissionOutcomeSerializer : OpenTaggedUnionSerializer<R
     unknown = RequestPermissionOutcome::Unknown,
     rawJson = { (it as? RequestPermissionOutcome.Unknown)?.rawJson },
 )
-
-// === Initialization ===
-
-/**
- * Request parameters for the `initialize` method.
- *
- * Sent by the client to establish connection and negotiate capabilities.
- *
- * Unlike v1, the capability field is role-agnostic `capabilities` (renamed from
- * `clientCapabilities`) and [info] is **required** (renamed from the optional
- * `clientInfo`).
- *
- * See protocol docs: [Initialization](https://agentclientprotocol.com/protocol/v2/initialization)
- */
-@UnstableApi
-@Serializable
-public data class InitializeRequest(
-    val protocolVersion: ProtocolVersion,
-    val info: Implementation,
-    val capabilities: ClientCapabilities = ClientCapabilities(),
-    override val _meta: JsonElement? = null,
-) : AcpRequest
-
-/**
- * Response from the `initialize` method.
- *
- * Contains the negotiated protocol version and agent capabilities.
- *
- * Unlike v1, the capability field is role-agnostic `capabilities` (renamed from
- * `agentCapabilities`) and [info] is **required** (renamed from the optional
- * `agentInfo`).
- *
- * [authMethods] also carries new semantics: returning one or more valid methods means the
- * agent MUST implement both `auth/login` and `auth/logout`, and an omitted or empty list
- * means clients MUST NOT call either. The v1 `agentCapabilities.auth.logout` marker that
- * used to advertise logout support is gone.
- *
- * See protocol docs: [Initialization](https://agentclientprotocol.com/protocol/v2/initialization)
- */
-@UnstableApi
-@Serializable
-public data class InitializeResponse(
-    val protocolVersion: ProtocolVersion,
-    val info: Implementation,
-    val capabilities: AgentCapabilities = AgentCapabilities(),
-    val authMethods: List<AuthMethod> = emptyList(),
-    override val _meta: JsonElement? = null,
-) : AcpResponse

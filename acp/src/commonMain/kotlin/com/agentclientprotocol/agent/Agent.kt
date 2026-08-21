@@ -23,8 +23,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
-import kotlin.math.min
-import kotlin.uuid.ExperimentalUuidApi
 
 private val logger = KotlinLogging.logger {}
 
@@ -36,13 +34,17 @@ private val logger = KotlinLogging.logger {}
  * based on client requests. Additionally, it manages client-specific information and
  * ensures proper session lifecycle management.
  *
+ * This class serves protocol version 1. Version 2 is a separate
+ * [com.agentclientprotocol.agent.v2.Agent]: a connection speaks one version, decided by which of the two
+ * was put on it, and the two never share a connection because they claim the same handler names.
+ *
  * @property protocol The protocol instance used to set up communication handlers.
  * @property agentSupport An `AgentSupport` instance used for executing core agent operations such as session creation and authentication.
  */
 public class Agent(
     public val protocol: Protocol,
-    private val agentSupport: AgentSupport
-    ) {
+    private val agentSupport: AgentSupport,
+) {
 
     internal open class BaseSessionWrapper(
         val agent: Agent,
@@ -119,7 +121,7 @@ public class Agent(
         }
     }
 
-    internal class NesSessionWrapper(
+    internal class NesSessionWrapper @OptIn(UnstableApi::class) constructor(
         agent: Agent,
         val nesSession: NesAgentSession,
         protocol: Protocol
@@ -127,6 +129,7 @@ public class Agent(
 
     private val _clientInfo = CompletableDeferred<ClientInfo>()
     private val _sessions = atomic(persistentMapOf<SessionId, SessionWrapper>())
+
     private val _nesSessions = atomic(persistentMapOf<SessionId, NesSessionWrapper>())
 
     internal fun getClientInfoOrThrow(): ClientInfo {
@@ -140,55 +143,86 @@ public class Agent(
     }
 
 
-    @OptIn(ExperimentalUuidApi::class, UnstableApi::class)
+    /**
+     * Serves `initialize`.
+     *
+     * A request for another version is answered with v1 all the same: the payload is read with v1 types,
+     * the only shape this class has ever accepted, and negotiation answers with the version this runtime
+     * speaks
+     * ([version negotiation](https://agentclientprotocol.com/protocol/v2/initialization#version-negotiation)).
+     * A client that cannot speak the answer closes the connection, or retries with an agent for its own
+     * version installed on the same one.
+     */
+    private suspend fun initialize(params: InitializeRequest): InitializeResponse {
+        val clientInfo = ClientInfo(params.protocolVersion, params.clientCapabilities, params.clientInfo, params._meta)
+        _clientInfo.complete(clientInfo)
+
+        val negotiatedVersion = recordNegotiated(protocol, LATEST_PROTOCOL_VERSION)
+        val agentInfo = agentSupport.initialize(clientInfo)
+        if (agentInfo.protocolVersion != negotiatedVersion) {
+            logger.debug {
+                "AgentSupport returned protocol version ${agentInfo.protocolVersion}, but $negotiatedVersion was " +
+                    "negotiated with the client (requested ${params.protocolVersion}); the negotiated version is used"
+            }
+        }
+        return InitializeResponse(negotiatedVersion, agentInfo.capabilities, agentInfo.authMethods, agentInfo.implementation, agentInfo._meta)
+    }
+
+    /** A repeated `initialize` cannot move the connection: the version recorded first wins. */
+    private fun recordNegotiated(protocol: Protocol, negotiated: ProtocolVersion): ProtocolVersion {
+        val recorded = protocol.recordNegotiatedProtocolVersion(negotiated)
+        if (recorded != negotiated) {
+            logger.warn {
+                "Repeated initialize request would negotiate $negotiated, but this connection already speaks " +
+                    "protocol version $recorded; keeping $recorded"
+            }
+        }
+        return recorded
+    }
+
+    @OptIn(UnstableApi::class)
     private fun setHandlers(protocol: Protocol) {
-        // Set up request handlers for incoming client requests
-        protocol.setRequestHandler(AcpMethod.AgentMethods.Initialize) { params: InitializeRequest ->
-            val clientInfo = ClientInfo(params.protocolVersion, params.clientCapabilities, params.clientInfo, params._meta)
-            _clientInfo.complete(clientInfo)
-            val agentInfo = agentSupport.initialize(clientInfo)
-            // see https://agentclientprotocol.com/protocol/initialization#version-negotiation
-            val negotiatedVersion = min(params.protocolVersion, agentInfo.protocolVersion)
-            return@setRequestHandler InitializeResponse(negotiatedVersion, agentInfo.capabilities, agentInfo.authMethods, agentInfo.implementation, agentInfo._meta)
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.Initialize) { params: InitializeRequest ->
+            return@setRequestHandler initialize(params)
         }
 
-        protocol.setRequestHandler(AcpMethod.AgentMethods.Authenticate) { params: AuthenticateRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.Authenticate) { params: AuthenticateRequest ->
             return@setRequestHandler agentSupport.authenticate(params.methodId, params._meta)
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setRequestHandler(AcpMethod.AgentMethods.Logout) { params: LogoutRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.Logout) { params: LogoutRequest ->
             return@setRequestHandler agentSupport.logout(params._meta)
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setRequestHandler(AcpMethod.AgentMethods.ProvidersList) { params: ListProvidersRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.ProvidersList) { params: ListProvidersRequest ->
             return@setRequestHandler agentSupport.listProviders(params._meta)
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setRequestHandler(AcpMethod.AgentMethods.ProvidersSet) { params: SetProvidersRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.ProvidersSet) { params: SetProvidersRequest ->
             return@setRequestHandler agentSupport.setProvider(params.id, params.apiType, params.baseUrl, params.headers, params._meta)
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setRequestHandler(AcpMethod.AgentMethods.ProvidersDisable) { params: DisableProvidersRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.ProvidersDisable) { params: DisableProvidersRequest ->
             return@setRequestHandler agentSupport.disableProvider(params.id, params._meta)
         }
 
         protocol.setPaginatedRequestHandler(
-            AcpMethod.AgentMethods.SessionList,
+            AcpMethod.AgentMethods.V1.SessionList,
             // TODO: move to some global agent/client settings
             batchSize = 10,
             batchedResultFactory = { _, batch, newCursor -> ListSessionsResponse(batch, newCursor) },
             sequenceFactory = { p -> agentSupport.listSessions(p.cwd, p.additionalDirectories, p._meta) }
         )
 
-        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionDelete) { params: DeleteSessionRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.SessionDelete) { params: DeleteSessionRequest ->
             return@setRequestHandler agentSupport.deleteSession(params.sessionId, params._meta)
         }
 
-        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionNew) { params: NewSessionRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.SessionNew) { params: NewSessionRequest ->
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val session = createSession(sessionParameters) { agentSupport.createSession(it) }
 
@@ -201,7 +235,7 @@ public class Agent(
             )
         }
 
-        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionLoad) { params: LoadSessionRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.SessionLoad) { params: LoadSessionRequest ->
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val session = createSession(sessionParameters) { agentSupport.loadSession(params.sessionId, sessionParameters) }
             @OptIn(UnstableApi::class)
@@ -214,7 +248,7 @@ public class Agent(
             )
         }
 
-        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionResume) { params: ResumeSessionRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.SessionResume) { params: ResumeSessionRequest ->
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val session = createSession(sessionParameters) { agentSupport.resumeSession(params.sessionId, sessionParameters) }
             return@setRequestHandler ResumeSessionResponse(
@@ -223,28 +257,28 @@ public class Agent(
             )
         }
 
-        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionSetMode) { params: SetSessionModeRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.SessionSetMode) { params: SetSessionModeRequest ->
             val session = getSessionOrThrow(params.sessionId)
             return@setRequestHandler session.executeWithSession {
                 session.agentSession.setMode(params.modeId, params._meta)
             }
         }
         @OptIn(UnstableApi::class)
-        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionSetModel) { params: SetSessionModelRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.SessionSetModel) { params: SetSessionModelRequest ->
             val session = getSessionOrThrow(params.sessionId)
             return@setRequestHandler session.executeWithSession {
                 session.agentSession.setModel(params.modelId, params._meta)
             }
         }
 
-        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionPrompt) { params: PromptRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.SessionPrompt) { params: PromptRequest ->
             val session = getSessionOrThrow(params.sessionId)
             return@setRequestHandler session.executeWithSession {
                 session.prompt(params.prompt, params._meta)
             }
         }
 
-        protocol.setNotificationHandler(AcpMethod.AgentMethods.SessionCancel) { params: CancelNotification ->
+        protocol.setNotificationHandler(AcpMethod.AgentMethods.V1.SessionCancel) { params: CancelNotification ->
             val session = getSessionOrThrow(params.sessionId)
             session.executeWithSession {
                 session.cancel()
@@ -252,7 +286,7 @@ public class Agent(
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionClose) { params: CloseSessionRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.SessionClose) { params: CloseSessionRequest ->
             val session = getSessionOrThrow(params.sessionId)
             val response = session.executeWithSession {
                 session.agentSession.close(params._meta)
@@ -262,7 +296,7 @@ public class Agent(
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionFork) { params: ForkSessionRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.SessionFork) { params: ForkSessionRequest ->
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val session = createSession(sessionParameters) { agentSupport.forkSession(params.sessionId, sessionParameters) }
             return@setRequestHandler ForkSessionResponse(
@@ -274,7 +308,7 @@ public class Agent(
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionResume) { params: ResumeSessionRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.SessionResume) { params: ResumeSessionRequest ->
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val session = createSession(sessionParameters) { agentSupport.resumeSession(params.sessionId, sessionParameters) }
             return@setRequestHandler ResumeSessionResponse(
@@ -285,7 +319,7 @@ public class Agent(
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setRequestHandler(AcpMethod.AgentMethods.SessionSetConfigOption) { params: SetSessionConfigOptionRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.SessionSetConfigOption) { params: SetSessionConfigOptionRequest ->
             val session = getSessionOrThrow(params.sessionId)
             return@setRequestHandler session.executeWithSession {
                 session.agentSession.setConfigOption(params.configId, params.value, params._meta)
@@ -294,7 +328,7 @@ public class Agent(
 
         // NES handlers
         @OptIn(UnstableApi::class)
-        protocol.setRequestHandler(AcpMethod.AgentMethods.NesStart) { params: StartNesRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.NesStart) { params: StartNesRequest ->
             val nesSession = agentSupport.createNesSession(params)
             val wrapper = NesSessionWrapper(
                 this@Agent,
@@ -306,7 +340,7 @@ public class Agent(
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setRequestHandler(AcpMethod.AgentMethods.NesSuggest) { params: SuggestNesRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.NesSuggest) { params: SuggestNesRequest ->
             val wrapper = getNesSessionOrThrow(params.sessionId)
             return@setRequestHandler wrapper.executeWithSession {
                 wrapper.nesSession.suggest(params)
@@ -314,7 +348,7 @@ public class Agent(
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setRequestHandler(AcpMethod.AgentMethods.NesClose) { params: CloseNesRequest ->
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.NesClose) { params: CloseNesRequest ->
             val wrapper = getNesSessionOrThrow(params.sessionId)
             val response = wrapper.executeWithSession {
                 wrapper.nesSession.close(params._meta)
@@ -324,7 +358,7 @@ public class Agent(
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setNotificationHandler(AcpMethod.AgentMethods.NesAccept) { params: AcceptNesNotification ->
+        protocol.setNotificationHandler(AcpMethod.AgentMethods.V1.NesAccept) { params: AcceptNesNotification ->
             val wrapper = getNesSessionOrThrow(params.sessionId)
             wrapper.executeWithSession {
                 wrapper.nesSession.accept(params.id, params._meta)
@@ -332,7 +366,7 @@ public class Agent(
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setNotificationHandler(AcpMethod.AgentMethods.NesReject) { params: RejectNesNotification ->
+        protocol.setNotificationHandler(AcpMethod.AgentMethods.V1.NesReject) { params: RejectNesNotification ->
             val wrapper = getNesSessionOrThrow(params.sessionId)
             wrapper.executeWithSession {
                 wrapper.nesSession.reject(params.id, params.reason, params._meta)
@@ -340,7 +374,7 @@ public class Agent(
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setNotificationHandler(AcpMethod.AgentMethods.DocumentDidOpen) { params: DidOpenDocumentNotification ->
+        protocol.setNotificationHandler(AcpMethod.AgentMethods.V1.DocumentDidOpen) { params: DidOpenDocumentNotification ->
             val wrapper = getNesSessionOrThrow(params.sessionId)
             wrapper.executeWithSession {
                 wrapper.nesSession.didOpen(params)
@@ -348,7 +382,7 @@ public class Agent(
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setNotificationHandler(AcpMethod.AgentMethods.DocumentDidChange) { params: DidChangeDocumentNotification ->
+        protocol.setNotificationHandler(AcpMethod.AgentMethods.V1.DocumentDidChange) { params: DidChangeDocumentNotification ->
             val wrapper = getNesSessionOrThrow(params.sessionId)
             wrapper.executeWithSession {
                 wrapper.nesSession.didChange(params)
@@ -356,7 +390,7 @@ public class Agent(
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setNotificationHandler(AcpMethod.AgentMethods.DocumentDidClose) { params: DidCloseDocumentNotification ->
+        protocol.setNotificationHandler(AcpMethod.AgentMethods.V1.DocumentDidClose) { params: DidCloseDocumentNotification ->
             val wrapper = getNesSessionOrThrow(params.sessionId)
             wrapper.executeWithSession {
                 wrapper.nesSession.didClose(params)
@@ -364,7 +398,7 @@ public class Agent(
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setNotificationHandler(AcpMethod.AgentMethods.DocumentDidSave) { params: DidSaveDocumentNotification ->
+        protocol.setNotificationHandler(AcpMethod.AgentMethods.V1.DocumentDidSave) { params: DidSaveDocumentNotification ->
             val wrapper = getNesSessionOrThrow(params.sessionId)
             wrapper.executeWithSession {
                 wrapper.nesSession.didSave(params)
@@ -372,7 +406,7 @@ public class Agent(
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setNotificationHandler(AcpMethod.AgentMethods.DocumentDidFocus) { params: DidFocusDocumentNotification ->
+        protocol.setNotificationHandler(AcpMethod.AgentMethods.V1.DocumentDidFocus) { params: DidFocusDocumentNotification ->
             val wrapper = getNesSessionOrThrow(params.sessionId)
             wrapper.executeWithSession {
                 wrapper.nesSession.didFocus(params)
@@ -431,4 +465,3 @@ public val CoroutineContext.client: ClientSessionOperations
         return (wrapper as? Agent.SessionWrapper)?.clientOperations
             ?: error("Client operations are not available for NES sessions. Only chat sessions have access to client operations.")
     }
-

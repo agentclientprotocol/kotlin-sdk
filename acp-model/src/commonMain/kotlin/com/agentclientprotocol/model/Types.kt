@@ -16,10 +16,27 @@ import kotlin.jvm.JvmInline
  */
 public typealias ProtocolVersion = Int
 
+/** Protocol version 1. */
+public const val PROTOCOL_VERSION_V1: ProtocolVersion = 1
+
 /**
  * The latest protocol version supported.
  */
-public const val LATEST_PROTOCOL_VERSION: ProtocolVersion = 1
+public const val LATEST_PROTOCOL_VERSION: ProtocolVersion = PROTOCOL_VERSION_V1
+
+/**
+ * **UNSTABLE**
+ *
+ * Version `2` of the protocol: an unstable draft used for protocol iteration.
+ *
+ * [LATEST_PROTOCOL_VERSION] deliberately stays at `1` and this version is deliberately absent
+ * from [SUPPORTED_PROTOCOL_VERSIONS], so speaking v2 is always an explicit choice by the caller.
+ *
+ * A connection speaks v2 only when a v2 implementation is supplied to the agent or client; v1 and v2
+ * are separate handler sets with their own payload types, and nothing is translated between them.
+ */
+@UnstableApi
+public const val PROTOCOL_VERSION_V2: ProtocolVersion = 2
 
 /**
  * All supported protocol versions.

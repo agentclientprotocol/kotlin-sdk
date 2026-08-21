@@ -13,14 +13,14 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
         permissions: List<PermissionOption>,
         _meta: JsonElement?,
     ): RequestPermissionResponse {
-        return AcpMethod.ClientMethods.SessionRequestPermission(rpc, RequestPermissionRequest(sessionId, toolCall, permissions, _meta))
+        return AcpMethod.ClientMethods.V1.SessionRequestPermission(rpc, RequestPermissionRequest(sessionId, toolCall, permissions, _meta))
     }
 
     override suspend fun notify(
         notification: SessionUpdate,
         _meta: JsonElement?,
     ) {
-        return AcpMethod.ClientMethods.SessionUpdate(rpc, SessionNotification(sessionId, notification, _meta))
+        return AcpMethod.ClientMethods.V1.SessionUpdate(rpc, SessionNotification(sessionId, notification, _meta))
     }
 
     override suspend fun fsReadTextFile(
@@ -30,7 +30,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
         _meta: JsonElement?,
     ): ReadTextFileResponse {
         if (clientCapabilities.fs?.readTextFile != true) error("Client does not support fs.readTextFile capability")
-        return AcpMethod.ClientMethods.FsReadTextFile(rpc, ReadTextFileRequest(sessionId, path, line, limit, _meta))
+        return AcpMethod.ClientMethods.V1.FsReadTextFile(rpc, ReadTextFileRequest(sessionId, path, line, limit, _meta))
     }
 
     override suspend fun fsWriteTextFile(
@@ -39,7 +39,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
         _meta: JsonElement?,
     ): WriteTextFileResponse {
         if (clientCapabilities.fs?.writeTextFile != true) error("Client does not support fs.writeTextFile capability")
-        return AcpMethod.ClientMethods.FsWriteTextFile(rpc, WriteTextFileRequest(sessionId, path, content, _meta))
+        return AcpMethod.ClientMethods.V1.FsWriteTextFile(rpc, WriteTextFileRequest(sessionId, path, content, _meta))
     }
 
     override suspend fun terminalCreate(
@@ -51,7 +51,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
         _meta: JsonElement?,
     ): CreateTerminalResponse {
         if (!clientCapabilities.terminal) error("Client does not support terminal capability")
-        return AcpMethod.ClientMethods.TerminalCreate(rpc, CreateTerminalRequest(sessionId, command, args, cwd, env, outputByteLimit, _meta))
+        return AcpMethod.ClientMethods.V1.TerminalCreate(rpc, CreateTerminalRequest(sessionId, command, args, cwd, env, outputByteLimit, _meta))
     }
 
     override suspend fun terminalOutput(
@@ -59,7 +59,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
         _meta: JsonElement?,
     ): TerminalOutputResponse {
         if (!clientCapabilities.terminal) error("Client does not support terminal capability")
-        return AcpMethod.ClientMethods.TerminalOutput(rpc, TerminalOutputRequest(sessionId, terminalId, _meta))
+        return AcpMethod.ClientMethods.V1.TerminalOutput(rpc, TerminalOutputRequest(sessionId, terminalId, _meta))
     }
 
     override suspend fun terminalRelease(
@@ -67,7 +67,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
         _meta: JsonElement?,
     ): ReleaseTerminalResponse {
         if (!clientCapabilities.terminal) error("Client does not support terminal capability")
-        return AcpMethod.ClientMethods.TerminalRelease(rpc, ReleaseTerminalRequest(sessionId, terminalId, _meta))
+        return AcpMethod.ClientMethods.V1.TerminalRelease(rpc, ReleaseTerminalRequest(sessionId, terminalId, _meta))
     }
 
     override suspend fun terminalWaitForExit(
@@ -75,7 +75,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
         _meta: JsonElement?,
     ): WaitForTerminalExitResponse {
         if (!clientCapabilities.terminal) error("Client does not support terminal capability")
-        return AcpMethod.ClientMethods.TerminalWaitForExit(rpc, WaitForTerminalExitRequest(sessionId, terminalId, _meta))
+        return AcpMethod.ClientMethods.V1.TerminalWaitForExit(rpc, WaitForTerminalExitRequest(sessionId, terminalId, _meta))
     }
 
     override suspend fun terminalKill(
@@ -83,7 +83,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
         _meta: JsonElement?,
     ): KillTerminalCommandResponse {
         if (!clientCapabilities.terminal) error("Client does not support terminal capability")
-        return AcpMethod.ClientMethods.TerminalKill(rpc, KillTerminalCommandRequest(sessionId, terminalId, _meta))
+        return AcpMethod.ClientMethods.V1.TerminalKill(rpc, KillTerminalCommandRequest(sessionId, terminalId, _meta))
     }
 
     @OptIn(UnstableApi::class)
@@ -100,7 +100,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
                 if (!elicitation.supportsUrl) error("Client does not support URL-based elicitation")
             }
         }
-        return AcpMethod.ClientMethods.ElicitationCreate(rpc, request)
+        return AcpMethod.ClientMethods.V1.ElicitationCreate(rpc, request)
     }
 
     /**
@@ -125,7 +125,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
     override suspend fun completeElicitation(
         notification: CompleteElicitationNotification
     ) {
-        AcpMethod.ClientMethods.ElicitationComplete(rpc, notification)
+        AcpMethod.ClientMethods.V1.ElicitationComplete(rpc, notification)
     }
 
     /**

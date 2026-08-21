@@ -12,7 +12,12 @@ import com.agentclientprotocol.model.AcpRequest
 import com.agentclientprotocol.model.AcpResponse
 import com.agentclientprotocol.model.CancelNotification
 import com.agentclientprotocol.model.ContentBlock
+import com.agentclientprotocol.model.Implementation
 import com.agentclientprotocol.model.InitializeRequest
+import com.agentclientprotocol.agent.v2.Agent as V2Agent
+import com.agentclientprotocol.agent.v2.AgentSupport as V2AgentSupport
+import com.agentclientprotocol.model.v2.InitializeRequest as V2InitializeRequest
+import com.agentclientprotocol.model.v2.InitializeResponse as V2InitializeResponse
 import com.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
 import com.agentclientprotocol.model.McpServer
 import com.agentclientprotocol.model.NewSessionRequest
@@ -36,38 +41,49 @@ import kotlinx.serialization.json.JsonElement
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
+suspend fun <TRequest : AcpRequest, TResponse : AcpResponse> TestTransport.testRequest(
+    method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
+    request: TRequest
+): Pair<TResponse?, List<JsonRpcNotification>> {
+    val received = fireTestRequest(
+        methodName = method.methodName,
+        params = ACPJson.encodeToJsonElement(method.requestSerializer, request)
+    )
+    val response = (received.lastOrNull() as? JsonRpcResponse)?.result?.let {
+        ACPJson.decodeFromJsonElement(method.responseSerializer, it)
+    }
+    val notifications = received.filterIsInstance<JsonRpcNotification>()
+    return response to notifications
+}
+
+fun <TNotification : AcpNotification> TestTransport.testNotification(
+    method: AcpMethod.AcpNotificationMethod<TNotification>,
+    notification: TNotification
+) {
+    fireTestNotification(method.methodName, ACPJson.encodeToJsonElement(method.serializer, notification))
+}
+
 class TestAgent(val agent: Agent, val agentSupport: TestAgentSupport, val transport: TestTransport) {
     suspend fun <TRequest : AcpRequest, TResponse : AcpResponse> testRequest(
         method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
         request: TRequest
-    ): Pair<TResponse?, List<JsonRpcNotification>> {
-        val received = transport.fireTestRequest(
-            methodName = method.methodName,
-            params = ACPJson.encodeToJsonElement(method.requestSerializer, request)
-        )
-        val response = (received.lastOrNull() as? JsonRpcResponse)?.result?.let {
-            ACPJson.decodeFromJsonElement(method.responseSerializer, it)
-        }
-        val notifications = received.filterIsInstance<JsonRpcNotification>()
-        return response to notifications
-    }
+    ): Pair<TResponse?, List<JsonRpcNotification>> = transport.testRequest(method, request)
 
     fun <TNotification : AcpNotification> testNotification(
         method: AcpMethod.AcpNotificationMethod<TNotification>,
         notification: TNotification
-    ) {
-        transport.fireTestNotification(method.methodName, ACPJson.encodeToJsonElement(method.serializer, notification))
-    }
+    ) = transport.testNotification(method, notification)
 
     fun close() {
         agent.protocol.close()
     }
 
-    suspend fun testInitialize(request: InitializeRequest) = testRequest(AcpMethod.AgentMethods.Initialize, request)
-    suspend fun testNewSession(request: NewSessionRequest) = testRequest(AcpMethod.AgentMethods.SessionNew, request)
-    suspend fun testPrompt(request: PromptRequest) = testRequest(AcpMethod.AgentMethods.SessionPrompt, request)
+    suspend fun testInitialize(request: InitializeRequest) = testRequest(AcpMethod.AgentMethods.V1.Initialize, request)
 
-    fun testCancel(notification: CancelNotification) = testNotification(AcpMethod.AgentMethods.SessionCancel, notification)
+    suspend fun testNewSession(request: NewSessionRequest) = testRequest(AcpMethod.AgentMethods.V1.SessionNew, request)
+    suspend fun testPrompt(request: PromptRequest) = testRequest(AcpMethod.AgentMethods.V1.SessionPrompt, request)
+
+    fun testCancel(notification: CancelNotification) = testNotification(AcpMethod.AgentMethods.V1.SessionCancel, notification)
 }
 
 suspend fun TestAgent.simplePrompt(prompt: String): Pair<PromptResponse, List<SessionUpdate>> {
@@ -76,18 +92,22 @@ suspend fun TestAgent.simplePrompt(prompt: String): Pair<PromptResponse, List<Se
     checkNotNull(resp)
 
     return resp to notifications
-        .filter { it.method == AcpMethod.ClientMethods.SessionUpdate.methodName }
+        .filter { it.method == AcpMethod.ClientMethods.V1.SessionUpdate.methodName }
         .mapNotNull { it.params }
-        .map { ACPJson.decodeFromJsonElement(AcpMethod.ClientMethods.SessionUpdate.serializer, it).update }
+        .map { ACPJson.decodeFromJsonElement(AcpMethod.ClientMethods.V1.SessionUpdate.serializer, it).update }
 }
 
-class TestAgentSupport(val promptHandler: PromptHandler) : AgentSupport {
+class TestAgentSupport(
+    val promptHandler: PromptHandler,
+) : AgentSupport {
     var isInitialized = false
+    var initializedWith: ClientInfo? = null
     val createdSessions = mutableMapOf<SessionId, TestAgentSession>()
 
     override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
         isInitialized = true
-        return AgentInfo()
+        initializedWith = clientInfo
+        return AgentInfo(implementation = Implementation(name = "test-agent", version = "1.0.0"))
     }
 
     override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
@@ -124,6 +144,42 @@ fun withTestAgent(
     val agent = Agent(protocol, agentSupport)
     protocol.start()
     val testAgent = TestAgent(agent, agentSupport, transport)
+    block(testAgent)
+    testAgent.close()
+}
+
+/** The v2 counterpart of [TestAgent]: a v2 agent is its own object, on its own connection. */
+class TestV2Agent(val agent: V2Agent, val transport: TestTransport) {
+    suspend fun <TRequest : AcpRequest, TResponse : AcpResponse> testRequest(
+        method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
+        request: TRequest
+    ): Pair<TResponse?, List<JsonRpcNotification>> = transport.testRequest(method, request)
+
+    fun <TNotification : AcpNotification> testNotification(
+        method: AcpMethod.AcpNotificationMethod<TNotification>,
+        notification: TNotification
+    ) = transport.testNotification(method, notification)
+
+    fun close() {
+        agent.protocol.close()
+    }
+
+    suspend fun testInitialize(
+        request: V2InitializeRequest
+    ): Pair<V2InitializeResponse?, List<JsonRpcNotification>> =
+        testRequest(AcpMethod.AgentMethods.V2.Initialize, request)
+}
+
+fun withTestV2Agent(
+    agentSupport: V2AgentSupport,
+    timeout: Duration = 5.seconds,
+    block: suspend CoroutineScope.(TestV2Agent) -> Unit
+) = runBlocking {
+    val transport = TestTransport(timeout)
+    val protocol = Protocol(this, transport)
+    val agent = V2Agent(protocol, agentSupport)
+    protocol.start()
+    val testAgent = TestV2Agent(agent, transport)
     block(testAgent)
     testAgent.close()
 }
