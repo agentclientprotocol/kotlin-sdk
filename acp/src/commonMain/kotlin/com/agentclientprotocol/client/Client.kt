@@ -43,7 +43,9 @@ public typealias ClientInstance = Client
 public class Client(
     public val protocol: Protocol,
     @property:UnstableApi
-    public val globalElicitationHandler: GlobalElicitationHandler? = null
+    public val globalElicitationHandler: GlobalElicitationHandler? = null,
+    @property:UnstableApi
+    public val globalSessionUpdateHandler: GlobalSessionUpdateHandler? = null
 ) {
     private class ClientSessionHolder {
         private val sessionDeferred: CompletableDeferred<ClientSessionImpl> = CompletableDeferred()
@@ -72,6 +74,20 @@ public class Client(
             sessionDeferred.completeExceptionally(cause)
         }
 
+        /**
+         * Like [completeExceptionally], but also returns whatever was queued before this call - for a holder
+         * that was speculatively created for a session that never actually got claimed (see the
+         * `initializingSessionsCount > 0` branch of [findSessionHolder]), those notifications belong to no live
+         * session and would otherwise be silently discarded.
+         */
+        fun completeExceptionallyAndDrainQueue(cause: Throwable): List<Pair<SessionUpdate, JsonElement?>> {
+            val drained = buildList {
+                while (true) add(notifications.tryReceive().getOrNull() ?: break)
+            }
+            completeExceptionally(cause)
+            return drained
+        }
+
         suspend fun handleOrQueue(notification: SessionUpdate, _meta: JsonElement?) {
             val sendResult = notifications.trySend(Pair(notification, _meta))
 
@@ -94,9 +110,12 @@ public class Client(
     private val _elicitationToSession = ElicitationSessionStore()
 
     /**
-     * Creates a new entry only if there are some currently initializing sessions. Otherwise, throws in the case of missing session.
+     * Looks up the holder for [sessionId], creating a new entry only if there are some currently initializing
+     * sessions. Returns `null` if the session is neither registered nor being initialized, instead of throwing -
+     * callers that need a session to exist (e.g., to service a request against it) should use
+     * [getOrCreateSessionHolder] instead.
      */
-    private fun getOrCreateSessionHolder(sessionId: SessionId): ClientSessionHolder {
+    private fun findSessionHolder(sessionId: SessionId): ClientSessionHolder? {
         // Fast path for the common case of an already registered session.
         _sessions.value.sessions[sessionId]?.let { return it }
         var clientSessionHolder: ClientSessionHolder? = null
@@ -122,8 +141,14 @@ public class Client(
                 }
             }
         }
-        return clientSessionHolder ?: acpFail("Session $sessionId not found")
+        return clientSessionHolder
     }
+
+    /**
+     * Creates a new entry only if there are some currently initializing sessions. Otherwise, throws in the case of missing session.
+     */
+    private fun getOrCreateSessionHolder(sessionId: SessionId): ClientSessionHolder =
+        findSessionHolder(sessionId) ?: acpFail("Session $sessionId not found")
 
     internal fun removeSessionHolder(sessionId: SessionId) {
         _sessions.update { currentMap ->
@@ -214,7 +239,20 @@ public class Client(
         }
 
         protocol.setNotificationHandler(AcpMethod.ClientMethods.V1.SessionUpdate) { params: SessionNotification ->
-            val sessionHolder = getOrCreateSessionHolder(params.sessionId)
+            // The agent may report an update (e.g., a status change on `session/list`) for a session this client
+            // never called `session/new` / `session/load` / `session/resume` for. It can live on the server,
+            // created from another IDE window, the web, or another machine. That's not a protocol violation, so
+            // unlike other session-scoped methods, an unknown/unconnected session here must not fail the call.
+            val sessionHolder = findSessionHolder(params.sessionId)
+            if (sessionHolder == null) {
+                val handler = globalSessionUpdateHandler
+                if (handler != null) {
+                    handler.onUnconnectedSessionUpdate(params.sessionId, params.update, params._meta)
+                } else {
+                    logger.debug { "Ignoring session/update for session ${params.sessionId}: client is not connected to it" }
+                }
+                return@setNotificationHandler
+            }
             sessionHolder.handleOrQueue(params.update, params._meta)
         }
 
@@ -684,8 +722,17 @@ public class Client(
             if (hangingSessions != null) {
                 for ((id, holder) in hangingSessions) {
                     logger.trace { "Removing hanging session $id" }
-                    // report it as non existent session
-                    holder.completeExceptionally(AcpExpectedError("Session $id not found"))
+                    // report it as a non-existent session
+                    val queuedUpdates = holder.completeExceptionallyAndDrainQueue(AcpExpectedError("Session $id not found"))
+                    // These were buffered on the assumption they might belong to this (or another concurrent)
+                    // initialization; since none claimed `id`, it's an unconnected session, same as if no
+                    // initialization had been in progress when its updates arrived.
+                    val handler = globalSessionUpdateHandler
+                    if (handler != null) {
+                        for ((update, meta) in queuedUpdates) {
+                            handler.onUnconnectedSessionUpdate(id, update, meta)
+                        }
+                    }
                 }
             }
         }
