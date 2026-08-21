@@ -110,6 +110,8 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 TODO("Not yet implemented")
             }
         })
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
         val cwd = "/test/path"
         val newSession = client.newSession(SessionCreationParameters(cwd, emptyList())) { _, _ ->
             object : ClientSessionOperations {
