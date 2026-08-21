@@ -21,7 +21,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 import kotlin.test.*
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -31,7 +30,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
     fun initialization() = testWithProtocols { clientProtocol, agentProtocol ->
         val agentInitialized = CompletableDeferred<ClientInfo>()
         val client = Client(protocol = clientProtocol)
-        val agent = Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+        Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
             override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
                 agentInitialized.complete(clientInfo)
                 return AgentInfo(clientInfo.protocolVersion)
@@ -56,9 +55,6 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
         // https://agentclientprotocol.com/protocol/v2/initialization#version-negotiation
         assertEquals(testVersion, agentInitialized.await().protocolVersion)
         assertEquals(LATEST_PROTOCOL_VERSION, agentInfo.protocolVersion)
-        // Both sides retain the same negotiated version for the connection.
-        assertEquals(LATEST_PROTOCOL_VERSION, client.negotiatedProtocolVersion)
-        assertEquals(LATEST_PROTOCOL_VERSION, agent.negotiatedProtocolVersion)
     }
 
     @Test
@@ -75,24 +71,10 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
         assertEquals(LATEST_PROTOCOL_VERSION, failure.requestedVersion)
         assertEquals(99, failure.offeredVersion)
         assertEquals(clientInfo.supportedProtocolVersions, failure.supportedVersions)
-        // Nothing is retained for the connection.
-        assertFailsWith<IllegalStateException> { client.negotiatedProtocolVersion }
         // And it is gone: a follow-up request must not go through. Bounded, because a request on a
         // closed protocol is not guaranteed to fail fast.
         val followUp = withTimeoutOrNull(500.milliseconds) { runCatching { client.initialize(clientInfo) } }
         assertTrue(followUp?.isSuccess != true, "a request after close must not succeed")
-    }
-
-    /** An agent that only takes part in initialization; sessions are out of scope for these tests. */
-    private fun versionOnlyAgentSupport(): AgentSupport = object : AgentSupport {
-        override suspend fun initialize(clientInfo: ClientInfo): AgentInfo =
-            AgentInfo(clientInfo.protocolVersion, implementation = Implementation(name = "test-agent", version = "1.0.0"))
-
-        override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession =
-            TODO("Not yet implemented")
-
-        override suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters): AgentSession =
-            TODO("Not yet implemented")
     }
 
     @Test
@@ -128,9 +110,6 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 TODO("Not yet implemented")
             }
         })
-        val testVersion = 10
-        val clientInfo = ClientInfo(protocolVersion = testVersion)
-        val agentInfo = client.initialize(clientInfo)
         val cwd = "/test/path"
         val newSession = client.newSession(SessionCreationParameters(cwd, emptyList())) { _, _ ->
             object : ClientSessionOperations {

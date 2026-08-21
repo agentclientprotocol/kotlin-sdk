@@ -289,18 +289,6 @@ public class Client(
         }
 
     /**
-     * The protocol version this connection speaks: the version the agent chose in its `initialize`
-     * response, which may be lower or higher than the one that was requested.
-     *
-     * Held by [protocol], which is what needs it to pick the wire format, so code that branches on
-     * the version does not care which side of the connection it is on.
-     *
-     * @throws IllegalStateException if `initialize` has not completed yet
-     */
-    public val negotiatedProtocolVersion: ProtocolVersion
-        get() = protocol.negotiatedProtocolVersionOrNull ?: error("Client is not initialized yet")
-
-    /**
      * Initializes the connection and negotiates the protocol version.
      *
      * @throws UnsupportedProtocolVersionException if the agent answers with a version outside

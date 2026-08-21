@@ -281,10 +281,8 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         val agentInfo = client.initialize(v2ClientInfo())
 
         assertEquals("test-agent", agentInfo.implementation.name)
-        assertEquals(agentInfo, client.agentInfo)
-        assertEquals("test-client", agent.clientInfo.implementation.name)
-        assertEquals(PROTOCOL_VERSION_V2, client.negotiatedProtocolVersion)
-        assertEquals(PROTOCOL_VERSION_V2, agent.negotiatedProtocolVersion)
+        assertEquals(agentInfo, client.agentInfo.await())
+        assertEquals("test-client", agent.clientInfo.await().implementation.name)
     }
 
     @Test
@@ -349,7 +347,6 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
             val client = Client(clientProtocol)
             val agentInfo = client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
             assertEquals(LATEST_PROTOCOL_VERSION, agentInfo.protocolVersion)
-            assertEquals(LATEST_PROTOCOL_VERSION, client.negotiatedProtocolVersion)
         }
 
     @Test
@@ -371,7 +368,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     fun `client rejects reinitialization before sending another handshake`() =
         testWithProtocols { clientProtocol, agentProtocol ->
             val support = V2Support()
-            val agent = V2Agent(agentProtocol, support)
+            V2Agent(agentProtocol, support)
             val client = V2Client(clientProtocol)
             client.initialize(v2ClientInfo())
 
@@ -379,8 +376,6 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
 
             assertTrue(failure.message!!.contains("already initialized with protocol version 2"))
             assertEquals(1, support.initializeCalls, "the repeated handshake must not reach the agent")
-            assertEquals(PROTOCOL_VERSION_V2, client.negotiatedProtocolVersion)
-            assertEquals(PROTOCOL_VERSION_V2, agent.negotiatedProtocolVersion)
         }
 
     @Test
@@ -671,7 +666,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
             "unexpected failure: ${failure.message}",
         )
         // The connection survives a refusal, so the client can carry on.
-        assertEquals(PROTOCOL_VERSION_V2, client.negotiatedProtocolVersion)
+        assertNotNull(client.newSession(cwd = "."))
     }
 
     @Test
@@ -1029,6 +1024,5 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
                 "unexpected failure: ${failure.message}",
             )
         }
-        assertEquals(PROTOCOL_VERSION_V2, client.negotiatedProtocolVersion)
     }
 }

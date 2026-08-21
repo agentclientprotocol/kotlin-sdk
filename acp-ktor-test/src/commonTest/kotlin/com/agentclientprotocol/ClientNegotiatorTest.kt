@@ -94,7 +94,7 @@ abstract class ClientNegotiatorTest(protocolDriver: ProtocolDriver) : ProtocolDr
 
         val negotiated = assertIs<NegotiatedClient.V1>(negotiator.negotiate())
 
-        assertEquals(LATEST_PROTOCOL_VERSION, negotiated.client.negotiatedProtocolVersion)
+        assertEquals(LATEST_PROTOCOL_VERSION, negotiated.protocolVersion)
         assertEquals(listOf(LATEST_PROTOCOL_VERSION), support.initializedVersions)
     }
 

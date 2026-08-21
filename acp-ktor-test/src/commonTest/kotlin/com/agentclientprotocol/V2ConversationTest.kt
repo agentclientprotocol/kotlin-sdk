@@ -94,13 +94,12 @@ private class ConversationScenario(
         val agentInfo = client.initialize(clientInfo)
 
         // Assert
-        assertEquals(PROTOCOL_VERSION_V2, client.negotiatedProtocolVersion)
         assertEquals("conversation-agent", agentInfo.implementation.name)
     }
 
     suspend fun login() {
         // Arrange
-        val authMethod = assertNotNull(client.agentInfo.authMethods.singleOrNull()).methodId
+        val authMethod = assertNotNull(client.agentInfo.await().authMethods.singleOrNull()).methodId
 
         // Act
         client.login(authMethod)

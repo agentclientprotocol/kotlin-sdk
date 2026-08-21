@@ -4,10 +4,8 @@ import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.v2.ClientInfo
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
-import com.agentclientprotocol.model.ProtocolVersion
 import com.agentclientprotocol.model.SessionConfigId
 import com.agentclientprotocol.model.SessionId
-import com.agentclientprotocol.model.readProtocolVersionOrNull
 import com.agentclientprotocol.model.v2.CancelSessionNotification
 import com.agentclientprotocol.model.v2.CloseSessionRequest
 import com.agentclientprotocol.model.v2.ContentBlock
@@ -37,6 +35,7 @@ import com.agentclientprotocol.protocol.acpFail
 import com.agentclientprotocol.protocol.executeAfterCurrentRequest
 import com.agentclientprotocol.protocol.invoke
 import com.agentclientprotocol.protocol.jsonRpcInvalidParams
+import com.agentclientprotocol.protocol.readProtocolVersionOrNull
 import com.agentclientprotocol.protocol.setNotificationHandler
 import com.agentclientprotocol.protocol.setRequestHandler
 import com.agentclientprotocol.rpc.ACPJson
@@ -45,7 +44,7 @@ import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -135,23 +134,10 @@ public class Agent(
     /**
      * What the connecting client reported in `initialize`.
      *
-     * @throws IllegalStateException if the client has not sent `initialize` yet
+     * Completes when the client sends `initialize`.
      */
-    public val clientInfo: ClientInfo
-        get() {
-            if (!_clientInfo.isCompleted) error("Agent is not initialized yet")
-            @OptIn(ExperimentalCoroutinesApi::class)
-            return _clientInfo.getCompleted()
-        }
-
-    /**
-     * The protocol version this connection speaks, which for this agent can only be
-     * [PROTOCOL_VERSION_V2] once `initialize` has settled it.
-     *
-     * @throws IllegalStateException if the client has not sent `initialize` yet
-     */
-    public val negotiatedProtocolVersion: ProtocolVersion
-        get() = protocol.negotiatedProtocolVersionOrNull ?: error("Agent is not initialized yet")
+    public val clientInfo: Deferred<ClientInfo>
+        get() = _clientInfo
 
     init {
         setHandlers()

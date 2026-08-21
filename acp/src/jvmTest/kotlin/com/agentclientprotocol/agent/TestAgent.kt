@@ -14,7 +14,6 @@ import com.agentclientprotocol.model.CancelNotification
 import com.agentclientprotocol.model.ContentBlock
 import com.agentclientprotocol.model.Implementation
 import com.agentclientprotocol.model.InitializeRequest
-import com.agentclientprotocol.model.InitializeResponse
 import com.agentclientprotocol.agent.v2.Agent as V2Agent
 import com.agentclientprotocol.agent.v2.AgentSupport as V2AgentSupport
 import com.agentclientprotocol.model.v2.InitializeRequest as V2InitializeRequest
@@ -24,9 +23,6 @@ import com.agentclientprotocol.model.McpServer
 import com.agentclientprotocol.model.NewSessionRequest
 import com.agentclientprotocol.model.PromptRequest
 import com.agentclientprotocol.model.PromptResponse
-import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
-import com.agentclientprotocol.model.ProtocolVersion
-import com.agentclientprotocol.model.SUPPORTED_PROTOCOL_VERSIONS
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.model.StopReason
@@ -103,7 +99,6 @@ suspend fun TestAgent.simplePrompt(prompt: String): Pair<PromptResponse, List<Se
 
 class TestAgentSupport(
     val promptHandler: PromptHandler,
-    override val supportedProtocolVersions: Set<ProtocolVersion> = SUPPORTED_PROTOCOL_VERSIONS,
 ) : AgentSupport {
     var isInitialized = false
     var initializedWith: ClientInfo? = null
@@ -112,8 +107,6 @@ class TestAgentSupport(
     override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
         isInitialized = true
         initializedWith = clientInfo
-        // `implementation` is required to answer anything past v1, so a fixture that opts into the
-        // draft has to carry it.
         return AgentInfo(implementation = Implementation(name = "test-agent", version = "1.0.0"))
     }
 
@@ -143,12 +136,11 @@ class TestAgentSession(
 fun withTestAgent(
     timeout: Duration = 5.seconds,
     promptHandler: PromptHandler = echoPromptHandler,
-    supportedProtocolVersions: Set<ProtocolVersion> = SUPPORTED_PROTOCOL_VERSIONS,
     block: suspend CoroutineScope.(TestAgent) -> Unit
 ) = runBlocking {
     val transport = TestTransport(timeout)
     val protocol = Protocol(this, transport)
-    val agentSupport = TestAgentSupport(promptHandler, supportedProtocolVersions)
+    val agentSupport = TestAgentSupport(promptHandler)
     val agent = Agent(protocol, agentSupport)
     protocol.start()
     val testAgent = TestAgent(agent, agentSupport, transport)

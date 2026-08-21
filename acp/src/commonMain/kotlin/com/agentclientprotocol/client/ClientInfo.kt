@@ -25,7 +25,7 @@ public class ClientInfo(
     public val capabilities: ClientCapabilities = ClientCapabilities(),
     public val implementation: Implementation? = null,
     public val _meta: JsonElement? = null,
-    public val supportedProtocolVersions: Set<ProtocolVersion> = SUPPORTED_PROTOCOL_VERSIONS + protocolVersion,
+    public val supportedProtocolVersions: Set<ProtocolVersion> = SUPPORTED_PROTOCOL_VERSIONS.toSet() + protocolVersion,
 ) {
     init {
         require(supportedProtocolVersions.isNotEmpty()) { "A client must support at least one protocol version" }

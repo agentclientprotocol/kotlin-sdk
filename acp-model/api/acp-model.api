@@ -7874,11 +7874,9 @@ public final class com/agentclientprotocol/model/ToolKind$Companion {
 
 public final class com/agentclientprotocol/model/TypesKt {
 	public static final field LATEST_PROTOCOL_VERSION I
+	public static final field PROTOCOL_VERSION_V1 I
 	public static final field PROTOCOL_VERSION_V2 I
-	public static final fun getKNOWN_PROTOCOL_VERSIONS ()Ljava/util/Set;
-	public static final fun getSUPPORTED_PROTOCOL_VERSIONS ()Ljava/util/Set;
-	public static final fun negotiateProtocolVersion (ILjava/util/Set;)I
-	public static final fun readProtocolVersionOrNull (Lkotlinx/serialization/json/JsonElement;)Ljava/lang/Integer;
+	public static final fun getSUPPORTED_PROTOCOL_VERSIONS ()[Ljava/lang/Integer;
 }
 
 public final class com/agentclientprotocol/model/UntitledMultiSelectItems {

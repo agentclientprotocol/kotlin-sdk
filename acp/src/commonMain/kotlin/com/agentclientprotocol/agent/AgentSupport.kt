@@ -10,8 +10,6 @@ import com.agentclientprotocol.model.DisableProvidersResponse
 import com.agentclientprotocol.model.ListProvidersResponse
 import com.agentclientprotocol.model.LlmProtocol
 import com.agentclientprotocol.model.LogoutResponse
-import com.agentclientprotocol.model.ProtocolVersion
-import com.agentclientprotocol.model.SUPPORTED_PROTOCOL_VERSIONS
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionInfo
 import com.agentclientprotocol.model.SetProvidersResponse
@@ -21,31 +19,13 @@ import kotlinx.serialization.json.JsonElement
 
 public interface AgentSupport {
     /**
-     * The protocol versions this agent can speak.
-     *
-     * This is the agent's side of
-     * [version negotiation](https://agentclientprotocol.com/protocol/v2/initialization#version-negotiation):
-     * a client's requested version is echoed back when it is in this set, otherwise the agent
-     * answers with the highest version in it. The set describes the implementation as a whole and
-     * is read before [initialize] runs, so it must not depend on the connecting client.
-     *
-     * Defaults to [SUPPORTED_PROTOCOL_VERSIONS], the SDK's stable versions. Declaring a version this
-     * `Agent` does not speak — an unstable draft such as v2, which is a separate
-     * [com.agentclientprotocol.agent.v2.Agent] with its own
-     * [com.agentclientprotocol.agent.v2.AgentSupport] — is ignored with a warning. Declaring no version
-     * this `Agent` speaks fails the `initialize` request.
-     */
-    public val supportedProtocolVersions: Set<ProtocolVersion>
-        get() = SUPPORTED_PROTOCOL_VERSIONS
-
-    /**
      * Initializes the agent with the client information.
      *
      * Called when a client connects and sends an initialize request.
      *
-     * Note that [AgentInfo.protocolVersion] is not what decides the version of the connection:
-     * negotiation is driven by [supportedProtocolVersions], and the negotiated version replaces
-     * whatever this method returns. See [AgentInfo.protocolVersion].
+     * Note that [AgentInfo.protocolVersion] is not what decides the version of the connection. This
+     * interface is served by the v1 [Agent], and the SDK replaces whatever this method returns with
+     * the version negotiated by that runtime. See [AgentInfo.protocolVersion].
      *
      * @param clientInfo information about the connecting client
      * @return an [AgentInfo] containing the agent's capabilities and information

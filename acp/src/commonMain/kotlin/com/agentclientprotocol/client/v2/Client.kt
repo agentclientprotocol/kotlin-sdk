@@ -6,9 +6,7 @@ import com.agentclientprotocol.client.UnsupportedProtocolVersionException
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.AuthMethodId
 import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
-import com.agentclientprotocol.model.ProtocolVersion
 import com.agentclientprotocol.model.SessionId
-import com.agentclientprotocol.model.readProtocolVersionOrNull
 import com.agentclientprotocol.model.v2.CompleteElicitationNotification
 import com.agentclientprotocol.model.v2.CreateElicitationRequest
 import com.agentclientprotocol.model.v2.DeleteSessionRequest
@@ -39,6 +37,7 @@ import com.agentclientprotocol.model.v2.UpdateSessionNotification
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.acpFail
 import com.agentclientprotocol.protocol.invoke
+import com.agentclientprotocol.protocol.readProtocolVersionOrNull
 import com.agentclientprotocol.protocol.setNotificationHandler
 import com.agentclientprotocol.protocol.setRequestHandler
 import com.agentclientprotocol.rpc.ACPJson
@@ -48,8 +47,9 @@ import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.serialization.json.JsonElement
 
 private val logger = KotlinLogging.logger {}
@@ -121,35 +121,18 @@ public class Client(
     /**
      * What this client reported in `initialize`.
      *
-     * @throws IllegalStateException if `initialize` has not completed yet
+     * Completes when initialization succeeds.
      */
-    public val clientInfo: ClientInfo
-        get() {
-            if (!_clientInfo.isCompleted) error("Client is not initialized yet")
-            @OptIn(ExperimentalCoroutinesApi::class)
-            return _clientInfo.getCompleted()
-        }
+    public val clientInfo: Deferred<ClientInfo>
+        get() = _clientInfo
 
     /**
      * What the agent answered with in `initialize`.
      *
-     * @throws IllegalStateException if `initialize` has not completed yet
+     * Completes when initialization succeeds.
      */
-    public val agentInfo: AgentInfo
-        get() {
-            if (!_agentInfo.isCompleted) error("Agent is not initialized yet")
-            @OptIn(ExperimentalCoroutinesApi::class)
-            return _agentInfo.getCompleted()
-        }
-
-    /**
-     * The protocol version this connection speaks, which for this client can only be
-     * [PROTOCOL_VERSION_V2] once `initialize` has settled it.
-     *
-     * @throws IllegalStateException if `initialize` has not completed yet
-     */
-    public val negotiatedProtocolVersion: ProtocolVersion
-        get() = protocol.negotiatedProtocolVersionOrNull ?: error("Client is not initialized yet")
+    public val agentInfo: Deferred<AgentInfo>
+        get() = _agentInfo
 
     init {
         setHandlers()
@@ -163,7 +146,7 @@ public class Client(
      *   matching client directly from the raw response without repeating the handshake.
      */
     public suspend fun initialize(clientInfo: ClientInfo, _meta: JsonElement? = null): AgentInfo {
-        protocol.negotiatedProtocolVersionOrNull?.let { version ->
+        protocol.negotiatedProtocolVersion?.let { version ->
             acpFail("Connection is already initialized with protocol version $version")
         }
         val method = AcpMethod.AgentMethods.V2.Initialize
@@ -391,7 +374,7 @@ public class Client(
             configOptions = configOptions,
             protocol = protocol,
             operations = operations,
-            updatesChannel = inbox.updates,
+            updatesFlow = inbox.updates.consumeAsFlow(),
             onClosed = { removeSession(sessionId) },
         )
         _sessions.update { it.copy(sessions = it.sessions.put(sessionId, session)) }

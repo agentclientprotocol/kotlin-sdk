@@ -4,7 +4,6 @@ package com.agentclientprotocol.protocol
 
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.CancelRequestNotification
-import com.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
 import com.agentclientprotocol.model.ProtocolVersion
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.rpc.*
@@ -162,10 +161,9 @@ public class Protocol(
      * The protocol version negotiated for this connection, or `null` before `initialize` resolves.
      *
      * Lives here because it is the wire format's version: dispatch and serialization need it, and a
-     * connection speaks exactly one version. `Agent.negotiatedProtocolVersion` and
-     * `Client.negotiatedProtocolVersion` read through to this.
+     * connection speaks exactly one version.
      */
-    internal val negotiatedProtocolVersionOrNull: ProtocolVersion?
+    internal val negotiatedProtocolVersion: ProtocolVersion?
         get() = _negotiatedProtocolVersion.value
 
     /**

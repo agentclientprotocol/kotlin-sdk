@@ -138,37 +138,6 @@ public class Agent(
         return _clientInfo.getCompleted()
     }
 
-    /**
-     * The protocol version this connection speaks, as negotiated during `initialize`.
-     *
-     * A connection settles on exactly one version, so this value never changes once set — a
-     * repeated `initialize` does not move it. Held by [protocol], which is what needs it to pick
-     * the wire format.
-     *
-     * @throws IllegalStateException if the client has not sent `initialize` yet
-     */
-    public val negotiatedProtocolVersion: ProtocolVersion
-        get() = protocol.negotiatedProtocolVersionOrNull ?: error("Agent is not initialized yet")
-
-    /**
-     * The versions [agentSupport] declares, narrowed to the ones this agent can actually speak.
-     *
-     * This class serves v1, so any other declared version is dropped with a warning rather than negotiated.
-     * Computed once so bogus declarations are reported once rather than on every `initialize`.
-     */
-    private val effectiveSupportedProtocolVersions: Set<ProtocolVersion> by lazy {
-        val declared = agentSupport.supportedProtocolVersions
-        val notSpoken = declared - SUPPORTED_PROTOCOL_VERSIONS
-        if (notSpoken.isNotEmpty()) {
-            logger.warn {
-                "AgentSupport declares protocol version(s) $notSpoken that this Agent does not speak; they " +
-                    "will not be negotiated"
-            }
-        }
-
-        declared intersect SUPPORTED_PROTOCOL_VERSIONS
-    }
-
     init {
         setHandlers(protocol)
     }
@@ -178,8 +147,8 @@ public class Agent(
      * Serves `initialize`.
      *
      * A request for another version is answered with v1 all the same: the payload is read with v1 types,
-     * the only shape this class has ever accepted, and negotiation answers with the latest version it
-     * declares
+     * the only shape this class has ever accepted, and negotiation answers with the version this runtime
+     * speaks
      * ([version negotiation](https://agentclientprotocol.com/protocol/v2/initialization#version-negotiation)).
      * A client that cannot speak the answer closes the connection, or retries with an agent for its own
      * version installed on the same one.
@@ -187,13 +156,6 @@ public class Agent(
     private suspend fun initialize(params: InitializeRequest): InitializeResponse {
         val clientInfo = ClientInfo(params.protocolVersion, params.clientCapabilities, params.clientInfo, params._meta)
         _clientInfo.complete(clientInfo)
-
-        if (!effectiveSupportedProtocolVersions.contains(LATEST_PROTOCOL_VERSION)) {
-            acpFail(
-                "Protocol version $LATEST_PROTOCOL_VERSION is not declared in " +
-                    "AgentSupport.supportedProtocolVersions=${agentSupport.supportedProtocolVersions}"
-            )
-        }
 
         val negotiatedVersion = recordNegotiated(protocol, LATEST_PROTOCOL_VERSION)
         val agentInfo = agentSupport.initialize(clientInfo)

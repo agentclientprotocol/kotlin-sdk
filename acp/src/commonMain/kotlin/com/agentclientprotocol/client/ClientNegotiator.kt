@@ -11,10 +11,10 @@ import com.agentclientprotocol.model.InitializeRequest as V1InitializeRequest
 import com.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
 import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
 import com.agentclientprotocol.model.ProtocolVersion
-import com.agentclientprotocol.model.readProtocolVersionOrNull
 import com.agentclientprotocol.model.v2.InitializeRequest as V2InitializeRequest
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.acpFail
+import com.agentclientprotocol.protocol.readProtocolVersionOrNull
 import com.agentclientprotocol.rpc.ACPJson
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock

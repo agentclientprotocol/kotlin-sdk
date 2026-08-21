@@ -32,6 +32,7 @@ import kotlinx.coroutines.delay
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -85,7 +86,6 @@ class AgentTest {
         withTestV2Agent(TestV2Support()) { testAgent ->
             val (response) = testAgent.testInitialize(v2InitializeRequest())
             assertEquals(PROTOCOL_VERSION_V2, assertNotNull(response).protocolVersion)
-            assertEquals(PROTOCOL_VERSION_V2, testAgent.agent.negotiatedProtocolVersion)
         }
     }
 
@@ -104,7 +104,7 @@ class AgentTest {
             val response = received.last() as JsonRpcResponse
             assertNull(response.error, "a v1 agent negotiates instead of refusing")
             assertEquals(LATEST_PROTOCOL_VERSION, assertNotNull(response.result).jsonObject["protocolVersion"]?.jsonPrimitive?.int)
-            assertEquals(LATEST_PROTOCOL_VERSION, testAgent.agent.negotiatedProtocolVersion)
+            assertEquals(LATEST_PROTOCOL_VERSION, testAgent.agent.protocol.negotiatedProtocolVersion)
             // The v2-only fields of the request are not something v1 types can carry.
             assertEquals(PROTOCOL_VERSION_V2, assertNotNull(testAgent.agentSupport.initializedWith).protocolVersion)
         }
@@ -125,28 +125,8 @@ class AgentTest {
                 error.message.contains("Protocol version 1 is not supported by this agent"),
                 "unexpected message: ${error.message}",
             )
-            assertFailsWith<IllegalStateException> { testAgent.agent.negotiatedProtocolVersion }
+            assertFalse(testAgent.agent.clientInfo.isCompleted)
         }
-    }
-
-    @Test
-    fun `declaring no version this agent speaks refuses a v1 request`() = withTestAgent(
-        supportedProtocolVersions = setOf(PROTOCOL_VERSION_V2)
-    ) { testAgent ->
-        val received = testAgent.transport.fireTestRequest(
-            AcpMethod.AgentMethods.V1.Initialize.methodName,
-            ACPJson.encodeToJsonElement(
-                AcpMethod.AgentMethods.V1.Initialize.requestSerializer,
-                InitializeRequest(LATEST_PROTOCOL_VERSION),
-            ),
-        )
-
-        val error = assertNotNull((received.last() as JsonRpcResponse).error)
-        assertTrue(
-            error.message.contains("supportedProtocolVersions"),
-            "unexpected message: ${error.message}",
-        )
-        assertFailsWith<IllegalStateException> { testAgent.agent.negotiatedProtocolVersion }
     }
 
     @Test
@@ -162,6 +142,9 @@ class AgentTest {
     fun `a raw v2 client exchanges v2 shaped initialize payloads`() {
         val v2Support = TestV2Support()
         withTestV2Agent(v2Support) { testAgent ->
+            val clientInfo = testAgent.agent.clientInfo
+            assertFalse(clientInfo.isCompleted)
+
             // Hand-written v2 params, so the assertions cannot pass just because both sides of the SDK
             // agree on a wrong shape.
             val params = buildJsonObject {
@@ -193,8 +176,7 @@ class AgentTest {
             assertEquals(PROTOCOL_VERSION_V2, seen.protocolVersion)
             assertNotNull(seen.capabilities.elicitation)
             assertEquals("raw-v2-client", seen.implementation.name)
-            assertEquals(seen, testAgent.agent.clientInfo)
-            assertEquals(PROTOCOL_VERSION_V2, testAgent.agent.negotiatedProtocolVersion)
+            assertEquals(seen, clientInfo.await())
         }
     }
 
@@ -446,7 +428,7 @@ class AgentTest {
                 assertNotNull((v1Initialize.last() as JsonRpcResponse).result)
             )
             assertEquals(LATEST_PROTOCOL_VERSION, v1Response.protocolVersion)
-            assertEquals(LATEST_PROTOCOL_VERSION, v1Agent.negotiatedProtocolVersion)
+            assertEquals(LATEST_PROTOCOL_VERSION, v1Agent.protocol.negotiatedProtocolVersion)
 
             val v1Session = v1Transport.fireTestRequest(
                 AcpMethod.AgentMethods.V1.SessionNew.methodName,
@@ -520,10 +502,10 @@ class AgentTest {
     @Test
     fun `negotiated version is retained for the connection`() {
         withTestAgent { testAgent ->
-            assertFailsWith<IllegalStateException> { testAgent.agent.negotiatedProtocolVersion }
+            assertNull(testAgent.agent.protocol.negotiatedProtocolVersion)
 
             testAgent.testInitialize(InitializeRequest(LATEST_PROTOCOL_VERSION))
-            assertEquals(LATEST_PROTOCOL_VERSION, testAgent.agent.negotiatedProtocolVersion)
+            assertEquals(LATEST_PROTOCOL_VERSION, testAgent.agent.protocol.negotiatedProtocolVersion)
         }
     }
 
@@ -543,7 +525,6 @@ class AgentTest {
 
             val error = assertNotNull((received.last() as JsonRpcResponse).error)
             assertTrue(error.message.contains("Protocol version 1 is not supported by this agent"))
-            assertEquals(PROTOCOL_VERSION_V2, testAgent.agent.negotiatedProtocolVersion)
 
             val (newSession) = testAgent.testRequest(
                 AcpMethod.AgentMethods.V2.SessionNew,
@@ -570,7 +551,7 @@ class AgentTest {
             val response = received.last() as JsonRpcResponse
             assertNull(response.error)
             assertEquals(LATEST_PROTOCOL_VERSION, assertNotNull(response.result).jsonObject["protocolVersion"]?.jsonPrimitive?.int)
-            assertEquals(LATEST_PROTOCOL_VERSION, testAgent.agent.negotiatedProtocolVersion)
+            assertEquals(LATEST_PROTOCOL_VERSION, testAgent.agent.protocol.negotiatedProtocolVersion)
 
             val (newSession) = testAgent.testNewSession(NewSessionRequest(cwd = ".", mcpServers = emptyList()))
             assertNotNull(newSession, "the v1 handlers must remain installed")

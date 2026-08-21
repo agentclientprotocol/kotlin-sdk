@@ -23,10 +23,8 @@ import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.serialization.json.JsonElement
 
 /**
@@ -46,7 +44,7 @@ public class ClientSession internal constructor(
     public val configOptions: List<SessionConfigOption>,
     private val protocol: Protocol,
     private val operations: ClientSessionOperations?,
-    private val updatesChannel: Channel<UpdateWithMeta>,
+    private val updatesFlow: Flow<UpdateWithMeta>,
     private val onClosed: () -> Unit = {},
 ) {
     // Completed when the client cancels the turn, so pending permission requests can be answered.
@@ -61,11 +59,11 @@ public class ClientSession internal constructor(
     /**
      * A single-consumer stream of this session's `session/update` notifications, in arrival order.
      *
-     * It reads from the channel supplied by [Client], including updates buffered before this object was
-     * created. Collect it once: collection consumes that channel. The stream completes when the session is
-     * closed or deleted.
+     * It includes updates buffered before this object was created. Collect it once: the stream completes
+     * when the session is closed or deleted.
      */
-    public val updates: Flow<UpdateWithMeta> get() = updatesChannel.consumeAsFlow()
+    public val updates: Flow<UpdateWithMeta>
+        get() = updatesFlow
 
     /**
      * Sends a prompt and returns once the agent has accepted it.
