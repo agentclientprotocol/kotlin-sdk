@@ -58,7 +58,6 @@ class ClientHangingSessionUpdateDeliveryTest {
             val received = CompletableDeferred<Pair<SessionId, SessionUpdate>>()
             val client = Client(
                 protocol,
-                globalElicitationHandler = null,
                 globalSessionUpdateHandler = { sessionId, update, _ ->
                     received.complete(sessionId to update)
                 },

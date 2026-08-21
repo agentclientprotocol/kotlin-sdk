@@ -36,7 +36,6 @@ class ClientGlobalSessionUpdateHandlerTest {
             val received = CompletableDeferred<Pair<SessionId, SessionUpdate>>()
             Client(
                 protocol,
-                globalElicitationHandler = null,
                 globalSessionUpdateHandler = { sessionId, update, _ ->
                     received.complete(sessionId to update)
                 },

@@ -276,9 +276,8 @@ public final class com/agentclientprotocol/agent/v2/SessionCreationParameters {
 }
 
 public final class com/agentclientprotocol/client/Client {
-	public fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/GlobalElicitationHandler;)V
-	public synthetic fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/GlobalElicitationHandler;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/GlobalElicitationHandler;Lcom/agentclientprotocol/client/GlobalSessionUpdateHandler;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/GlobalElicitationHandler;Lcom/agentclientprotocol/client/GlobalSessionUpdateHandler;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun authenticate-fMnwWJU (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun authenticate-fMnwWJU$default (Lcom/agentclientprotocol/client/Client;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun deleteSession-nk3TnMc (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
