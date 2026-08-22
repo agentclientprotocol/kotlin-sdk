@@ -32,6 +32,8 @@ ACP standardises how AI agents and clients exchange messages, negotiate capabili
 | `:acp-ktor-client`                  | Ktor HTTP/WebSocket client helper                         | `ktor.client`                              |
 | `:acp-ktor-server`                  | Ktor server-side transport utilities                      | `ktor.server`                              |
 | `:acp-ktor-test`                    | Test fixtures and fake transports for ACP flows           | `ktor.test`                                |
+| `:acp-servlet-client`               | Javax WebSocket client adapter                            | `transport`                                |
+| `:acp-servlet-server`               | Javax Servlet/WebSocket server adapter                    | `transport`                                |
 | `:samples:kotlin-acp-client-sample` | Complete runnable client + agent reference implementation | `samples`                                  |
 
 ## Requirements
@@ -55,10 +57,56 @@ dependencies {
     // Optional extras:
     // implementation("com.agentclientprotocol:acp-ktor-client:0.3.0-SNAPSHOT")
     // implementation("com.agentclientprotocol:acp-ktor-server:0.3.0-SNAPSHOT")
+    // implementation("com.agentclientprotocol:acp-servlet-client:0.3.0-SNAPSHOT")
+    // implementation("com.agentclientprotocol:acp-servlet-server:0.3.0-SNAPSHOT")
 }
 ```
 
 > **Snapshot builds:** When consuming the `-SNAPSHOT` artifacts outside Maven Central, add the repository that hosts your snapshot (e.g. GitHub Packages or an internal mirror).
+
+### Javax Servlet/WebSocket server
+
+Use `acp-servlet-server` when a JVM host exposes Javax Servlet and JSR-356 WebSocket APIs instead of Ktor. The adapter registers a server endpoint on the container `ServerContainer` and reuses the framework-neutral WebSocket transport from `acp`.
+
+```kotlin
+import com.agentclientprotocol.agent.Agent
+import com.agentclientprotocol.protocol.Protocol
+import com.agentclientprotocol.protocol.ProtocolOptions
+import com.agentclientprotocol.transport.acpProtocolOnServerWebSocket
+import kotlinx.coroutines.CoroutineScope
+import javax.servlet.ServletContext
+
+fun ServletContext.registerAcp(scope: CoroutineScope, agentSupport: TerminalAgentSupport) {
+    acpProtocolOnServerWebSocket(
+        parentScope = scope,
+        protocolOptions = ProtocolOptions(protocolDebugName = "servlet agent")
+    ) { protocol: Protocol ->
+        Agent(protocol, agentSupport)
+        protocol.start()
+    }
+}
+```
+
+### Javax WebSocket client
+
+Use `acp-servlet-client` when a JVM host exposes a Javax `WebSocketContainer` client instead of Ktor.
+
+```kotlin
+import com.agentclientprotocol.protocol.ProtocolOptions
+import com.agentclientprotocol.transport.acpProtocolOnClientWebSocket
+import kotlinx.coroutines.CoroutineScope
+import java.net.URI
+import javax.websocket.WebSocketContainer
+
+fun connectAcp(container: WebSocketContainer, scope: CoroutineScope) =
+    container.acpProtocolOnClientWebSocket(
+        uri = URI.create("ws://localhost:8080/acp"),
+        parentScope = scope,
+        protocolOptions = ProtocolOptions(protocolDebugName = "servlet client")
+    ).also { protocol ->
+        protocol.start()
+    }
+```
 
 ## Quick start
 
