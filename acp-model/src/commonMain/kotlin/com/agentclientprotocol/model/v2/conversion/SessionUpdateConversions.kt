@@ -273,6 +273,19 @@ public fun SessionUpdate.toV1(): List<V1SessionUpdate> = when (this) {
     is SessionUpdate.ConfigOptionUpdate -> listOf(update.toV1())
     is SessionUpdate.SessionInfoUpdate -> listOf(update.toV1())
     is SessionUpdate.UsageUpdate -> listOf(update.toV1())
+
+    is SessionUpdate.Notice -> throw ProtocolConversionException(
+        "v2 SessionUpdate variant `notice` cannot be represented in v1"
+    )
+
+    is SessionUpdate.CompactionUpdate -> throw ProtocolConversionException(
+        "v2 SessionUpdate variant `compaction_update` cannot be represented in v1"
+    )
+
+    is SessionUpdate.CompactionSummaryChunk -> throw ProtocolConversionException(
+        "v2 SessionUpdate variant `compaction_summary_chunk` cannot be represented in v1"
+    )
+
     is SessionUpdate.Unknown -> throw unknownV2EnumVariant("SessionUpdate", sessionUpdate)
 }
 
