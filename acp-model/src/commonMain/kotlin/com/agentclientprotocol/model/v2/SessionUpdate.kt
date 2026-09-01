@@ -39,6 +39,9 @@ import kotlinx.serialization.json.jsonObject
 @OptIn(UnstableApi::class) private typealias ConfigOptionUpdatePayload = ConfigOptionUpdate
 @OptIn(UnstableApi::class) private typealias SessionInfoUpdatePayload = SessionInfoUpdate
 @OptIn(UnstableApi::class) private typealias UsageUpdatePayload = UsageUpdate
+@OptIn(UnstableApi::class) private typealias NoticePayload = Notice
+@OptIn(UnstableApi::class) private typealias CompactionUpdatePayload = CompactionUpdate
+@OptIn(UnstableApi::class) private typealias CompactionSummaryChunkPayload = CompactionSummaryChunk
 
 /**
  * The input specification for a command.
@@ -463,6 +466,170 @@ internal object SessionInfoUpdateSerializer : KSerializer<SessionInfoUpdate> {
 }
 
 /**
+ * A live advisory notice from the agent.
+ *
+ * Notices are informational only: they MUST NOT carry information required for protocol
+ * correctness, authorization, user action, task completion, or fatal-error reporting.
+ * Clients may ignore them.
+ *
+ * See protocol docs: [Session Notices](https://agentclientprotocol.com/rfds/session-notices)
+ */
+@UnstableApi
+@Serializable
+public data class Notice(
+    val severity: NoticeSeverity,
+    val title: String,
+    val description: String? = null,
+    override val _meta: JsonElement? = null,
+) : AcpWithMeta
+
+/**
+ * Severity of a session notice.
+ *
+ * This is an open enum: unrecognized wire values deserialize to [Unknown] instead of
+ * failing, so newer ACP variants and `_`-prefixed extensions degrade gracefully.
+ */
+@UnstableApi
+@Serializable(with = NoticeSeveritySerializer::class)
+public sealed class NoticeSeverity {
+    public abstract val value: String
+
+    public data object Info : NoticeSeverity() { override val value: String = "info" }
+    public data object Warning : NoticeSeverity() { override val value: String = "warning" }
+    public data object Error : NoticeSeverity() { override val value: String = "error" }
+    public data class Unknown(override val value: String) : NoticeSeverity()
+
+    public companion object {
+        public fun extension(value: String): Unknown {
+            require(value.startsWith('_')) {
+                "Extension values must begin with '_'; values without the prefix are reserved for ACP (got '$value')"
+            }
+            return Unknown(value)
+        }
+    }
+}
+
+@OptIn(UnstableApi::class)
+internal object NoticeSeveritySerializer : OpenStringEnumSerializer<NoticeSeverity>(
+    serialName = "com.agentclientprotocol.model.v2.NoticeSeverity",
+    knownValues = listOf(NoticeSeverity.Info, NoticeSeverity.Warning, NoticeSeverity.Error),
+    wireValue = NoticeSeverity::value,
+    unknown = NoticeSeverity::Unknown,
+)
+
+/**
+ * A context compaction event.
+ *
+ * The first update for a [compactionId] fixes its timeline position. [summary], [error], and
+ * [_meta] have patch semantics: omission leaves the existing value unchanged, `null` clears
+ * it, and a concrete value replaces it.
+ *
+ * See protocol docs: [Session Compaction](https://agentclientprotocol.com/rfds/session-compaction)
+ */
+@UnstableApi
+@Serializable(with = CompactionUpdateSerializer::class)
+public data class CompactionUpdate(
+    val compactionId: String,
+    val status: CompactionStatus,
+    val summary: MaybeUndefined<List<ContentBlock>> = MaybeUndefined.Undefined,
+    val error: MaybeUndefined<String> = MaybeUndefined.Undefined,
+    val _meta: MaybeUndefined<JsonElement> = MaybeUndefined.Undefined,
+)
+
+@OptIn(UnstableApi::class)
+internal object CompactionUpdateSerializer : KSerializer<CompactionUpdate> {
+    override val descriptor: SerialDescriptor =
+        buildClassSerialDescriptor("com.agentclientprotocol.model.v2.CompactionUpdate")
+
+    override fun serialize(encoder: Encoder, value: CompactionUpdate) {
+        val jsonEncoder = encoder as JsonEncoder
+        val json = jsonEncoder.json
+        jsonEncoder.encodeJsonElement(
+            buildJsonObject {
+                put("compactionId", json.encodeToJsonElement(String.serializer(), value.compactionId))
+                put("status", json.encodeToJsonElement(CompactionStatus.serializer(), value.status))
+                putMaybeUndefined(json, "summary", value.summary, ListSerializer(ContentBlock.serializer()))
+                putMaybeUndefined(json, "error", value.error, String.serializer())
+                putMaybeUndefined(json, "_meta", value._meta, JsonElement.serializer())
+            }
+        )
+    }
+
+    override fun deserialize(decoder: Decoder): CompactionUpdate {
+        val jsonDecoder = decoder as JsonDecoder
+        val json = jsonDecoder.json
+        val jsonObject = jsonDecoder.decodeJsonElement().jsonObject
+        val compactionId = jsonObject["compactionId"]
+            ?: throw SerializationException("Missing 'compactionId' in CompactionUpdate")
+        val status = jsonObject["status"]
+            ?: throw SerializationException("Missing 'status' in CompactionUpdate")
+        return CompactionUpdate(
+            compactionId = json.decodeFromJsonElement(String.serializer(), compactionId),
+            status = json.decodeFromJsonElement(CompactionStatus.serializer(), status),
+            summary = jsonObject.decodeMaybeUndefinedList(json, "summary", ContentBlock.serializer()),
+            error = jsonObject.decodeMaybeUndefined(json, "error", String.serializer()),
+            _meta = jsonObject.decodeMaybeUndefined(json, "_meta", JsonElement.serializer()),
+        )
+    }
+}
+
+/**
+ * Status of a context compaction operation.
+ *
+ * This is an open enum: unrecognized wire values deserialize to [Unknown] instead of
+ * failing, so newer ACP variants and `_`-prefixed extensions degrade gracefully.
+ */
+@UnstableApi
+@Serializable(with = CompactionStatusSerializer::class)
+public sealed class CompactionStatus {
+    public abstract val value: String
+
+    /** The compaction is currently running. */
+    public data object InProgress : CompactionStatus() { override val value: String = "in_progress" }
+
+    /** The compaction finished successfully. */
+    public data object Completed : CompactionStatus() { override val value: String = "completed" }
+
+    /** The compaction failed. */
+    public data object Failed : CompactionStatus() { override val value: String = "failed" }
+
+    /** The compaction was cancelled. */
+    public data object Cancelled : CompactionStatus() { override val value: String = "cancelled" }
+
+    public data class Unknown(override val value: String) : CompactionStatus()
+}
+
+@OptIn(UnstableApi::class)
+internal object CompactionStatusSerializer : OpenStringEnumSerializer<CompactionStatus>(
+    serialName = "com.agentclientprotocol.model.v2.CompactionStatus",
+    knownValues = listOf(
+        CompactionStatus.InProgress,
+        CompactionStatus.Completed,
+        CompactionStatus.Failed,
+        CompactionStatus.Cancelled,
+    ),
+    wireValue = CompactionStatus::value,
+    unknown = CompactionStatus::Unknown,
+)
+
+/**
+ * One [ContentBlock] appended to the compaction's retained summary.
+ *
+ * Summary chunks are only valid between the initial `in_progress` update and the terminal
+ * update for the same [compactionId]. A later [CompactionUpdate] with a concrete [CompactionUpdate.summary]
+ * replaces all accumulated chunk content.
+ *
+ * See protocol docs: [Session Compaction](https://agentclientprotocol.com/rfds/session-compaction)
+ */
+@UnstableApi
+@Serializable
+public data class CompactionSummaryChunk(
+    val compactionId: String,
+    val content: ContentBlock,
+    override val _meta: JsonElement? = null,
+) : AcpWithMeta
+
+/**
  * Different types of updates that can be sent during session processing.
  *
  * These updates provide real-time feedback about the agent's progress. Each variant wraps
@@ -625,6 +792,42 @@ public sealed class SessionUpdate {
     }
 
     /**
+     * A live advisory notice from the agent.
+     *
+     * Clients may ignore this update. It MUST NOT carry information required for protocol
+     * correctness or user action.
+     *
+     * See protocol docs: [Session Notices](https://agentclientprotocol.com/rfds/session-notices)
+     */
+    public data class Notice(val notice: NoticePayload) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "notice"
+        }
+    }
+
+    /**
+     * A context compaction event.
+     *
+     * See protocol docs: [Session Compaction](https://agentclientprotocol.com/rfds/session-compaction)
+     */
+    public data class CompactionUpdate(val update: CompactionUpdatePayload) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "compaction_update"
+        }
+    }
+
+    /**
+     * One content block appended to a compaction's retained summary.
+     *
+     * See protocol docs: [Session Compaction](https://agentclientprotocol.com/rfds/session-compaction)
+     */
+    public data class CompactionSummaryChunk(val chunk: CompactionSummaryChunkPayload) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "compaction_summary_chunk"
+        }
+    }
+
+    /**
      * Custom or future session update.
      *
      * [rawJson] holds the complete payload as received (including the discriminator), so
@@ -728,6 +931,18 @@ internal object SessionUpdateSerializer : OpenTaggedUnionSerializer<SessionUpdat
             "UsageUpdate", UsageUpdatePayload.serializer(),
             SessionUpdate::UsageUpdate, SessionUpdate.UsageUpdate::update,
         ),
+        SessionUpdate.Notice.DISCRIMINATOR to SessionUpdateVariantSerializer(
+            "Notice", NoticePayload.serializer(),
+            SessionUpdate::Notice, SessionUpdate.Notice::notice,
+        ),
+        SessionUpdate.CompactionUpdate.DISCRIMINATOR to SessionUpdateVariantSerializer(
+            "CompactionUpdate", CompactionUpdatePayload.serializer(),
+            SessionUpdate::CompactionUpdate, SessionUpdate.CompactionUpdate::update,
+        ),
+        SessionUpdate.CompactionSummaryChunk.DISCRIMINATOR to SessionUpdateVariantSerializer(
+            "CompactionSummaryChunk", CompactionSummaryChunkPayload.serializer(),
+            SessionUpdate::CompactionSummaryChunk, SessionUpdate.CompactionSummaryChunk::chunk,
+        ),
     ),
     discriminator = { value ->
         when (value) {
@@ -746,6 +961,9 @@ internal object SessionUpdateSerializer : OpenTaggedUnionSerializer<SessionUpdat
             is SessionUpdate.ConfigOptionUpdate -> SessionUpdate.ConfigOptionUpdate.DISCRIMINATOR
             is SessionUpdate.SessionInfoUpdate -> SessionUpdate.SessionInfoUpdate.DISCRIMINATOR
             is SessionUpdate.UsageUpdate -> SessionUpdate.UsageUpdate.DISCRIMINATOR
+            is SessionUpdate.Notice -> SessionUpdate.Notice.DISCRIMINATOR
+            is SessionUpdate.CompactionUpdate -> SessionUpdate.CompactionUpdate.DISCRIMINATOR
+            is SessionUpdate.CompactionSummaryChunk -> SessionUpdate.CompactionSummaryChunk.DISCRIMINATOR
             is SessionUpdate.Unknown -> value.sessionUpdate
         }
     },
