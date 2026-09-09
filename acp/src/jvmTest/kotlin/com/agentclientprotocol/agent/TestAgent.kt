@@ -29,7 +29,7 @@ import com.agentclientprotocol.model.StopReason
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.JsonRpcNotification
-import com.agentclientprotocol.rpc.JsonRpcResponse
+import com.agentclientprotocol.rpc.JsonRpcSuccessResponse
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -49,7 +49,7 @@ suspend fun <TRequest : AcpRequest, TResponse : AcpResponse> TestTransport.testR
         methodName = method.methodName,
         params = ACPJson.encodeToJsonElement(method.requestSerializer, request)
     )
-    val response = (received.lastOrNull() as? JsonRpcResponse)?.result?.let {
+    val response = (received.lastOrNull() as? JsonRpcSuccessResponse)?.result?.let {
         ACPJson.decodeFromJsonElement(method.responseSerializer, it)
     }
     val notifications = received.filterIsInstance<JsonRpcNotification>()

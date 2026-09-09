@@ -1,5 +1,6 @@
 package com.agentclientprotocol.agent
 
+import com.agentclientprotocol.rpc.TransportFrame
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.rpc.JsonRpcRequest
@@ -25,7 +26,10 @@ class TestTransport(val timeout: Duration) : BaseTransport() {
         _state.value = Transport.State.STARTED
     }
 
-    override fun send(message: JsonRpcMessage) {
+    private fun fireMessage(message: JsonRpcMessage) = fireFrame(TransportFrame.Single(message))
+
+    override fun send(frame: TransportFrame) {
+        val message = (frame as TransportFrame.Single).message
         responses.trySend(message)
     }
 

@@ -6,6 +6,7 @@ import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.rpc.JsonRpcResponse
+import com.agentclientprotocol.rpc.JsonRpcSuccessResponse
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
@@ -23,6 +24,7 @@ class SessionConfigSelectOptionsSerializerTest {
             {
                 "_direction": "incoming",
                 "_type": "response",
+                "jsonrpc": "2.0",
                 "id": 1,
                 "method": "session/new",
                 "params": {
@@ -209,7 +211,7 @@ class SessionConfigSelectOptionsSerializerTest {
         val response = ACPJson.decodeFromString(JsonRpcResponse.serializer(), json)
         val result = ACPJson.decodeFromJsonElement(
             NewSessionResponse.serializer(),
-            response.result ?: JsonNull
+            assertIs<JsonRpcSuccessResponse>(response).result
         )
 
         val configOptions = result.configOptions
@@ -304,7 +306,7 @@ class SessionConfigSelectOptionsSerializerTest {
         val response = ACPJson.decodeFromString(JsonRpcResponse.serializer(), json)
         val result = ACPJson.decodeFromJsonElement(
             SetSessionConfigOptionResponse.serializer(),
-            response.result ?: JsonNull
+            assertIs<JsonRpcSuccessResponse>(response).result
         )
 
         assertEquals(2, result.configOptions.size)

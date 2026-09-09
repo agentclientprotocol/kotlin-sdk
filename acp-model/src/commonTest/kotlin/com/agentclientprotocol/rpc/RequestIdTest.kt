@@ -140,7 +140,7 @@ class RequestIdTest {
     }
 
     @Test
-    fun `decodeJsonRpcMessage with Int RequestId`() {
+    fun `parse frame with Int RequestId`() {
         val json = """
             {
                 "jsonrpc": "2.0",
@@ -149,13 +149,13 @@ class RequestIdTest {
             }
         """.trimIndent()
 
-        val message = decodeJsonRpcMessage(json)
+        val message = (parseTransportFrame(json) as TransportFrame.Single).message
         assertIs<JsonRpcRequest>(message)
         assertEquals(42, message.id.value)
     }
 
     @Test
-    fun `decodeJsonRpcMessage with String RequestId`() {
+    fun `parse frame with String RequestId`() {
         val json = """
             {
                 "jsonrpc": "2.0",
@@ -164,7 +164,7 @@ class RequestIdTest {
             }
         """.trimIndent()
 
-        val message = decodeJsonRpcMessage(json)
+        val message = (parseTransportFrame(json) as TransportFrame.Single).message
         assertIs<JsonRpcRequest>(message)
         assertEquals("message-id-xyz", message.id.value)
     }
