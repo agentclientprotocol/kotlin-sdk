@@ -6,7 +6,9 @@ import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.rpc.MethodName
 import com.agentclientprotocol.rpc.RequestId
 import com.agentclientprotocol.rpc.JsonRpcResponse
-import com.agentclientprotocol.rpc.toJson
+import com.agentclientprotocol.rpc.JsonRpcJson
+import com.agentclientprotocol.rpc.parseTransportFrame
+import kotlinx.serialization.SerializationException
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.RequestOutcome
@@ -47,19 +49,47 @@ class StdioTransportFlowTest {
     }
 
     @Test
-    fun `batch occupies one line and preserves invalid siblings`(): Unit = runBlocking {
+    fun `valid batch occupies one line`(): Unit = runBlocking {
         val written = Channel<String>(Channel.UNLIMITED)
         val input = Channel<String>(Channel.UNLIMITED)
         val transport = makeTransport(input.receiveAsFlow(), output = { written.send(it) })
         val received = transport.asFrameChannel()
         transport.start()
-        val batch = TransportFrame.parse("""[{"jsonrpc":"2.0","method":"test"},42]""")
+        val batch = parseTransportFrame("""[{"jsonrpc":"2.0","method":"test"},{"jsonrpc":"2.0","method":"other"}]""")
         transport.send(batch)
         val line = withTimeout(1.seconds) { written.receive() }
-        assertEquals(batch, TransportFrame.parse(line))
+        assertEquals(batch, parseTransportFrame(line))
         assertTrue(written.tryReceive().isFailure)
         input.send(line)
         assertEquals(batch, withTimeout(1.seconds) { received.receive() })
+    }
+
+    @Test
+    fun `incoming batch retains malformed siblings`(): Unit = runBlocking {
+        val input = Channel<String>(Channel.UNLIMITED)
+        val transport = makeTransport(input.receiveAsFlow())
+        val received = transport.asFrameChannel()
+        transport.start()
+        input.send("""[{"jsonrpc":"2.0","method":"test"},42]""")
+        val batch = assertIs<TransportFrame.Batch>(withTimeout(1.seconds) { received.receive() })
+        assertIs<TransportFrame.Single>(batch.entries[0])
+        assertEquals(-32600, assertIs<TransportFrame.Malformed>(batch.entries[1]).error.code)
+    }
+
+    @Test
+    fun `outgoing malformed frames fail the writer without emitting partial output`(): Unit = runBlocking {
+        for (frame in listOf(parseTransportFrame("["), parseTransportFrame("""[{"jsonrpc":"2.0","method":"test"},42]"""))) {
+            val written = Channel<String>(Channel.UNLIMITED)
+            val input = Channel<String>(Channel.UNLIMITED)
+            val transport = makeTransport(input.receiveAsFlow(), output = { written.send(it) })
+            val error = CompletableDeferred<Throwable>()
+            transport.onError { error.complete(it) }
+            transport.start()
+            transport.send(frame)
+            assertIs<SerializationException>(withTimeout(1.seconds) { error.await() })
+            transport.expectState(Transport.State.CLOSED)
+            assertTrue(written.tryReceive().isFailure)
+        }
     }
 
     @Test
@@ -84,7 +114,7 @@ class StdioTransportFlowTest {
             val cleaned = CompletableDeferred<Unit>()
             val attempts = kotlinx.atomicfu.atomic(0)
             val transport = makeTransport(input.receiveAsFlow(), output = { text ->
-                val message = assertIs<TransportFrame.Single>(TransportFrame.parse(text)).message
+                val message = assertIs<TransportFrame.Single>(parseTransportFrame(text)).message
                 if (message is JsonRpcResponse) {
                     attempts.incrementAndGet()
                     throw RuntimeException("writer failed after acceptance")
@@ -101,7 +131,8 @@ class StdioTransportFlowTest {
             try {
                 val pending = async { runCatching { protocol.sendRequestRaw(method.methodName) } }
                 requestWritten.await()
-                input.send(TransportFrame.Single(JsonRpcRequest(RequestId.create(10), method.methodName)).toJson())
+                input.send(JsonRpcJson.encodeToString(TransportFrame.serializer(),
+                    TransportFrame.Single(JsonRpcRequest(RequestId.create(10), method.methodName))))
                 cleaned.await()
                 assertIs<CancellationException>(pending.await().exceptionOrNull())
                 assertEquals(1, attempts.value)
@@ -166,9 +197,10 @@ class StdioTransportFlowTest {
 
         inputChannel.send("not json at all")
         inputChannel.send("")
+        inputChannel.send("{} {}") // The JSON decoder checks trailing input after its serializer returns.
         inputChannel.send("""{"jsonrpc":"2.0","method":"after-garbage","id":1}""")
 
-        repeat(2) { assertTrue(withTimeout(1.seconds) { received.receive() } is TransportFrame.Malformed) }
+        repeat(3) { assertTrue(withTimeout(1.seconds) { received.receive() } is TransportFrame.Malformed) }
         val message = (withTimeout(1.seconds) { received.receive() } as TransportFrame.Single).message
         assertTrue(message is JsonRpcRequest)
         assertEquals(MethodName("after-garbage"), message.method)

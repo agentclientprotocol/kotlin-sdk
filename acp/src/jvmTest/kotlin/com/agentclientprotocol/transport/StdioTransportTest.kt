@@ -4,7 +4,7 @@ import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.TransportFrame
 import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.rpc.JsonRpcRequest
-import com.agentclientprotocol.rpc.JsonRpcResponse
+import com.agentclientprotocol.rpc.JsonRpcSuccessResponse
 import com.agentclientprotocol.rpc.MethodName
 import com.agentclientprotocol.rpc.RequestId
 import kotlinx.coroutines.*
@@ -110,12 +110,12 @@ class StdioTransportTest {
 
     @Test
     fun `should read JSON-RPC response from input`(): Unit = runBlocking {
-        transport.send(TransportFrame.Single(JsonRpcResponse(RequestId.create(42), result = JsonPrimitive("success"))))
+        transport.send(TransportFrame.Single(JsonRpcSuccessResponse(RequestId.create(42), result = JsonPrimitive("success"))))
 
         // Read the message from the transport
         val message = (messages.receive() as TransportFrame.Single).message
 
-        assertTrue(message is JsonRpcResponse)
+        assertTrue(message is JsonRpcSuccessResponse)
         assertEquals(RequestId.create(42), message.id)
         assertEquals(JsonPrimitive("success"), message.result)
     }
@@ -127,7 +127,7 @@ class StdioTransportTest {
 
         transport.send(TransportFrame.Single(JsonRpcRequest(RequestId.create(1), method1)))
         transport.send(TransportFrame.Single(JsonRpcNotification(method = notification1)))
-        transport.send(TransportFrame.Single(JsonRpcResponse(RequestId.create(2), result = JsonPrimitive("ok"))))
+        transport.send(TransportFrame.Single(JsonRpcSuccessResponse(RequestId.create(2), result = JsonPrimitive("ok"))))
 
         val message1 = (messages.receive() as TransportFrame.Single).message
         val message2 = (messages.receive() as TransportFrame.Single).message
@@ -139,7 +139,7 @@ class StdioTransportTest {
         assertTrue(message2 is JsonRpcNotification)
         assertEquals(notification1, message2.method)
 
-        assertTrue(message3 is JsonRpcResponse)
+        assertTrue(message3 is JsonRpcSuccessResponse)
         assertEquals(RequestId.create(2), message3.id)
     }
 

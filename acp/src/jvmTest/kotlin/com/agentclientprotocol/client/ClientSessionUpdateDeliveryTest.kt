@@ -19,7 +19,7 @@ import com.agentclientprotocol.rpc.TransportFrame
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.rpc.JsonRpcRequest
-import com.agentclientprotocol.rpc.JsonRpcResponse
+import com.agentclientprotocol.rpc.JsonRpcSuccessResponse
 import com.agentclientprotocol.transport.BaseTransport
 import com.agentclientprotocol.transport.Transport
 import kotlinx.atomicfu.atomic
@@ -144,7 +144,7 @@ private class EagerUpdateAgentTransport : BaseTransport() {
         if (message !is JsonRpcRequest || message.method != AcpMethod.AgentMethods.SessionNew.methodName) return
         val sessionId = SessionId("session-${sessionCounter.incrementAndGet()}")
         fireMessage(
-            JsonRpcResponse(
+            JsonRpcSuccessResponse(
                 id = message.id,
                 result = ACPJson.encodeToJsonElement(
                     AcpMethod.AgentMethods.SessionNew.responseSerializer,

@@ -19,7 +19,7 @@ import com.agentclientprotocol.rpc.TransportFrame
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.rpc.JsonRpcRequest
-import com.agentclientprotocol.rpc.JsonRpcResponse
+import com.agentclientprotocol.rpc.JsonRpcSuccessResponse
 import com.agentclientprotocol.rpc.RequestId
 import com.agentclientprotocol.transport.BaseTransport
 import com.agentclientprotocol.transport.Transport
@@ -139,7 +139,7 @@ private class DeferredSessionNewTransport : BaseTransport() {
     fun completePendingSessionNew() {
         val requestId = checkNotNull(pendingRequestId) { "session/new was not sent yet" }
         fireMessage(
-            JsonRpcResponse(
+            JsonRpcSuccessResponse(
                 id = requestId,
                 result = ACPJson.encodeToJsonElement(
                     AcpMethod.AgentMethods.SessionNew.responseSerializer,

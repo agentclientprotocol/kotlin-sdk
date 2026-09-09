@@ -149,7 +149,7 @@ class RequestIdTest {
             }
         """.trimIndent()
 
-        val message = (TransportFrame.parse(json) as TransportFrame.Single).message
+        val message = (parseTransportFrame(json) as TransportFrame.Single).message
         assertIs<JsonRpcRequest>(message)
         assertEquals(42, message.id.value)
     }
@@ -164,7 +164,7 @@ class RequestIdTest {
             }
         """.trimIndent()
 
-        val message = (TransportFrame.parse(json) as TransportFrame.Single).message
+        val message = (parseTransportFrame(json) as TransportFrame.Single).message
         assertIs<JsonRpcRequest>(message)
         assertEquals("message-id-xyz", message.id.value)
     }

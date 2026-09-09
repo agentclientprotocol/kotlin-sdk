@@ -2,24 +2,10 @@
 
 package com.agentclientprotocol.rpc
 
-import com.agentclientprotocol.model.AvailableCommandInput
-import com.agentclientprotocol.model.McpServer
-import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Required
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.SerializationException
-import kotlinx.serialization.descriptors.PrimitiveKind
-import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
-import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.encoding.Decoder
-import kotlinx.serialization.encoding.Encoder
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.modules.SerializersModule
-import kotlinx.serialization.modules.polymorphic
 import kotlin.jvm.JvmInline
 
 /**
@@ -35,77 +21,42 @@ public const val JSONRPC_VERSION: String = "2.0"
 public sealed interface RequestId {
     public val value: Any?
 
+    /**
+     * Integer-based request ID.
+     */
+    @Serializable
+    public data class IntId(override val value: Int) : RequestId {
+        override fun toString(): String = value.toString()
+    }
+
+    /**
+     * String-based request ID.
+     */
+    @Serializable
+    public data class StringId(override val value: String) : RequestId {
+        override fun toString(): String = value
+    }
+
     public data object Null : RequestId {
         override val value: Any? = null
         override fun toString(): String = "null"
     }
 
     public companion object {
-        public fun create(value: Int): RequestId = IntRequestId(value)
-        public fun create(value: String): RequestId = StringRequestId(value)
+        public fun create(value: Int): RequestId = IntId(value)
+        public fun create(value: String): RequestId = StringId(value)
     }
 }
 
-/**
- * Integer-based request ID.
- */
-@Serializable
-private data class IntRequestId(override val value: Int) : RequestId {
-    override fun toString(): String = value.toString()
-}
-
-/**
- * String-based request ID.
- */
-@Serializable
-private data class StringRequestId(override val value: String) : RequestId {
-    override fun toString(): String = value
-}
-
-/**
- * Custom serializer for integer, string and null IDs.
- */
-internal object RequestIdSerializer : KSerializer<RequestId> {
-    override val descriptor: SerialDescriptor =
-        PrimitiveSerialDescriptor("RequestId", PrimitiveKind.STRING)
-
-    @OptIn(ExperimentalSerializationApi::class)
-    override fun serialize(encoder: Encoder, value: RequestId) {
-        when (value) {
-            RequestId.Null -> encoder.encodeNull()
-            is IntRequestId -> encoder.encodeInt(value.value)
-            is StringRequestId -> encoder.encodeString(value.value)
-        }
-    }
-
-    override fun deserialize(decoder: Decoder): RequestId {
-        val jsonDecoder = decoder as? JsonDecoder
-            ?: throw SerializationException("RequestId can only be deserialized from JSON")
-
-        return when (val element = jsonDecoder.decodeJsonElement()) {
-            JsonNull -> RequestId.Null
-            is JsonPrimitive -> {
-                if (element.isString) {
-                    StringRequestId(element.content)
-                } else {
-                    try {
-                        IntRequestId(element.content.toInt())
-                    } catch (e: NumberFormatException) {
-                        throw SerializationException("RequestId must be an int or string", e)
-                    }
-                }
-            }
-            else -> throw SerializationException("RequestId must be a primitive (int or string)")
-        }
-    }
-}
 
 @JvmInline
 @Serializable
 public value class MethodName(public val name: String)
 
-@Serializable
-public sealed interface JsonRpcMessage
+@Serializable(with = JsonRpcMessageSerializer::class)
+public sealed interface JsonRpcMessage {
+    public val jsonrpc: String
+}
 
 /**
  * JSON-RPC request message.
@@ -115,7 +66,7 @@ public data class JsonRpcRequest(
     val id: RequestId,
     val method: MethodName,
     val params: JsonElement? = null,
-    val jsonrpc: String = JSONRPC_VERSION,
+    @Required override val jsonrpc: String = JSONRPC_VERSION,
 ) : JsonRpcMessage
 
 /**
@@ -125,19 +76,32 @@ public data class JsonRpcRequest(
 public data class JsonRpcNotification(
     val method: MethodName,
     val params: JsonElement? = null,
-    val jsonrpc: String = JSONRPC_VERSION,
+    @Required override val jsonrpc: String = JSONRPC_VERSION,
 ) : JsonRpcMessage
 
 /**
- * JSON-RPC response message.
+ * A JSON-RPC reply containing either a result or an error, never both.
  */
+@Serializable(with = JsonRpcResponseSerializer::class)
+public sealed interface JsonRpcResponse : JsonRpcMessage {
+    public val id: RequestId
+}
+
+/** A successful reply. [result] is required; use [JsonNull] for a JSON null result. */
 @Serializable
-public data class JsonRpcResponse(
-    val id: RequestId,
-    val result: JsonElement? = null,
-    val error: JsonRpcError? = null,
-    val jsonrpc: String = JSONRPC_VERSION,
-) : JsonRpcMessage
+public data class JsonRpcSuccessResponse(
+    override val id: RequestId,
+    val result: JsonElement,
+    @Required override val jsonrpc: String = JSONRPC_VERSION,
+) : JsonRpcResponse
+
+/** A failed reply. Use [RequestId.Null] when the error cannot be correlated with a request. */
+@Serializable
+public data class JsonRpcErrorResponse(
+    override val id: RequestId,
+    val error: JsonRpcError,
+    @Required override val jsonrpc: String = JSONRPC_VERSION,
+) : JsonRpcResponse
 
 /**
  * JSON-RPC error object.
@@ -180,28 +144,4 @@ public enum class JsonRpcErrorCode(public val code: Int, public val message: Str
     /** A given resource, such as a file, was not found.
      * This is an ACP-specific error code in the reserved range. */
     RESOURCE_NOT_FOUND(-32002, "Resource not found")
-}
-
-private val acpSerializersModule = SerializersModule {
-    polymorphic(AvailableCommandInput::class) {
-        subclass(AvailableCommandInput.Unstructured::class, AvailableCommandInput.Unstructured.serializer())
-        defaultDeserializer { AvailableCommandInput.Unstructured.serializer() }
-    }
-    polymorphic(McpServer::class) {
-        subclass(McpServer.Stdio::class, McpServer.Stdio.serializer())
-        subclass(McpServer.Http::class, McpServer.Http.serializer())
-        subclass(McpServer.Sse::class, McpServer.Sse.serializer())
-        defaultDeserializer { McpServer.Stdio.serializer() }
-
-    }
-}
-
-public val ACPJson: Json by lazy {
-    Json {
-        ignoreUnknownKeys = true
-        encodeDefaults = true
-        isLenient = true
-        explicitNulls = false
-        serializersModule = acpSerializersModule
-    }
 }

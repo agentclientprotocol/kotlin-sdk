@@ -24,7 +24,7 @@ import com.agentclientprotocol.rpc.TransportFrame
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.rpc.JsonRpcRequest
-import com.agentclientprotocol.rpc.JsonRpcResponse
+import com.agentclientprotocol.rpc.JsonRpcSuccessResponse
 import com.agentclientprotocol.transport.BaseTransport
 import com.agentclientprotocol.transport.Transport
 import kotlinx.coroutines.CoroutineScope
@@ -217,6 +217,6 @@ private class ScriptedAgent : BaseTransport() {
     }
 
     private fun <T> respond(request: JsonRpcRequest, serializer: kotlinx.serialization.KSerializer<T>, response: T) {
-        fireMessage(JsonRpcResponse(id = request.id, result = ACPJson.encodeToJsonElement(serializer, response)))
+        fireMessage(JsonRpcSuccessResponse(id = request.id, result = ACPJson.encodeToJsonElement(serializer, response)))
     }
 }

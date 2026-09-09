@@ -38,7 +38,7 @@ The conceptual model is:
 TransportFrame
   Single(message)
   Batch(non-empty entries)
-  Malformed(raw input, protocol error)
+  Malformed(protocol error, response-shape classification)
 
 Batch entry
   Valid message
@@ -49,15 +49,17 @@ Use a small sealed hierarchy, preferably reusing the single/malformed entry repr
 
 Keep `JsonRpcMessage` as the model for one request, notification, or response. A batch is an envelope around messages, not another method-bearing message. A malformed entry must remain representable alongside valid entries; directly decoding an entire array as `List<JsonRpcMessage>` cannot provide the required partial-error behavior.
 
-Expose one canonical parsing and encoding path, for example `TransportFrame.parse(text)` and `frame.toJson()`. Exact names can be finalized during implementation. Replace the existing `decodeJsonRpcMessage` entrypoint rather than maintaining a legacy decoder alongside it.
+Use custom serializers for `TransportFrame`, `JsonRpcMessage`, and `JsonRpcResponse`, delegating field handling to generated concrete message serializers. Only the frame interface, not its subtypes, is serializable. `parseTransportFrame(text)` is a thin wrapper over `JsonRpcJson.decodeFromString` that converts syntax errors (including trailing input detected after deserialization) to `Malformed`. Encode with `JsonRpcJson.encodeToString(TransportFrame.serializer(), frame)`. Remove the old `TransportFrame.parse`, `toJson`, and manual field/string assembly rather than retaining parallel codecs.
+
+Split `JsonRpcResponse` into `JsonRpcSuccessResponse(id, result)` and `JsonRpcErrorResponse(id, error)`, sharing only `id` and `jsonrpc`. The success result is a required non-nullable `JsonElement`; JSON null is `JsonNull`. Required version fields must be emitted even when defaults are disabled. Message/response interface serializers validate incoming envelopes and outgoing wire constraints (including version and params shape) consistently for singles and batches.
 
 The codec must:
 
-- Parse the entire JSON value using kotlinx.serialization's `Json.parseToJsonElement`; remove garbage-prefix recovery.
+- Parse the entire JSON value using kotlinx.serialization and the frame serializer; remove garbage-prefix recovery.
 - Distinguish parser rejection from an invalid JSON-RPC envelope.
 - Validate the JSON-RPC version, method/ID fields, and request/notification/response shapes before dispatching.
-- Decode batch entries independently, retaining their order and enough raw information for classification and forwarding.
-- Preserve malformed standalone text and malformed batch values without turning them into connection failures. Batch whitespace need not survive reserialization.
+- Decode batch entries independently, retaining their order and response-shape classification.
+- Deliver malformed standalone input and malformed batch members without turning them into connection failures. Do not retain or relay the raw input. Serializing a malformed frame/member must throw before writing any JSON; built-in writers report the failure and close as for other serialization errors.
 - Emit JSON-RPC objects and arrays without Kotlin serialization discriminator fields.
 - Include `id: null` on uncorrelated errors and `result: null` on null success results. Emit exactly one of `result` and `error`.
 - Keep wire-envelope strictness separate from existing ACP payload serialization settings and method-specific decoding.

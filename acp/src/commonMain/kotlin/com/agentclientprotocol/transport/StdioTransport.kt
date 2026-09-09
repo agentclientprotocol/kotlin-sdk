@@ -1,7 +1,8 @@
 package com.agentclientprotocol.transport
 
 import com.agentclientprotocol.rpc.TransportFrame
-import com.agentclientprotocol.rpc.toJson
+import com.agentclientprotocol.rpc.JsonRpcJson
+import com.agentclientprotocol.rpc.parseTransportFrame
 import com.agentclientprotocol.transport.Transport.State
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.*
@@ -101,7 +102,7 @@ public class StdioTransport private constructor(
                     input.collect { line ->
                         currentCoroutineContext().ensureActive()
 
-                        fireFrame(TransportFrame.parse(line))
+                        fireFrame(parseTransportFrame(line))
                     }
                 } catch (ce: CancellationException) {
                     logger.trace(ce) { "Read job cancelled" }
@@ -119,7 +120,7 @@ public class StdioTransport private constructor(
             val writeJob = launch(ioDispatcher + CoroutineName("$name.write-to-output")) {
                 try {
                     for (message in sendChannel) {
-                        val encoded = message.toJson()
+                        val encoded = JsonRpcJson.encodeToString(TransportFrame.serializer(), message)
                         try {
                             output(encoded)
                         } catch (e: IllegalStateException) {

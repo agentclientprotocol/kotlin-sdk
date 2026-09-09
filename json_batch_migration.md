@@ -12,10 +12,10 @@ The low-level transport boundary is intentionally source/binary incompatible:
 | `onMessage` / `MessageListener` | `onFrame` / `FrameListener` |
 | `fireMessage` | `fireFrame` |
 | `asMessageChannel` | `asFrameChannel` |
-| `decodeJsonRpcMessage(text)` | `TransportFrame.parse(text)` |
-| Polymorphic message serialization | `frame.toJson()` |
+| `decodeJsonRpcMessage(text)` / `TransportFrame.parse(text)` | `parseTransportFrame(text)` |
+| Polymorphic message serialization / `frame.toJson()` | `JsonRpcJson.encodeToString(TransportFrame.serializer(), frame)` |
 
-`TransportFrame` is in `com.agentclientprotocol.rpc` (`acp-model`). `Single` wraps a message; `Batch` contains non-empty `Entry` values (`Single` or `Malformed`), never nested batches. Constructor input is copied. `Malformed` retains the raw input and protocol error, including malformed siblings of otherwise valid batch entries.
+`TransportFrame` is in `com.agentclientprotocol.rpc` (`acp-model`). `Single` wraps a message; `Batch` contains non-empty `Entry` values (`Single` or `Malformed`), never nested batches. Constructor input is copied. `Malformed` retains the protocol error and response-shape classification, including malformed siblings of otherwise valid batch entries. It no longer retains raw input and cannot be serialized, either standalone or inside a batch.
 
 For a custom `BaseTransport`, the central changes look like:
 
@@ -27,15 +27,25 @@ override fun send(frame: TransportFrame) {
 }
 
 // Reader: once per NDJSON line or WebSocket text frame.
-fireFrame(TransportFrame.parse(text))
+fireFrame(parseTransportFrame(text))
 
 // One ordered writer; never flatten batches into separate writes.
 for (frame in outgoing) {
-    write(frame.toJson())
+    write(JsonRpcJson.encodeToString(TransportFrame.serializer(), frame))
 }
 ```
 
 The custom transport remains responsible for start/close/state management, input framing, and output newline/flushing. A successful `send` means queue acceptance, not network flush or peer acknowledgement. A closed queue must reject sends. EOF and writer failure must close the transport and notify listeners so pending calls and continuations are released. Use `onError` for transport failures, not malformed JSON-RPC input.
+
+Use the shared `parseTransportFrame` wrapper for wire text: it also catches syntax failures raised after the serializer returns, such as trailing input. Calling `decodeFromString` directly can throw on invalid JSON. JSON-RPC envelope failures are converted to `Malformed` by the frame serializer itself. Built-in transports keep reading after malformed input. Attempting to send a malformed frame is instead a writer error: it emits no partial JSON, reports `onError`, and closes the transport asynchronously.
+
+## JSON-RPC serializers and responses
+
+`JsonRpcMessage` and `JsonRpcResponse` now have custom JSON serializers. They validate envelopes and delegate field encoding/decoding to the concrete generated serializers; interface serialization no longer emits a Kotlin type discriminator. `JsonRpcJson` is the wire configuration; the existing lenient `ACPJson` configuration for method payloads is unchanged.
+
+`JsonRpcResponse` is now a sealed interface with `id` and `jsonrpc`. Replace constructor calls with `JsonRpcSuccessResponse(id, result)` or `JsonRpcErrorResponse(id, error)`, and inspect the subtype instead of nullable `result`/`error` properties. Success results are required, non-nullable `JsonElement` values: use `JsonNull` for a JSON null result. Null IDs remain `RequestId.Null`.
+
+Envelope serialization rejects unsupported JSON-RPC versions and scalar request/notification params consistently for singles and batches. Raw send callers that previously supplied scalar params must supply an object, array, or null instead. This validation belongs to the interface/frame serializers; generated concrete serializers remain field codecs. Agent/Client/session-facing APIs are unchanged.
 
 ## Explicit outgoing batches
 

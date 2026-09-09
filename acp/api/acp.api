@@ -657,6 +657,12 @@ public final class com/agentclientprotocol/protocol/AcpExpectedError : java/lang
 	public fun getMessage ()Ljava/lang/String;
 }
 
+public final class com/agentclientprotocol/protocol/ExceptionsKt {
+	public static final fun acpFail (Ljava/lang/String;)Ljava/lang/Void;
+	public static final fun jsonRpcInvalidParams (Ljava/lang/String;)Ljava/lang/Void;
+	public static final fun jsonRpcMethodNotFound (Ljava/lang/String;)Ljava/lang/Void;
+}
+
 public abstract interface class com/agentclientprotocol/protocol/JsonRpcCall {
 	public abstract fun getMethod-6j0qeeA ()Ljava/lang/String;
 	public abstract fun getParams ()Lkotlinx/serialization/json/JsonElement;
@@ -718,14 +724,10 @@ public final class com/agentclientprotocol/protocol/Protocol : com/agentclientpr
 	public fun sendRequestRaw-LE58_i8 (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun setNotificationHandlerRaw (Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
 	public fun setRequestHandlerRaw (Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
+	public final fun setRequestHandlerWithOutcomeRaw (Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
+	public static synthetic fun setRequestHandlerWithOutcomeRaw$default (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
 	public final fun start ()V
 	public fun toString ()Ljava/lang/String;
-}
-
-public final class com/agentclientprotocol/protocol/ProtocolKt {
-	public static final fun acpFail (Ljava/lang/String;)Ljava/lang/Void;
-	public static final fun jsonRpcInvalidParams (Ljava/lang/String;)Ljava/lang/Void;
-	public static final fun jsonRpcMethodNotFound (Ljava/lang/String;)Ljava/lang/Void;
 }
 
 public class com/agentclientprotocol/protocol/ProtocolOptions {

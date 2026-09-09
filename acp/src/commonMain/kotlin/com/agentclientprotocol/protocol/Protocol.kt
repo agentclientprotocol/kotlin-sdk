@@ -267,7 +267,8 @@ public class Protocol(
         val outgoing = outgoingBuilder.toMap()
 
         // Serialize the whole frame before exposing any pending IDs.
-        frame.toJson()
+        // TODO why is this serialization needed?
+        JsonRpcJson.encodeToString(TransportFrame.serializer(), frame)
         currentCoroutineContext().ensureActive()
         check(scope.isActive) { "Protocol is closed" }
 
@@ -463,7 +464,7 @@ public class Protocol(
             when (entry) {
                 is TransportFrame.Malformed -> if (!entry.isResponse) {
                     slots += ResponseSlot(queued).also {
-                        it.response.complete(JsonRpcResponse(RequestId.Null, error = entry.error))
+                        it.response.complete(JsonRpcErrorResponse(RequestId.Null, entry.error))
                     }
                 }
 
@@ -522,12 +523,7 @@ public class Protocol(
             // Also resolves a slot if cancellation prevented the coroutine body from starting.
             if (!slot.response.isCompleted) {
                 val error = (cause ?: IllegalStateException("Request completed without a response")).toJsonRpcError()
-                slot.response.complete(
-                    JsonRpcResponse(
-                        id = request.id,
-                        error = error,
-                    )
-                )
+                slot.response.complete(error?.let { JsonRpcErrorResponse(request.id, it) })
             }
             pendingIncomingRequests.update { if (it[requestId] === job) it.remove(requestId) else it }
         }
@@ -547,14 +543,9 @@ public class Protocol(
                 }
 
                 currentCoroutineContext().ensureActive()
-                slot.response.complete(JsonRpcResponse(request.id, result = outcome!!.response))
+                slot.response.complete(JsonRpcSuccessResponse(request.id, outcome!!.response ?: JsonNull))
             } catch (t: Throwable) {
-                slot.response.complete(
-                    JsonRpcResponse(
-                        id = request.id,
-                        error = t.toJsonRpcError(),
-                    )
-                )
+                slot.response.complete(t.toJsonRpcError()?.let { JsonRpcErrorResponse(request.id, it) })
                 return
             }
 
@@ -605,18 +596,16 @@ public class Protocol(
 
         val deferred = outgoing?.deferred
         if (deferred != null) {
-            val responseError = response.error
-            if (responseError != null) {
-                // do not convert CANCELLED to CancellationException here, because it's done in sendRequestRaw
-                val exception = JsonRpcException(
-                    code = responseError.code,
-                    message = responseError.message,
-                    data = responseError.data
-                )
-                deferred.completeExceptionally(exception)
-
-            } else {
-                deferred.complete(response.result ?: JsonNull)
+            when (response) {
+                is JsonRpcSuccessResponse -> deferred.complete(response.result)
+                is JsonRpcErrorResponse -> {
+                    // CANCELLED is converted to CancellationException by sendRequestRaw, not here.
+                    deferred.completeExceptionally(JsonRpcException(
+                        code = response.error.code,
+                        message = response.error.message,
+                        data = response.error.data,
+                    ))
+                }
             }
         } else {
             logger.warn { "Received response for unknown request ID: ${response.id}" }

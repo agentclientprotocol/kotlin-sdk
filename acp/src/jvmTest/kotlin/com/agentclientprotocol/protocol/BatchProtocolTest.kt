@@ -69,24 +69,24 @@ class BatchProtocolTest {
                 listOf(
                     request(1),
                     TransportFrame.Single(JsonRpcNotification(notification.methodName)),
-                    assertIs<TransportFrame.Entry>(TransportFrame.parse("42")),
+                    assertIs<TransportFrame.Entry>(parseTransportFrame("42")),
                     request(1),
                 )
             )
         )
         val frame = assertIs<TransportFrame.Batch>(transport.sent.receive())
         assertEquals(listOf(RequestId.create(1), RequestId.Null, RequestId.create(1)), frame.replies().map { it.id })
-        assertEquals(-32600, frame.replies()[1].error?.code)
+        assertEquals(-32600, assertIs<JsonRpcErrorResponse>(frame.replies()[1]).error.code)
         assertTrue(transport.sent.tryReceive().isFailure)
     }
 
     @Test
     fun standaloneErrorsAndSingletonBatchKeepTheirShape() = test { protocol, transport ->
         for ((raw, code) in listOf("not json" to -32700, "[]" to -32600)) {
-            transport.receive(TransportFrame.parse(raw))
+            transport.receive(parseTransportFrame(raw))
             val reply = assertIs<TransportFrame.Single>(transport.sent.receive()).replies().single()
             assertEquals(RequestId.Null, reply.id)
-            assertEquals(code, reply.error?.code)
+            assertEquals(code, assertIs<JsonRpcErrorResponse>(reply).error.code)
         }
         protocol.setRequestHandlerRaw(method) { null }
         transport.receive(TransportFrame.Batch(listOf(request(2))))
@@ -103,8 +103,8 @@ class BatchProtocolTest {
             TransportFrame.Batch(
                 listOf(
                     TransportFrame.Single(JsonRpcNotification(notification.methodName)),
-                    assertIs<TransportFrame.Entry>(TransportFrame.parse("""{"result":null}""")),
-                    TransportFrame.Single(JsonRpcResponse(RequestId.Null, error = JsonRpcError(-1, "uncorrelated"))),
+                    assertIs<TransportFrame.Entry>(parseTransportFrame("""{"result":null}""")),
+                    TransportFrame.Single(JsonRpcErrorResponse(RequestId.Null, error = JsonRpcError(-1, "uncorrelated"))),
                 )
             )
         )
@@ -204,8 +204,8 @@ class BatchProtocolTest {
         }
         transport.receive(TransportFrame.Batch(listOf(request(1), request(2))))
         val replies = transport.sent.receive().replies()
-        assertEquals(-32700, replies[0].error?.code)
-        assertNull(replies[1].error)
+        assertEquals(-32700, assertIs<JsonRpcErrorResponse>(replies[0]).error.code)
+        assertIs<JsonRpcSuccessResponse>(replies[1])
         repeat(2) { cleaned.receive() }
         assertTrue(cleaned.tryReceive().isFailure)
         assertTrue(transport.sent.tryReceive().isFailure)
@@ -265,7 +265,7 @@ class BatchProtocolTest {
             sentRequests = requests
             requests.forEach { assertEquals(session, protocol.getOutgoingRequestSessionId(it.id)) }
             transport.receive(TransportFrame.Batch(requests.reversed().map { request ->
-                TransportFrame.Single(JsonRpcResponse(request.id, result = request.params))
+                TransportFrame.Single(JsonRpcSuccessResponse(request.id, result = request.params ?: JsonNull))
             }))
         }
         val results = protocol.sendBatchRaw(calls, sessionId = session)
@@ -278,17 +278,17 @@ class BatchProtocolTest {
         val result = async { protocol.sendBatchRaw(List(3) { JsonRpcCall.Request(method.methodName) }) }
         val requests =
             assertIs<TransportFrame.Batch>(transport.sent.receive()).entries.map { (it as TransportFrame.Single).message as JsonRpcRequest }
-        transport.receive(TransportFrame.Single(JsonRpcResponse(requests[2].id, result = JsonPrimitive("ok"))))
+        transport.receive(TransportFrame.Single(JsonRpcSuccessResponse(requests[2].id, result = JsonPrimitive("ok"))))
         transport.receive(
             TransportFrame.Batch(
                 listOf(
                     TransportFrame.Single(
-                        JsonRpcResponse(
+                        JsonRpcErrorResponse(
                             requests[1].id,
                             error = JsonRpcError(-32800, "remote cancellation")
                         )
                     ),
-                    TransportFrame.Single(JsonRpcResponse(requests[0].id, error = JsonRpcError(-32601, "missing"))),
+                    TransportFrame.Single(JsonRpcErrorResponse(requests[0].id, error = JsonRpcError(-32601, "missing"))),
                 )
             )
         )
@@ -343,12 +343,12 @@ class BatchProtocolTest {
         transport.receive(request(1))
         secondStarted.await()
         releaseFirst.complete(Unit)
-        assertNull(transport.sent.receive().replies().single().error)
+        assertIs<JsonRpcSuccessResponse>(transport.sent.receive().replies().single())
         firstCleaned.await()
         transport.receive(TransportFrame.Single(JsonRpcNotification(notification.methodName)))
         barrier.await()
         protocol.cancelPendingIncomingRequest(RequestId.create(1))
-        assertEquals(-32800, transport.sent.receive().replies().single().error?.code)
+        assertEquals(-32800, assertIs<JsonRpcErrorResponse>(transport.sent.receive().replies().single()).error.code)
     }
 
     @Test
@@ -365,7 +365,7 @@ class BatchProtocolTest {
         val task = scheduled.receive()
         protocol.cancelPendingIncomingRequest(RequestId.create(1))
         task.run()
-        assertEquals(-32800, assertIs<TransportFrame.Batch>(transport.sent.receive()).replies().single().error?.code)
+        assertEquals(-32800, assertIs<JsonRpcErrorResponse>(assertIs<TransportFrame.Batch>(transport.sent.receive()).replies().single()).error.code)
         assertEquals(0, calls.value)
     }
 
@@ -380,21 +380,21 @@ class BatchProtocolTest {
             TransportFrame.Batch(
                 listOf(
                     TransportFrame.Single(
-                        JsonRpcResponse(
+                        JsonRpcErrorResponse(
                             RequestId.Null,
                             error = JsonRpcError(-32600, "uncorrelated")
                         )
                     ),
-                    TransportFrame.Single(JsonRpcResponse(RequestId.create(999), result = JsonNull)),
-                    TransportFrame.Single(JsonRpcResponse(requests[0].id, result = JsonPrimitive("first"))),
-                    TransportFrame.Single(JsonRpcResponse(requests[0].id, result = JsonPrimitive("duplicate"))),
+                    TransportFrame.Single(JsonRpcSuccessResponse(RequestId.create(999), result = JsonNull)),
+                    TransportFrame.Single(JsonRpcSuccessResponse(requests[0].id, result = JsonPrimitive("first"))),
+                    TransportFrame.Single(JsonRpcSuccessResponse(requests[0].id, result = JsonPrimitive("duplicate"))),
                     TransportFrame.Single(JsonRpcNotification(notification.methodName)),
                 )
             )
         )
         barrier.await()
         assertFalse(operation.isCompleted)
-        transport.receive(TransportFrame.Single(JsonRpcResponse(requests[1].id, result = JsonPrimitive("second"))))
+        transport.receive(TransportFrame.Single(JsonRpcSuccessResponse(requests[1].id, result = JsonPrimitive("second"))))
         assertEquals(listOf(JsonPrimitive("first"), JsonPrimitive("second")), operation.await().map { it.getOrThrow() })
         assertTrue(transport.sent.tryReceive().isFailure)
     }
@@ -423,7 +423,7 @@ class BatchProtocolTest {
         (batchRequests + lastRequest).forEach { assertEquals(batchSession, protocol.getOutgoingRequestSessionId(it.id)) }
 
         transport.receive(TransportFrame.Batch(requests.reversed().map {
-            TransportFrame.Single(JsonRpcResponse(it.id, result = JsonPrimitive(it.id.toString())))
+            TransportFrame.Single(JsonRpcSuccessResponse(it.id, result = JsonPrimitive(it.id.toString())))
         }))
         assertEquals(JsonPrimitive("1"), firstSingle.await())
         assertEquals(listOf(JsonPrimitive("2"), JsonPrimitive("3")), batch.await().map { it.getOrThrow() })

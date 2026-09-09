@@ -1,7 +1,8 @@
 package com.agentclientprotocol.transport
 
 import com.agentclientprotocol.rpc.TransportFrame
-import com.agentclientprotocol.rpc.toJson
+import com.agentclientprotocol.rpc.JsonRpcJson
+import com.agentclientprotocol.rpc.parseTransportFrame
 import io.ktor.websocket.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -17,7 +18,7 @@ public class WebSocketTransport(private val parentScope: CoroutineScope, private
         scope.launch {
             try {
                 for (frame in sendChannel) {
-                    wss.send(Frame.Text(frame.toJson()))
+                    wss.send(Frame.Text(JsonRpcJson.encodeToString(TransportFrame.serializer(), frame)))
                     wss.flush()
                 }
             } catch (ce: CancellationException) {
@@ -31,7 +32,7 @@ public class WebSocketTransport(private val parentScope: CoroutineScope, private
         scope.launch {
             try {
                 for (frame in wss.incoming) {
-                    if (frame is Frame.Text) fireFrame(TransportFrame.parse(frame.readText()))
+                    if (frame is Frame.Text) fireFrame(parseTransportFrame(frame.readText()))
                 }
             } catch (ce: CancellationException) {
                 throw ce
