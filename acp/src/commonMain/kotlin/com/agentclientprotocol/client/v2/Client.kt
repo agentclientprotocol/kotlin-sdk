@@ -322,15 +322,40 @@ public class Client(
     /**
      * Authenticates with `auth/login`.
      *
-     * Only call this when the initialize response listed [AgentInfo.authMethods]; when it is empty, the
-     * agent is not obliged to implement authentication at all.
+     * Call this only after [initialize] succeeds. Calls made before or during initialization fail locally
+     * without waiting or sending a request.
+     *
+     * Requires a non-empty [AgentInfo.authMethods] list. Otherwise the agent is not obliged to implement
+     * authentication, and the call fails locally without sending a request.
+     *
+     * The caller must select an advertised method that supports protocol-driven login. The SDK checks
+     * that authentication is advertised but does not validate [methodId] against the advertised list.
      */
-    public suspend fun login(methodId: AuthMethodId, _meta: JsonElement? = null): LoginAuthResponse =
-        AcpMethod.AgentMethods.V2.AuthLogin(protocol, LoginAuthRequest(methodId, _meta))
+    public suspend fun login(methodId: AuthMethodId, _meta: JsonElement? = null): LoginAuthResponse {
+        requireAuthenticationSupport("auth/login")
+        return AcpMethod.AgentMethods.V2.AuthLogin(protocol, LoginAuthRequest(methodId, _meta))
+    }
 
-    /** Logs out with `auth/logout`. See [login]. */
-    public suspend fun logout(_meta: JsonElement? = null): LogoutAuthResponse =
-        AcpMethod.AgentMethods.V2.AuthLogout(protocol, LogoutAuthRequest(_meta))
+    /**
+     * Logs out with `auth/logout`.
+     *
+     * The same initialization and [AgentInfo.authMethods] requirements as [login] apply.
+     */
+    public suspend fun logout(_meta: JsonElement? = null): LogoutAuthResponse {
+        requireAuthenticationSupport("auth/logout")
+        return AcpMethod.AgentMethods.V2.AuthLogout(protocol, LogoutAuthRequest(_meta))
+    }
+
+    private suspend fun requireAuthenticationSupport(method: String) {
+        // _agentInfo only completes on successful initialization. Awaiting it before completion could
+        // hang forever if initialization was never started or failed.
+        if (!_agentInfo.isCompleted) {
+            acpFail("Cannot call $method before initialization completes")
+        }
+        if (_agentInfo.await().authMethods.isEmpty()) {
+            acpFail("Cannot call $method: the agent did not advertise any authMethods")
+        }
+    }
 
     /**
      * Lists sessions with `session/list`, one page at a time.
