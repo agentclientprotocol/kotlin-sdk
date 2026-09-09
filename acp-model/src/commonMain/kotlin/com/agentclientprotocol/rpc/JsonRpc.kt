@@ -16,8 +16,8 @@ import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
 import kotlin.jvm.JvmInline
@@ -29,11 +29,16 @@ public const val JSONRPC_VERSION: String = "2.0"
 
 /**
  * Request ID for JSON-RPC messages.
- * Can be either an integer or a string according to JSON-RPC 2.0 spec.
+ * An integer, string, or explicit null. An absent ID, unlike null, denotes a notification.
  */
 @Serializable(with = RequestIdSerializer::class)
 public sealed interface RequestId {
-    public val value: Any
+    public val value: Any?
+
+    public data object Null : RequestId {
+        override val value: Any? = null
+        override fun toString(): String = "null"
+    }
 
     public companion object {
         public fun create(value: Int): RequestId = IntRequestId(value)
@@ -58,14 +63,16 @@ private data class StringRequestId(override val value: String) : RequestId {
 }
 
 /**
- * Custom serializer for RequestId that handles both int and string values.
+ * Custom serializer for integer, string and null IDs.
  */
 internal object RequestIdSerializer : KSerializer<RequestId> {
     override val descriptor: SerialDescriptor =
         PrimitiveSerialDescriptor("RequestId", PrimitiveKind.STRING)
 
+    @OptIn(ExperimentalSerializationApi::class)
     override fun serialize(encoder: Encoder, value: RequestId) {
         when (value) {
+            RequestId.Null -> encoder.encodeNull()
             is IntRequestId -> encoder.encodeInt(value.value)
             is StringRequestId -> encoder.encodeString(value.value)
         }
@@ -76,6 +83,7 @@ internal object RequestIdSerializer : KSerializer<RequestId> {
             ?: throw SerializationException("RequestId can only be deserialized from JSON")
 
         return when (val element = jsonDecoder.decodeJsonElement()) {
+            JsonNull -> RequestId.Null
             is JsonPrimitive -> {
                 if (element.isString) {
                     StringRequestId(element.content)
@@ -184,10 +192,10 @@ private val acpSerializersModule = SerializersModule {
         subclass(McpServer.Http::class, McpServer.Http.serializer())
         subclass(McpServer.Sse::class, McpServer.Sse.serializer())
         defaultDeserializer { McpServer.Stdio.serializer() }
+
     }
 }
 
-@OptIn(ExperimentalSerializationApi::class)
 public val ACPJson: Json by lazy {
     Json {
         ignoreUnknownKeys = true
@@ -195,39 +203,5 @@ public val ACPJson: Json by lazy {
         isLenient = true
         explicitNulls = false
         serializersModule = acpSerializersModule
-    }
-}
-
-/**
- * Helper function to decode JSON-RPC messages based on field presence.
- * JSON-RPC 2.0 spec distinguishes message types by which fields are present:
- * - Response: has "id" and ("result" or "error")
- * - Request: has "id" and "method"
- * - Notification: has "method" but no "id"
- */
-public fun decodeJsonRpcMessage(jsonString: String): JsonRpcMessage {
-    val element = try {
-        ACPJson.parseToJsonElement(jsonString)
-    } catch (e: SerializationException) {
-        // maybe there is some garbage output at the beginning of the like, try to find where JSON starts
-        val jsonStart = jsonString.indexOfFirst { it == '{' }
-        if (jsonStart == -1) {
-            throw e
-        }
-        val jsonStartTrimmed = jsonString.substring(jsonStart)
-        ACPJson.parseToJsonElement(jsonStartTrimmed)
-    }
-    require(element is JsonObject) { "Expected JSON object" }
-
-    val hasId = element.containsKey("id")
-    val hasMethod = element.containsKey("method")
-    val hasResult = element.containsKey("result")
-    val hasError = element.containsKey("error")
-
-    return when {
-        hasId && (hasResult || hasError) -> ACPJson.decodeFromJsonElement(JsonRpcResponse.serializer(), element)
-        hasId && hasMethod -> ACPJson.decodeFromJsonElement(JsonRpcRequest.serializer(), element)
-        hasMethod -> ACPJson.decodeFromJsonElement(JsonRpcNotification.serializer(), element)
-        else -> error("Unable to determine JsonRpcMessage type from JSON structure")
     }
 }

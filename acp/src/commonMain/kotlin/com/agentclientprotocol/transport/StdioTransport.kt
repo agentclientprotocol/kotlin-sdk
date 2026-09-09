@@ -1,8 +1,7 @@
 package com.agentclientprotocol.transport
 
-import com.agentclientprotocol.rpc.ACPJson
-import com.agentclientprotocol.rpc.JsonRpcMessage
-import com.agentclientprotocol.rpc.decodeJsonRpcMessage
+import com.agentclientprotocol.rpc.TransportFrame
+import com.agentclientprotocol.rpc.toJson
 import com.agentclientprotocol.transport.Transport.State
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.*
@@ -11,7 +10,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.io.*
-import kotlinx.serialization.encodeToString
 
 private val logger = KotlinLogging.logger {}
 
@@ -91,11 +89,10 @@ public class StdioTransport private constructor(
 
     private val childScope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]) + CoroutineName(name))
 
-    private val receiveChannel = Channel<JsonRpcMessage>(Channel.UNLIMITED)
-    private val sendChannel = Channel<JsonRpcMessage>(Channel.UNLIMITED)
+    private val sendChannel = Channel<TransportFrame>(Channel.UNLIMITED)
 
     override fun start() {
-        if (_state.getAndUpdate { State.STARTING } != State.CREATED) error("Transport is not in ${State.CREATED.name} state")
+        check(_state.compareAndSet(State.CREATED, State.STARTING)) { "Transport has already started or closed" }
         // Start reading messages from input
         childScope.launch(CoroutineName("$name.join-jobs")) {
             val readJob = launch(ioDispatcher + CoroutineName("$name.read-from-input")) {
@@ -104,14 +101,7 @@ public class StdioTransport private constructor(
                     input.collect { line ->
                         currentCoroutineContext().ensureActive()
 
-                        val jsonRpcMessage = try {
-                            decodeJsonRpcMessage(line)
-                        } catch (t: Throwable) {
-                            logger.trace(t) { "Failed to decode JSON message: $line" }
-                            return@collect
-                        }
-                        logger.trace { "Sending message to channel: $jsonRpcMessage" }
-                        fireMessage(jsonRpcMessage)
+                        fireFrame(TransportFrame.parse(line))
                     }
                 } catch (ce: CancellationException) {
                     logger.trace(ce) { "Read job cancelled" }
@@ -129,7 +119,7 @@ public class StdioTransport private constructor(
             val writeJob = launch(ioDispatcher + CoroutineName("$name.write-to-output")) {
                 try {
                     for (message in sendChannel) {
-                        val encoded = ACPJson.encodeToString(message)
+                        val encoded = message.toJson()
                         try {
                             output(encoded)
                         } catch (e: IllegalStateException) {
@@ -155,7 +145,7 @@ public class StdioTransport private constructor(
             }
             try {
                 logger.trace { "Joining read/write jobs..." }
-                if (_state.getAndUpdate { State.STARTED } != State.STARTING) logger.warn { "Transport is not in ${State.STARTING.name} state" }
+                _state.compareAndSet(State.STARTING, State.STARTED)
                 joinAll(readJob, writeJob)
             }
             catch (ce: CancellationException) {
@@ -167,33 +157,23 @@ public class StdioTransport private constructor(
                 fireError(e)
             }
             finally {
-                childScope.cancel()
-                if (_state.getAndUpdate { State.CLOSED } != State.CLOSING) logger.warn { "Transport is not in ${State.CLOSING.name} state" }
-                fireClose()
+                close()
                 logger.trace { "Transport closed" }
             }
         }
     }
 
-    override fun send(message: JsonRpcMessage) {
-        logger.trace { "Sending message: $message" }
-        val channelResult = sendChannel.trySend(message)
-        logger.trace { "Send result: $channelResult" }
+    override fun send(frame: TransportFrame) {
+        sendChannel.trySend(frame).getOrThrow()
     }
 
     override fun close() {
-        val old = _state.value
+        val old = _state.getAndUpdate { if (it == State.CLOSED) it else State.CLOSING }
         if (old == State.CLOSED || old == State.CLOSING) {
             logger.trace { "Transport is already closed or closing" }
             return
         }
-        if (!_state.compareAndSet(old, State.CLOSING)) {
-            logger.debug { "State changed concurrently. Do nothing" }
-            return
-        }
-
         if (sendChannel.close()) logger.trace { "Send channel closed" }
-        if (receiveChannel.close()) logger.trace { "Receive channel closed" }
 
         runCatching { closeHandler() }.onFailure { logger.warn(it) { "Exception in close handler" } }
 
@@ -203,6 +183,8 @@ public class StdioTransport private constructor(
         // the read job would stay parked inside input.collect and the transport
         // would be stuck in CLOSING.
         childScope.cancel()
+        _state.value = State.CLOSED
+        fireClose()
     }
 }
 

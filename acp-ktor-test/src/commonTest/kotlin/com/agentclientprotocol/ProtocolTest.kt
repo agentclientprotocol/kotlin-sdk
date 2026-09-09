@@ -7,6 +7,7 @@ import com.agentclientprotocol.model.AcpRequest
 import com.agentclientprotocol.model.AcpResponse
 import com.agentclientprotocol.model.CancelRequestNotification
 import com.agentclientprotocol.protocol.AcpExpectedError
+import com.agentclientprotocol.protocol.JsonRpcCall
 import com.agentclientprotocol.protocol.JsonRpcException
 import com.agentclientprotocol.protocol.acpFail
 import com.agentclientprotocol.protocol.jsonRpcRequest
@@ -17,6 +18,7 @@ import com.agentclientprotocol.protocol.setRequestHandler
 import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import com.agentclientprotocol.rpc.RequestId
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.awaitCancellation
@@ -30,6 +32,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
@@ -53,6 +56,45 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     companion object {
         object TestMethod : AcpMethod.AcpRequestResponseMethod<TestRequest, TestResponse>("test/testRequest", TestRequest.serializer(), TestResponse.serializer())
         object TestNotificationMethod : AcpMethod.AcpNotificationMethod<TestNotification>("test/testNotification", TestNotification.serializer())
+    }
+
+    @Test
+    fun `explicit mixed batch preserves successful and failed results`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val notificationReceived = CompletableDeferred<Unit>()
+        agentProtocol.setRequestHandler(TestMethod) { request ->
+            if (request.message == "fail") throw JsonRpcException(-32601, "not supported")
+            TestResponse(request.message)
+        }
+        agentProtocol.setNotificationHandler(TestNotificationMethod) { notificationReceived.complete(Unit) }
+        val results = clientProtocol.sendBatchRaw(listOf(
+            JsonRpcCall.Request(TestMethod.methodName, buildJsonObject { put("message", "first") }),
+            JsonRpcCall.Notification(TestNotificationMethod.methodName, buildJsonObject { put("message", "notify") }),
+            JsonRpcCall.Request(TestMethod.methodName, buildJsonObject { put("message", "fail") }),
+            JsonRpcCall.Request(TestMethod.methodName, buildJsonObject { put("message", "last") }),
+        ))
+        assertEquals(3, results.size)
+        assertEquals(buildJsonObject { put("message", "first") }, results[0].getOrThrow())
+        assertTrue(results[1].exceptionOrNull() is JsonRpcException)
+        assertEquals(buildJsonObject { put("message", "last") }, results[2].getOrThrow())
+        notificationReceived.await()
+    }
+
+    @Test
+    fun `batch permits nested requests and overlapping batches`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        clientProtocol.setRequestHandler(TestMethod) { TestResponse(it.message) }
+        agentProtocol.setRequestHandler(TestMethod) { request ->
+            if (request.message == "slow") { started.complete(Unit); release.await() }
+            agentProtocol.sendRequest(TestMethod, request)
+        }
+        val slow = async { clientProtocol.sendBatchRaw(listOf(JsonRpcCall.Request(TestMethod.methodName, buildJsonObject { put("message", "slow") }))) }
+        started.await()
+        val fast = clientProtocol.sendBatchRaw(listOf(JsonRpcCall.Request(TestMethod.methodName, buildJsonObject { put("message", "fast") })))
+        assertEquals(buildJsonObject { put("message", "fast") }, fast.single().getOrThrow())
+        assertTrue(!slow.isCompleted)
+        release.complete(Unit)
+        assertEquals(buildJsonObject { put("message", "slow") }, slow.await().single().getOrThrow())
     }
 
     @Test

@@ -355,6 +355,10 @@ Each sample includes comments that explain the protocol lifecycle and can be use
 
 **Lifecycle overview:** clients establish a transport, call `initialize` to negotiate capabilities, open sessions (`session.new`), send prompts (`session.prompt`), and react to streamed updates (tool calls, permissions, status). Agents implement the mirrors of these methods, delegating file and permission requests back to the client when required. The `Agent` and `Client` runtime classes sit between your business logic (AgentSupport/AgentSession or ClientSupport/ClientSessionOperations) and the lower-level `Protocol`/transport layers.
 
+JSON-RPC batches are supported by the shared protocol and both built-in transports. See the [frame/batch migration guide](json_batch_migration.md) for custom transport changes and explicit outgoing batches.
+
+**Known limitation — JSON syntax:** the SDK accepts any JSON syntax that kotlinx.serialization's `Json.parseToJsonElement` accepts, including some non-standard JSON such as unquoted primitive tokens. For simplicity, we rely on the library's parser and do not reimplement JSON syntax validation. Parsed values still undergo JSON-RPC envelope validation.
+
 ## Contributing
 
 Contributions are welcome! Please open an issue to discuss significant changes before submitting a PR.

@@ -32,7 +32,8 @@ import com.agentclientprotocol.model.v2.SetSessionConfigOptionResponse
 import com.agentclientprotocol.model.v2.UpdateSessionNotification
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.acpFail
-import com.agentclientprotocol.protocol.executeAfterCurrentRequest
+import com.agentclientprotocol.protocol.RequestOutcome
+import com.agentclientprotocol.protocol.setRequestHandlerWithOutcome
 import com.agentclientprotocol.protocol.invoke
 import com.agentclientprotocol.protocol.jsonRpcInvalidParams
 import com.agentclientprotocol.protocol.readProtocolVersionOrNull
@@ -45,7 +46,6 @@ import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 
@@ -82,7 +82,7 @@ public class Agent(
     private class SessionWrapper(private val session: AgentSession) {
         private val _activePrompt = atomic(false)
 
-        suspend fun acceptPrompt(protocol: Protocol, content: List<ContentBlock>, _meta: JsonElement?) {
+        fun acceptPrompt(protocol: Protocol, content: List<ContentBlock>, _meta: JsonElement?): RequestOutcome<PromptResponse> {
             if (!_activePrompt.compareAndSet(expect = false, update = true)) {
                 acpFail("There is already active prompt execution")
             }
@@ -94,18 +94,18 @@ public class Agent(
                 throw t
             }
 
-            currentCoroutineContext().executeAfterCurrentRequest {
-                try {
+            return RequestOutcome(
+                response = PromptResponse(),
+                afterResponse = {
                     updates.collect { update ->
                         AcpMethod.ClientMethods.V2.SessionUpdate(
                             protocol,
                             UpdateSessionNotification(session.sessionId, update, _meta)
                         )
                     }
-                } finally {
-                    _activePrompt.value = false
-                }
-            }
+                },
+                onCompletion = { _activePrompt.value = false },
+            )
         }
 
         /**
@@ -200,11 +200,9 @@ public class Agent(
             )
         }
 
-        protocol.setRequestHandler(AcpMethod.AgentMethods.V2.SessionPrompt) { params: PromptRequest ->
+        protocol.setRequestHandlerWithOutcome(AcpMethod.AgentMethods.V2.SessionPrompt) { params: PromptRequest ->
             val wrapper = getSessionOrThrow(params.sessionId)
             wrapper.acceptPrompt(protocol, params.prompt, params._meta)
-            // v2 says nothing about the turn here: how it ended went out as a StateUpdate.Idle update.
-            return@setRequestHandler PromptResponse()
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.V2.SessionResume) { params: ResumeSessionRequest ->

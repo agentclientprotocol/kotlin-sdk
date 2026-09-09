@@ -5,7 +5,7 @@ public final class com/agentclientprotocol/acpktor/LibVersionKt {
 public final class com/agentclientprotocol/transport/WebSocketTransport : com/agentclientprotocol/transport/BaseTransport {
 	public fun <init> (Lkotlinx/coroutines/CoroutineScope;Lio/ktor/websocket/WebSocketSession;)V
 	public fun close ()V
-	public fun send (Lcom/agentclientprotocol/rpc/JsonRpcMessage;)V
+	public fun send (Lcom/agentclientprotocol/rpc/TransportFrame;)V
 	public fun start ()V
 }
 

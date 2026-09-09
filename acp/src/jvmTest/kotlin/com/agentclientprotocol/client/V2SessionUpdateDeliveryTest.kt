@@ -20,6 +20,7 @@ import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.model.v2.UpdateSessionNotification
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.rpc.ACPJson
+import com.agentclientprotocol.rpc.TransportFrame
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.rpc.JsonRpcRequest
@@ -198,7 +199,10 @@ private class ScriptedAgent : BaseTransport() {
         _state.value = Transport.State.CLOSED
     }
 
-    override fun send(message: JsonRpcMessage) {
+    private fun fireMessage(message: JsonRpcMessage) = fireFrame(TransportFrame.Single(message))
+
+    override fun send(frame: TransportFrame) {
+        val message = (frame as TransportFrame.Single).message
         if (message !is JsonRpcRequest) return
         when (message.method) {
             AcpMethod.AgentMethods.V2.Initialize.methodName -> respond(

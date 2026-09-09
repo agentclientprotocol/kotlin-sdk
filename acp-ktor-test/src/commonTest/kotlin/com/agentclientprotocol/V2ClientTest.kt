@@ -22,6 +22,10 @@ import com.agentclientprotocol.client.v2.ClientSession as V2ClientSession
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.AuthMethodId
+import com.agentclientprotocol.model.AcpMethod
+import com.agentclientprotocol.protocol.JsonRpcCall
+import com.agentclientprotocol.protocol.setRequestHandler
+import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.model.ElicitationId
 import com.agentclientprotocol.model.ElicitationContentValue
 import com.agentclientprotocol.model.ElicitationScope
@@ -74,6 +78,7 @@ import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.model.v2.StateUpdate
 import com.agentclientprotocol.model.v2.StopReason
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.take
@@ -283,6 +288,57 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         assertEquals("test-agent", agentInfo.implementation.name)
         assertEquals(agentInfo, client.agentInfo.await())
         assertEquals("test-client", agent.clientInfo.await().implementation.name)
+    }
+
+    @Test
+    fun `two batched prompts acknowledge without joining either stream`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val support = V2Support(hangUntilCancelled = true)
+        V2Agent(agentProtocol, support)
+        val client = V2Client(clientProtocol)
+        client.initialize(v2ClientInfo())
+        val sessions = List(2) { client.newSession(cwd = ".") }
+        val method = AcpMethod.AgentMethods.V2.SessionPrompt
+        val results = withTimeout(10.seconds) {
+            clientProtocol.sendBatchRaw(sessions.map { session ->
+                JsonRpcCall.Request(method.methodName, ACPJson.encodeToJsonElement(method.requestSerializer,
+                    com.agentclientprotocol.model.v2.PromptRequest(session.sessionId, listOf(ContentBlock.Text("hi")))))
+            })
+        }
+        results.forEach { it.getOrThrow() }
+        withTimeout(10.seconds) { support.sessions.forEach { it.turnStarted.await() } }
+        assertTrue(support.sessions.none { it.cancelRequested.isCompleted })
+        sessions.forEach { it.cancel() }
+    }
+
+    @Test
+    fun `discarding a batched prompt before streaming releases active prompt state`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val support = V2Support(hangUntilCancelled = true)
+        V2Agent(agentProtocol, support)
+        val client = V2Client(clientProtocol)
+        client.initialize(v2ClientInfo())
+        val session = client.newSession(cwd = ".")
+        val otherRequestStarted = CompletableDeferred<Unit>()
+        agentProtocol.setRequestHandler(ProtocolTest.Companion.TestMethod) {
+            otherRequestStarted.complete(Unit)
+            awaitCancellation()
+        }
+        val method = AcpMethod.AgentMethods.V2.SessionPrompt
+        val batch = async {
+            clientProtocol.sendBatchRaw(listOf(
+                JsonRpcCall.Request(method.methodName, ACPJson.encodeToJsonElement(method.requestSerializer,
+                    com.agentclientprotocol.model.v2.PromptRequest(session.sessionId, listOf(ContentBlock.Text("discard"))))),
+                JsonRpcCall.Request(ProtocolTest.Companion.TestMethod.methodName, buildJsonObject { put("message", "wait") }),
+            ))
+        }
+        otherRequestStarted.await()
+        assertTrue(!support.sessions.single().turnStarted.isCompleted)
+        agentProtocol.cancelPendingIncomingRequests()
+        assertTrue(batch.await()[1].isFailure)
+
+        // The first stream never ran; its cleanup must nevertheless allow another prompt.
+        withTimeout(10.seconds) { session.prompt(listOf(ContentBlock.Text("retry"))) }
+        withTimeout(10.seconds) { support.sessions.single().turnStarted.await() }
+        session.cancel()
     }
 
     @Test

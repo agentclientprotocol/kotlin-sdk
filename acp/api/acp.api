@@ -657,6 +657,39 @@ public final class com/agentclientprotocol/protocol/AcpExpectedError : java/lang
 	public fun getMessage ()Ljava/lang/String;
 }
 
+public abstract interface class com/agentclientprotocol/protocol/JsonRpcCall {
+	public abstract fun getMethod-6j0qeeA ()Ljava/lang/String;
+	public abstract fun getParams ()Lkotlinx/serialization/json/JsonElement;
+}
+
+public final class com/agentclientprotocol/protocol/JsonRpcCall$Notification : com/agentclientprotocol/protocol/JsonRpcCall {
+	public synthetic fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-6j0qeeA ()Ljava/lang/String;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy-0t57iNA (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/protocol/JsonRpcCall$Notification;
+	public static synthetic fun copy-0t57iNA$default (Lcom/agentclientprotocol/protocol/JsonRpcCall$Notification;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/protocol/JsonRpcCall$Notification;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getMethod-6j0qeeA ()Ljava/lang/String;
+	public fun getParams ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/protocol/JsonRpcCall$Request : com/agentclientprotocol/protocol/JsonRpcCall {
+	public synthetic fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-6j0qeeA ()Ljava/lang/String;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy-0t57iNA (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/protocol/JsonRpcCall$Request;
+	public static synthetic fun copy-0t57iNA$default (Lcom/agentclientprotocol/protocol/JsonRpcCall$Request;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/protocol/JsonRpcCall$Request;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getMethod-6j0qeeA ()Ljava/lang/String;
+	public fun getParams ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/agentclientprotocol/protocol/JsonRpcException : java/lang/Exception, kotlinx/coroutines/CopyableThrowable {
 	public fun <init> (ILjava/lang/String;Lkotlinx/serialization/json/JsonElement;)V
 	public synthetic fun <init> (ILjava/lang/String;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -679,6 +712,8 @@ public final class com/agentclientprotocol/protocol/Protocol : com/agentclientpr
 	public final fun close ()V
 	public final fun getOptions ()Lcom/agentclientprotocol/protocol/ProtocolOptions;
 	public final fun getOutgoingRequestSessionId-uYPZQ4A (Lcom/agentclientprotocol/rpc/RequestId;)Ljava/lang/String;
+	public final fun sendBatchRaw-_NU1x_U (Ljava/util/List;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun sendBatchRaw-_NU1x_U$default (Lcom/agentclientprotocol/protocol/Protocol;Ljava/util/List;Ljava/lang/String;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public fun sendNotificationRaw (Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lkotlinx/serialization/json/JsonElement;)V
 	public fun sendRequestRaw-LE58_i8 (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun setNotificationHandlerRaw (Lcom/agentclientprotocol/model/AcpMethod$AcpNotificationMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
@@ -715,6 +750,25 @@ public final class com/agentclientprotocol/protocol/Protocol_extensionsKt {
 	public static synthetic fun setPaginatedRequestHandler$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;ILkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
 	public static final fun setRequestHandler (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
 	public static synthetic fun setRequestHandler$default (Lcom/agentclientprotocol/protocol/RpcMethodsOperations;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
+	public static final fun setRequestHandlerWithOutcome (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;)V
+	public static synthetic fun setRequestHandlerWithOutcome$default (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/model/AcpMethod$AcpRequestResponseMethod;Lkotlin/coroutines/CoroutineContext;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
+}
+
+public final class com/agentclientprotocol/protocol/RequestOutcome {
+	public fun <init> (Ljava/lang/Object;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;)V
+	public synthetic fun <init> (Ljava/lang/Object;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/Object;
+	public final fun component2 ()Lkotlin/jvm/functions/Function1;
+	public final fun component3 ()Lkotlin/jvm/functions/Function0;
+	public final fun copy (Ljava/lang/Object;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;)Lcom/agentclientprotocol/protocol/RequestOutcome;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/protocol/RequestOutcome;Ljava/lang/Object;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;ILjava/lang/Object;)Lcom/agentclientprotocol/protocol/RequestOutcome;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAfterResponse ()Lkotlin/jvm/functions/Function1;
+	public final fun getOnCompletion ()Lkotlin/jvm/functions/Function0;
+	public final fun getResponse ()Ljava/lang/Object;
+	public fun hashCode ()I
+	public final fun mapResponse (Lkotlin/jvm/functions/Function1;)Lcom/agentclientprotocol/protocol/RequestOutcome;
+	public fun toString ()Ljava/lang/String;
 }
 
 public abstract interface class com/agentclientprotocol/protocol/RpcMethodsOperations {
@@ -739,12 +793,12 @@ public abstract class com/agentclientprotocol/transport/BaseTransport : com/agen
 	public fun <init> ()V
 	protected final fun fireClose ()V
 	protected final fun fireError (Ljava/lang/Throwable;)V
-	protected final fun fireMessage (Lcom/agentclientprotocol/rpc/JsonRpcMessage;)V
+	protected final fun fireFrame (Lcom/agentclientprotocol/rpc/TransportFrame;)V
 	public fun getState ()Lkotlinx/coroutines/flow/StateFlow;
 	protected final fun get_state ()Lkotlinx/coroutines/flow/MutableStateFlow;
 	public fun onClose (Lkotlin/jvm/functions/Function0;)V
 	public fun onError (Lkotlin/jvm/functions/Function1;)V
-	public fun onMessage (Lkotlin/jvm/functions/Function1;)V
+	public fun onFrame (Lkotlin/jvm/functions/Function1;)V
 }
 
 public final class com/agentclientprotocol/transport/StdioTransport : com/agentclientprotocol/transport/BaseTransport {
@@ -753,7 +807,7 @@ public final class com/agentclientprotocol/transport/StdioTransport : com/agentc
 	public fun <init> (Lkotlinx/coroutines/CoroutineScope;Lkotlinx/coroutines/CoroutineDispatcher;Lkotlinx/io/Source;Lkotlinx/io/Sink;Ljava/lang/String;)V
 	public synthetic fun <init> (Lkotlinx/coroutines/CoroutineScope;Lkotlinx/coroutines/CoroutineDispatcher;Lkotlinx/io/Source;Lkotlinx/io/Sink;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun close ()V
-	public fun send (Lcom/agentclientprotocol/rpc/JsonRpcMessage;)V
+	public fun send (Lcom/agentclientprotocol/rpc/TransportFrame;)V
 	public fun start ()V
 }
 
@@ -761,8 +815,8 @@ public abstract interface class com/agentclientprotocol/transport/Transport : ja
 	public abstract fun getState ()Lkotlinx/coroutines/flow/StateFlow;
 	public abstract fun onClose (Lkotlin/jvm/functions/Function0;)V
 	public abstract fun onError (Lkotlin/jvm/functions/Function1;)V
-	public abstract fun onMessage (Lkotlin/jvm/functions/Function1;)V
-	public abstract fun send (Lcom/agentclientprotocol/rpc/JsonRpcMessage;)V
+	public abstract fun onFrame (Lkotlin/jvm/functions/Function1;)V
+	public abstract fun send (Lcom/agentclientprotocol/rpc/TransportFrame;)V
 	public abstract fun start ()V
 }
 
@@ -778,7 +832,7 @@ public final class com/agentclientprotocol/transport/Transport$State : java/lang
 }
 
 public final class com/agentclientprotocol/transport/TransportKt {
-	public static final fun asMessageChannel (Lcom/agentclientprotocol/transport/Transport;)Lkotlinx/coroutines/channels/Channel;
+	public static final fun asFrameChannel (Lcom/agentclientprotocol/transport/Transport;)Lkotlinx/coroutines/channels/Channel;
 }
 
 public final class com/agentclientprotocol/util/PaginatedResponseToFlowAdapter {
