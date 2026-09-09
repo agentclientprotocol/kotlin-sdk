@@ -27,6 +27,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertIs
 import kotlin.test.assertFails
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.test.fail
 import kotlin.time.Duration
@@ -77,7 +79,7 @@ class StdioTransportFlowTest {
     }
 
     @Test
-    fun `outgoing malformed frames fail the writer without emitting partial output`(): Unit = runBlocking {
+    fun `outgoing malformed frames fail send and leave the writer usable`(): Unit = runBlocking {
         for (frame in listOf(parseTransportFrame("["), parseTransportFrame("""[{"jsonrpc":"2.0","method":"test"},42]"""))) {
             val written = Channel<String>(Channel.UNLIMITED)
             val input = Channel<String>(Channel.UNLIMITED)
@@ -85,10 +87,16 @@ class StdioTransportFlowTest {
             val error = CompletableDeferred<Throwable>()
             transport.onError { error.complete(it) }
             transport.start()
-            transport.send(frame)
-            assertIs<SerializationException>(withTimeout(1.seconds) { error.await() })
-            transport.expectState(Transport.State.CLOSED)
+            transport.expectState(Transport.State.STARTED)
+            assertFailsWith<SerializationException> { transport.send(frame) }
+
+            val valid = TransportFrame.Single(JsonRpcNotification(MethodName("afterFailure")))
+            transport.send(valid)
+            assertEquals(valid, parseTransportFrame(withTimeout(1.seconds) { written.receive() }))
             assertTrue(written.tryReceive().isFailure)
+            assertFalse(error.isCompleted)
+            assertEquals(Transport.State.STARTED, transport.state.value)
+            transport.close()
         }
     }
 

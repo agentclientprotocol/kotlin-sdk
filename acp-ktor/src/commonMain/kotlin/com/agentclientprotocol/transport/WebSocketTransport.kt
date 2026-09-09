@@ -11,14 +11,14 @@ public const val ACP_PATH: String = "acp"
 
 public class WebSocketTransport(private val parentScope: CoroutineScope, private val wss: WebSocketSession) : BaseTransport() {
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
-    private val sendChannel = Channel<TransportFrame>(Channel.UNLIMITED)
+    private val sendChannel = Channel<String>(Channel.UNLIMITED)
 
     override fun start() {
         check(_state.compareAndSet(Transport.State.CREATED, Transport.State.STARTING)) { "Transport has already started or closed" }
         scope.launch {
             try {
-                for (frame in sendChannel) {
-                    wss.send(Frame.Text(JsonRpcJson.encodeToString(TransportFrame.serializer(), frame)))
+                for (encoded in sendChannel) {
+                    wss.send(Frame.Text(encoded))
                     wss.flush()
                 }
             } catch (ce: CancellationException) {
@@ -46,7 +46,8 @@ public class WebSocketTransport(private val parentScope: CoroutineScope, private
     }
 
     override fun send(frame: TransportFrame) {
-        sendChannel.trySend(frame).getOrThrow()
+        val encoded = JsonRpcJson.encodeToString(TransportFrame.serializer(), frame)
+        sendChannel.trySend(encoded).getOrThrow()
     }
 
     override fun close() {

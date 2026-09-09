@@ -13,7 +13,6 @@ import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonArray
@@ -74,7 +73,7 @@ class WebSocketTransportTest {
     }
 
     @Test
-    fun malformedStandaloneOutputFailsTheWriter() = rejectsMalformedOutput(parseTransportFrame("["))
+    fun malformedStandaloneOutputFailsSendAndLeavesTheWriterUsable() = rejectsMalformedOutput(parseTransportFrame("["))
 
     @Test
     fun malformedBatchOutputCannotEmitPartialJson() = rejectsMalformedOutput(
@@ -85,10 +84,13 @@ class WebSocketTransportTest {
         val error = CompletableDeferred<Throwable>()
         transport.onError { error.complete(it) }
         transport.start()
-        transport.send(frame)
-        assertIs<SerializationException>(error.await())
-        transport.state.first { it == Transport.State.CLOSED }
-        // The peer may see a close frame or EOF, but never JSON from the rejected frame.
-        assertFalse(incoming.receiveCatching().getOrNull() is Frame.Text)
+        assertFailsWith<SerializationException> { transport.send(frame) }
+
+        val valid = TransportFrame.Single(JsonRpcNotification(MethodName("afterFailure")))
+        transport.send(valid)
+        assertEquals(valid, parseTransportFrame(assertIs<Frame.Text>(incoming.receive()).readText()))
+        assertTrue(incoming.tryReceive().isFailure)
+        assertFalse(error.isCompleted)
+        assertEquals(Transport.State.STARTED, transport.state.value)
     }
 }

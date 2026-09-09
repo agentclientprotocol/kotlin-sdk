@@ -266,9 +266,6 @@ public class Protocol(
         })
         val outgoing = outgoingBuilder.toMap()
 
-        // Serialize the whole frame before exposing any pending IDs.
-        // TODO why is this serialization needed?
-        JsonRpcJson.encodeToString(TransportFrame.serializer(), frame)
         currentCoroutineContext().ensureActive()
         check(scope.isActive) { "Protocol is closed" }
 

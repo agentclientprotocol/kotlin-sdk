@@ -90,7 +90,7 @@ public class StdioTransport private constructor(
 
     private val childScope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]) + CoroutineName(name))
 
-    private val sendChannel = Channel<TransportFrame>(Channel.UNLIMITED)
+    private val sendChannel = Channel<String>(Channel.UNLIMITED)
 
     override fun start() {
         check(_state.compareAndSet(State.CREATED, State.STARTING)) { "Transport has already started or closed" }
@@ -119,8 +119,7 @@ public class StdioTransport private constructor(
             }
             val writeJob = launch(ioDispatcher + CoroutineName("$name.write-to-output")) {
                 try {
-                    for (message in sendChannel) {
-                        val encoded = JsonRpcJson.encodeToString(TransportFrame.serializer(), message)
+                    for (encoded in sendChannel) {
                         try {
                             output(encoded)
                         } catch (e: IllegalStateException) {
@@ -165,7 +164,8 @@ public class StdioTransport private constructor(
     }
 
     override fun send(frame: TransportFrame) {
-        sendChannel.trySend(frame).getOrThrow()
+        val encoded = JsonRpcJson.encodeToString(TransportFrame.serializer(), frame)
+        sendChannel.trySend(encoded).getOrThrow()
     }
 
     override fun close() {
