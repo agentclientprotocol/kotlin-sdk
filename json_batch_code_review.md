@@ -10,17 +10,17 @@ are resolved, and two new ones were found during the reassessment.
 Verification aid: `./gradlew :acp:jvmTest --tests "*BatchProtocolTest*" --tests "*StdioTransport*"`
 passes; stderr from that run is cited as evidence where relevant.
 
-| # | Severity | Status |
-|---|----------|--------|
-| 1 | HIGH | Resolved: bounded graceful WebSocket shutdown |
-| 2 | MEDIUM | Withdrawn: parse-error responses are correct; noisy stdout violates ACP |
-| 3 | MEDIUM | Resolved: synchronous send failures documented and callers audited |
-| 4 | MEDIUM | New (found during reassessment) |
-| 5 | MEDIUM | Still valid, unchanged |
+| # | Severity | Status                                                                                   |
+|---|----------|------------------------------------------------------------------------------------------|
+| 1 | HIGH | Resolved: bounded graceful WebSocket shutdown                                            |
+| 2 | MEDIUM | Withdrawn: parse-error responses are correct; noisy stdout violates ACP                  |
+| 3 | MEDIUM | Resolved: synchronous send failures documented and callers audited                       |
+| 4 | MEDIUM | Resolved: New (found during reassessment)                                                |
+| 5 | MEDIUM | Still valid, unchanged                                                                   |
 | 6 | LOW | Narrowed: the orphaned job is cancelled by `close()`, cancellation by ID still misses it |
-| 7 | LOW | Narrowed to a shutdown race, but its blast radius grew (see 4) |
-| 8 | LOW | Changed: the plan file is gone, the README link it left behind is broken |
-| — | resolved | `Malformed.raw` (old finding 7) — the property no longer exists |
+| 7 | LOW | Narrowed to a shutdown race, but its blast radius grew (see 4)                           |
+| 8 | LOW | Changed: the plan file is gone, the README link it left behind is broken                 |
+| — | resolved | `Malformed.raw` (old finding 7) — the property no longer exists                          |
 
 ---
 
@@ -105,7 +105,7 @@ API signatures are unchanged.
 
 ---
 
-## 4. MEDIUM — NEW: handler follow-up failures escape to the uncaught-exception handler
+## 4. MEDIUM — NEW Resolved: handler follow-up failures escape to the uncaught-exception handler
 
 `Protocol.kt:480-493`, `Protocol.kt:55-56`
 

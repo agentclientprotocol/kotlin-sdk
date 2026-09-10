@@ -457,6 +457,7 @@ public class Protocol(
 
     private suspend fun handleRequest(request: JsonRpcRequest, slot: ResponseSlot) {
         var outcome: RequestOutcome<JsonElement?>? = null
+
         try {
             try {
                 val handler = requestHandlers.value[request.method]
@@ -482,13 +483,11 @@ public class Protocol(
             if (t !is CancellationException) {
                 logger.error(t) { "After-response work failed for ${request.method}" }
             }
-            throw t
         } finally {
             try {
                 outcome?.onCompletion?.invoke()
             } catch (t: Throwable) {
                 logger.error(t) { "Outcome cleanup failed for ${request.method}" }
-                throw t
             }
         }
     }
