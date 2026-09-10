@@ -49,10 +49,11 @@ public class Protocol(
         private val logger = KotlinLogging.logger {}
     }
 
-    private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]) + CoroutineName(options.protocolDebugName))
+    private val protocolJob = SupervisorJob(parentScope.coroutineContext[Job])
+    private val scope = CoroutineScope(parentScope.coroutineContext + protocolJob + CoroutineName(options.protocolDebugName))
     private val handlerDispatcher = Dispatchers.Default.limitedParallelism(parallelism = 1)
     // a scope and dispatcher that executes handlers to avoid blocking of message processing
-    private val handlerScope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job])
+    private val handlerScope = CoroutineScope(scope.coroutineContext + SupervisorJob(protocolJob)
             + handlerDispatcher + CoroutineName(options.protocolDebugName))
     // now the incoming and outgoing requests can clash by ids, but it should not be a problem
     private val requestIdCounter: AtomicInt = atomic(0)
@@ -60,7 +61,6 @@ public class Protocol(
         atomic(persistentMapOf())
     private val pendingIncomingRequests: AtomicRef<PersistentMap<IncomingRequestId, Job>> =
         atomic(persistentMapOf())
-    private val closeStarted = atomic(false)
 
     /**
      * Request handlers for incoming requests.
@@ -75,6 +75,11 @@ public class Protocol(
         atomic(persistentMapOf())
 
     private val _negotiatedProtocolVersion: AtomicRef<ProtocolVersion?> = atomic(null)
+
+    init {
+        // Also release resources if the parent is cancelled before the reader starts.
+        protocolJob.invokeOnCompletion { close() }
+    }
 
     /**
      * The protocol version negotiated for this connection, or `null` before `initialize` resolves.
@@ -99,6 +104,7 @@ public class Protocol(
      * Connect to a transport and start processing messages.
      */
     public fun start() {
+        protocolJob.ensureActive()
         setNotificationHandler(AcpMethod.MetaMethods.CancelRequest) { request ->
             var requestJob: Job? = null
             val incomingRequestId = IncomingRequestId(request.requestId)
@@ -136,6 +142,7 @@ public class Protocol(
         params: JsonElement?,
         sessionId: SessionId?
     ): JsonElement {
+        currentCoroutineContext().ensureActive()
         val requestId = OutgoingRequestId(RequestId.create(requestIdCounter.incrementAndGet()))
         val deferred = CompletableDeferred<JsonElement>()
         val outgoingRequest = OutgoingRequest(deferred, sessionId)
@@ -148,7 +155,7 @@ public class Protocol(
                 method = method,
                 params = params
             )
-            transport.send(TransportFrame.Single(request))
+            sendFrame(TransportFrame.Single(request))
 
             return deferred.await()
         } catch (jsonRpcException: JsonRpcException) {
@@ -156,7 +163,7 @@ public class Protocol(
         } catch (ce: CancellationException) {
             logger.trace(ce) { "Request cancelled on this side. Sending CancelRequest notification." }
             withContext(NonCancellable) {
-                if (!scope.isActive || transport.state.value == Transport.State.CLOSED) return@withContext
+                if (!protocolJob.isActive) return@withContext
 
                 val cancellationSent = runCatching {
                     AcpMethod.MetaMethods.CancelRequest(this@Protocol, CancelRequestNotification(requestId.id, ce.message))
@@ -218,18 +225,17 @@ public class Protocol(
         val outgoing = outgoingBuilder.toMap()
 
         currentCoroutineContext().ensureActive()
-        check(scope.isActive) { "Protocol is closed" }
 
         pendingOutgoingRequests.update { it.putAll(outgoing) }
 
         var sent = false
         try {
-            transport.send(frame)
+            sendFrame(frame)
             sent = true
 
             return outgoing.map { (_, request) ->
                 try {
-                    Result.success(request.deferred.await())
+                    Result.success(request.result.await())
                 } catch (e: JsonRpcException) {
                     currentCoroutineContext().ensureActive()
                     Result.failure(e.toProtocolException())
@@ -237,9 +243,9 @@ public class Protocol(
             }
         } catch (ce: CancellationException) {
             // If the scope is still active when cancellation is encountered, cancel other pending requests in this batch
-            if (sent && scope.isActive) {
+            if (sent && protocolJob.isActive) {
                 for ((id, request) in outgoing) {
-                    if (!request.deferred.isCompleted) runCatching {
+                    if (!request.result.isCompleted) runCatching {
                         AcpMethod.MetaMethods.CancelRequest(this, CancelRequestNotification(id.id, ce.message))
                     }
                 }
@@ -251,7 +257,7 @@ public class Protocol(
             pendingOutgoingRequests.update { pendingOutgoing ->
                 pendingOutgoing.mutate { pendingOutgoing ->
                     outgoing.entries.forEach { (id, request) ->
-                        request.deferred.cancel()
+                        request.result.cancel()
                         if (pendingOutgoing[id] === request) pendingOutgoing.remove(id)
                     }
                 }
@@ -264,7 +270,12 @@ public class Protocol(
             method = method.methodName,
             params = params
         )
-        transport.send(TransportFrame.Single(notification))
+        sendFrame(TransportFrame.Single(notification))
+    }
+
+    private fun sendFrame(frame: TransportFrame) {
+        protocolJob.ensureActive()
+        transport.send(frame)
     }
 
     override fun setRequestOutcomeHandlerRaw(
@@ -314,12 +325,11 @@ public class Protocol(
      * Close the protocol and cleanup resources.
      */
     public fun close() {
-        if (!closeStarted.compareAndSet(expect = false, update = true)) return
         val message = "Protocol closed"
         try {
+            protocolJob.cancel(CancellationException(message))
             cancelPendingIncomingRequests(CancellationException(message))
             cancelPendingOutgoingRequests(CancellationException(message))
-            scope.cancel(message)
         } finally {
             transport.close()
         }
@@ -360,7 +370,7 @@ public class Protocol(
         val requests = pendingOutgoingRequests.getAndUpdate { it.clear() }
         for ((requestId, outgoing) in requests) {
             logger.trace { "Canceling pending outgoing request: $requestId" }
-            outgoing.deferred.cancel(ce)
+            outgoing.result.cancel(ce)
         }
     }
 
@@ -386,20 +396,20 @@ public class Protocol(
             is TransportFrame.Batch -> frame.entries
             is TransportFrame.Entry -> listOf(frame)
         }
-        val queued = CompletableDeferred<Unit>(scope.coroutineContext[Job])
+        val responseFrameQueued = CompletableDeferred<Unit>(protocolJob)
         val slots = mutableListOf<ResponseSlot>()
 
         for (entry in entries) {
             when (entry) {
                 is TransportFrame.Malformed -> if (!entry.isResponse) {
-                    slots += ResponseSlot(queued).also {
+                    slots += ResponseSlot(responseFrameQueued).also {
                         it.response.complete(JsonRpcErrorResponse(RequestId.Null, entry.error))
                     }
                 }
 
                 is TransportFrame.Single -> when (val message = entry.message) {
                     is JsonRpcRequest -> {
-                        val slot = ResponseSlot(queued)
+                        val slot = ResponseSlot(responseFrameQueued)
                         slots += slot
                         dispatchRequest(message, slot)
                     }
@@ -417,7 +427,7 @@ public class Protocol(
         }
 
         if (slots.isEmpty()) {
-            queued.complete(Unit)
+            responseFrameQueued.complete(Unit)
             return
         }
 
@@ -427,23 +437,22 @@ public class Protocol(
                 val replies = slots.mapNotNull { it.response.await() }.map { TransportFrame.Single(it) }
                 if (replies.isNotEmpty()) {
                     currentCoroutineContext().ensureActive()
-                    if (closeStarted.value) throw CancellationException("Protocol closed")
-                    transport.send(
+                    sendFrame(
                         if (frame is TransportFrame.Batch) TransportFrame.Batch(replies)
                         else replies.single()
                     )
                 }
-                queued.complete(Unit)
+                responseFrameQueued.complete(Unit)
+            } catch (ce: CancellationException) {
+                responseFrameQueued.cancel(ce)
+                logger.trace(ce) { "Response queueing cancelled" }
             } catch (t: Throwable) {
-                if (t is CancellationException || closeStarted.value || !scope.isActive ||
-                    transport.state.value == Transport.State.CLOSING || transport.state.value == Transport.State.CLOSED
-                ) {
-                    queued.cancel(CancellationException("Response queueing cancelled", t))
-                    logger.trace(t) { "Response queueing cancelled" }
-                } else {
-                    queued.completeExceptionally(t)
+                if (protocolJob.isActive) {
+                    responseFrameQueued.completeExceptionally(t)
                     logger.error(t) { "Unable to queue response frame" }
-                    close()
+                } else {
+                    responseFrameQueued.cancel(CancellationException("Response queueing cancelled", t))
+                    logger.trace(t) { "Response queueing cancelled" }
                 }
             }
         }
@@ -539,13 +548,13 @@ public class Protocol(
             currentRequests.remove(outgoingRequestId)
         }
 
-        val deferred = outgoing?.deferred
-        if (deferred != null) {
+        val result = outgoing?.result
+        if (result != null) {
             when (response) {
-                is JsonRpcSuccessResponse -> deferred.complete(response.result)
+                is JsonRpcSuccessResponse -> result.complete(response.result)
                 is JsonRpcErrorResponse -> {
                     // CANCELLED is converted to CancellationException by sendRequestRaw, not here.
-                    deferred.completeExceptionally(JsonRpcException(
+                    result.completeExceptionally(JsonRpcException(
                         code = response.error.code,
                         message = response.error.message,
                         data = response.error.data,
@@ -570,6 +579,6 @@ internal value class IncomingRequestId(val id: RequestId)
 internal value class OutgoingRequestId(val id: RequestId)
 
 internal data class OutgoingRequest(
-    val deferred: CompletableDeferred<JsonElement>,
+    val result: CompletableDeferred<JsonElement>,
     val sessionId: SessionId? = null
 )

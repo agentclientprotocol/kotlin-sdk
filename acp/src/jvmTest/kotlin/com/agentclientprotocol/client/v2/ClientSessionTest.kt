@@ -69,7 +69,7 @@ class ClientSessionTest {
             session.handlePermissionRequest(RequestPermissionRequest(sessionId, "Allow?", emptyList()))
         }
         permissionStarted.await()
-        agent.close()
+        agent.sendFailure = ClosedSendChannelException("Writer queue closed")
 
         assertFailsWith<ClosedSendChannelException> { session.cancel() }
 
@@ -193,6 +193,7 @@ private class SessionReader(scope: CoroutineScope, session: ClientSession) {
  * opens a session only after sending the updates the test asked for.
  */
 private class ScriptedAgent : BaseTransport() {
+    var sendFailure: Throwable? = null
     private var newSession: (JsonRpcRequest) -> Unit = { error("no answer scripted for session/new") }
     private var resumeSession: (JsonRpcRequest) -> Unit = { error("no answer scripted for session/resume") }
 
@@ -238,6 +239,7 @@ private class ScriptedAgent : BaseTransport() {
     private fun fireMessage(message: JsonRpcMessage) = fireFrame(TransportFrame.Single(message))
 
     override fun send(frame: TransportFrame) {
+        sendFailure?.let { throw it }
         if (state.value == Transport.State.CLOSING || state.value == Transport.State.CLOSED) {
             throw ClosedSendChannelException("Transport is closed")
         }

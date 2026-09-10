@@ -101,6 +101,34 @@ class StdioTransportFlowTest {
     }
 
     @Test
+    fun `notification encoding failure leaves protocol usable`(): Unit = runBlocking {
+        val written = Channel<String>(Channel.UNLIMITED)
+        val input = Channel<String>(Channel.UNLIMITED)
+        val transport = makeTransport(input.receiveAsFlow(), output = { written.send(it) })
+        val protocol = Protocol(scope, transport)
+        protocol.start()
+        transport.expectState(Transport.State.STARTED)
+        try {
+            assertFailsWith<SerializationException> {
+                protocol.sendNotificationRaw(
+                    AcpMethod.ClientMethods.V1.SessionUpdate,
+                    kotlinx.serialization.json.buildJsonObject {
+                        put("invalid", kotlinx.serialization.json.JsonPrimitive(Double.NaN))
+                    },
+                )
+            }
+
+            protocol.sendNotificationRaw(AcpMethod.ClientMethods.V1.SessionUpdate)
+            val frame = parseTransportFrame(withTimeout(1.seconds) { written.receive() })
+            assertIs<JsonRpcNotification>(assertIs<TransportFrame.Single>(frame).message)
+            assertEquals(Transport.State.STARTED, transport.state.value)
+            assertTrue(written.tryReceive().isFailure)
+        } finally {
+            protocol.close()
+        }
+    }
+
+    @Test
     fun `close before start fires once and rejects sends`() {
         val transport = makeTransport()
         var closes = 0

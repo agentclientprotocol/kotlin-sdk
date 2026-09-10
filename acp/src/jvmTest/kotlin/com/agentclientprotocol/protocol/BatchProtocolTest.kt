@@ -27,6 +27,7 @@ class BatchProtocolTest {
         var beforeSend: (() -> Unit)? = null
         var beforeClose: (() -> Unit)? = null
         val closeCalls = atomic(0)
+        val closeEffects = atomic(0)
         var onSend: ((TransportFrame) -> Unit)? = null
         override fun start() {
             _state.value = Transport.State.STARTED
@@ -48,8 +49,10 @@ class BatchProtocolTest {
 
         override fun close() {
             closeCalls.incrementAndGet()
-            beforeClose?.invoke()
             if (sent.close()) {
+                closeEffects.incrementAndGet()
+                _state.value = Transport.State.CLOSING
+                beforeClose?.invoke()
                 _state.value = Transport.State.CLOSED
                 fireClose()
             }
@@ -232,7 +235,7 @@ class BatchProtocolTest {
     }
 
     @Test
-    fun enqueueFailureCleansOutcomeAndClosesProtocol() = test { protocol, transport ->
+    fun enqueueFailureCleansOutcomeAndLeavesProtocolUsable() = test { protocol, transport ->
         val cleaned = CompletableDeferred<Unit>()
         val starts = atomic(0)
         protocol.setRequestOutcomeHandlerRaw(method) {
@@ -245,7 +248,13 @@ class BatchProtocolTest {
         transport.receive(request(1))
         cleaned.await()
         assertEquals(0, starts.value)
-        assertEquals(Transport.State.CLOSED, transport.state.value)
+        assertEquals(0, transport.closeEffects.value)
+        assertEquals(Transport.State.STARTED, transport.state.value)
+        assertTrue(transport.sent.tryReceive().isFailure)
+
+        transport.failSend = false
+        transport.receive(request(2))
+        assertEquals(RequestId.create(2), assertIs<JsonRpcSuccessResponse>(transport.sent.receive().replies().single()).id)
     }
 
     @Test
@@ -268,15 +277,18 @@ class BatchProtocolTest {
         protocol.close()
         protocol.close()
 
-        assertEquals(1, transport.closeCalls.value)
+        assertEquals(1, transport.closeEffects.value)
+        assertTrue(transport.closeCalls.value > 1)
         assertFailsWith<CancellationException> { outgoing.await() }
         assertTrue(transport.sent.tryReceive().isFailure)
     }
 
     @Test
-    fun responseSendRacingTransportShutdownReleasesOutcomeWithoutClosingAgain() {
+    fun responseSendFailureReleasesOutcomeAndTransportCloseCancelsProtocol() {
         for (state in listOf(Transport.State.CLOSING, Transport.State.CLOSED)) test { protocol, transport ->
             val cleaned = CompletableDeferred<Unit>()
+            val pending = async { protocol.sendRequestRaw(method.methodName, sessionId = SessionId("pending")) }
+            val outgoingRequest = assertIs<JsonRpcRequest>(assertIs<TransportFrame.Single>(transport.sent.receive()).message)
             val starts = atomic(0)
             protocol.setRequestOutcomeHandlerRaw(method) {
                 RequestOutcome(JsonNull, afterResponse = { starts.incrementAndGet() }, onCompletion = { cleaned.complete(Unit) })
@@ -287,9 +299,93 @@ class BatchProtocolTest {
             cleaned.await()
 
             assertEquals(0, starts.value)
-            assertEquals(0, transport.closeCalls.value)
-            assertEquals(state, transport.state.value)
+            assertEquals(0, transport.closeEffects.value)
+            assertFalse(pending.isCompleted)
+            assertEquals(SessionId("pending"), protocol.getOutgoingRequestSessionId(outgoingRequest.id))
+
+            transport.close()
+            assertFailsWith<CancellationException> { pending.await() }
+            assertNull(protocol.getOutgoingRequestSessionId(outgoingRequest.id))
+            assertEquals(1, transport.closeEffects.value)
+            assertEquals(Transport.State.CLOSED, transport.state.value)
+            assertFailsWith<CancellationException> { protocol.sendNotificationRaw(notification) }
             assertTrue(transport.sent.tryReceive().isFailure)
+        }
+    }
+
+    @Test
+    fun parentCancellationBeforeStartClosesTransportAndReleasesPendingRequests(): Unit = runBlocking {
+        withTimeout(5_000) {
+            val parent = CoroutineScope(SupervisorJob())
+            val transport = FrameTransport()
+            val protocol = Protocol(parent, transport)
+            try {
+                val pending = async { protocol.sendRequestRaw(method.methodName, sessionId = SessionId("pending")) }
+                val request = assertIs<JsonRpcRequest>(assertIs<TransportFrame.Single>(transport.sent.receive()).message)
+                parent.cancel()
+                assertFailsWith<CancellationException> { pending.await() }
+                assertNull(protocol.getOutgoingRequestSessionId(request.id))
+                assertEquals(1, transport.closeEffects.value)
+                assertFailsWith<CancellationException> { protocol.start() }
+                protocol.close()
+                assertEquals(1, transport.closeEffects.value)
+            } finally {
+                protocol.close()
+                parent.cancel()
+            }
+        }
+    }
+
+    @Test
+    fun alreadyCancelledParentClosesTransport() {
+        val parent = CoroutineScope(SupervisorJob())
+        parent.cancel()
+        val transport = FrameTransport()
+        val protocol = Protocol(parent, transport)
+        assertEquals(1, transport.closeEffects.value)
+        assertFailsWith<CancellationException> { protocol.sendNotificationRaw(notification) }
+        protocol.close()
+        assertEquals(1, transport.closeEffects.value)
+    }
+
+    @Test
+    fun sendFailuresPropagateWithoutCancellingUnrelatedRequests() {
+        for (failure in listOf(
+            ClosedSendChannelException("Writer queue closed"),
+            CancellationException("Transport cancelled"),
+            SerializationException("Frame encoding failed"),
+        )) {
+            for (call in listOf("request", "batch", "notification")) test { protocol, transport ->
+                val pending = async { protocol.sendRequestRaw(method.methodName, sessionId = SessionId("pending")) }
+                val request = assertIs<JsonRpcRequest>(assertIs<TransportFrame.Single>(transport.sent.receive()).message)
+                // A transport may reject sends before its state or close notification catches up.
+                transport.beforeSend = { throw failure }
+
+                val thrown = runCatching {
+                    when (call) {
+                        "request" -> protocol.sendRequestRaw(method.methodName, sessionId = SessionId("failed"))
+                        "batch" -> protocol.sendBatchRequestRaw(
+                            List(2) { JsonRpcCall.Request(method.methodName) }, sessionId = SessionId("failed"),
+                        )
+                        "notification" -> protocol.sendNotificationRaw(notification)
+                    }
+                }.exceptionOrNull()
+
+                assertSame(failure, thrown)
+                assertFalse(pending.isCompleted)
+                assertEquals(SessionId("pending"), protocol.getOutgoingRequestSessionId(request.id))
+                assertNull(protocol.getOutgoingRequestSessionId(RequestId.create(2)))
+                assertNull(protocol.getOutgoingRequestSessionId(RequestId.create(3)))
+                assertEquals(0, transport.closeEffects.value)
+                assertTrue(transport.sent.tryReceive().isFailure)
+
+                transport.beforeSend = null
+                transport.receive(TransportFrame.Single(JsonRpcSuccessResponse(request.id, JsonNull)))
+                assertEquals(JsonNull, pending.await())
+                assertNull(protocol.getOutgoingRequestSessionId(request.id))
+                protocol.sendNotificationRaw(notification)
+                assertIs<JsonRpcNotification>(assertIs<TransportFrame.Single>(transport.sent.receive()).message)
+            }
         }
     }
 

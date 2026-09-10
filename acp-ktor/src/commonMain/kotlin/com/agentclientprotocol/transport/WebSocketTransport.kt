@@ -52,9 +52,12 @@ public class WebSocketTransport(
         }
     }
 
+    init {
+        writer.invokeOnCompletion { close() }
+    }
+
     override fun start() {
         check(_state.compareAndSet(Transport.State.CREATED, Transport.State.STARTING)) { "Transport has already started or closed" }
-        writer.invokeOnCompletion { close() }
         writer.start()
 
         scope.launch {
