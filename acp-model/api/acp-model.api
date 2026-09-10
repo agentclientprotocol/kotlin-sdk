@@ -13861,7 +13861,6 @@ public final class com/agentclientprotocol/rpc/JsonRpcErrorResponse$Companion {
 
 public final class com/agentclientprotocol/rpc/JsonRpcKt {
 	public static final field JSONRPC_VERSION Ljava/lang/String;
-	public static final fun getACPJson ()Lkotlinx/serialization/json/Json;
 }
 
 public abstract interface class com/agentclientprotocol/rpc/JsonRpcMessage {
@@ -13871,6 +13870,15 @@ public abstract interface class com/agentclientprotocol/rpc/JsonRpcMessage {
 
 public final class com/agentclientprotocol/rpc/JsonRpcMessage$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/rpc/JsonRpcMessageSerializer : kotlinx/serialization/KSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/rpc/JsonRpcMessageSerializer;
+	public fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/rpc/JsonRpcMessage;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/rpc/JsonRpcMessage;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
 }
 
 public final class com/agentclientprotocol/rpc/JsonRpcNotification : com/agentclientprotocol/rpc/JsonRpcMessage {
@@ -13948,6 +13956,15 @@ public final class com/agentclientprotocol/rpc/JsonRpcResponse$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class com/agentclientprotocol/rpc/JsonRpcResponseSerializer : kotlinx/serialization/KSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/rpc/JsonRpcResponseSerializer;
+	public fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/rpc/JsonRpcResponse;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/rpc/JsonRpcResponse;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+}
+
 public final class com/agentclientprotocol/rpc/JsonRpcSuccessResponse : com/agentclientprotocol/rpc/JsonRpcResponse {
 	public static final field Companion Lcom/agentclientprotocol/rpc/JsonRpcSuccessResponse$Companion;
 	public fun <init> (Lcom/agentclientprotocol/rpc/RequestId;Lkotlinx/serialization/json/JsonElement;Ljava/lang/String;)V
@@ -14021,6 +14038,34 @@ public final class com/agentclientprotocol/rpc/RequestId$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class com/agentclientprotocol/rpc/RequestId$IntId : com/agentclientprotocol/rpc/RequestId {
+	public static final field Companion Lcom/agentclientprotocol/rpc/RequestId$IntId$Companion;
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lcom/agentclientprotocol/rpc/RequestId$IntId;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/rpc/RequestId$IntId;IILjava/lang/Object;)Lcom/agentclientprotocol/rpc/RequestId$IntId;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getValue ()Ljava/lang/Integer;
+	public synthetic fun getValue ()Ljava/lang/Object;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/rpc/RequestId$IntId$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/rpc/RequestId$IntId$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/rpc/RequestId$IntId;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/rpc/RequestId$IntId;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/rpc/RequestId$IntId$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class com/agentclientprotocol/rpc/RequestId$Null : com/agentclientprotocol/rpc/RequestId {
 	public static final field INSTANCE Lcom/agentclientprotocol/rpc/RequestId$Null;
 	public fun equals (Ljava/lang/Object;)Z
@@ -14029,7 +14074,45 @@ public final class com/agentclientprotocol/rpc/RequestId$Null : com/agentclientp
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/agentclientprotocol/rpc/RequestId$StringId : com/agentclientprotocol/rpc/RequestId {
+	public static final field Companion Lcom/agentclientprotocol/rpc/RequestId$StringId$Companion;
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lcom/agentclientprotocol/rpc/RequestId$StringId;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/rpc/RequestId$StringId;Ljava/lang/String;ILjava/lang/Object;)Lcom/agentclientprotocol/rpc/RequestId$StringId;
+	public fun equals (Ljava/lang/Object;)Z
+	public synthetic fun getValue ()Ljava/lang/Object;
+	public fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/rpc/RequestId$StringId$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/rpc/RequestId$StringId$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/rpc/RequestId$StringId;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/rpc/RequestId$StringId;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/rpc/RequestId$StringId$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/rpc/RequestIdSerializer : kotlinx/serialization/KSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/rpc/RequestIdSerializer;
+	public fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/rpc/RequestId;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/rpc/RequestId;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+}
+
 public final class com/agentclientprotocol/rpc/SerializationKt {
+	public static final fun getACPJson ()Lkotlinx/serialization/json/Json;
 	public static final fun getJsonRpcJson ()Lkotlinx/serialization/json/Json;
 	public static final fun parseTransportFrame (Ljava/lang/String;)Lcom/agentclientprotocol/rpc/TransportFrame;
 }
@@ -14076,5 +14159,14 @@ public final class com/agentclientprotocol/rpc/TransportFrame$Single : com/agent
 	public final fun getMessage ()Lcom/agentclientprotocol/rpc/JsonRpcMessage;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/rpc/TransportFrameSerializer : kotlinx/serialization/KSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/rpc/TransportFrameSerializer;
+	public fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/rpc/TransportFrame;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/rpc/TransportFrame;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
 }
 
