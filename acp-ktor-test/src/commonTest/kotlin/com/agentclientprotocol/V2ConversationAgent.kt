@@ -277,7 +277,7 @@ private class ConversationSession(
         cancelRequested.await()
         // `session/cancel` does not cut the turn short: saying how it ended is the agent's job, and the idle
         // update carrying `cancelled` has to be the last one.
-        send(toolCall(call, ToolCallStatus.Failed))
+        send(toolCall(call, ToolCallStatus.Cancelled))
         send(idle(StopReason.Cancelled))
     }
 

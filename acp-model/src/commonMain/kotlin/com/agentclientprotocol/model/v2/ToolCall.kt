@@ -207,6 +207,13 @@ public sealed class ToolCallStatus {
     }
 
     /**
+     * The tool call was cancelled before it completed.
+     */
+    public data object Cancelled : ToolCallStatus() {
+        override val value: String = "cancelled"
+    }
+
+    /**
      * Custom or future tool call status.
      */
     public data class Unknown(override val value: String) : ToolCallStatus()
@@ -237,6 +244,7 @@ internal object ToolCallStatusSerializer : OpenStringEnumSerializer<ToolCallStat
         ToolCallStatus.InProgress,
         ToolCallStatus.Completed,
         ToolCallStatus.Failed,
+        ToolCallStatus.Cancelled,
     ),
     wireValue = ToolCallStatus::value,
     unknown = ToolCallStatus::Unknown,

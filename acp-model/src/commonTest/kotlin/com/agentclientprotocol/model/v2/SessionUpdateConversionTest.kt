@@ -6,6 +6,7 @@ import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.SessionModeId
 import com.agentclientprotocol.model.ToolCallId
+import com.agentclientprotocol.model.ToolCallLocation
 import com.agentclientprotocol.model.v2.conversion.LEGACY_V1_PLAN_ID
 import com.agentclientprotocol.model.v2.conversion.ProtocolConversionException
 import com.agentclientprotocol.model.v2.conversion.toV1
@@ -23,6 +24,7 @@ import com.agentclientprotocol.model.PlanEntryPriority as V1PlanEntryPriority
 import com.agentclientprotocol.model.PlanEntryStatus as V1PlanEntryStatus
 import com.agentclientprotocol.model.PlanVariant as V1PlanVariant
 import com.agentclientprotocol.model.SessionUpdate as V1SessionUpdate
+import com.agentclientprotocol.model.ToolCallContent as V1ToolCallContent
 import com.agentclientprotocol.model.ToolCallStatus as V1ToolCallStatus
 import com.agentclientprotocol.model.ToolKind as V1ToolKind
 
@@ -208,6 +210,43 @@ class SessionUpdateConversionTest {
         val v1 = assertIs<V1SessionUpdate.ToolCallUpdate>(update.toV1().single())
         assertNull(v1.kind)
         assertEquals("Read file", v1.title)
+    }
+
+    @Test
+    fun `a cancelled tool call drops only its status when converted to v1`() {
+        val locations = listOf(ToolCallLocation("/config.toml"))
+        val rawInput = buildJsonObject { put("path", JsonPrimitive("/config.toml")) }
+        val rawOutput = JsonPrimitive("interrupted")
+        val meta = buildJsonObject { put("source", JsonPrimitive("agent")) }
+        val update = SessionUpdate.ToolCallUpdate(
+            ToolCallUpdate(
+                toolCallId = ToolCallId("tc_1"),
+                title = MaybeUndefined.Value("Read config"),
+                kind = MaybeUndefined.Value(ToolKind.Read),
+                status = MaybeUndefined.Value(ToolCallStatus.Cancelled),
+                content = MaybeUndefined.Value(listOf(ToolCallContent.Content(ContentBlock.Text("partial")))),
+                locations = MaybeUndefined.Value(locations),
+                rawInput = MaybeUndefined.Value(rawInput),
+                rawOutput = MaybeUndefined.Value(rawOutput),
+                _meta = MaybeUndefined.Value(meta),
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                V1SessionUpdate.ToolCallUpdate(
+                    toolCallId = ToolCallId("tc_1"),
+                    title = "Read config",
+                    kind = V1ToolKind.READ,
+                    content = listOf(V1ToolCallContent.Content(V1ContentBlock.Text("partial"))),
+                    locations = locations,
+                    rawInput = rawInput,
+                    rawOutput = rawOutput,
+                    _meta = meta,
+                ),
+            ),
+            update.toV1(),
+        )
     }
 
     @Test

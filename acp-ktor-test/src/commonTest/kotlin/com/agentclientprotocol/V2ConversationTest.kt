@@ -213,7 +213,7 @@ private class ConversationScenario(
             listOf("user_message", "state:running", "tool_call:in_progress"),
             updatesBeforeCancellation.labels,
         )
-        assertEquals(listOf("tool_call:failed", "state:idle(cancelled)"), updatesAfterCancellation.labels)
+        assertEquals(listOf("tool_call:cancelled", "state:idle(cancelled)"), updatesAfterCancellation.labels)
     }
 
     suspend fun closeSession() {

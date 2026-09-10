@@ -30,10 +30,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.seconds
@@ -50,7 +52,7 @@ class V2SessionUpdateDeliveryTest {
 
         val session = client.newSession(cwd = ".")
 
-        assertEquals(listOf("first", "second"), scope.read(session).take(2))
+        assertEquals(listOf("first", "second"), scope.read(session).takeTexts(2))
     }
 
     /** Delivers replay updates sent before `session/resume` responds to the resumed session. */
@@ -63,7 +65,38 @@ class V2SessionUpdateDeliveryTest {
 
         val session = client.resumeSession(sessionId = SessionId("old-session"), cwd = ".")
 
-        assertEquals(listOf("replay-1", "replay-2"), scope.read(session).take(2))
+        assertEquals(listOf("replay-1", "replay-2"), scope.read(session).takeTexts(2))
+    }
+
+    @Test
+    fun `delivers tool call updates in order with payloads and metadata intact`() = withV2Client { client, agent, scope ->
+        val sessionId = SessionId("session-1")
+        val notificationMeta = buildJsonObject { put("scope", "notification") }
+        val updates = listOf(
+            """{"sessionUpdate":"tool_call_update","toolCallId":"tc_1"}""",
+            """{"sessionUpdate":"tool_call_update","toolCallId":"tc_1","title":"Read config","_meta":{"scope":"tool"}}""",
+            """{"sessionUpdate":"tool_call_content_chunk","toolCallId":"tc_1","content":{"type":"content","content":{"type":"text","text":"first"}},"_meta":{"chunk":1}}""",
+            """{"sessionUpdate":"tool_call_content_chunk","toolCallId":"tc_1","content":{"type":"content","content":{"type":"text","text":"second"}},"_meta":{"chunk":2}}""",
+            """{"sessionUpdate":"tool_call_update","toolCallId":"tc_1","content":[{"type":"content","content":{"type":"text","text":"replacement"}}]}""",
+            """{"sessionUpdate":"tool_call_content_chunk","toolCallId":"tc_1","content":{"type":"content","content":{"type":"text","text":"after replacement"}}}""",
+            """{"sessionUpdate":"tool_call_update","toolCallId":"tc_1","content":null,"_meta":null}""",
+            """{"sessionUpdate":"tool_call_content_chunk","toolCallId":"tc_1","content":{"type":"content","content":{"type":"text","text":"after null"}}}""",
+            """{"sessionUpdate":"tool_call_update","toolCallId":"tc_1","content":[]}""",
+            """{"sessionUpdate":"tool_call_content_chunk","toolCallId":"tc_1","content":{"type":"content","content":{"type":"text","text":"after empty array"}}}""",
+            """{"sessionUpdate":"tool_call_update","toolCallId":"tc_1","status":"cancelled"}""",
+        ).map(ACPJson::parseToJsonElement)
+        agent.onNewSession(sessionId) {
+            updates.take(3).forEach { sendRawUpdate(sessionId, it, notificationMeta) }
+        }
+
+        val session = client.newSession(cwd = ".")
+        val reader = scope.read(session)
+        updates.drop(3).forEach { agent.sendRawUpdate(sessionId, it, notificationMeta) }
+
+        reader.take(updates.size).forEachIndexed { index, actual ->
+            assertEquals(updates[index], ACPJson.encodeToJsonElement(SessionUpdate.serializer(), actual.update), "update $index")
+            assertEquals(notificationMeta, actual._meta, "notification metadata for update $index")
+        }
     }
 
     /** Discards early updates whose session id is not claimed by the opening call. */
@@ -77,7 +110,7 @@ class V2SessionUpdateDeliveryTest {
             val ghost = client.resumeSession(sessionId = SessionId("ghost-session"), cwd = ".")
             agent.sendUpdate(SessionId("ghost-session"), "after resume")
 
-            assertEquals(listOf("after resume"), scope.read(ghost).take(1))
+            assertEquals(listOf("after resume"), scope.read(ghost).takeTexts(1))
         }
 
     /** Routes updates only to the latest session object after the same session is resumed again. */
@@ -91,7 +124,7 @@ class V2SessionUpdateDeliveryTest {
 
             agent.sendUpdate(SessionId("session-1"), "after the second resume")
 
-            assertEquals(listOf("after the second resume"), scope.read(second).take(1))
+            assertEquals(listOf("after the second resume"), scope.read(second).takeTexts(1))
             assertEquals(emptyList(), firstUpdates.rest())
         }
 }
@@ -125,30 +158,35 @@ private fun withV2Client(block: suspend (Client, ScriptedAgent, CoroutineScope) 
 private fun CoroutineScope.read(session: ClientSession) = SessionReader(this, session)
 
 /**
- * Reads one session's updates in the background, as their texts.
+ * Reads one session's updates in the background, retaining notification metadata.
  *
  * Collecting the whole flow rather than `take`-ing from it: `take` aborts the collection with an exception
  * that the channel behind [ClientSession.updates] does not always keep to itself, which showed up as a rare
  * `AbortFlowException` escaping a test.
  */
 private class SessionReader(scope: CoroutineScope, session: ClientSession) {
-    private val texts = Channel<String>(Channel.UNLIMITED)
+    private val updates = Channel<ClientSession.UpdateWithMeta>(Channel.UNLIMITED)
 
     init {
         scope.launch {
-            session.updates.collect {
-                texts.send(((it.update as SessionUpdate.AgentMessageChunk).chunk.content as ContentBlock.Text).text)
-            }
+            session.updates.collect { updates.send(it) }
             // The session's buffer was closed, so nothing more can arrive.
-            texts.close()
+            updates.close()
         }
     }
 
     /** The next [count] updates, waiting for them if they have not arrived yet. */
-    suspend fun take(count: Int): List<String> = withTimeout(10.seconds) { List(count) { texts.receive() } }
+    suspend fun take(count: Int): List<ClientSession.UpdateWithMeta> =
+        withTimeout(10.seconds) { List(count) { updates.receive() } }
+
+    /** The next [count] agent message chunks, as their texts. */
+    suspend fun takeTexts(count: Int): List<String> = take(count).map {
+        ((it.update as SessionUpdate.AgentMessageChunk).chunk.content as ContentBlock.Text).text
+    }
 
     /** Everything up to the end of the session's updates, which is empty when it has already ended. */
-    suspend fun rest(): List<String> = withTimeout(10.seconds) { buildList { for (text in texts) add(text) } }
+    suspend fun rest(): List<ClientSession.UpdateWithMeta> =
+        withTimeout(10.seconds) { buildList { for (update in updates) add(update) } }
 }
 
 /**
@@ -184,6 +222,19 @@ private class ScriptedAgent : BaseTransport() {
                         SessionUpdate.AgentMessageChunk(ContentChunk(MessageId("m-$text"), ContentBlock.Text(text))),
                     ),
                 ),
+            )
+        )
+    }
+
+    fun sendRawUpdate(sessionId: SessionId, update: JsonElement, meta: JsonElement) {
+        fireMessage(
+            JsonRpcNotification(
+                method = AcpMethod.ClientMethods.V2.SessionUpdate.methodName,
+                params = buildJsonObject {
+                    put("sessionId", ACPJson.encodeToJsonElement(SessionId.serializer(), sessionId))
+                    put("update", update)
+                    put("_meta", meta)
+                },
             )
         )
     }
