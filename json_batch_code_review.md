@@ -1,89 +1,206 @@
 # Code review — JSON-RPC frame/batch migration
 
-Scope: staged working-tree changes implementing `json_batch_migration.md`
-(`git diff HEAD`, 31 files). Findings are ordered by severity.
+Scope: `eugenethedev/json-rpc-batch-handling` vs `master` (`git diff master...HEAD`, 35 files).
+
+Reassessed at `b9a5951` ("improve Protocol and RpcMethodOperations structure") after the
+`Serialization.kt` / `RpcMethodsOperations.kt` split and the `Protocol` rework. Every finding below
+was re-verified against the current sources; locations and descriptions are updated, two findings
+are resolved, and two new ones were found during the reassessment.
+
+Verification aid: `./gradlew :acp:jvmTest --tests "*BatchProtocolTest*" --tests "*StdioTransport*"`
+passes; stderr from that run is cited as evidence where relevant.
+
+| # | Severity | Status |
+|---|----------|--------|
+| 1 | HIGH | Still valid, unchanged |
+| 2 | MEDIUM | Still valid, now covered by a passing test that locks the behavior in |
+| 3 | MEDIUM | Still valid; transport contract is now documented, `Protocol`'s is not |
+| 4 | MEDIUM | New (found during reassessment) |
+| 5 | MEDIUM | Still valid, unchanged |
+| 6 | LOW | Narrowed: the orphaned job is cancelled by `close()`, cancellation by ID still misses it |
+| 7 | LOW | Narrowed to a shutdown race, but its blast radius grew (see 4) |
+| 8 | LOW | Changed: the plan file is gone, the README link it left behind is broken |
+| — | resolved | `Malformed.raw` (old finding 7) — the property no longer exists |
 
 ---
 
 ## 1. HIGH — `WebSocketTransport.close()` discards queued outgoing frames and aborts the socket
 
-`acp-ktor/src/commonMain/kotlin/com/agentclientprotocol/transport/WebSocketTransport.kt:51`
+`acp-ktor/src/commonMain/kotlin/com/agentclientprotocol/transport/WebSocketTransport.kt:53`
 
 ```kotlin
 override fun close() {
     if (!sendChannel.close()) return
     _state.value = Transport.State.CLOSED
     scope.cancel()
+    // Also release a writer blocked by network backpressure.
     wss.cancel()
     fireClose()
 }
 ```
 
-`sendChannel.close()` alone would let the writer drain buffered frames and then exit;
-`scope.cancel()` on the very next line kills the writer immediately, so every frame still
-sitting in the UNLIMITED channel is silently dropped. `wss.cancel()` then aborts the socket
-without the WebSocket Close handshake that the previous implementation performed
-(`wss.close(CloseReason(NORMAL, ...))` / `wss.flush()`).
+Unchanged since the first review. `sendChannel.close()` alone would let the writer
+(`WebSocketTransport.kt:18-31`) drain buffered frames and then exit; `scope.cancel()` two lines
+later kills the writer immediately, so every frame still sitting in the UNLIMITED channel is
+silently dropped. `wss.cancel()` then aborts the socket without the WebSocket Close handshake that
+the `master` implementation performed (`wss.close()` / `wss.close(CloseReason(NORMAL, ...))` /
+`wss.flush()`, all in the writer's completion paths).
 
-Concrete scenario: a handler queues its final response or a `session/update` notification
-(`send` is `trySend` — it returns before anything is written), the app then calls
-`Protocol.close()`. `Protocol.close()` calls `transport.close()` first, so the response is
-dropped and the peer sees an abnormal closure instead of a normal one. The same path is now
-reached automatically: `Protocol.start()`'s reader loop has `finally { close() }`, so remote
-EOF also tears down the writer mid-drain.
+Concrete scenario: a handler queues its final response or a `session/update` notification (`send`
+is `trySend`, so it returns before anything is written), then the app calls `Protocol.close()`.
+`Protocol.close()` calls `transport.close()` first (`Protocol.kt:316`), so the response is dropped
+and the peer sees an abnormal closure instead of a normal one. The same path is reached
+automatically: the reader loop in `Protocol.start()` has `finally { close() }`
+(`Protocol.kt:126-128`), so remote EOF also tears down the writer mid-drain.
+
+The added comment explains why `wss.cancel()` is there (releasing a writer blocked on
+backpressure) but does not address the drop: the cancel is unconditional, not a bounded fallback.
+`WebSocketTransportTest` covers malformed input and output framing, not drain-on-close.
 
 Fix: let the writer drain (`for (frame in sendChannel)` until exhausted, then
 `wss.close(CloseReason(NORMAL, ...))`), and only cancel the scope as a bounded fallback.
 
 ---
 
-## 2. MEDIUM — Blank / non-JSON stdout lines now produce outgoing error responses
+## 2. MEDIUM — Blank / non-JSON stdout lines produce outgoing error responses
 
-`acp/src/commonMain/kotlin/com/agentclientprotocol/transport/StdioTransport.kt:104`,
-`acp-model/src/commonMain/kotlin/com/agentclientprotocol/rpc/TransportFrame.kt:36`,
-`acp/src/commonMain/kotlin/com/agentclientprotocol/protocol/Protocol.kt:477`
+`acp/src/commonMain/kotlin/com/agentclientprotocol/transport/StdioTransport.kt:105`,
+`acp-model/src/commonMain/kotlin/com/agentclientprotocol/rpc/Serialization.kt:58`,
+`acp/src/commonMain/kotlin/com/agentclientprotocol/protocol/Protocol.kt:387-393`
 
-Before, the read loop did `try { decodeJsonRpcMessage(line) } catch { return@collect }` — an
-undecodable line was logged at trace and skipped — and `decodeJsonRpcMessage` even recovered
-from a garbage prefix. Now every line becomes `TransportFrame.parse(line)`; a parse failure
-yields `Malformed(raw, PARSE_ERROR, isResponse = false)`, and `handleIncomingFrame` answers
-every non-response `Malformed` with `JsonRpcResponse(RequestId.Null, error = ...)`.
+The parse entry point moved to `Serialization.kt` (`parseTransportFrame`), but the behavior is the
+same as reviewed:
 
-`sourceAsLineFlow` emits `""` for a blank line (`StdioTransport.kt:191`), and
-`TransportFrame.parse("")` is `-32700`. JSON syntax acceptance follows kotlinx.serialization;
-a bare token such as `garbage` is parsed and then rejected as an invalid envelope (`-32600`).
-So a peer process that writes a trailing blank line, a banner, or any log line to stdout now
-gets one unsolicited JSON-RPC error response with `id: null` per invalid line back
-across the pipe. That is a live-interop regression against the very agents the old
+```kotlin
+// StdioTransport.kt:105
+fireFrame(parseTransportFrame(line))
+
+// Serialization.kt:58
+public fun parseTransportFrame(text: String): TransportFrame = try {
+    JsonRpcJson.decodeFromString(TransportFrame.serializer(), text)
+} catch (_: SerializationException) {
+    TransportFrame.Malformed(JsonRpcErrorCode.PARSE_ERROR.asError())
+}
+
+// Protocol.kt:389
+is TransportFrame.Malformed -> if (!entry.isResponse) {
+    slots += ResponseSlot(queued).also {
+        it.response.complete(JsonRpcErrorResponse(RequestId.Null, entry.error))
+    }
+}
+```
+
+On `master` the read loop did `try { decodeJsonRpcMessage(line) } catch { return@collect }` — an
+undecodable line was logged at trace and skipped — and `decodeJsonRpcMessage` even recovered from a
+garbage prefix by scanning for the first `{` (`master:acp-model/.../JsonRpc.kt:208-219`). Now every
+line becomes a frame; a parse failure yields `Malformed(PARSE_ERROR, isResponse = false)`, and
+`handleIncomingFrame` answers every non-response `Malformed` with an `id: null` error response.
+
+`sourceAsLineFlow` emits `""` for a blank line (`StdioTransport.kt:207`), and
+`parseTransportFrame("")` is `-32700`. So a peer process that writes a trailing blank line, a
+banner, or any log line to stdout gets one unsolicited JSON-RPC error response with `id: null` per
+invalid line back across the pipe — a live-interop regression against the very agents the old
 garbage-prefix recovery existed for.
 
-At minimum, skip blank/whitespace-only lines in the stdio read path, and consider making
-"reply to unparseable input" opt-in for the line-oriented transport.
+This is now pinned by a passing test, so it reads as intentional at the transport layer:
+`acp/src/jvmTest/.../StdioTransportFlowTest.kt:199-215` sends `""` among the garbage lines and
+asserts three `Malformed` frames are delivered. The transport-level decision (deliver, don't
+swallow) is defensible; the `Protocol`-level decision to *reply* to each of them is the problem.
+
+At minimum, skip blank/whitespace-only lines in the stdio read path, and consider making "reply to
+unparseable input" opt-in for the line-oriented transport.
 
 ---
 
-## 3. MEDIUM — `Transport.send` now throws out of the non-suspend public `sendNotificationRaw`
+## 3. MEDIUM — `Transport.send` throws out of the non-suspend public `sendNotificationRaw`
 
-`acp/src/commonMain/kotlin/com/agentclientprotocol/transport/Transport.kt:33`,
-`StdioTransport.kt:166`, `WebSocketTransport.kt:47`, `Protocol.kt:345`
+`acp/src/commonMain/kotlin/com/agentclientprotocol/transport/Transport.kt:28-32`,
+`StdioTransport.kt:166-169`, `WebSocketTransport.kt:48-51`,
+`Protocol.kt:261-267`, `RpcMethodsOperations.kt:69-72`
 
-`send` changed from best-effort (`sendChannel.trySend(message)`, result ignored) to
-`trySend(frame).getOrThrow()`. `Protocol.sendNotificationRaw` is a **public, non-suspend**
-method and is what every `sendNotification` / `AcpMethod...SessionUpdate(protocol, ...)` call
-funnels into. Previously, emitting a session update after the peer disconnected was a silent
-no-op; now it throws `ClosedSendChannelException` synchronously into arbitrary user code
-(e.g. an `AgentSession` update emitter, or an `onCompletion`/cleanup path).
+```kotlin
+// StdioTransport.kt:166 (WebSocketTransport.kt:48 is identical)
+override fun send(frame: TransportFrame) {
+    val encoded = JsonRpcJson.encodeToString(TransportFrame.serializer(), frame)
+    sendChannel.trySend(encoded).getOrThrow()
+}
+```
 
-This also contradicts the migration guide, which scopes the "closed queue must reject sends"
-change to *custom transports* and states that "Agent, Client, session and support interfaces …
-are unchanged". Either document the new throwing contract for `sendNotificationRaw` and audit
-its callers, or keep the throw at the `Transport` boundary and have `Protocol` swallow/log it.
+`send` changed from best-effort (`master`: `sendChannel.trySend(message)`, result ignored) to
+throwing, and the throwing surface is now *wider* than at the first review: encoding moved into
+`send`, so a `SerializationException` also escapes synchronously (asserted by
+`StdioTransportFlowTest.kt:82-95` and `WebSocketTransportTest.kt:83-95`).
+
+`Protocol.sendNotificationRaw` (`Protocol.kt:261`) is a **public, non-suspend** method and is what
+every `sendNotification` / `AcpMethod...SessionUpdate(protocol, ...)` call funnels into
+(`RpcMethodsOperations.extensions.kt:48-54`, `:119`). Previously, emitting a session update after
+the peer disconnected was a silent no-op; now it throws `ClosedSendChannelException`
+synchronously into arbitrary user code (e.g. an `AgentSession` update emitter, or an
+`onCompletion`/cleanup path).
+
+Partially addressed since the first review: `Transport.send` now documents the contract
+("Accept a complete frame into the ordered writer queue, or throw if closed",
+`Transport.kt:29-31`). `RpcMethodsOperations.sendNotificationRaw` still documents only
+"Send a notification (no response expected)" and says nothing about throwing, so the public
+`Protocol` surface remains an undocumented behavior change. Either document it there and audit the
+callers, or keep the throw at the `Transport` boundary and have `Protocol` swallow/log it.
 
 ---
 
-## 4. MEDIUM — `sendBatchRequestRaw` hangs forever when the peer does not reply to every request
+## 4. MEDIUM — NEW: handler follow-up failures escape to the uncaught-exception handler
 
-`acp/src/commonMain/kotlin/com/agentclientprotocol/protocol/Protocol.kt:322`
+`Protocol.kt:480-493`, `Protocol.kt:55-56`
+
+```kotlin
+} catch (t: Throwable) {
+    // The response is already finalized: a continuation must never send a second response.
+    if (t !is CancellationException) {
+        logger.error(t) { "After-response work failed for ${request.method}" }
+    }
+    throw t                      // Protocol.kt:485
+} finally {
+    try {
+        outcome?.onCompletion?.invoke()
+    } catch (t: Throwable) {
+        logger.error(t) { "Outcome cleanup failed for ${request.method}" }
+        throw t                  // Protocol.kt:492
+    }
+}
+```
+
+`handleRequest` runs in `handlerScope`, which carries a `SupervisorJob` and no
+`CoroutineExceptionHandler` (`Protocol.kt:55-56`) — so any exception it rethrows goes to the
+platform's uncaught-exception handler. On `master` the equivalent work was swallowed:
+`for (handler in requestHolder.handlers) { runCatching { handler() }.onFailure { logger.error(...) } }`
+(`master:Protocol.kt:462-471`).
+
+Reproduced by the current test suite, which passes while dumping the exception to stderr:
+
+```
+[... @Protocol#31] ERROR ...Protocol - After-response work failed for MethodName(name=initialize)
+java.lang.IllegalStateException: stream failed
+Exception in thread "DefaultDispatcher-worker-2 @Protocol#31" java.lang.IllegalStateException: stream failed
+```
+
+(from `BatchProtocolTest.mappingFailureCleansOutcomeAndContinuationFailureCannotSendSecondResponse`;
+`enqueueFailureCleansOutcomeAndClosesProtocol` produces the same pattern for a queue failure that
+arrives through `slot.responseFrameQueued`.)
+
+On the JVM this is stderr noise that consumers cannot intercept without installing a handler on
+their own `parentScope`. On Android it reaches `Thread.UncaughtExceptionHandler` and crashes the
+process; on Kotlin/Native it terminates the program; on JS it surfaces as an unhandled rejection. A
+failing v2 `session/update` stream or a throwing user `onCompletion` should not be able to do that.
+
+The rethrow also buys nothing: the reply is already finalized by then, and
+`dispatchRequest`'s `invokeOnCompletion` only fills `slot.response` when it is not yet completed
+(`Protocol.kt:446-453`). Log and swallow (as `master` did), or install a
+`CoroutineExceptionHandler` on `handlerScope`.
+
+---
+
+## 5. MEDIUM — `sendBatchRequestRaw` hangs forever when the peer does not reply to every request
+
+`Protocol.kt:229-236`, doc at `RpcMethodsOperations.kt:74-89`
 
 ```kotlin
 return outgoing.map { (_, request) ->
@@ -91,98 +208,157 @@ return outgoing.map { (_, request) ->
 }
 ```
 
-There is no per-request completion guarantee. The realistic failure mode is a peer that does
-not implement batching: it replies with a *single* `{"id":null,"error":{"code":-32600}}`
-object. `handleResponse` cannot correlate `RequestId.Null`, logs
-`"Received response for unknown request ID"`, and drops it — so `sendBatchRequestRaw` blocks
-indefinitely with no timeout and no failure. The guide says "the caller must know the peer
-accepts batches", but a mistake here is an unrecoverable hang rather than an error. Consider
-completing all outstanding deferreds when an uncorrelated `id:null` error response arrives
-while a batch is in flight, or documenting the mandatory caller-side `withTimeout`.
+Unchanged. There is still no per-request completion guarantee and no timeout. The realistic failure
+mode is a peer that does not implement batching: it replies with a *single*
+`{"id":null,"error":{"code":-32600}}` object. `handleResponse` cannot correlate `RequestId.Null`,
+logs `"Received response for unknown request ID: null"` (`Protocol.kt:535`), and drops it — so
+`sendBatchRequestRaw` blocks indefinitely with no failure.
+
+`BatchProtocolTest.unknownDuplicateAndNullResponseIdsCannotResolveAnotherCall`
+(`BatchProtocolTest.kt:373-399`) now pins this: after an uncorrelated `id: null` error it asserts
+`assertFalse(operation.isCompleted)`. Not resolving another call from an `id: null` error is
+correct; leaving the batch with no completion path is what remains unaddressed.
+
+The KDoc still says only "The caller must know the peer accepts batches"
+(`RpcMethodsOperations.kt:82`). Since the function is `suspend`, caller-side `withTimeout` works —
+either document it as mandatory, or complete all outstanding deferreds when an uncorrelated
+`id: null` error response arrives while a batch is in flight.
 
 ---
 
-## 5. MEDIUM — Duplicate incoming request IDs orphan the first handler job
+## 6. LOW — Duplicate incoming request IDs make the older handler uncancellable by ID
 
-`acp/src/commonMain/kotlin/com/agentclientprotocol/protocol/Protocol.kt:518-531`
+`Protocol.kt:440-456`, `Protocol.kt:328-334`
 
 ```kotlin
+val job = handlerScope.launch(start = CoroutineStart.LAZY) { handleRequest(request, slot) }
 pendingIncomingRequests.update { it.put(requestId, job) }
-job.invokeOnCompletion { ...
+
+job.invokeOnCompletion { cause ->
+    ...
     pendingIncomingRequests.update { if (it[requestId] === job) it.remove(requestId) else it }
 }
 ```
 
-If two in-flight requests share an ID, the second `put` evicts the first job from the map. The
-first job is then unreachable: `$/cancelRequest` for that ID cancels only the second, and
-`cancelPendingIncomingRequests()` (invoked by `Protocol.close()`) will not cancel it either, so
-it keeps running after the protocol is closed — and its `slot.ready` will eventually resolve
-into a send on a closed transport.
+Downgraded from MEDIUM. The `put` still evicts an older in-flight job with the same ID, so
+`$/cancelRequest` and `cancelPendingIncomingRequests()` for that ID reach only the newest job and
+the older one cannot be cancelled by ID. The identity guard in `invokeOnCompletion` is the part
+that is now correct and tested
+(`BatchProtocolTest.reusedIdCompletionDoesNotUnregisterTheNewerJob`, `BatchProtocolTest.kt:322-352`).
 
-Batches make this concrete rather than theoretical: `BatchProtocolTest.mixedBatchKeepsInvalidSiblingsAndDuplicateIds`
-deliberately sends `request(1)` twice in one batch. Consider keying pending incoming requests
-by `(id, job)` or storing a list, or rejecting a duplicate in-flight ID with `-32600`.
+Two claims from the first review no longer hold and are withdrawn:
+
+- "it keeps running after the protocol is closed" — `handlerScope`'s `SupervisorJob` is a child of
+  `scope`'s job (`Protocol.kt:52-56`), and `close()` ends with `scope.cancel(message)`
+  (`Protocol.kt:320`), so the orphaned job *is* cancelled on close.
+- The batch test `mixedBatchKeepsInvalidSiblingsAndDuplicateIds` (`BatchProtocolTest.kt:64-81`) is
+  not evidence of a leak: both duplicates run to completion and both replies are emitted.
+
+What is left is a peer that reuses an ID while the first request is still in flight (a JSON-RPC
+violation) plus a `cancelPendingIncomingRequests()` call that is expected to drain everything —
+e.g. `V2ClientTest.kt:335`, `ProtocolTest.kt:440` — which would silently skip the older job. Keying
+by `(id, job)` / storing a list, or rejecting a duplicate in-flight ID with `-32600`, would close it.
 
 ---
 
-## 6. LOW — `Protocol.close()` closes the transport before cancelling incoming requests, producing ERROR noise on every shutdown
+## 7. LOW — A send failure during shutdown is treated as fatal, producing ERROR noise and a re-entrant `close()`
 
-`acp/src/commonMain/kotlin/com/agentclientprotocol/protocol/Protocol.kt:416-422`
+`Protocol.kt:315-321`, `Protocol.kt:420-437`
 
 ```kotlin
-transport.close()
-cancelPendingIncomingRequests(CancellationException("Protocol closed"))
+public fun close() {
+    transport.close()
+    val message = "Protocol closed"
+    cancelPendingIncomingRequests(CancellationException(message))
+    cancelPendingOutgoingRequests(CancellationException(message))
+    scope.cancel(message)
+}
 ```
 
-The cancellation causes each in-flight request's slot to resolve to a `CANCELLED` error
-response (`requestFailure` maps a plain `CancellationException` to
-`JsonRpcErrorCode.CANCELLED`). The collector job then calls `transport.send(...)` on the
-already-closed transport, which now throws (finding 3), is logged at ERROR
-(`"Unable to queue response frame"`, `Protocol.kt:511`) and recursively calls `close()`.
+The ordering flagged in the first review is unchanged: the transport is closed before in-flight
+incoming requests are cancelled, and a plain `CancellationException` maps to a `CANCELLED` error
+response (`Exceptions.kt:62`), which the frame collector then tries to send on the closed
+transport — logging ERROR at `Protocol.kt:433` and recursively calling `close()`.
 
-Every normal shutdown or EOF with an in-flight incoming request emits a spurious ERROR. Cancel
-pending requests before closing the transport, or treat a send failure during shutdown as
-trace-level.
+Narrowed, though: the first review said this happens on "every normal shutdown or EOF with an
+in-flight incoming request". It does not. `close()` reaches `scope.cancel(message)` a few
+instructions after `cancelPendingIncomingRequests`, while resolving the slot needs a dispatch to
+`handlerDispatcher` and the collector needs another to resume — so the collector is normally
+cancelled first and `it.response.await()` throws `CancellationException`, which the
+`catch` at `Protocol.kt:430-436` deliberately does not log.
+`BatchProtocolTest.closeReleasesPreparedOutcomesAndOutgoingWaiters` (`BatchProtocolTest.kt:232-246`)
+exercises exactly this path and produced no such ERROR in the verification run.
+
+The race is still real, and it does not even need the cancellation path: a handler that finishes
+normally at the same moment as EOF/`close()` will attempt `transport.send` on a closed transport
+and get the same fatal treatment. With finding 4 in play the cost is higher than log noise —
+`queued.completeExceptionally(ClosedSendChannelException)` propagates into
+`slot.responseFrameQueued.await()` and is rethrown out of `handleRequest`, so a benign shutdown can
+surface as an uncaught exception.
+
+Cancel pending requests before closing the transport, and treat a send failure on an
+already-closing transport as trace-level rather than "log ERROR and close".
 
 ---
 
-## 7. LOW — `Malformed.raw` for batch entries is re-serialized, not the original text
+## 8. LOW — README links to a deleted document, and the review file itself is now committed
 
-`acp-model/src/commonMain/kotlin/com/agentclientprotocol/rpc/TransportFrame.kt:37`
+`README.md:358`
 
-```kotlin
-Batch(value.map { parseEntry(it, it.toString()) })
+```markdown
+JSON-RPC batches are supported by the shared protocol and both built-in transports. See the
+[frame/batch migration guide](json_batch_migration.md) for custom transport changes and explicit
+outgoing batches.
 ```
 
-For batch entries `raw` is `JsonElement.toString()`, i.e. a canonicalised re-serialization
-(whitespace, key ordering and number formatting are lost); only the single-frame path keeps the
-true input. The KDoc and the migration guide both claim "`Malformed` retains the raw input …
-for relays", which is only true for non-batch frames. Either slice the original substring or
-soften the claim.
+The original finding (a 281-line `json_batch_plan.md` staged for commit) is resolved — both
+`json_batch_plan.md` and `json_batch_migration.md` were added in `88f1b2c` ("wip") and deleted
+later in the branch. But the README paragraph that pointed at the migration guide survived, so the
+branch ships a user-facing broken link (`ls json_batch*` at HEAD: only this review file).
+
+Two knock-on notes:
+
+- Findings 3 and 5 previously leaned on that guide's wording ("closed queue must reject sends"
+  applies only to custom transports; "the caller must know the peer accepts batches"). With the
+  guide gone, the corresponding contracts exist *nowhere* — see the doc gaps called out in those
+  findings.
+- `json_batch_code_review.md` (this file) is itself part of `git diff master...HEAD` now. Same
+  concern as the original finding: scratch review output in the repo root. Either drop it before
+  merge, or replace it with the migration guide the README expects.
 
 ---
 
-## 8. LOW — Scratch planning document staged for commit
+## Resolved since the first review (no action)
 
-`json_batch_plan.md` (new file, 281 lines) is a working plan, not user-facing documentation,
-and is staged alongside the code. `json_batch_migration.md` is referenced from `README.md` and
-should stay; `json_batch_plan.md` should probably be dropped or moved out of the repo root.
+- **`Malformed.raw` was re-serialized, not original text** (old finding 7). `TransportFrame.Malformed`
+  no longer carries `raw` at all (`TransportFrame.kt:60-63`), and no KDoc claims raw-input
+  retention, so the inconsistency between the single-frame and batch-entry paths is gone. Frame
+  relays no longer have access to the original text — a deliberate narrowing, not a bug.
+- **`json_batch_plan.md` staged for commit** (old finding 8) — file deleted; see finding 8 for what
+  the deletion left behind.
 
 ---
 
-## Verified as correct (no action)
+## Verified as correct (re-checked at `b9a5951`, no action)
 
-- `queued` is created as a child of the protocol scope's `SupervisorJob`, so
-  `completeExceptionally` cannot fail the scope and a pre-cancelled scope still releases
-  `slot.queued.await()`.
+- `queued` is created as a child of the protocol scope's `SupervisorJob`
+  (`Protocol.kt:384`), so `completeExceptionally` cannot fail the scope and a pre-cancelled scope
+  still releases `slot.responseFrameQueued.await()`.
 - `RequestOutcome.onCompletion` cannot be double-invoked: the wrapper in
-  `setRequestOutcomeHandlerRaw` only sees an `outcome` when `handler` returned, and
-  `handleRequest`'s local `outcome` is only assigned when that wrapper returned normally.
-  `mapResponse`'s failure path is likewise disjoint from both.
-- Malformed *response-only* envelopes (`isResponse = true`) are never answered, so the
-  `-32700`/`-32600` replies cannot ping-pong between two SDK peers.
+  `setRequestOutcomeHandlerRaw` (`Protocol.kt:274-285`) only sees an `outcome` when `handler`
+  returned, and `handleRequest`'s local `outcome` (`Protocol.kt:466`) is only assigned when that
+  wrapper returned normally. `mapResponse`'s failure path (`RpcMethodsOperations.kt:108-113`) is
+  likewise disjoint from both.
+- Malformed *response-only* envelopes (`isResponse = true`) are never answered
+  (`Protocol.kt:389`, classification at `Serialization.kt:198`), so the `-32700`/`-32600` replies
+  cannot ping-pong between two SDK peers.
 - Ordering of v1 in-request session updates versus the final response is preserved: updates are
-  enqueued on the transport channel before `slot.ready.complete(...)`, and `afterResponse` is
-  gated on `slot.queued`.
-- Lazy-start + register-before-`start()` in `dispatchRequest` correctly handles a
-  `$/cancelRequest` that races the dispatch (the slot resolves to `null`, i.e. no reply).
+  enqueued on the transport channel before `slot.response.complete(...)`, and `afterResponse` is
+  gated on `slot.responseFrameQueued` (`Protocol.kt:470-479`).
+- Lazy-start + register-before-`start()` in `dispatchRequest` (`Protocol.kt:443-455`) correctly
+  handles a `$/cancelRequest` that races the dispatch — the slot resolves through
+  `invokeOnCompletion` and `JsonRpcIncomingRequestCanceledException` maps to no reply
+  (`Exceptions.kt:56`). Covered by `BatchProtocolTest.cancellationBeforeHandlerEntryDoesNotStrandBatch`.
+- Batch reply shape: a `Batch` frame is answered with a `Batch` (even for a single reply) and a
+  single frame with a single object (`Protocol.kt:422-428`), matching
+  `standaloneErrorsAndSingletonBatchKeepTheirShape`.
