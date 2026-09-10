@@ -17,9 +17,9 @@ passes; stderr from that run is cited as evidence where relevant.
 | 3 | MEDIUM | Resolved: synchronous send failures documented and callers audited                       |
 | 4 | MEDIUM | Resolved: New (found during reassessment)                                                |
 | 5 | MEDIUM | Resolved: caller-controlled timeout documented and batch cleanup verified |
-| 6 | LOW | Narrowed: the orphaned job is cancelled by `close()`, cancellation by ID still misses it |
-| 7 | LOW | Narrowed to a shutdown race, but its blast radius grew (see 4)                           |
-| 8 | LOW | Changed: the plan file is gone, the README link it left behind is broken                 |
+| 6 | LOW | Resolved: reject reuse of active incoming request IDs |
+| 7 | LOW | Resolved: idempotent shutdown and cancellation of response queueing |
+| 8 | LOW | Resolved: migration guide restored; review retained as the working checklist |
 | — | resolved | `Malformed.raw` (old finding 7) — the property no longer exists                          |
 
 ---
@@ -181,105 +181,67 @@ No runtime behavior or API signatures changed.
 
 ---
 
-## 6. LOW — Duplicate incoming request IDs make the older handler uncancellable by ID
+## 6. LOW — Resolved: reject reuse of active incoming request IDs
 
-`Protocol.kt:440-456`, `Protocol.kt:328-334`
+`pendingIncomingRequests` keeps one job per incoming ID. Registration atomically checks whether
+that ID is already present. A duplicate receives an Invalid Request (`-32600`) response with the
+same ID and message "Request ID is already in use"; its handler never starts. The original job
+remains registered and can still be cancelled by ID, by bulk cancellation, or by the peer.
 
-```kotlin
-val job = handlerScope.launch(start = CoroutineStart.LAZY) { handleRequest(request, slot) }
-pendingIncomingRequests.update { it.put(requestId, job) }
+Duplicate rejection applies to IDs still registered in `pendingIncomingRequests`. Existing
+cancellation behavior is preserved: cancellation by ID and by the peer removes the entry before
+cancelling the job; bulk cancellation clears the map first. An ID can then be reused while the old
+job finishes cleanup. Its completion callback checks job identity, so it cannot remove a newer
+registration. Normal completion also releases the ID. Batches preserve valid siblings and include
+an error response for each rejected duplicate.
 
-job.invokeOnCompletion { cause ->
-    ...
-    pendingIncomingRequests.update { if (it[requestId] === job) it.remove(requestId) else it }
-}
-```
+[JSON-RPC 2.0](https://www.jsonrpc.org/specification#request_object) defines ID types and response
+correlation but does not explicitly prescribe a duplicate-ID rejection rule. Rejecting concurrent
+reuse with `-32600` is the SDK's policy, rather than a mandated duplicate-specific error code.
+It avoids ambiguous dispatch and cancellation; the old request is never replaced.
 
-Downgraded from MEDIUM. The `put` still evicts an older in-flight job with the same ID, so
-`$/cancelRequest` and `cancelPendingIncomingRequests()` for that ID reach only the newest job and
-the older one cannot be cancelled by ID. The identity guard in `invokeOnCompletion` is the part
-that is now correct and tested
-(`BatchProtocolTest.reusedIdCompletionDoesNotUnregisterTheNewerJob`, `BatchProtocolTest.kt:322-352`).
-
-Two claims from the first review no longer hold and are withdrawn:
-
-- "it keeps running after the protocol is closed" — `handlerScope`'s `SupervisorJob` is a child of
-  `scope`'s job (`Protocol.kt:52-56`), and `close()` ends with `scope.cancel(message)`
-  (`Protocol.kt:320`), so the orphaned job *is* cancelled on close.
-- The batch test `mixedBatchKeepsInvalidSiblingsAndDuplicateIds` (`BatchProtocolTest.kt:64-81`) is
-  not evidence of a leak: both duplicates run to completion and both replies are emitted.
-
-What is left is a peer that reuses an ID while the first request is still in flight (a JSON-RPC
-violation) plus a `cancelPendingIncomingRequests()` call that is expected to drain everything —
-e.g. `V2ClientTest.kt:335`, `ProtocolTest.kt:440` — which would silently skip the older job. Keying
-by `(id, job)` / storing a list, or rejecting a duplicate in-flight ID with `-32600`, would close it.
+Regression coverage checks duplicate rejection within one batch and across frames, all three
+cancellation paths, immediate reuse after cancellation, protection against late completion removing
+a newer registration, and reuse after normal completion.
 
 ---
 
-## 7. LOW — A send failure during shutdown is treated as fatal, producing ERROR noise and a re-entrant `close()`
+## 7. LOW — Resolved: shutdown rejects response work without fatal error handling
 
-`Protocol.kt:315-321`, `Protocol.kt:420-437`
+`Protocol.close()` now starts once, cancels pending incoming/outgoing requests and the protocol
+scope before closing the transport, and closes the transport in `finally`. Repeated or re-entrant
+calls do not close it again. Response collectors check cancellation and protocol shutdown before
+queueing a reply.
 
-```kotlin
-public fun close() {
-    transport.close()
-    val message = "Protocol closed"
-    cancelPendingIncomingRequests(CancellationException(message))
-    cancelPendingOutgoingRequests(CancellationException(message))
-    scope.cancel(message)
-}
-```
+A response send that races a closing/closed transport cancels the queue acknowledgement and logs
+at trace level. Follow-up work is skipped, outcome cleanup still runs, and this path does not call
+`close()` again. A send failure while the protocol and transport are active still logs an error
+and closes the protocol.
 
-The ordering flagged in the first review is unchanged: the transport is closed before in-flight
-incoming requests are cancelled, and a plain `CancellationException` maps to a `CANCELLED` error
-response (`Exceptions.kt:62`), which the frame collector then tries to send on the closed
-transport — logging ERROR at `Protocol.kt:433` and recursively calling `close()`.
-
-Narrowed, though: the first review said this happens on "every normal shutdown or EOF with an
-in-flight incoming request". It does not. `close()` reaches `scope.cancel(message)` a few
-instructions after `cancelPendingIncomingRequests`, while resolving the slot needs a dispatch to
-`handlerDispatcher` and the collector needs another to resume — so the collector is normally
-cancelled first and `it.response.await()` throws `CancellationException`, which the
-`catch` at `Protocol.kt:430-436` deliberately does not log.
-`BatchProtocolTest.closeReleasesPreparedOutcomesAndOutgoingWaiters` (`BatchProtocolTest.kt:232-246`)
-exercises exactly this path and produced no such ERROR in the verification run.
-
-The race is still real, and it does not even need the cancellation path: a handler that finishes
-normally at the same moment as EOF/`close()` will attempt `transport.send` on a closed transport
-and get the same fatal treatment. With finding 4 in play the cost is higher than log noise —
-`queued.completeExceptionally(ClosedSendChannelException)` propagates into
-`slot.responseFrameQueued.await()` and is rethrown out of `handleRequest`, so a benign shutdown can
-surface as an uncaught exception.
-
-Cancel pending requests before closing the transport, and treat a send failure on an
-already-closing transport as trace-level rather than "log ERROR and close".
+Regression tests verify cancellation before transport closure, re-entrant and repeated close,
+and response-send failures at both CLOSING and CLOSED. Existing tests retain coverage of active
+transport failures and prepared-outcome cleanup.
 
 ---
 
-## 8. LOW — README links to a deleted document, and the review file itself is now committed
+## 8. LOW — Resolved: migration guide restored
 
-`README.md:358`
+The README's `json_batch_migration.md` target now exists. The guide documents custom frame-aware
+transports, receive-only malformed frames, response types, explicit outgoing batches, and
+caller-controlled timeout/cancellation semantics.
 
-```markdown
-JSON-RPC batches are supported by the shared protocol and both built-in transports. See the
-[frame/batch migration guide](json_batch_migration.md) for custom transport changes and explicit
-outgoing batches.
-```
+The earlier suggestion to remove this review file is withdrawn as a correctness finding. It is
+being used as the working checklist for this review; its presence is a repository housekeeping
+choice. Public migration documentation now lives separately from these review notes.
 
-The original finding (a 281-line `json_batch_plan.md` staged for commit) is resolved — both
-`json_batch_plan.md` and `json_batch_migration.md` were added in `88f1b2c` ("wip") and deleted
-later in the branch. But the README paragraph that pointed at the migration guide survived, so the
-branch ships a user-facing broken link (`ls json_batch*` at HEAD: only this review file).
+---
 
-Two knock-on notes:
+## Verification of low-severity fixes
 
-- Findings 3 and 5 previously leaned on that guide's wording ("closed queue must reject sends"
-  applies only to custom transports; "the caller must know the peer accepts batches"). With the
-  guide gone, the corresponding contracts exist *nowhere* — see the doc gaps called out in those
-  findings.
-- `json_batch_code_review.md` (this file) is itself part of `git diff master...HEAD` now. Same
-  concern as the original finding: scratch review output in the repo root. Either drop it before
-  merge, or replace it with the migration guide the README expects.
+`:acp:jvmTest --tests "*BatchProtocolTest*" --tests "*StdioTransportFlowTest*"`
+`--tests "*ClientSessionTest*"` passed all 44 tests. `:acp:apiCheck` passed.
+The stdio/WebSocket integration run, `:acp-ktor-test:jvmTest --tests "*ProtocolTest*"`
+`--tests "*V2ClientTest*" --tests "*WebSocketTransportTest*"`, passed 105 tests.
 
 ---
 

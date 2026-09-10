@@ -9,6 +9,7 @@ import com.agentclientprotocol.transport.Transport
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.serialization.SerializationException
@@ -23,12 +24,16 @@ class BatchProtocolTest {
     private class FrameTransport : BaseTransport() {
         val sent = Channel<TransportFrame>(Channel.UNLIMITED)
         var failSend = false
+        var beforeSend: (() -> Unit)? = null
+        var beforeClose: (() -> Unit)? = null
+        val closeCalls = atomic(0)
         var onSend: ((TransportFrame) -> Unit)? = null
         override fun start() {
             _state.value = Transport.State.STARTED
         }
 
         override fun send(frame: TransportFrame) {
+            beforeSend?.invoke()
             check(!failSend) { "Writer queue failed" }
             sent.trySend(frame).getOrThrow()
             onSend?.invoke(frame)
@@ -36,7 +41,14 @@ class BatchProtocolTest {
 
         fun receive(frame: TransportFrame) = fireFrame(frame)
 
+        fun rejectSends(state: Transport.State) {
+            _state.value = state
+            throw ClosedSendChannelException("Transport is closing")
+        }
+
         override fun close() {
+            closeCalls.incrementAndGet()
+            beforeClose?.invoke()
             if (sent.close()) {
                 _state.value = Transport.State.CLOSED
                 fireClose()
@@ -66,8 +78,9 @@ class BatchProtocolTest {
     }
 
     @Test
-    fun mixedBatchKeepsInvalidSiblingsAndDuplicateIds() = test { protocol, transport ->
-        protocol.setRequestHandlerRaw(method) { JsonPrimitive("ok") }
+    fun mixedBatchKeepsValidSiblingsAndRejectsDuplicateIds() = test { protocol, transport ->
+        val calls = atomic(0)
+        protocol.setRequestHandlerRaw(method) { calls.incrementAndGet(); JsonPrimitive("ok") }
         transport.receive(
             TransportFrame.Batch(
                 listOf(
@@ -80,7 +93,10 @@ class BatchProtocolTest {
         )
         val frame = assertIs<TransportFrame.Batch>(transport.sent.receive())
         assertEquals(listOf(RequestId.create(1), RequestId.Null, RequestId.create(1)), frame.replies().map { it.id })
+        assertIs<JsonRpcSuccessResponse>(frame.replies()[0])
         assertEquals(-32600, assertIs<JsonRpcErrorResponse>(frame.replies()[1]).error.code)
+        assertEquals(-32600, assertIs<JsonRpcErrorResponse>(frame.replies()[2]).error.code)
+        assertEquals(1, calls.value)
         assertTrue(transport.sent.tryReceive().isFailure)
     }
 
@@ -230,6 +246,51 @@ class BatchProtocolTest {
         cleaned.await()
         assertEquals(0, starts.value)
         assertEquals(Transport.State.CLOSED, transport.state.value)
+    }
+
+    @Test
+    fun closeCancelsWorkBeforeClosingTransportAndIsReentrantSafe() = test { protocol, transport ->
+        val handlerStarted = CompletableDeferred<Job>()
+        protocol.setRequestHandlerRaw(method) {
+            handlerStarted.complete(currentCoroutineContext().job)
+            awaitCancellation()
+        }
+        transport.receive(request(1))
+        val handlerJob = handlerStarted.await()
+        val outgoing = async { protocol.sendRequestRaw(method.methodName, sessionId = SessionId("pending")) }
+        val outgoingRequest = assertIs<JsonRpcRequest>(assertIs<TransportFrame.Single>(transport.sent.receive()).message)
+        transport.beforeClose = {
+            assertFalse(handlerJob.isActive)
+            assertNull(protocol.getOutgoingRequestSessionId(outgoingRequest.id))
+            protocol.close()
+        }
+
+        protocol.close()
+        protocol.close()
+
+        assertEquals(1, transport.closeCalls.value)
+        assertFailsWith<CancellationException> { outgoing.await() }
+        assertTrue(transport.sent.tryReceive().isFailure)
+    }
+
+    @Test
+    fun responseSendRacingTransportShutdownReleasesOutcomeWithoutClosingAgain() {
+        for (state in listOf(Transport.State.CLOSING, Transport.State.CLOSED)) test { protocol, transport ->
+            val cleaned = CompletableDeferred<Unit>()
+            val starts = atomic(0)
+            protocol.setRequestOutcomeHandlerRaw(method) {
+                RequestOutcome(JsonNull, afterResponse = { starts.incrementAndGet() }, onCompletion = { cleaned.complete(Unit) })
+            }
+            transport.beforeSend = { transport.rejectSends(state) }
+            transport.receive(request(1))
+
+            cleaned.await()
+
+            assertEquals(0, starts.value)
+            assertEquals(0, transport.closeCalls.value)
+            assertEquals(state, transport.state.value)
+            assertTrue(transport.sent.tryReceive().isFailure)
+        }
     }
 
     @Test
@@ -388,19 +449,109 @@ class BatchProtocolTest {
     }
 
     @Test
-    fun reusedIdCompletionDoesNotUnregisterTheNewerJob() = test { protocol, transport ->
-        val count = atomic(0)
-        val firstStarted = CompletableDeferred<Unit>()
-        val secondStarted = CompletableDeferred<Unit>()
+    fun duplicateRejectionPreservesCancellationById() = duplicateIdCancellation(expectReply = true) { protocol, _ ->
+        protocol.cancelPendingIncomingRequest(RequestId.create(1))
+    }
+
+    @Test
+    fun duplicateRejectionPreservesBulkCancellation() = duplicateIdCancellation(expectReply = true) { protocol, _ ->
+        protocol.cancelPendingIncomingRequests()
+    }
+
+    @Test
+    fun duplicateRejectionPreservesPeerCancellation() = duplicateIdCancellation(expectReply = false) { _, transport ->
+        transport.receive(TransportFrame.Single(JsonRpcNotification(
+            AcpMethod.MetaMethods.CancelRequest.methodName,
+            ACPJson.encodeToJsonElement(AcpMethod.MetaMethods.CancelRequest.serializer, CancelRequestNotification(RequestId.create(1), null)),
+        )))
+    }
+
+    private fun duplicateIdCancellation(expectReply: Boolean, cancel: (Protocol, FrameTransport) -> Unit) = test { protocol, transport ->
+        val started = Channel<Unit>(Channel.UNLIMITED)
+        val cleaned = CompletableDeferred<Unit>()
+        protocol.setRequestHandlerRaw(method) { request ->
+            if (request.id.value == 1) {
+                started.send(Unit)
+                try {
+                    awaitCancellation()
+                } finally {
+                    cleaned.complete(Unit)
+                }
+            }
+            JsonNull
+        }
+        transport.receive(request(1))
+        started.receive()
+        transport.receive(TransportFrame.Batch(listOf(request(1), request(2))))
+        val replies = assertIs<TransportFrame.Batch>(transport.sent.receive()).replies()
+        assertEquals(listOf(1, 2), replies.map { it.id.value })
+        assertEquals(-32600, assertIs<JsonRpcErrorResponse>(replies.first()).error.code)
+        assertIs<JsonRpcSuccessResponse>(replies.last())
+        assertTrue(started.tryReceive().isFailure)
+        assertFalse(cleaned.isCompleted)
+
+        cancel(protocol, transport)
+        cleaned.await()
+        if (expectReply) {
+            val response = assertIs<JsonRpcErrorResponse>(transport.sent.receive().replies().single())
+            assertEquals(RequestId.create(1), response.id)
+            assertEquals(-32800, response.error.code)
+        }
+        assertTrue(transport.sent.tryReceive().isFailure)
+    }
+
+    @Test
+    fun incomingIdRemainsReservedThroughFollowUpAndCanBeReusedAfterCompletion() = test { protocol, transport ->
+        val calls = atomic(0)
         val releaseFirst = CompletableDeferred<Unit>()
         val firstCleaned = CompletableDeferred<Unit>()
         val barrier = CompletableDeferred<Unit>()
         protocol.setNotificationHandlerRaw(notification) { barrier.complete(Unit) }
         protocol.setRequestOutcomeHandlerRaw(method) {
-            if (count.incrementAndGet() == 1) {
+            if (calls.incrementAndGet() == 1) {
+                RequestOutcome(JsonPrimitive("first"), afterResponse = { releaseFirst.await() }, onCompletion = { firstCleaned.complete(Unit) })
+            } else {
+                RequestOutcome(JsonPrimitive("second"))
+            }
+        }
+        transport.receive(request(1))
+        assertEquals(JsonPrimitive("first"), assertIs<JsonRpcSuccessResponse>(transport.sent.receive().replies().single()).result)
+        transport.receive(request(1))
+        val duplicate = assertIs<JsonRpcErrorResponse>(transport.sent.receive().replies().single())
+        assertEquals(RequestId.create(1), duplicate.id)
+        assertEquals(-32600, duplicate.error.code)
+        assertEquals("Request ID is already in use", duplicate.error.message)
+        assertEquals(1, calls.value)
+
+        releaseFirst.complete(Unit)
+        firstCleaned.await()
+        transport.receive(TransportFrame.Single(JsonRpcNotification(notification.methodName)))
+        barrier.await()
+        transport.receive(request(1))
+        assertEquals(JsonPrimitive("second"), assertIs<JsonRpcSuccessResponse>(transport.sent.receive().replies().single()).result)
+        assertEquals(2, calls.value)
+    }
+
+    @Test
+    fun cancelledJobCompletionDoesNotUnregisterReusedId() = test { protocol, transport ->
+        val firstStarted = CompletableDeferred<Unit>()
+        val secondStarted = CompletableDeferred<Unit>()
+        val cleaning = CompletableDeferred<Unit>()
+        val releaseCleanup = CompletableDeferred<Unit>()
+        val barrier = CompletableDeferred<Unit>()
+        val calls = atomic(0)
+        protocol.setNotificationHandlerRaw(notification) { barrier.complete(Unit) }
+        protocol.setRequestHandlerRaw(method) {
+            if (calls.incrementAndGet() == 1) {
                 firstStarted.complete(Unit)
-                releaseFirst.await()
-                RequestOutcome(JsonNull, onCompletion = { firstCleaned.complete(Unit) })
+                try {
+                    awaitCancellation()
+                } finally {
+                    withContext(NonCancellable) {
+                        cleaning.complete(Unit)
+                        releaseCleanup.await()
+                    }
+                }
             } else {
                 secondStarted.complete(Unit)
                 awaitCancellation()
@@ -408,13 +559,22 @@ class BatchProtocolTest {
         }
         transport.receive(request(1))
         firstStarted.await()
-        transport.receive(request(1))
-        secondStarted.await()
-        releaseFirst.complete(Unit)
-        assertIs<JsonRpcSuccessResponse>(transport.sent.receive().replies().single())
-        firstCleaned.await()
+        protocol.cancelPendingIncomingRequest(RequestId.create(1))
+        cleaning.await()
+        try {
+            transport.receive(request(1))
+            secondStarted.await()
+            assertEquals(2, calls.value)
+        } finally {
+            releaseCleanup.complete(Unit)
+        }
+        assertEquals(-32800, assertIs<JsonRpcErrorResponse>(transport.sent.receive().replies().single()).error.code)
         transport.receive(TransportFrame.Single(JsonRpcNotification(notification.methodName)))
         barrier.await()
+
+        transport.receive(request(1))
+        assertEquals(-32600, assertIs<JsonRpcErrorResponse>(transport.sent.receive().replies().single()).error.code)
+        assertEquals(2, calls.value)
         protocol.cancelPendingIncomingRequest(RequestId.create(1))
         assertEquals(-32800, assertIs<JsonRpcErrorResponse>(transport.sent.receive().replies().single()).error.code)
     }

@@ -60,6 +60,7 @@ public class Protocol(
         atomic(persistentMapOf())
     private val pendingIncomingRequests: AtomicRef<PersistentMap<IncomingRequestId, Job>> =
         atomic(persistentMapOf())
+    private val closeStarted = atomic(false)
 
     /**
      * Request handlers for incoming requests.
@@ -313,11 +314,15 @@ public class Protocol(
      * Close the protocol and cleanup resources.
      */
     public fun close() {
-        transport.close()
+        if (!closeStarted.compareAndSet(expect = false, update = true)) return
         val message = "Protocol closed"
-        cancelPendingIncomingRequests(CancellationException(message))
-        cancelPendingOutgoingRequests(CancellationException(message))
-        scope.cancel(message)
+        try {
+            cancelPendingIncomingRequests(CancellationException(message))
+            cancelPendingOutgoingRequests(CancellationException(message))
+            scope.cancel(message)
+        } finally {
+            transport.close()
+        }
     }
 
     /**
@@ -421,6 +426,8 @@ public class Protocol(
             try {
                 val replies = slots.mapNotNull { it.response.await() }.map { TransportFrame.Single(it) }
                 if (replies.isNotEmpty()) {
+                    currentCoroutineContext().ensureActive()
+                    if (closeStarted.value) throw CancellationException("Protocol closed")
                     transport.send(
                         if (frame is TransportFrame.Batch) TransportFrame.Batch(replies)
                         else replies.single()
@@ -428,8 +435,13 @@ public class Protocol(
                 }
                 queued.complete(Unit)
             } catch (t: Throwable) {
-                queued.completeExceptionally(t)
-                if (t !is CancellationException) {
+                if (t is CancellationException || closeStarted.value || !scope.isActive ||
+                    transport.state.value == Transport.State.CLOSING || transport.state.value == Transport.State.CLOSED
+                ) {
+                    queued.cancel(CancellationException("Response queueing cancelled", t))
+                    logger.trace(t) { "Response queueing cancelled" }
+                } else {
+                    queued.completeExceptionally(t)
                     logger.error(t) { "Unable to queue response frame" }
                     close()
                 }
@@ -441,7 +453,17 @@ public class Protocol(
         val requestId = IncomingRequestId(request.id)
         // Register before execution or cancellation can complete this job.
         val job = handlerScope.launch(start = CoroutineStart.LAZY) { handleRequest(request, slot) }
-        pendingIncomingRequests.update { it.put(requestId, job) }
+        val previous = pendingIncomingRequests.getAndUpdate {
+            if (requestId in it) it else it.put(requestId, job)
+        }
+        if (requestId in previous) {
+            job.cancel()
+            slot.response.complete(JsonRpcErrorResponse(
+                request.id,
+                JsonRpcError(JsonRpcErrorCode.INVALID_REQUEST.code, "Request ID is already in use"),
+            ))
+            return
+        }
 
         job.invokeOnCompletion { cause ->
             // Also resolves a slot if cancellation prevented the coroutine body from starting.
