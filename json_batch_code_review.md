@@ -13,7 +13,7 @@ passes; stderr from that run is cited as evidence where relevant.
 | # | Severity | Status |
 |---|----------|--------|
 | 1 | HIGH | Resolved: bounded graceful WebSocket shutdown |
-| 2 | MEDIUM | Still valid, now covered by a passing test that locks the behavior in |
+| 2 | MEDIUM | Withdrawn: parse-error responses are correct; noisy stdout violates ACP |
 | 3 | MEDIUM | Still valid; transport contract is now documented, `Protocol`'s is not |
 | 4 | MEDIUM | New (found during reassessment) |
 | 5 | MEDIUM | Still valid, unchanged |
@@ -40,53 +40,35 @@ Verified with `:acp-ktor-test:jvmTest --tests "*WebSocketTransportTest*"` and `:
 
 ---
 
-## 2. MEDIUM — Blank / non-JSON stdout lines produce outgoing error responses
+## 2. MEDIUM — Withdrawn: responding to unparseable input is correct
 
-`acp/src/commonMain/kotlin/com/agentclientprotocol/transport/StdioTransport.kt:105`,
-`acp-model/src/commonMain/kotlin/com/agentclientprotocol/rpc/Serialization.kt:58`,
-`acp/src/commonMain/kotlin/com/agentclientprotocol/protocol/Protocol.kt:387-393`
+The previous recommendation to skip unparseable stdio lines or make parse-error responses opt-in
+is withdrawn. The compatibility difference from `master` is real, but it is not a correctness bug:
 
-The parse entry point moved to `Serialization.kt` (`parseTransportFrame`), but the behavior is the
-same as reviewed:
+- [JSON-RPC 2.0, sections 5 and 7](https://www.jsonrpc.org/specification) define `-32700`
+  (Parse error) for invalid JSON received by the server, require `id: null` when the request ID
+  cannot be detected, and show a parse-error response to malformed input. Valid JSON that is not
+  a valid request instead produces `-32600` (Invalid Request).
+- [ACP stdio transport](https://agentclientprotocol.com/protocol/transports#stdio) delimits
+  messages with newlines and explicitly says the agent MUST NOT write anything to stdout that
+  is not a valid ACP message. Logs belong on stderr. The client has the corresponding restriction
+  on what it writes to the agent's stdin.
 
-```kotlin
-// StdioTransport.kt:105
-fireFrame(parseTransportFrame(line))
+Keep `StdioTransport` forwarding `parseTransportFrame(line)` and `Protocol` replying to malformed
+input that is not identifiable as a response. Keep suppressing replies to recognized responses
+and valid notifications; the notification exception does not make arbitrary invalid input a
+notification. The existing transport test also verifies that valid input is still processed after
+malformed lines.
 
-// Serialization.kt:58
-public fun parseTransportFrame(text: String): TransportFrame = try {
-    JsonRpcJson.decodeFromString(TransportFrame.serializer(), text)
-} catch (_: SerializationException) {
-    TransportFrame.Malformed(JsonRpcErrorCode.PARSE_ERROR.asError())
-}
+On `master`, undecodable lines were logged and skipped, with an additional attempt to recover JSON
+following a garbage prefix. That is tolerance for nonconforming peers, not a reason to suppress
+protocol errors by default. Any future compatibility mode should be justified by a concrete peer
+requirement and documented as such.
 
-// Protocol.kt:389
-is TransportFrame.Malformed -> if (!entry.isResponse) {
-    slots += ResponseSlot(queued).also {
-        it.response.complete(JsonRpcErrorResponse(RequestId.Null, entry.error))
-    }
-}
-```
-
-On `master` the read loop did `try { decodeJsonRpcMessage(line) } catch { return@collect }` — an
-undecodable line was logged at trace and skipped — and `decodeJsonRpcMessage` even recovered from a
-garbage prefix by scanning for the first `{` (`master:acp-model/.../JsonRpc.kt:208-219`). Now every
-line becomes a frame; a parse failure yields `Malformed(PARSE_ERROR, isResponse = false)`, and
-`handleIncomingFrame` answers every non-response `Malformed` with an `id: null` error response.
-
-`sourceAsLineFlow` emits `""` for a blank line (`StdioTransport.kt:207`), and
-`parseTransportFrame("")` is `-32700`. So a peer process that writes a trailing blank line, a
-banner, or any log line to stdout gets one unsolicited JSON-RPC error response with `id: null` per
-invalid line back across the pipe — a live-interop regression against the very agents the old
-garbage-prefix recovery existed for.
-
-This is now pinned by a passing test, so it reads as intentional at the transport layer:
-`acp/src/jvmTest/.../StdioTransportFlowTest.kt:199-215` sends `""` among the garbage lines and
-asserts three `Malformed` frames are delivered. The transport-level decision (deliver, don't
-swallow) is defensible; the `Protocol`-level decision to *reply* to each of them is the problem.
-
-At minimum, skip blank/whitespace-only lines in the stdio read path, and consider making "reply to
-unparseable input" opt-in for the line-oriented transport.
+Blank-line handling is a separate framing-policy question: JSON-RPC itself is transport agnostic,
+and ACP does not specify an empty-line exception. Ignoring empty/whitespace-only lines could be an
+explicit tolerance policy, but is not a required fix. A normal newline terminating a valid message
+is its delimiter; an additional blank line is a separate empty frame in this implementation.
 
 ---
 
