@@ -12,7 +12,7 @@ passes; stderr from that run is cited as evidence where relevant.
 
 | # | Severity | Status |
 |---|----------|--------|
-| 1 | HIGH | Still valid, unchanged |
+| 1 | HIGH | Resolved: bounded graceful WebSocket shutdown |
 | 2 | MEDIUM | Still valid, now covered by a passing test that locks the behavior in |
 | 3 | MEDIUM | Still valid; transport contract is now documented, `Protocol`'s is not |
 | 4 | MEDIUM | New (found during reassessment) |
@@ -24,41 +24,19 @@ passes; stderr from that run is cited as evidence where relevant.
 
 ---
 
-## 1. HIGH — `WebSocketTransport.close()` discards queued outgoing frames and aborts the socket
+## 1. HIGH — Resolved: `WebSocketTransport.close()` drains queued outgoing frames
 
-`acp-ktor/src/commonMain/kotlin/com/agentclientprotocol/transport/WebSocketTransport.kt:53`
+`close()` now rejects new sends, enters `CLOSING`, and gives the writer up to five seconds
+to drain accepted frames and send/flush a normal WebSocket Close frame. The socket is aborted
+if shutdown times out or is cancelled (and on a writer failure). Transport cleanup then sets
+`CLOSED` and fires close listeners once. Closing before `start()` also drains accepted frames.
 
-```kotlin
-override fun close() {
-    if (!sendChannel.close()) return
-    _state.value = Transport.State.CLOSED
-    scope.cancel()
-    // Also release a writer blocked by network backpressure.
-    wss.cancel()
-    fireClose()
-}
-```
+Regression coverage in `WebSocketTransportTest` verifies ordered delivery and a normal close
+reason with a Ktor peer, draining after reader EOF, close-before-start behavior, send rejection,
+idempotent close notifications, parent cancellation, and bounded cleanup when sending, flushing,
+or sending the Close frame stalls.
 
-Unchanged since the first review. `sendChannel.close()` alone would let the writer
-(`WebSocketTransport.kt:18-31`) drain buffered frames and then exit; `scope.cancel()` two lines
-later kills the writer immediately, so every frame still sitting in the UNLIMITED channel is
-silently dropped. `wss.cancel()` then aborts the socket without the WebSocket Close handshake that
-the `master` implementation performed (`wss.close()` / `wss.close(CloseReason(NORMAL, ...))` /
-`wss.flush()`, all in the writer's completion paths).
-
-Concrete scenario: a handler queues its final response or a `session/update` notification (`send`
-is `trySend`, so it returns before anything is written), then the app calls `Protocol.close()`.
-`Protocol.close()` calls `transport.close()` first (`Protocol.kt:316`), so the response is dropped
-and the peer sees an abnormal closure instead of a normal one. The same path is reached
-automatically: the reader loop in `Protocol.start()` has `finally { close() }`
-(`Protocol.kt:126-128`), so remote EOF also tears down the writer mid-drain.
-
-The added comment explains why `wss.cancel()` is there (releasing a writer blocked on
-backpressure) but does not address the drop: the cancel is unconditional, not a bounded fallback.
-`WebSocketTransportTest` covers malformed input and output framing, not drain-on-close.
-
-Fix: let the writer drain (`for (frame in sendChannel)` until exhausted, then
-`wss.close(CloseReason(NORMAL, ...))`), and only cancel the scope as a bounded fallback.
+Verified with `:acp-ktor-test:jvmTest --tests "*WebSocketTransportTest*"` and `:acp-ktor:apiCheck`.
 
 ---
 
