@@ -9,9 +9,12 @@ import com.agentclientprotocol.transport.Transport
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.*
 import kotlin.test.*
+import kotlin.time.Duration.Companion.milliseconds
 
 class BatchProtocolTest {
     private val method = AcpMethod.AgentMethods.V1.Initialize
@@ -32,6 +35,7 @@ class BatchProtocolTest {
         }
 
         fun receive(frame: TransportFrame) = fireFrame(frame)
+
         override fun close() {
             if (sent.close()) {
                 _state.value = Transport.State.CLOSED
@@ -317,6 +321,70 @@ class BatchProtocolTest {
         }
         assertEquals(requests.map { it.id }, cancelledIds)
         requests.forEach { assertNull(protocol.getOutgoingRequestSessionId(it.id)) }
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun externalBatchTimeoutCleansPendingRequestsEvenWhenCancellationSendFails() = test { protocol, transport ->
+        for (failCancellationSend in listOf(false, true)) {
+            val session = SessionId("timed-batch")
+            val otherSession = SessionId("unrelated")
+            val otherCall = async { protocol.sendRequestRaw(method.methodName, sessionId = otherSession) }
+            val otherRequest = assertIs<JsonRpcRequest>(assertIs<TransportFrame.Single>(transport.sent.receive()).message)
+
+            val scheduler = TestCoroutineScheduler()
+            val operation = async(StandardTestDispatcher(scheduler)) {
+                withTimeout(1_000.milliseconds) {
+                    protocol.sendBatchRequestRaw(List(3) { JsonRpcCall.Request(method.methodName) }, session)
+                }
+            }
+            scheduler.runCurrent()
+
+            val requests = assertIs<TransportFrame.Batch>(transport.sent.receive()).entries.map {
+                assertIs<JsonRpcRequest>(assertIs<TransportFrame.Single>(it).message)
+            }
+            requests.forEach { assertEquals(session, protocol.getOutgoingRequestSessionId(it.id)) }
+
+            val processed = CompletableDeferred<Unit>()
+
+            protocol.setNotificationHandlerRaw(notification) { processed.complete(Unit) }
+            transport.receive(TransportFrame.Batch(listOf(
+                TransportFrame.Single(JsonRpcErrorResponse(RequestId.Null, JsonRpcError(-32600, "batch rejected"))),
+                TransportFrame.Single(JsonRpcSuccessResponse(requests.first().id, JsonNull)),
+                TransportFrame.Single(JsonRpcNotification(notification.methodName)),
+            )))
+
+            processed.await()
+            scheduler.runCurrent()
+
+            assertFalse(operation.isCompleted)
+            assertNull(protocol.getOutgoingRequestSessionId(requests.first().id))
+            requests.drop(1).forEach { assertEquals(session, protocol.getOutgoingRequestSessionId(it.id)) }
+
+            transport.failSend = failCancellationSend
+            scheduler.advanceTimeBy(1_000)
+            scheduler.runCurrent()
+
+            assertFailsWith<TimeoutCancellationException> { operation.await() }
+            requests.forEach { assertNull(protocol.getOutgoingRequestSessionId(it.id)) }
+            assertEquals(otherSession, protocol.getOutgoingRequestSessionId(otherRequest.id))
+            assertFalse(otherCall.isCompleted)
+            assertEquals(Transport.State.STARTED, transport.state.value)
+
+            if (!failCancellationSend) {
+                val cancelledIds = List(2) {
+                    val message = assertIs<JsonRpcNotification>(assertIs<TransportFrame.Single>(transport.sent.receive()).message)
+                    assertEquals(AcpMethod.MetaMethods.CancelRequest.methodName, message.method)
+                    ACPJson.decodeFromJsonElement(AcpMethod.MetaMethods.CancelRequest.serializer, message.params!!).requestId
+                }
+                assertEquals(requests.drop(1).map { it.id }, cancelledIds)
+            }
+
+            assertTrue(transport.sent.tryReceive().isFailure)
+            transport.failSend = false
+            transport.receive(TransportFrame.Single(JsonRpcSuccessResponse(otherRequest.id, JsonPrimitive("still active"))))
+            assertEquals(JsonPrimitive("still active"), otherCall.await())
+        }
     }
 
     @Test

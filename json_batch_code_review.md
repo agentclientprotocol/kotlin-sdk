@@ -16,7 +16,7 @@ passes; stderr from that run is cited as evidence where relevant.
 | 2 | MEDIUM | Withdrawn: parse-error responses are correct; noisy stdout violates ACP                  |
 | 3 | MEDIUM | Resolved: synchronous send failures documented and callers audited                       |
 | 4 | MEDIUM | Resolved: New (found during reassessment)                                                |
-| 5 | MEDIUM | Still valid, unchanged                                                                   |
+| 5 | MEDIUM | Resolved: caller-controlled timeout documented and batch cleanup verified |
 | 6 | LOW | Narrowed: the orphaned job is cancelled by `close()`, cancellation by ID still misses it |
 | 7 | LOW | Narrowed to a shutdown race, but its blast radius grew (see 4)                           |
 | 8 | LOW | Changed: the plan file is gone, the README link it left behind is broken                 |
@@ -156,31 +156,28 @@ The rethrow also buys nothing: the reply is already finalized by then, and
 
 ---
 
-## 5. MEDIUM — `sendBatchRequestRaw` hangs forever when the peer does not reply to every request
+## 5. MEDIUM — Resolved: caller-controlled timeout and batch cleanup
 
-`Protocol.kt:229-236`, doc at `RpcMethodsOperations.kt:74-89`
+`sendBatchRequestRaw` now documents that it waits for every request's response with no built-in
+deadline. Callers requiring bounded completion should wrap the entire call in `withTimeout`.
+This follows the existing `ProtocolOptions.requestTimeout` deprecation ("Use coroutine timeouts").
+A normal return contains all request results; a notification-only batch returns an empty list
+after queue acceptance.
 
-```kotlin
-return outgoing.map { (_, request) ->
-    try { Result.success(request.deferred.await()) } catch (e: JsonRpcException) { ... }
-}
-```
+An uncorrelated `id: null` error still cannot fail a particular batch: attributing it to concurrent
+requests would be unsafe. A timeout or other local cancellation throws for the whole operation,
+without returning partial results. The existing `finally` cancels the batch's deferreds and removes
+its entries from `pendingOutgoingRequests`. Cancellation notifications for unfinished requests are
+best effort, and failure to send them does not prevent local cleanup or cancel unrelated calls.
 
-Unchanged. There is still no per-request completion guarantee and no timeout. The realistic failure
-mode is a peer that does not implement batching: it replies with a *single*
-`{"id":null,"error":{"code":-32600}}` object. `handleResponse` cannot correlate `RequestId.Null`,
-logs `"Received response for unknown request ID: null"` (`Protocol.kt:535`), and drops it — so
-`sendBatchRequestRaw` blocks indefinitely with no failure.
+`BatchProtocolTest.externalBatchTimeoutCleansPendingRequestsEvenWhenCancellationSendFails` uses
+virtual time to verify an external `withTimeout` after an uncorrelated error and a partial response.
+It checks that all remaining batch entries are removed before the timeout reaches the caller,
+only unfinished requests receive cancellation notifications, and an unrelated request remains
+registered and completes normally. The same checks cover failure to send cancellation notifications.
 
-`BatchProtocolTest.unknownDuplicateAndNullResponseIdsCannotResolveAnotherCall`
-(`BatchProtocolTest.kt:373-399`) now pins this: after an uncorrelated `id: null` error it asserts
-`assertFalse(operation.isCompleted)`. Not resolving another call from an `id: null` error is
-correct; leaving the batch with no completion path is what remains unaddressed.
-
-The KDoc still says only "The caller must know the peer accepts batches"
-(`RpcMethodsOperations.kt:82`). Since the function is `suspend`, caller-side `withTimeout` works —
-either document it as mandatory, or complete all outstanding deferreds when an uncorrelated
-`id: null` error response arrives while a batch is in flight.
+Verified with `:acp:jvmTest --tests "*BatchProtocolTest*"` (18 tests passed) and `:acp:apiCheck`.
+No runtime behavior or API signatures changed.
 
 ---
 

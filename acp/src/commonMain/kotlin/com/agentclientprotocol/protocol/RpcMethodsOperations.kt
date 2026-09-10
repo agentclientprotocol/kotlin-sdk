@@ -91,10 +91,19 @@ public interface RpcMethodsOperations {
      * [sessionId] optionally associates all requests in this batch with one session for local tracking;
      * it does not modify their wire params. Omit it for batches spanning multiple sessions.
      *
-     * Throws synchronously if encoding fails or the transport cannot accept the frame,
-     * including when it is closing or closed. A normal return acknowledges queue acceptance,
-     * not a physical flush or peer receipt. Callers sending during cleanup should handle send
-     * failures so that required local cleanup still runs.
+     * Throws if encoding fails or the transport cannot accept the frame, including when it is
+     * closing or closed. Returns after every request has received a response. A notification-only
+     * batch returns an empty list after queue acceptance, without acknowledging peer receipt.
+     *
+     * There is no built-in timeout. If the peer omits a response, this call keeps waiting until
+     * cancelled or the protocol closes. Wrap the entire call in [kotlinx.coroutines.withTimeout]
+     * when bounded completion is required. Uncorrelated errors with a null ID cannot complete
+     * this batch because they cannot be attributed to its requests.
+     *
+     * Timeout or other local cancellation throws for the whole operation; partial results are not
+     * returned. All of this batch's pending requests are cancelled and removed from local tracking
+     * before the call exits. Cancellation notifications for unfinished requests are sent best effort;
+     * failure to send them does not prevent local cleanup. Other calls are unaffected.
      *
      * The caller must know the peer accepts batches. Lifecycle operations such as initialize,
      * auth/login, session/new, session/resume and session/prompt SHOULD NOT be batched.
