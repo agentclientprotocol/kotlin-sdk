@@ -299,7 +299,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         val sessions = List(2) { client.newSession(cwd = ".") }
         val method = AcpMethod.AgentMethods.V2.SessionPrompt
         val results = withTimeout(10.seconds) {
-            clientProtocol.sendBatchRaw(sessions.map { session ->
+            clientProtocol.sendBatchRequestRaw(sessions.map { session ->
                 JsonRpcCall.Request(method.methodName, ACPJson.encodeToJsonElement(method.requestSerializer,
                     com.agentclientprotocol.model.v2.PromptRequest(session.sessionId, listOf(ContentBlock.Text("hi")))))
             })
@@ -324,7 +324,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         }
         val method = AcpMethod.AgentMethods.V2.SessionPrompt
         val batch = async {
-            clientProtocol.sendBatchRaw(listOf(
+            clientProtocol.sendBatchRequestRaw(listOf(
                 JsonRpcCall.Request(method.methodName, ACPJson.encodeToJsonElement(method.requestSerializer,
                     com.agentclientprotocol.model.v2.PromptRequest(session.sessionId, listOf(ContentBlock.Text("discard"))))),
                 JsonRpcCall.Request(ProtocolTest.Companion.TestMethod.methodName, buildJsonObject { put("message", "wait") }),

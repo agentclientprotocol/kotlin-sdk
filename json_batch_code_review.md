@@ -81,7 +81,7 @@ its callers, or keep the throw at the `Transport` boundary and have `Protocol` s
 
 ---
 
-## 4. MEDIUM — `sendBatchRaw` hangs forever when the peer does not reply to every request
+## 4. MEDIUM — `sendBatchRequestRaw` hangs forever when the peer does not reply to every request
 
 `acp/src/commonMain/kotlin/com/agentclientprotocol/protocol/Protocol.kt:322`
 
@@ -94,7 +94,7 @@ return outgoing.map { (_, request) ->
 There is no per-request completion guarantee. The realistic failure mode is a peer that does
 not implement batching: it replies with a *single* `{"id":null,"error":{"code":-32600}}`
 object. `handleResponse` cannot correlate `RequestId.Null`, logs
-`"Received response for unknown request ID"`, and drops it — so `sendBatchRaw` blocks
+`"Received response for unknown request ID"`, and drops it — so `sendBatchRequestRaw` blocks
 indefinitely with no timeout and no failure. The guide says "the caller must know the peer
 accepts batches", but a mistake here is an unrecoverable hang rather than an error. Consider
 completing all outstanding deferreds when an uncorrelated `id:null` error response arrives
@@ -176,7 +176,7 @@ should stay; `json_batch_plan.md` should probably be dropped or moved out of the
   `completeExceptionally` cannot fail the scope and a pre-cancelled scope still releases
   `slot.queued.await()`.
 - `RequestOutcome.onCompletion` cannot be double-invoked: the wrapper in
-  `setRequestHandlerWithOutcomeRaw` only sees an `outcome` when `handler` returned, and
+  `setRequestOutcomeHandlerRaw` only sees an `outcome` when `handler` returned, and
   `handleRequest`'s local `outcome` is only assigned when that wrapper returned normally.
   `mapResponse`'s failure path is likewise disjoint from both.
 - Malformed *response-only* envelopes (`isResponse = true`) are never answered, so the

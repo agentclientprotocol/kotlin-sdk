@@ -66,7 +66,7 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
             TestResponse(request.message)
         }
         agentProtocol.setNotificationHandler(TestNotificationMethod) { notificationReceived.complete(Unit) }
-        val results = clientProtocol.sendBatchRaw(listOf(
+        val results = clientProtocol.sendBatchRequestRaw(listOf(
             JsonRpcCall.Request(TestMethod.methodName, buildJsonObject { put("message", "first") }),
             JsonRpcCall.Notification(TestNotificationMethod.methodName, buildJsonObject { put("message", "notify") }),
             JsonRpcCall.Request(TestMethod.methodName, buildJsonObject { put("message", "fail") }),
@@ -88,9 +88,9 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
             if (request.message == "slow") { started.complete(Unit); release.await() }
             agentProtocol.sendRequest(TestMethod, request)
         }
-        val slow = async { clientProtocol.sendBatchRaw(listOf(JsonRpcCall.Request(TestMethod.methodName, buildJsonObject { put("message", "slow") }))) }
+        val slow = async { clientProtocol.sendBatchRequestRaw(listOf(JsonRpcCall.Request(TestMethod.methodName, buildJsonObject { put("message", "slow") }))) }
         started.await()
-        val fast = clientProtocol.sendBatchRaw(listOf(JsonRpcCall.Request(TestMethod.methodName, buildJsonObject { put("message", "fast") })))
+        val fast = clientProtocol.sendBatchRequestRaw(listOf(JsonRpcCall.Request(TestMethod.methodName, buildJsonObject { put("message", "fast") })))
         assertEquals(buildJsonObject { put("message", "fast") }, fast.single().getOrThrow())
         assertTrue(!slow.isCompleted)
         release.complete(Unit)

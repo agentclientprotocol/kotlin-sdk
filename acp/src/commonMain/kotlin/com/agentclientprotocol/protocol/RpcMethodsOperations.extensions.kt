@@ -1,13 +1,7 @@
 package com.agentclientprotocol.protocol
 
 import com.agentclientprotocol.annotations.UnstableApi
-import com.agentclientprotocol.model.AcpMethod
-import com.agentclientprotocol.model.AcpNotification
-import com.agentclientprotocol.model.AcpPaginatedRequest
-import com.agentclientprotocol.model.AcpPaginatedResponse
-import com.agentclientprotocol.model.AcpRequest
-import com.agentclientprotocol.model.AcpResponse
-import com.agentclientprotocol.model.AcpWithSessionId
+import com.agentclientprotocol.model.*
 import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.util.PaginatedResponseToFlowAdapter
@@ -75,12 +69,12 @@ public fun<TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOperations.
 }
 
 @UnstableApi
-public fun <TRequest : AcpRequest, TResponse : AcpResponse> Protocol.setRequestHandlerWithOutcome(
+public fun <TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOperations.setRequestOutcomeHandler(
     method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
     additionalContext: CoroutineContext = EmptyCoroutineContext,
     handler: suspend (TRequest) -> RequestOutcome<TResponse>,
 ) {
-    setRequestHandlerWithOutcomeRaw(method, additionalContext) { request ->
+    setRequestOutcomeHandlerRaw(method, additionalContext) { request ->
         val params = ACPJson.decodeFromJsonElement(method.requestSerializer, request.params ?: JsonNull)
         handler(params).mapResponse { ACPJson.encodeToJsonElement(method.responseSerializer, it) }
     }

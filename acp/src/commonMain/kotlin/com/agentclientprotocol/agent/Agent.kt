@@ -219,12 +219,12 @@ public class Agent(
             return@setRequestHandler agentSupport.deleteSession(params.sessionId, params._meta)
         }
 
-        protocol.setRequestHandlerWithOutcome(AcpMethod.AgentMethods.V1.SessionNew) { params: NewSessionRequest ->
+        protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V1.SessionNew) { params: NewSessionRequest ->
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val created = createSession(sessionParameters) { agentSupport.createSession(it) }
 
             @OptIn(UnstableApi::class)
-            return@setRequestHandlerWithOutcome created.mapResponse { session ->
+            return@setRequestOutcomeHandler created.mapResponse { session ->
                 NewSessionResponse(
                     sessionId = session.sessionId,
                     modes = session.asModeState(),
@@ -234,11 +234,11 @@ public class Agent(
             }
         }
 
-        protocol.setRequestHandlerWithOutcome(AcpMethod.AgentMethods.V1.SessionLoad) { params: LoadSessionRequest ->
+        protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V1.SessionLoad) { params: LoadSessionRequest ->
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val created = createSession(sessionParameters) { agentSupport.loadSession(params.sessionId, sessionParameters) }
             @OptIn(UnstableApi::class)
-            return@setRequestHandlerWithOutcome created.mapResponse { session ->
+            return@setRequestOutcomeHandler created.mapResponse { session ->
                 LoadSessionResponse(
                     // maybe unify result of these two methods to have sessionId in both
     //                sessionId = session.sessionId,
@@ -249,10 +249,10 @@ public class Agent(
             }
         }
 
-        protocol.setRequestHandlerWithOutcome(AcpMethod.AgentMethods.V1.SessionResume) { params: ResumeSessionRequest ->
+        protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V1.SessionResume) { params: ResumeSessionRequest ->
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val created = createSession(sessionParameters) { agentSupport.resumeSession(params.sessionId, sessionParameters) }
-            return@setRequestHandlerWithOutcome created.mapResponse { session ->
+            return@setRequestOutcomeHandler created.mapResponse { session ->
                 ResumeSessionResponse(
                     modes = session.asModeState(),
                     models = session.asModelState()
@@ -299,10 +299,10 @@ public class Agent(
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setRequestHandlerWithOutcome(AcpMethod.AgentMethods.V1.SessionFork) { params: ForkSessionRequest ->
+        protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V1.SessionFork) { params: ForkSessionRequest ->
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val created = createSession(sessionParameters) { agentSupport.forkSession(params.sessionId, sessionParameters) }
-            return@setRequestHandlerWithOutcome created.mapResponse { session ->
+            return@setRequestOutcomeHandler created.mapResponse { session ->
                 ForkSessionResponse(
                     sessionId = session.sessionId,
                     modes = session.asModeState(),
@@ -313,10 +313,10 @@ public class Agent(
         }
 
         @OptIn(UnstableApi::class)
-        protocol.setRequestHandlerWithOutcome(AcpMethod.AgentMethods.V1.SessionResume) { params: ResumeSessionRequest ->
+        protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V1.SessionResume) { params: ResumeSessionRequest ->
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val created = createSession(sessionParameters) { agentSupport.resumeSession(params.sessionId, sessionParameters) }
-            return@setRequestHandlerWithOutcome created.mapResponse { session ->
+            return@setRequestOutcomeHandler created.mapResponse { session ->
                 ResumeSessionResponse(
                     modes = session.asModeState(),
                     models = session.asModelState(),

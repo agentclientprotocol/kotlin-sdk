@@ -18,12 +18,9 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.jvm.JvmInline
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
-
-private val logger = KotlinLogging.logger {}
-
 
 /**
  * Configuration options for the protocol.
@@ -38,42 +35,8 @@ public open class ProtocolOptions(
     public val protocolDebugName: String = Protocol::class.simpleName!!
 )
 
-// TODO this separate interface is not needed, inline it in Protocol
-public interface RpcMethodsOperations {
-    public fun setRequestHandlerRaw(
-        method: AcpMethod.AcpRequestResponseMethod<*, *>,
-        additionalContext: CoroutineContext = EmptyCoroutineContext,
-        handler: suspend (JsonRpcRequest) -> JsonElement?
-    )
-
-    public fun setNotificationHandlerRaw(
-        method: AcpMethod.AcpNotificationMethod<*>,
-        additionalContext: CoroutineContext = EmptyCoroutineContext,
-        handler: suspend (JsonRpcNotification) -> Unit
-    )
-
-    // TODO replace method and params with JsonRpcCall, like in sendBatchRaw
-    /**
-     * Send a request and wait for the response.
-     *
-     * Prefer typed [sendRequest] over this method.
-     */
-    public suspend fun sendRequestRaw(
-        method: MethodName,
-        params: JsonElement? = null,
-        sessionId: SessionId? = null
-    ): JsonElement
-
-    /**
-     * Send a notification (no response expected).
-     *
-     * Prefer typed [sendNotification] over this method.
-     */
-    public fun sendNotificationRaw(method: AcpMethod.AcpNotificationMethod<*>, params: JsonElement? = null)
-}
-
 /**
- * Base protocol implementation handling JSON-RPC communication over a transport.
+ * Communication protocol implementation, implementing [RpcMethodsOperations] and handling JSON-RPC communication over a transport.
  *
  * This class manages request/response correlation, notifications, and error handling.
  */
@@ -82,6 +45,10 @@ public class Protocol(
     private val transport: Transport,
     public val options: ProtocolOptions = ProtocolOptions()
 ) : RpcMethodsOperations {
+    public companion object {
+        private val logger = KotlinLogging.logger {}
+    }
+
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]) + CoroutineName(options.protocolDebugName))
     private val handlerDispatcher = Dispatchers.Default.limitedParallelism(parallelism = 1)
     // a scope and dispatcher that executes handlers to avoid blocking of message processing
@@ -163,12 +130,7 @@ public class Protocol(
         transport.start()
     }
 
-    /**
-     * Send a request and wait for the response.
-     *
-     * Prefer typed [sendRequest] over this method.
-     */
-    public override suspend fun sendRequestRaw(
+    override suspend fun sendRequestRaw(
         method: MethodName,
         params: JsonElement?,
         sessionId: SessionId?
@@ -232,21 +194,9 @@ public class Protocol(
         }
     }
 
-    /**
-     * Send one explicit JSON-RPC batch. Results correspond to requests in input order;
-     * notifications have no result. Remote errors are individual failures, local cancellation throws.
-     *
-     * Request IDs are assigned by this protocol using the same counter as single requests.
-     * [sessionId] optionally associates all requests in this batch with one session for local tracking;
-     * it does not modify their wire params. Omit it for batches spanning multiple sessions.
-     *
-     * The caller must know the peer accepts batches. Lifecycle operations such as initialize,
-     * auth/login, session/new, session/resume and session/prompt SHOULD NOT be batched.
-     * A batch is not transactional and does not establish dependencies between its entries.
-     */
-    public suspend fun sendBatchRaw(
+     override suspend fun sendBatchRequestRaw(
         calls: List<JsonRpcCall>,
-        sessionId: SessionId? = null,
+        sessionId: SessionId?,
     ): List<Result<JsonElement>> {
         require(calls.isNotEmpty()) { "A JSON-RPC batch must not be empty" }
 
@@ -316,27 +266,9 @@ public class Protocol(
         transport.send(TransportFrame.Single(notification))
     }
 
-    /**
-     * Register a handler for incoming requests.
-     *
-     * Prefer typed [setRequestHandler] over this method.
-     */
-    public override fun setRequestHandlerRaw(
+    override fun setRequestOutcomeHandlerRaw(
         method: AcpMethod.AcpRequestResponseMethod<*, *>,
         additionalContext: CoroutineContext,
-        handler: suspend (JsonRpcRequest) -> JsonElement?
-    ) {
-        setRequestHandlerWithOutcomeRaw(method, additionalContext) { RequestOutcome(handler(it)) }
-    }
-
-    /**
-     * Register a handler for incoming requests.
-     *
-     * Prefer typed [setRequestHandlerWithOutcome] over this method.
-     */
-    public fun setRequestHandlerWithOutcomeRaw(
-        method: AcpMethod.AcpRequestResponseMethod<*, *>,
-        additionalContext: CoroutineContext = EmptyCoroutineContext,
         handler: suspend (JsonRpcRequest) -> RequestOutcome<JsonElement?>,
     ) {
         val wrapped: suspend (JsonRpcRequest) -> RequestOutcome<JsonElement?> = { request ->
@@ -355,12 +287,7 @@ public class Protocol(
         requestHandlers.update { it.put(method.methodName, wrapped) }
     }
 
-    /**
-     * Register a handler for incoming notifications.
-     *
-     * Prefer typed [setNotificationHandler] over this method.
-     */
-    public override fun setNotificationHandlerRaw(
+    override fun setNotificationHandlerRaw(
         method: AcpMethod.AcpNotificationMethod<*>,
         additionalContext: CoroutineContext,
         handler: suspend (JsonRpcNotification) -> Unit
@@ -614,3 +541,14 @@ public class Protocol(
         return "Protocol(${options.protocolDebugName})"
     }
 }
+
+// these types added to distinct request and response ids and not to clash between them
+@JvmInline
+internal value class IncomingRequestId(val id: RequestId)
+@JvmInline
+internal value class OutgoingRequestId(val id: RequestId)
+
+internal data class OutgoingRequest(
+    val deferred: CompletableDeferred<JsonElement>,
+    val sessionId: SessionId? = null
+)

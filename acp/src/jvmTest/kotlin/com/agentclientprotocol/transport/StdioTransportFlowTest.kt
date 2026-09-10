@@ -131,7 +131,7 @@ class StdioTransportFlowTest {
             })
             val protocol = Protocol(scope, transport)
             val method = AcpMethod.AgentMethods.V1.Initialize
-            protocol.setRequestHandlerWithOutcomeRaw(method) {
+            protocol.setRequestOutcomeHandlerRaw(method) {
                 RequestOutcome(kotlinx.serialization.json.JsonNull,
                     afterResponse = { awaitCancellation() }, onCompletion = { cleaned.complete(Unit) })
             }

@@ -121,7 +121,7 @@ class BatchProtocolTest {
         val release = CompletableDeferred<Unit>()
         val followUps = Channel<Int>(Channel.UNLIMITED)
         val cleaned = Channel<Int>(Channel.UNLIMITED)
-        protocol.setRequestHandlerWithOutcomeRaw(method) { request ->
+        protocol.setRequestOutcomeHandlerRaw(method) { request ->
             val id = request.id.value as Int
             if (id == 2) release.await()
             RequestOutcome(JsonPrimitive(id), afterResponse = {
@@ -150,7 +150,7 @@ class BatchProtocolTest {
         val cleaned = CompletableDeferred<Unit>()
         val starts = atomic(0)
         val cleanups = atomic(0)
-        protocol.setRequestHandlerWithOutcomeRaw(method) { request ->
+        protocol.setRequestOutcomeHandlerRaw(method) { request ->
             if (request.id.value == 2) release.await()
             RequestOutcome<JsonElement?>(JsonNull, afterResponse = { starts.incrementAndGet() }, onCompletion = {
                 if (request.id.value == 1) {
@@ -196,7 +196,7 @@ class BatchProtocolTest {
     @Test
     fun mappingFailureCleansOutcomeAndContinuationFailureCannotSendSecondResponse() = test { protocol, transport ->
         val cleaned = Channel<Unit>(Channel.UNLIMITED)
-        protocol.setRequestHandlerWithOutcomeRaw(method) { request ->
+        protocol.setRequestOutcomeHandlerRaw(method) { request ->
             val outcome = RequestOutcome<JsonElement?>(
                 JsonNull,
                 afterResponse = { error("stream failed") }, onCompletion = { cleaned.trySend(Unit) })
@@ -215,7 +215,7 @@ class BatchProtocolTest {
     fun enqueueFailureCleansOutcomeAndClosesProtocol() = test { protocol, transport ->
         val cleaned = CompletableDeferred<Unit>()
         val starts = atomic(0)
-        protocol.setRequestHandlerWithOutcomeRaw(method) {
+        protocol.setRequestOutcomeHandlerRaw(method) {
             RequestOutcome(
                 JsonNull,
                 afterResponse = { starts.incrementAndGet() },
@@ -232,11 +232,11 @@ class BatchProtocolTest {
     fun closeReleasesPreparedOutcomesAndOutgoingWaiters() = test { protocol, transport ->
         val prepared = CompletableDeferred<Unit>()
         val cleaned = CompletableDeferred<Unit>()
-        protocol.setRequestHandlerWithOutcomeRaw(method) { request ->
+        protocol.setRequestOutcomeHandlerRaw(method) { request ->
             if (request.id.value == 2) awaitCancellation()
             RequestOutcome(JsonNull, onCompletion = { cleaned.complete(Unit) }).also { prepared.complete(Unit) }
         }
-        val outgoing = async { runCatching { protocol.sendBatchRaw(listOf(JsonRpcCall.Request(method.methodName))) } }
+        val outgoing = async { runCatching { protocol.sendBatchRequestRaw(listOf(JsonRpcCall.Request(method.methodName))) } }
         transport.sent.receive()
         transport.receive(TransportFrame.Batch(listOf(request(1), request(2))))
         prepared.await()
@@ -268,14 +268,14 @@ class BatchProtocolTest {
                 TransportFrame.Single(JsonRpcSuccessResponse(request.id, result = request.params ?: JsonNull))
             }))
         }
-        val results = protocol.sendBatchRaw(calls, sessionId = session)
+        val results = protocol.sendBatchRequestRaw(calls, sessionId = session)
         assertEquals(listOf(calls[0].params, calls[2].params), results.map { it.getOrThrow() })
         sentRequests.forEach { assertNull(protocol.getOutgoingRequestSessionId(it.id)) }
     }
 
     @Test
     fun outgoingIndependentErrorsIncludingRemoteCancellation() = test { protocol, transport ->
-        val result = async { protocol.sendBatchRaw(List(3) { JsonRpcCall.Request(method.methodName) }) }
+        val result = async { protocol.sendBatchRequestRaw(List(3) { JsonRpcCall.Request(method.methodName) }) }
         val requests =
             assertIs<TransportFrame.Batch>(transport.sent.receive()).entries.map { (it as TransportFrame.Single).message as JsonRpcRequest }
         transport.receive(TransportFrame.Single(JsonRpcSuccessResponse(requests[2].id, result = JsonPrimitive("ok"))))
@@ -301,7 +301,7 @@ class BatchProtocolTest {
     @Test
     fun outgoingLocalCancellationCleansEveryIdAndNotifiesPeer() = test { protocol, transport ->
         val result = async {
-            protocol.sendBatchRaw(
+            protocol.sendBatchRequestRaw(
                 List(2) { JsonRpcCall.Request(method.methodName) },
                 sessionId = SessionId("s"),
             )
@@ -328,7 +328,7 @@ class BatchProtocolTest {
         val firstCleaned = CompletableDeferred<Unit>()
         val barrier = CompletableDeferred<Unit>()
         protocol.setNotificationHandlerRaw(notification) { barrier.complete(Unit) }
-        protocol.setRequestHandlerWithOutcomeRaw(method) {
+        protocol.setRequestOutcomeHandlerRaw(method) {
             if (count.incrementAndGet() == 1) {
                 firstStarted.complete(Unit)
                 releaseFirst.await()
@@ -371,7 +371,7 @@ class BatchProtocolTest {
 
     @Test
     fun unknownDuplicateAndNullResponseIdsCannotResolveAnotherCall() = test { protocol, transport ->
-        val operation = async { protocol.sendBatchRaw(List(2) { JsonRpcCall.Request(method.methodName) }) }
+        val operation = async { protocol.sendBatchRequestRaw(List(2) { JsonRpcCall.Request(method.methodName) }) }
         val requests =
             assertIs<TransportFrame.Batch>(transport.sent.receive()).entries.map { (it as TransportFrame.Single).message as JsonRpcRequest }
         val barrier = CompletableDeferred<Unit>()
@@ -407,13 +407,13 @@ class BatchProtocolTest {
         val firstRequest = assertIs<JsonRpcRequest>(assertIs<TransportFrame.Single>(transport.sent.receive()).message)
         val call = JsonRpcCall.Request(method.methodName)
         val calls = listOf(call, JsonRpcCall.Notification(notification.methodName), call)
-        val batch = async { protocol.sendBatchRaw(calls, batchSession) }
+        val batch = async { protocol.sendBatchRequestRaw(calls, batchSession) }
         val batchRequests = assertIs<TransportFrame.Batch>(transport.sent.receive()).entries.mapNotNull {
             assertIs<TransportFrame.Single>(it).message as? JsonRpcRequest
         }
         val secondSingle = async { protocol.sendRequestRaw(method.methodName, sessionId = singleSession) }
         val secondRequest = assertIs<JsonRpcRequest>(assertIs<TransportFrame.Single>(transport.sent.receive()).message)
-        val secondBatch = async { protocol.sendBatchRaw(listOf(call), batchSession) }
+        val secondBatch = async { protocol.sendBatchRequestRaw(listOf(call), batchSession) }
         val lastRequest = assertIs<JsonRpcRequest>(
             assertIs<TransportFrame.Single>(assertIs<TransportFrame.Batch>(transport.sent.receive()).entries.single()).message
         )
@@ -434,14 +434,14 @@ class BatchProtocolTest {
 
     @Test
     fun outgoingNotificationOnlyAndInvalidBatches() = test { protocol, transport ->
-        assertFailsWith<IllegalArgumentException> { protocol.sendBatchRaw(emptyList()) }
+        assertFailsWith<IllegalArgumentException> { protocol.sendBatchRequestRaw(emptyList()) }
         assertTrue(transport.sent.tryReceive().isFailure)
-        assertEquals(emptyList(), protocol.sendBatchRaw(listOf(JsonRpcCall.Notification(notification.methodName))))
+        assertEquals(emptyList(), protocol.sendBatchRequestRaw(listOf(JsonRpcCall.Notification(notification.methodName))))
         val notificationFrame = assertIs<TransportFrame.Batch>(transport.sent.receive())
         assertEquals(JsonRpcNotification(notification.methodName), assertIs<TransportFrame.Single>(notificationFrame.entries.single()).message)
         transport.failSend = true
         assertFailsWith<IllegalStateException> {
-            protocol.sendBatchRaw(
+            protocol.sendBatchRequestRaw(
                 listOf(
                     JsonRpcCall.Request(method.methodName),
                     JsonRpcCall.Request(method.methodName),

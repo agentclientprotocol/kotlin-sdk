@@ -33,12 +33,12 @@ import com.agentclientprotocol.model.v2.UpdateSessionNotification
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.acpFail
 import com.agentclientprotocol.protocol.RequestOutcome
-import com.agentclientprotocol.protocol.setRequestHandlerWithOutcome
 import com.agentclientprotocol.protocol.invoke
 import com.agentclientprotocol.protocol.jsonRpcInvalidParams
 import com.agentclientprotocol.protocol.readProtocolVersionOrNull
 import com.agentclientprotocol.protocol.setNotificationHandler
 import com.agentclientprotocol.protocol.setRequestHandler
+import com.agentclientprotocol.protocol.setRequestOutcomeHandler
 import com.agentclientprotocol.rpc.ACPJson
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
@@ -200,7 +200,7 @@ public class Agent(
             )
         }
 
-        protocol.setRequestHandlerWithOutcome(AcpMethod.AgentMethods.V2.SessionPrompt) { params: PromptRequest ->
+        protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V2.SessionPrompt) { params: PromptRequest ->
             val wrapper = getSessionOrThrow(params.sessionId)
             wrapper.acceptPrompt(protocol, params.prompt, params._meta)
         }
