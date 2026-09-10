@@ -54,6 +54,12 @@ public interface RpcMethodsOperations {
 
     /**
      * Send a request and wait for the response.
+     *
+     * Throws synchronously if encoding fails or the transport cannot accept the frame,
+     * including when it is closing or closed. A normal return acknowledges queue acceptance,
+     * not a physical flush or peer receipt. Callers sending during cleanup should handle send
+     * failures so that required local cleanup still runs.
+     *
      * Prefer typed [sendRequest] over this method.
      */
     public suspend fun sendRequestRaw(
@@ -64,6 +70,12 @@ public interface RpcMethodsOperations {
 
     /**
      * Send a notification (no response expected).
+     *
+     * Throws synchronously if encoding fails or the transport cannot accept the frame,
+     * including when it is closing or closed. A normal return acknowledges queue acceptance,
+     * not a physical flush or peer receipt. Callers sending during cleanup should handle send
+     * failures so that required local cleanup still runs.
+     *
      * Prefer typed [sendNotification] over this method.
      */
     public fun sendNotificationRaw(
@@ -78,6 +90,11 @@ public interface RpcMethodsOperations {
      * Request IDs are assigned by this protocol using the same counter as single requests.
      * [sessionId] optionally associates all requests in this batch with one session for local tracking;
      * it does not modify their wire params. Omit it for batches spanning multiple sessions.
+     *
+     * Throws synchronously if encoding fails or the transport cannot accept the frame,
+     * including when it is closing or closed. A normal return acknowledges queue acceptance,
+     * not a physical flush or peer receipt. Callers sending during cleanup should handle send
+     * failures so that required local cleanup still runs.
      *
      * The caller must know the peer accepts batches. Lifecycle operations such as initialize,
      * auth/login, session/new, session/resume and session/prompt SHOULD NOT be batched.

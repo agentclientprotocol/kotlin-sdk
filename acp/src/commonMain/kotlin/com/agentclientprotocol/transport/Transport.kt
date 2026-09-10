@@ -26,7 +26,9 @@ public interface Transport : AutoCloseable {
     public fun start()
 
     /**
-     * Accept a complete frame into the ordered writer queue, or throw if closed.
+     * Accept a complete frame into the ordered writer queue.
+     * Throws synchronously if encoding fails or the queue cannot accept the frame,
+     * including when the transport is closing or closed.
      * This does not acknowledge a physical flush or peer receipt.
      */
     public fun send(frame: TransportFrame)

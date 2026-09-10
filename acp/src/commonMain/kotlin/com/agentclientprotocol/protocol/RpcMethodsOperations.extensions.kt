@@ -115,6 +115,10 @@ public suspend operator fun <TRequest: AcpRequest, TResponse: AcpResponse> AcpMe
     return rpc.sendRequest(this, request)
 }
 
+/**
+ * Send a typed notification via [sendNotification], propagating encoding and transport failures
+ * synchronously to the caller.
+ */
 public operator fun <TNotification : AcpNotification> AcpMethod.AcpNotificationMethod<TNotification>.invoke(rpc: RpcMethodsOperations, notification: TNotification) {
     return rpc.sendNotification(this, notification)
 }

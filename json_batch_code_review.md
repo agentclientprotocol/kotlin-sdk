@@ -14,7 +14,7 @@ passes; stderr from that run is cited as evidence where relevant.
 |---|----------|--------|
 | 1 | HIGH | Resolved: bounded graceful WebSocket shutdown |
 | 2 | MEDIUM | Withdrawn: parse-error responses are correct; noisy stdout violates ACP |
-| 3 | MEDIUM | Still valid; transport contract is now documented, `Protocol`'s is not |
+| 3 | MEDIUM | Resolved: synchronous send failures documented and callers audited |
 | 4 | MEDIUM | New (found during reassessment) |
 | 5 | MEDIUM | Still valid, unchanged |
 | 6 | LOW | Narrowed: the orphaned job is cancelled by `close()`, cancellation by ID still misses it |
@@ -72,38 +72,36 @@ is its delimiter; an additional blank line is a separate empty frame in this imp
 
 ---
 
-## 3. MEDIUM — `Transport.send` throws out of the non-suspend public `sendNotificationRaw`
+## 3. MEDIUM — Resolved: notification send failures are part of the public contract
 
-`acp/src/commonMain/kotlin/com/agentclientprotocol/transport/Transport.kt:28-32`,
-`StdioTransport.kt:166-169`, `WebSocketTransport.kt:48-51`,
-`Protocol.kt:261-267`, `RpcMethodsOperations.kt:69-72`
+Synchronous failure remains intentional: no response is expected for a notification, but encoding
+or accepting it into the writer queue can still fail. Silently swallowing that failure would hide
+lost updates from the caller.
 
-```kotlin
-// StdioTransport.kt:166 (WebSocketTransport.kt:48 is identical)
-override fun send(frame: TransportFrame) {
-    val encoded = JsonRpcJson.encodeToString(TransportFrame.serializer(), frame)
-    sendChannel.trySend(encoded).getOrThrow()
-}
-```
+`RpcMethodsOperations.sendNotificationRaw`, typed `sendNotification`, and the notification method
+`invoke` operator now document synchronous encoding and transport failures. The raw and typed send
+KDocs clarify that successful return acknowledges queue acceptance, not a physical flush or peer
+receipt. `Transport.send` also explicitly documents encoding failures and queue rejection while
+closing or closed. The raw API advises cleanup callers to preserve required local cleanup when a
+send fails.
 
-`send` changed from best-effort (`master`: `sendChannel.trySend(message)`, result ignored) to
-throwing, and the throwing surface is now *wider* than at the first review: encoding moved into
-`send`, so a `SerializationException` also escapes synchronously (asserted by
-`StdioTransportFlowTest.kt:82-95` and `WebSocketTransportTest.kt:83-95`).
+Caller audit:
 
-`Protocol.sendNotificationRaw` (`Protocol.kt:261`) is a **public, non-suspend** method and is what
-every `sendNotification` / `AcpMethod...SessionUpdate(protocol, ...)` call funnels into
-(`RpcMethodsOperations.extensions.kt:48-54`, `:119`). Previously, emitting a session update after
-the peer disconnected was a silent no-op; now it throws `ClosedSendChannelException`
-synchronously into arbitrary user code (e.g. an `AgentSession` update emitter, or an
-`onCompletion`/cleanup path).
+- v1 agent session updates propagate send failures through `RemoteClientSessionOperations.notify`;
+  `Agent.SessionWrapper.prompt` clears active-prompt state in `finally`.
+- v2 streamed updates propagate send failures from `RequestOutcome.afterResponse`;
+  `RequestOutcome.onCompletion` still clears active-prompt state in the protocol's `finally`.
+  The uncaught-exception behavior after response delivery remains finding 4.
+- Single and batch outgoing-request cancellation already sends `$/cancelRequest` best effort
+  using `runCatching`, with pending-request removal in `finally`.
+- v2 `ClientSession.cancel` had a local cleanup gap: a failed notification send bypassed its
+  permission-cancellation signal. That signal now completes in `finally`, releasing pending
+  permission handlers while preserving the send exception for the caller. A regression test
+  verifies both behaviors with a closed scripted transport.
 
-Partially addressed since the first review: `Transport.send` now documents the contract
-("Accept a complete frame into the ordered writer queue, or throw if closed",
-`Transport.kt:29-31`). `RpcMethodsOperations.sendNotificationRaw` still documents only
-"Send a notification (no response expected)" and says nothing about throwing, so the public
-`Protocol` surface remains an undocumented behavior change. Either document it there and audit the
-callers, or keep the throw at the `Transport` boundary and have `Protocol` swallow/log it.
+Verified with `:acp:jvmTest --tests "*ClientSessionTest*"`
+`--tests "*StdioTransportFlowTest*" --tests "*BatchProtocolTest*"` (37 tests passed) and `:acp:apiCheck`.
+API signatures are unchanged.
 
 ---
 
