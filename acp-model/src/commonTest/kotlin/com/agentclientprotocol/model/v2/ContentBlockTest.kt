@@ -56,6 +56,22 @@ class ContentBlockTest {
     }
 
     @Test
+    fun `image and audio data use base64 strings on the wire`() {
+        // contentEncoding is a JSON Schema keyword, not a content block property.
+        val cases = listOf(
+            ContentBlock.Image(data = "AAEC/w==", mimeType = "image/png") to
+                """{"type":"image","data":"AAEC/w==","mimeType":"image/png"}""",
+            ContentBlock.Audio(data = "AAEC/w==", mimeType = "audio/wav") to
+                """{"type":"audio","data":"AAEC/w==","mimeType":"audio/wav"}""",
+        )
+
+        for ((block, json) in cases) {
+            assertEquals(json, encode(block))
+            assertEquals(block, decode(json))
+        }
+    }
+
+    @Test
     fun `embedded resource is discriminated by shape not by a type field`() {
         val blob = ContentBlock.Resource(
             resource = EmbeddedResourceResource.BlobResourceContents(blob = "aGk=", uri = "file:///a.bin"),
@@ -86,6 +102,62 @@ class ContentBlockTest {
         )
 
         assertEquals(link, decode(encode(link)))
+    }
+
+    @Test
+    fun `resource link icons support all MCP fields`() {
+        val json = """{"type":"resource_link","name":"document.pdf","uri":"file:///document.pdf","icons":[{"src":"https://example.com/icon.png","mimeType":"image/png","sizes":["48x48","96x96"],"theme":"dark"},{"src":"https://example.com/icon.svg","sizes":["any"],"theme":"light"},{"src":"https://example.com/default.png"}]}"""
+        val block = assertIs<ContentBlock.ResourceLink>(decode(json))
+
+        assertEquals(
+            listOf(
+                Icon(
+                    src = "https://example.com/icon.png",
+                    mimeType = "image/png",
+                    sizes = listOf("48x48", "96x96"),
+                    theme = IconTheme.Dark,
+                ),
+                Icon(src = "https://example.com/icon.svg", sizes = listOf("any"), theme = IconTheme.Light),
+                Icon(src = "https://example.com/default.png"),
+            ),
+            block.icons,
+        )
+        assertEquals(json, encode(block))
+    }
+
+    @Test
+    fun `resource link icons are optional and may be empty`() {
+        val cases = listOf(
+            "" to null,
+            ""","icons":null""" to null,
+            ""","icons":[]""" to emptyList<Icon>(),
+        )
+        for ((icons, expected) in cases) {
+            val block = assertIs<ContentBlock.ResourceLink>(
+                decode("""{"type":"resource_link","name":"document.pdf","uri":"file:///document.pdf"$icons}"""),
+            )
+            assertEquals(expected, block.icons)
+        }
+    }
+
+    @Test
+    fun `resource link icon requires src`() {
+        for (icon in listOf("{}", """{"mimeType":"image/png"}""", """{"src":null}""")) {
+            assertFailsWith<SerializationException> {
+                decode("""{"type":"resource_link","name":"document.pdf","uri":"file:///document.pdf","icons":[$icon]}""")
+            }
+        }
+    }
+
+    @Test
+    fun `unknown icon themes are preserved`() {
+        for (theme in listOf("high_contrast", "_vendor_theme")) {
+            val json = """{"type":"resource_link","name":"document.pdf","uri":"file:///document.pdf","icons":[{"src":"https://example.com/icon.png","theme":"$theme"}]}"""
+            val block = assertIs<ContentBlock.ResourceLink>(decode(json))
+
+            assertEquals(IconTheme.Unknown(theme), block.icons?.single()?.theme)
+            assertEquals(json, encode(block))
+        }
     }
 
     // Unknown discriminators (forward compatibility)

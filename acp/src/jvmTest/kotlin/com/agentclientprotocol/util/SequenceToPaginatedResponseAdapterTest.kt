@@ -8,6 +8,7 @@ import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonElement
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -209,10 +210,11 @@ class SequenceToPaginatedResponseAdapterTest {
     }
 
     @Test
-    fun `iterator is removed after timeout`(): Unit = runBlocking {
+    fun `iterator is removed after timeout`(): Unit = runTest {
         val storage = SequenceToPaginatedResponseAdapter<Int, TestRequest, TestResponse>(
             batchSize = 3,
-            orphanedIteratorsEvictionTimeout = 500.milliseconds
+            orphanedIteratorsEvictionTimeout = 500.milliseconds,
+            timeoutJobScope = backgroundScope,
         )
         val sequence = sequenceOf(1, 2, 3, 4, 5, 6, 7, 8)
 
@@ -225,7 +227,7 @@ class SequenceToPaginatedResponseAdapterTest {
         val cursor = firstResult.nextCursor
         assertNotNull(cursor)
 
-        // Wait for timeout to expire
+        // Advance virtual time past the timeout.
         delay(700.milliseconds)
 
         // Try to use the expired cursor - should fail
@@ -241,10 +243,11 @@ class SequenceToPaginatedResponseAdapterTest {
     }
 
     @Test
-    fun `each cursor has its own timeout`(): Unit = runBlocking {
+    fun `each cursor has its own timeout`(): Unit = runTest {
         val storage = SequenceToPaginatedResponseAdapter<Int, TestRequest, TestResponse>(
             batchSize = 2,
-            orphanedIteratorsEvictionTimeout = 500.milliseconds
+            orphanedIteratorsEvictionTimeout = 500.milliseconds,
+            timeoutJobScope = backgroundScope,
         )
         val sequence = sequenceOf(1, 2, 3, 4, 5, 6)
 
@@ -257,7 +260,9 @@ class SequenceToPaginatedResponseAdapterTest {
         val firstCursor = firstResult.nextCursor
         assertNotNull(firstCursor)
 
-        // Use the first cursor immediately
+        // Create the second cursor later so their deadlines differ.
+        delay(300.milliseconds)
+
         val secondResult = storage.next(
             params = TestRequest(cursor = firstCursor),
             sequenceFactory = { error("Should not be called") },
@@ -268,11 +273,10 @@ class SequenceToPaginatedResponseAdapterTest {
         val secondCursor = secondResult.nextCursor
         assertNotNull(secondCursor)
 
-        // The second cursor has its own timeout, independent of the first
-        // Wait less than the timeout
+        // Pass the first cursor's original deadline while the second remains valid.
         delay(300.milliseconds)
 
-        // The second cursor should still be valid 
+        // The second cursor should still be valid.
         val thirdResult = storage.next(
             params = TestRequest(cursor = secondCursor),
             sequenceFactory = { error("Should not be called") },
@@ -284,10 +288,11 @@ class SequenceToPaginatedResponseAdapterTest {
     }
 
     @Test
-    fun `multiple iterators can have independent timeouts`(): Unit = runBlocking {
+    fun `multiple iterators can have independent timeouts`(): Unit = runTest {
         val storage = SequenceToPaginatedResponseAdapter<Int, TestRequest, TestResponse>(
             batchSize = 2,
-            orphanedIteratorsEvictionTimeout = 600.milliseconds
+            orphanedIteratorsEvictionTimeout = 600.milliseconds,
+            timeoutJobScope = backgroundScope,
         )
 
         // Create first iterator
@@ -300,7 +305,7 @@ class SequenceToPaginatedResponseAdapterTest {
         val cursor1 = result1.nextCursor
         assertNotNull(cursor1)
 
-        // Wait a bit
+        // Advance virtual time before creating the second iterator.
         delay(200.milliseconds)
 
         // Create second iterator
@@ -313,7 +318,7 @@ class SequenceToPaginatedResponseAdapterTest {
         val cursor2 = result2.nextCursor
         assertNotNull(cursor2)
 
-        // Wait for first cursor to expire but not second
+        // Advance virtual time until the first cursor expires but the second is still valid.
         delay(500.milliseconds)
 
         // First cursor should be expired
@@ -335,10 +340,11 @@ class SequenceToPaginatedResponseAdapterTest {
     }
 
     @Test
-    fun `concurrent access to same cursor fails for second request`(): Unit = runBlocking {
+    fun `concurrent access to same cursor fails for second request`(): Unit = runTest {
         val storage = SequenceToPaginatedResponseAdapter<Int, TestRequest, TestResponse>(
             batchSize = 2,
-            orphanedIteratorsEvictionTimeout = 2.seconds
+            orphanedIteratorsEvictionTimeout = 2.seconds,
+            timeoutJobScope = backgroundScope,
         )
         val sequence = sequenceOf(1, 2, 3, 4, 5, 6)
 
@@ -377,11 +383,12 @@ class SequenceToPaginatedResponseAdapterTest {
     }
 
     @Test
-    fun `very short timeout should work`(): Unit = runBlocking {
+    fun `very short timeout should work`(): Unit = runTest {
         // Test with very short timeout
         val storage = SequenceToPaginatedResponseAdapter<Int, TestRequest, TestResponse>(
             batchSize = 2,
-            orphanedIteratorsEvictionTimeout = 1.milliseconds
+            orphanedIteratorsEvictionTimeout = 1.milliseconds,
+            timeoutJobScope = backgroundScope,
         )
         val sequence = sequenceOf(1, 2, 3, 4)
 
@@ -394,7 +401,7 @@ class SequenceToPaginatedResponseAdapterTest {
         val cursor = result.nextCursor
         assertNotNull(cursor)
 
-        // Even a small delay should trigger timeout
+        // Even a small advance in virtual time should trigger the timeout.
         delay(50.milliseconds)
 
         assertFailsWith<JsonRpcException> {
@@ -426,10 +433,11 @@ class SequenceToPaginatedResponseAdapterTest {
     }
 
     @Test
-    fun `large number of iterators with timeouts`(): Unit = runBlocking {
+    fun `large number of iterators with timeouts`(): Unit = runTest {
         val storage = SequenceToPaginatedResponseAdapter<Int, TestRequest, TestResponse>(
             batchSize = 2,
-            orphanedIteratorsEvictionTimeout = 300.milliseconds
+            orphanedIteratorsEvictionTimeout = 300.milliseconds,
+            timeoutJobScope = backgroundScope,
         )
 
         val cursors = mutableListOf<String>()
@@ -447,7 +455,7 @@ class SequenceToPaginatedResponseAdapterTest {
 
         assertEquals(100, cursors.size)
 
-        // Wait for all to expire
+        // Advance virtual time past all cursor deadlines.
         delay(500.milliseconds)
 
         // All cursors should be invalid now

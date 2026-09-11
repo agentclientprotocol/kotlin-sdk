@@ -33,7 +33,9 @@ public fun Annotations.toV1(): V1Annotations = V1Annotations(
 /**
  * Converts these v1 annotations to their v2 equivalent.
  *
- * This conversion is total: every v1 value has a v2 representation.
+ * Every protocol-valid v1 value has a v2 representation.
+ *
+ * @throws IllegalArgumentException if [priority] is outside the inclusive range 0–1
  */
 @UnstableApi
 public fun V1Annotations.toV2(): Annotations = Annotations(
@@ -138,7 +140,9 @@ public fun ContentBlock.toV1(): V1ContentBlock = when (this) {
 /**
  * Converts this v1 content block to its v2 equivalent.
  *
- * This conversion is total: every v1 value has a v2 representation.
+ * Every protocol-valid v1 value has a v2 representation.
+ *
+ * @throws IllegalArgumentException if the annotations' priority is outside the inclusive range 0–1
  */
 @UnstableApi
 public fun V1ContentBlock.toV2(): ContentBlock = when (this) {
