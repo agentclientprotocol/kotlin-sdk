@@ -9,6 +9,7 @@ import com.agentclientprotocol.model.AcpWithMeta
 import com.agentclientprotocol.model.AcpWithSessionId
 import com.agentclientprotocol.model.PermissionOptionId
 import com.agentclientprotocol.model.SessionId
+import com.agentclientprotocol.model.ToolCallId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -48,6 +49,27 @@ public sealed class RequestPermissionSubject {
     }
 
     /**
+     * Permission to execute [command] in [cwd], which MUST be an absolute path on the agent's system.
+     *
+     * [toolCallId] and [terminalId] only associate the permission with displayed state and may be
+     * unavailable before execution starts. Omitted or `null` IDs mean no association was provided.
+     * Selecting an allow option authorizes the agent to execute the command; it does not ask the
+     * client to execute it.
+     */
+    @Serializable
+    public data class Command(
+        val command: String,
+        val cwd: String,
+        val toolCallId: ToolCallId? = null,
+        val terminalId: String? = null,
+        override val _meta: JsonElement? = null,
+    ) : RequestPermissionSubject(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "command"
+        }
+    }
+
+    /**
      * Custom or future subject.
      *
      * [rawJson] holds the complete payload as received, including the discriminator and any fields the
@@ -62,10 +84,12 @@ internal object RequestPermissionSubjectSerializer : OpenTaggedUnionSerializer<R
     discriminatorKey = "type",
     known = mapOf(
         RequestPermissionSubject.ToolCall.DISCRIMINATOR to RequestPermissionSubject.ToolCall.serializer(),
+        RequestPermissionSubject.Command.DISCRIMINATOR to RequestPermissionSubject.Command.serializer(),
     ),
     discriminator = { value ->
         when (value) {
             is RequestPermissionSubject.ToolCall -> RequestPermissionSubject.ToolCall.DISCRIMINATOR
+            is RequestPermissionSubject.Command -> RequestPermissionSubject.Command.DISCRIMINATOR
             is RequestPermissionSubject.Unknown -> value.type
         }
     },
@@ -80,6 +104,9 @@ internal object RequestPermissionSubjectSerializer : OpenTaggedUnionSerializer<R
  * [prompt lifecycle](https://agentclientprotocol.com/protocol/v2/prompt-lifecycle#cancellation), a client
  * that cancels active work MUST answer every pending request of this kind with
  * [RequestPermissionOutcome.Cancelled].
+ *
+ * [title] and [description] belong to the permission prompt and do not update the subject's displayed
+ * title or content. Omitted or `null` [description] and [subject] mean they were not provided.
  */
 @UnstableApi
 @Serializable
