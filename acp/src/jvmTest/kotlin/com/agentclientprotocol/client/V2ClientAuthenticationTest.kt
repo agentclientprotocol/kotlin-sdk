@@ -86,6 +86,26 @@ class V2ClientAuthenticationTest {
         )
     }
 
+    @Test
+    fun `a methodId outside the advertised list prevents the login request`() = withClient(
+        AUTHENTICATED_AGENT,
+    ) { client, transport ->
+        val sentBefore = transport.sent.toList()
+
+        val failure = assertFailsWith<AcpExpectedError> { client.login(AuthMethodId("api-key")) }
+        assertTrue(failure.message.contains("auth/login"), "unexpected failure: ${failure.message}")
+        assertTrue(failure.message.contains("api-key"), "unexpected failure: ${failure.message}")
+        assertTrue(failure.message.contains("oauth"), "unexpected failure: ${failure.message}")
+        assertEquals(sentBefore, transport.sent, "An unadvertised methodId must not send a message")
+
+        // The advertised method still works, so a rejected id is not a poisoned connection.
+        client.login(AuthMethodId("oauth"))
+        assertEquals(
+            listOf("initialize", "auth/login"),
+            transport.sent.filterIsInstance<JsonRpcRequest>().map { it.method.name },
+        )
+    }
+
     private suspend fun assertAuthenticationUnavailable(client: Client, transport: AuthTransport) {
         val sentBefore = transport.sent.toList()
 
