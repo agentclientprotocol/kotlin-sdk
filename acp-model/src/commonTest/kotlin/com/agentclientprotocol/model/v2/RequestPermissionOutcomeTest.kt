@@ -3,6 +3,7 @@
 package com.agentclientprotocol.model.v2
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.PermissionOptionId
 import com.agentclientprotocol.model.v2.conversion.ProtocolConversionException
 import com.agentclientprotocol.model.v2.conversion.toV1
@@ -56,6 +57,17 @@ class RequestPermissionOutcomeTest {
         val json = """{"outcome":"_vendor_policy","rule":42}"""
 
         assertEquals(json, encode(decode(json)))
+    }
+
+    @Test
+    fun `unknown response outcome carrying an allow option id is not selected`() {
+        val json = """{"outcome":{"outcome":"_policy","optionId":"allow-once"}}"""
+        val serializer = AcpMethod.ClientMethods.V2.SessionRequestPermission.responseSerializer
+        val response = ACPJson.decodeFromString(serializer, json)
+
+        assertIs<RequestPermissionOutcome.Unknown>(response.outcome)
+        assertEquals(json, ACPJson.encodeToString(serializer, response))
+        assertFailsWith<ProtocolConversionException> { response.outcome.toV1() }
     }
 
     // Strictness
