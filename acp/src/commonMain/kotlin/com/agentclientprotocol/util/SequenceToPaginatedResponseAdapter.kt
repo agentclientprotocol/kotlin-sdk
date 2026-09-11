@@ -35,19 +35,27 @@ import kotlin.uuid.Uuid
  * @param batchSize the number of items to return per page (default: 10)
  */
 @OptIn(ExperimentalAtomicApi::class, UnstableApi::class)
-public class SequenceToPaginatedResponseAdapter<TItem, TInput : AcpPaginatedRequest, TOutput : AcpPaginatedResponse<TItem>>(
-    public val batchSize: Int = 10,
-    public val orphanedIteratorsEvictionTimeout: Duration = 1.minutes
+public class SequenceToPaginatedResponseAdapter<TItem, TInput : AcpPaginatedRequest, TOutput : AcpPaginatedResponse<TItem>> internal constructor(
+    public val batchSize: Int,
+    public val orphanedIteratorsEvictionTimeout: Duration,
+    private val timeoutJobScope: CoroutineScope,
 ) {
+    public constructor(
+        batchSize: Int = 10,
+        orphanedIteratorsEvictionTimeout: Duration = 1.minutes,
+    ) : this(
+        batchSize,
+        orphanedIteratorsEvictionTimeout,
+        // All timeout jobs eventually finish, so this scope does not need a separate close method.
+        CoroutineScope(Dispatchers.Default + SupervisorJob() + CoroutineName("SequenceToPaginatedResponseAdapter.timeoutJobScope")),
+    )
+
     init {
         require(orphanedIteratorsEvictionTimeout > Duration.ZERO) { "orphanedIteratorsEvictionTimeout must be positive" }
     }
 
     private class IteratorState<TItem>(val iterator: Iterator<TItem>, val timeoutJob: Job)
     private val iterators = AtomicReference(persistentMapOf<String, IteratorState<TItem>>())
-
-    // Since all jobs are stopped by timeout we can omit a separate method for closing this scope because eventually it has no active jobs
-    private val timeoutJobScope = CoroutineScope(Dispatchers.Default + SupervisorJob() + CoroutineName("SequenceToPaginatedResponseAdapter.timeoutJobScope"))
 
     /**
      * Creates [TOutput] instance for the next [batchSize] items from the sequence either stored
