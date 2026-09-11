@@ -82,13 +82,16 @@ internal object IconThemeSerializer : OpenStringEnumSerializer<IconTheme>(
 )
 
 /**
- * A sized icon that the client can display in a user interface.
+ * An optionally sized icon that the client can display in a user interface.
  */
 @UnstableApi
 @Serializable
 public data class Icon(
+    /** URI pointing to the icon resource. */
     val src: String,
+    /** MIME type override if the source MIME type is missing or generic. */
     val mimeType: String? = null,
+    /** Supported sizes in `WxH` form, or `any` for scalable formats such as SVG. */
     val sizes: List<String>? = null,
     val theme: IconTheme? = null,
 )
@@ -98,15 +101,24 @@ public data class Icon(
  * objects are used or displayed.
  *
  * Unlike v1, [audience] uses the open v2 [Role], so unknown roles are preserved.
+ *
+ * @throws IllegalArgumentException if [priority] is outside the inclusive range 0–1
  */
 @UnstableApi
 @Serializable
 public data class Annotations(
     val audience: List<Role>? = null,
+    /** Relative importance of this content, from 0.0 (least) to 1.0 (most), inclusive. */
     val priority: Double? = null,
     val lastModified: String? = null,
     override val _meta: JsonElement? = null,
-) : AcpWithMeta
+) : AcpWithMeta {
+    init {
+        require(priority == null || priority in 0.0..1.0) {
+            "Annotations.priority must be between 0.0 and 1.0 inclusive (got $priority)"
+        }
+    }
+}
 
 /**
  * Resource content that can be embedded in a message.
@@ -134,6 +146,7 @@ public sealed class EmbeddedResourceResource : AcpWithMeta {
      */
     @Serializable
     public data class BlobResourceContents(
+        /** Base64-encoded binary data (`contentEncoding: "base64"` in the JSON Schema). */
         val blob: String,
         val uri: String,
         val mimeType: String? = null,
@@ -215,6 +228,7 @@ public sealed class ContentBlock {
      */
     @Serializable
     public data class Image(
+        /** Base64-encoded image data (`contentEncoding: "base64"` in the JSON Schema). */
         val data: String,
         val mimeType: String,
         val uri: String? = null,
@@ -233,6 +247,7 @@ public sealed class ContentBlock {
      */
     @Serializable
     public data class Audio(
+        /** Base64-encoded audio data (`contentEncoding: "base64"` in the JSON Schema). */
         val data: String,
         val mimeType: String,
         val annotations: Annotations? = null,
