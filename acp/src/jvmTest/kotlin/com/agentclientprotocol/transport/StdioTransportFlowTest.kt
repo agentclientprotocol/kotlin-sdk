@@ -1,9 +1,17 @@
 package com.agentclientprotocol.transport
 
+import com.agentclientprotocol.rpc.TransportFrame
 import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.rpc.MethodName
 import com.agentclientprotocol.rpc.RequestId
+import com.agentclientprotocol.rpc.JsonRpcResponse
+import com.agentclientprotocol.rpc.JsonRpcJson
+import com.agentclientprotocol.rpc.parseTransportFrame
+import kotlinx.serialization.SerializationException
+import com.agentclientprotocol.model.AcpMethod
+import com.agentclientprotocol.protocol.Protocol
+import com.agentclientprotocol.protocol.RequestOutcome
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -17,6 +25,10 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertIs
+import kotlin.test.assertFails
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.test.fail
 import kotlin.time.Duration
@@ -36,6 +48,133 @@ class StdioTransportFlowTest {
     @AfterTest
     fun tearDown() {
         scope.cancel()
+    }
+
+    @Test
+    fun `valid batch occupies one line`(): Unit = runBlocking {
+        val written = Channel<String>(Channel.UNLIMITED)
+        val input = Channel<String>(Channel.UNLIMITED)
+        val transport = makeTransport(input.receiveAsFlow(), output = { written.send(it) })
+        val received = transport.asFrameChannel()
+        transport.start()
+        val batch = parseTransportFrame("""[{"jsonrpc":"2.0","method":"test"},{"jsonrpc":"2.0","method":"other"}]""")
+        transport.send(batch)
+        val line = withTimeout(1.seconds) { written.receive() }
+        assertEquals(batch, parseTransportFrame(line))
+        assertTrue(written.tryReceive().isFailure)
+        input.send(line)
+        assertEquals(batch, withTimeout(1.seconds) { received.receive() })
+    }
+
+    @Test
+    fun `incoming batch retains malformed siblings`(): Unit = runBlocking {
+        val input = Channel<String>(Channel.UNLIMITED)
+        val transport = makeTransport(input.receiveAsFlow())
+        val received = transport.asFrameChannel()
+        transport.start()
+        input.send("""[{"jsonrpc":"2.0","method":"test"},42]""")
+        val batch = assertIs<TransportFrame.Batch>(withTimeout(1.seconds) { received.receive() })
+        assertIs<TransportFrame.Single>(batch.entries[0])
+        assertEquals(-32600, assertIs<TransportFrame.Malformed>(batch.entries[1]).error.code)
+    }
+
+    @Test
+    fun `outgoing malformed frames fail send and leave the writer usable`(): Unit = runBlocking {
+        for (frame in listOf(parseTransportFrame("["), parseTransportFrame("""[{"jsonrpc":"2.0","method":"test"},42]"""))) {
+            val written = Channel<String>(Channel.UNLIMITED)
+            val input = Channel<String>(Channel.UNLIMITED)
+            val transport = makeTransport(input.receiveAsFlow(), output = { written.send(it) })
+            val error = CompletableDeferred<Throwable>()
+            transport.onError { error.complete(it) }
+            transport.start()
+            transport.expectState(Transport.State.STARTED)
+            assertFailsWith<SerializationException> { transport.send(frame) }
+
+            val valid = TransportFrame.Single(JsonRpcNotification(MethodName("afterFailure")))
+            transport.send(valid)
+            assertEquals(valid, parseTransportFrame(withTimeout(1.seconds) { written.receive() }))
+            assertTrue(written.tryReceive().isFailure)
+            assertFalse(error.isCompleted)
+            assertEquals(Transport.State.STARTED, transport.state.value)
+            transport.close()
+        }
+    }
+
+    @Test
+    fun `notification encoding failure leaves protocol usable`(): Unit = runBlocking {
+        val written = Channel<String>(Channel.UNLIMITED)
+        val input = Channel<String>(Channel.UNLIMITED)
+        val transport = makeTransport(input.receiveAsFlow(), output = { written.send(it) })
+        val protocol = Protocol(scope, transport)
+        protocol.start()
+        transport.expectState(Transport.State.STARTED)
+        try {
+            assertFailsWith<SerializationException> {
+                protocol.sendNotificationRaw(
+                    AcpMethod.ClientMethods.V1.SessionUpdate,
+                    kotlinx.serialization.json.buildJsonObject {
+                        put("invalid", kotlinx.serialization.json.JsonPrimitive(Double.NaN))
+                    },
+                )
+            }
+
+            protocol.sendNotificationRaw(AcpMethod.ClientMethods.V1.SessionUpdate)
+            val frame = parseTransportFrame(withTimeout(1.seconds) { written.receive() })
+            assertIs<JsonRpcNotification>(assertIs<TransportFrame.Single>(frame).message)
+            assertEquals(Transport.State.STARTED, transport.state.value)
+            assertTrue(written.tryReceive().isFailure)
+        } finally {
+            protocol.close()
+        }
+    }
+
+    @Test
+    fun `close before start fires once and rejects sends`() {
+        val transport = makeTransport()
+        var closes = 0
+        transport.onClose { closes++ }
+        transport.close()
+        transport.close()
+        assertEquals(1, closes)
+        assertEquals(Transport.State.CLOSED, transport.state.value)
+        assertFails { transport.send(TransportFrame.Single(JsonRpcNotification(MethodName("test")))) }
+        assertFails { transport.start() }
+        assertEquals(Transport.State.CLOSED, transport.state.value)
+    }
+
+    @Test
+    fun `writer failure after response queue acceptance releases outcomes and pending calls`(): Unit = runBlocking {
+        withTimeout(5.seconds) {
+            val input = Channel<String>(Channel.UNLIMITED)
+            val requestWritten = CompletableDeferred<Unit>()
+            val cleaned = CompletableDeferred<Unit>()
+            val attempts = kotlinx.atomicfu.atomic(0)
+            val transport = makeTransport(input.receiveAsFlow(), output = { text ->
+                val message = assertIs<TransportFrame.Single>(parseTransportFrame(text)).message
+                if (message is JsonRpcResponse) {
+                    attempts.incrementAndGet()
+                    throw RuntimeException("writer failed after acceptance")
+                }
+                requestWritten.complete(Unit)
+            })
+            val protocol = Protocol(scope, transport)
+            val method = AcpMethod.AgentMethods.V1.Initialize
+            protocol.setRequestOutcomeHandlerRaw(method) {
+                RequestOutcome(kotlinx.serialization.json.JsonNull,
+                    afterResponse = { awaitCancellation() }, onCompletion = { cleaned.complete(Unit) })
+            }
+            protocol.start()
+            try {
+                val pending = async { runCatching { protocol.sendRequestRaw(method.methodName) } }
+                requestWritten.await()
+                input.send(JsonRpcJson.encodeToString(TransportFrame.serializer(),
+                    TransportFrame.Single(JsonRpcRequest(RequestId.create(10), method.methodName))))
+                cleaned.await()
+                assertIs<CancellationException>(pending.await().exceptionOrNull())
+                assertEquals(1, attempts.value)
+                assertEquals(Transport.State.CLOSED, transport.state.value)
+            } finally { protocol.close() }
+        }
     }
 
     @Test
@@ -62,7 +201,7 @@ class StdioTransportFlowTest {
         transport.start()
         transport.expectState(Transport.State.STARTED)
 
-        transport.send(JsonRpcRequest(RequestId.create(7), MethodName("ping")))
+        transport.send(TransportFrame.Single(JsonRpcRequest(RequestId.create(7), MethodName("ping"))))
 
         val line = withTimeout(1.seconds) { written.receive() }
         assertTrue(line.contains("\"method\":\"ping\""), "encoded line should carry the method, was: $line")
@@ -70,33 +209,35 @@ class StdioTransportFlowTest {
     }
 
     @Test
-    fun `input emission fires onMessage`(): Unit = runBlocking {
+    fun `input emission fires onFrame`(): Unit = runBlocking {
         val inputChannel = Channel<String>(Channel.UNLIMITED)
         val transport = makeTransport(input = inputChannel.receiveAsFlow())
-        val received = transport.asMessageChannel()
+        val received = transport.asFrameChannel()
         transport.start()
         transport.expectState(Transport.State.STARTED)
 
         inputChannel.send("""{"jsonrpc":"2.0","method":"hello"}""")
 
-        val message = withTimeout(1.seconds) { received.receive() }
+        val message = (withTimeout(1.seconds) { received.receive() } as TransportFrame.Single).message
         assertTrue(message is JsonRpcNotification)
         assertEquals(MethodName("hello"), message.method)
     }
 
     @Test
-    fun `invalid JSON lines are skipped and valid ones still processed`(): Unit = runBlocking {
+    fun `invalid JSON lines are delivered and valid ones still processed`(): Unit = runBlocking {
         val inputChannel = Channel<String>(Channel.UNLIMITED)
         val transport = makeTransport(input = inputChannel.receiveAsFlow())
-        val received = transport.asMessageChannel()
+        val received = transport.asFrameChannel()
         transport.start()
         transport.expectState(Transport.State.STARTED)
 
         inputChannel.send("not json at all")
         inputChannel.send("")
+        inputChannel.send("{} {}") // The JSON decoder checks trailing input after its serializer returns.
         inputChannel.send("""{"jsonrpc":"2.0","method":"after-garbage","id":1}""")
 
-        val message = withTimeout(1.seconds) { received.receive() }
+        repeat(3) { assertTrue(withTimeout(1.seconds) { received.receive() } is TransportFrame.Malformed) }
+        val message = (withTimeout(1.seconds) { received.receive() } as TransportFrame.Single).message
         assertTrue(message is JsonRpcRequest)
         assertEquals(MethodName("after-garbage"), message.method)
     }
@@ -107,10 +248,10 @@ class StdioTransportFlowTest {
         val transport = makeTransport(
             input = flowOf("""{"jsonrpc":"2.0","method":"once"}"""),
         )
-        val received = transport.asMessageChannel()
+        val received = transport.asFrameChannel()
         transport.start()
 
-        val message = withTimeout(1.seconds) { received.receive() }
+        val message = (withTimeout(1.seconds) { received.receive() } as TransportFrame.Single).message
         assertNotNull(message)
 
         transport.expectState(Transport.State.CLOSED, message = "completion of input flow should close transport")
@@ -138,7 +279,7 @@ class StdioTransportFlowTest {
         transport.start()
         transport.expectState(Transport.State.STARTED)
 
-        transport.send(JsonRpcNotification(method = MethodName("ignored")))
+        transport.send(TransportFrame.Single(JsonRpcNotification(method = MethodName("ignored"))))
 
         transport.expectState(Transport.State.CLOSED, message = "IOException from output should close the transport")
         assertTrue(errors.isEmpty(), "IOException should be treated as clean shutdown, got: $errors")
@@ -154,7 +295,7 @@ class StdioTransportFlowTest {
         transport.start()
         transport.expectState(Transport.State.STARTED)
 
-        transport.send(JsonRpcNotification(method = MethodName("ignored")))
+        transport.send(TransportFrame.Single(JsonRpcNotification(method = MethodName("ignored"))))
 
         transport.expectState(Transport.State.CLOSED, message = "unexpected output error should close the transport")
         assertTrue(errors.any { it === sentinel }, "expected writer error to be reported via onError, got: $errors")
@@ -182,7 +323,7 @@ class StdioTransportFlowTest {
         transport.expectState(Transport.State.STARTED)
 
         val sendJobs = (1..10).map { i ->
-            scope.launch { transport.send(JsonRpcNotification(method = MethodName("method$i"))) }
+            scope.launch { transport.send(TransportFrame.Single(JsonRpcNotification(method = MethodName("method$i")))) }
         }
         sendJobs.joinAll()
 

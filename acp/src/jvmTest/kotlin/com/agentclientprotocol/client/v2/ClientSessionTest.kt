@@ -1,11 +1,8 @@
 @file:OptIn(UnstableApi::class)
 
-package com.agentclientprotocol.client
+package com.agentclientprotocol.client.v2
 
 import com.agentclientprotocol.annotations.UnstableApi
-import com.agentclientprotocol.client.v2.Client
-import com.agentclientprotocol.client.v2.ClientInfo
-import com.agentclientprotocol.client.v2.ClientSession
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.Implementation
 import com.agentclientprotocol.model.MessageId
@@ -15,30 +12,70 @@ import com.agentclientprotocol.model.v2.ContentBlock
 import com.agentclientprotocol.model.v2.ContentChunk
 import com.agentclientprotocol.model.v2.InitializeResponse
 import com.agentclientprotocol.model.v2.NewSessionResponse
+import com.agentclientprotocol.model.v2.RequestPermissionOutcome
+import com.agentclientprotocol.model.v2.RequestPermissionRequest
+import com.agentclientprotocol.model.v2.RequestPermissionResponse
 import com.agentclientprotocol.model.v2.ResumeSessionResponse
 import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.model.v2.UpdateSessionNotification
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.rpc.ACPJson
+import com.agentclientprotocol.rpc.TransportFrame
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.rpc.JsonRpcRequest
-import com.agentclientprotocol.rpc.JsonRpcResponse
+import com.agentclientprotocol.rpc.JsonRpcSuccessResponse
 import com.agentclientprotocol.transport.BaseTransport
 import com.agentclientprotocol.transport.Transport
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.toList
+import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
-class V2SessionUpdateDeliveryTest {
+class ClientSessionTest {
+
+    @Test
+    fun `cancel releases pending permission when notification send fails`() = withV2Client { client, agent, scope ->
+        val permissionStarted = CompletableDeferred<Unit>()
+        val permissionCleanedUp = CompletableDeferred<Unit>()
+        val sessionId = SessionId("session")
+        agent.onNewSession(sessionId) { }
+        val session = client.newSession(
+            cwd = ".",
+            operations = object : ClientSessionOperations {
+                override suspend fun requestPermission(request: RequestPermissionRequest): RequestPermissionResponse {
+                    permissionStarted.complete(Unit)
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        permissionCleanedUp.complete(Unit)
+                    }
+                }
+            },
+        )
+        val permission = scope.async {
+            session.handlePermissionRequest(RequestPermissionRequest(sessionId, "Allow?", emptyList()))
+        }
+        permissionStarted.await()
+        agent.sendFailure = ClosedSendChannelException("Writer queue closed")
+
+        assertFailsWith<ClosedSendChannelException> { session.cancel() }
+
+        assertEquals(RequestPermissionOutcome.Cancelled, permission.await().outcome)
+        assertTrue(permissionCleanedUp.isCompleted)
+    }
 
     /** Delivers updates sent before `session/new` responds to the returned session in order. */
     @Test
@@ -156,6 +193,7 @@ private class SessionReader(scope: CoroutineScope, session: ClientSession) {
  * opens a session only after sending the updates the test asked for.
  */
 private class ScriptedAgent : BaseTransport() {
+    var sendFailure: Throwable? = null
     private var newSession: (JsonRpcRequest) -> Unit = { error("no answer scripted for session/new") }
     private var resumeSession: (JsonRpcRequest) -> Unit = { error("no answer scripted for session/resume") }
 
@@ -198,7 +236,14 @@ private class ScriptedAgent : BaseTransport() {
         _state.value = Transport.State.CLOSED
     }
 
-    override fun send(message: JsonRpcMessage) {
+    private fun fireMessage(message: JsonRpcMessage) = fireFrame(TransportFrame.Single(message))
+
+    override fun send(frame: TransportFrame) {
+        sendFailure?.let { throw it }
+        if (state.value == Transport.State.CLOSING || state.value == Transport.State.CLOSED) {
+            throw ClosedSendChannelException("Transport is closed")
+        }
+        val message = (frame as TransportFrame.Single).message
         if (message !is JsonRpcRequest) return
         when (message.method) {
             AcpMethod.AgentMethods.V2.Initialize.methodName -> respond(
@@ -213,6 +258,6 @@ private class ScriptedAgent : BaseTransport() {
     }
 
     private fun <T> respond(request: JsonRpcRequest, serializer: kotlinx.serialization.KSerializer<T>, response: T) {
-        fireMessage(JsonRpcResponse(id = request.id, result = ACPJson.encodeToJsonElement(serializer, response)))
+        fireMessage(JsonRpcSuccessResponse(id = request.id, result = ACPJson.encodeToJsonElement(serializer, response)))
     }
 }

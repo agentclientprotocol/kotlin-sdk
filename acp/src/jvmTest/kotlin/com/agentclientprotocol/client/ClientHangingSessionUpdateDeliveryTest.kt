@@ -15,10 +15,11 @@ import com.agentclientprotocol.model.SessionNotification
 import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.rpc.ACPJson
+import com.agentclientprotocol.rpc.TransportFrame
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.rpc.JsonRpcRequest
-import com.agentclientprotocol.rpc.JsonRpcResponse
+import com.agentclientprotocol.rpc.JsonRpcSuccessResponse
 import com.agentclientprotocol.rpc.RequestId
 import com.agentclientprotocol.transport.BaseTransport
 import com.agentclientprotocol.transport.Transport
@@ -126,7 +127,10 @@ private class DeferredSessionNewTransport : BaseTransport() {
         _state.value = Transport.State.CLOSED
     }
 
-    override fun send(message: JsonRpcMessage) {
+    private fun fireMessage(message: JsonRpcMessage) = fireFrame(TransportFrame.Single(message))
+
+    override fun send(frame: TransportFrame) {
+        val message = (frame as TransportFrame.Single).message
         if (message !is JsonRpcRequest || message.method != AcpMethod.AgentMethods.SessionNew.methodName) return
         pendingRequestId = message.id
         sessionNewSent.complete(Unit)
@@ -135,7 +139,7 @@ private class DeferredSessionNewTransport : BaseTransport() {
     fun completePendingSessionNew() {
         val requestId = checkNotNull(pendingRequestId) { "session/new was not sent yet" }
         fireMessage(
-            JsonRpcResponse(
+            JsonRpcSuccessResponse(
                 id = requestId,
                 result = ACPJson.encodeToJsonElement(
                     AcpMethod.AgentMethods.SessionNew.responseSerializer,

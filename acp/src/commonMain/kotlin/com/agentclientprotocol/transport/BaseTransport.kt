@@ -1,6 +1,6 @@
 package com.agentclientprotocol.transport
 
-import com.agentclientprotocol.rpc.JsonRpcMessage
+import com.agentclientprotocol.rpc.TransportFrame
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
@@ -11,16 +11,17 @@ import kotlinx.coroutines.flow.asStateFlow
 private val logger = KotlinLogging.logger {}
 
 public abstract class BaseTransport : Transport {
+    @Suppress("PropertyName")
     protected val _state: MutableStateFlow<Transport.State> = MutableStateFlow(Transport.State.CREATED)
-    private val messageHandlers = atomic<MessageListener>({})
+    private val frameHandlers = atomic<FrameListener>({})
     private val errorHandlers = atomic<ErrorListener>({})
     private val closeHandlers = atomic<CloseListener>({})
 
-    override fun onMessage(handler: MessageListener) {
-        messageHandlers.update { old ->
+    override fun onFrame(handler: FrameListener) {
+        frameHandlers.update { old ->
             {
                 old(it)
-                runCatching { handler(it) }.onFailure { e -> logger.error(e) { "Error in message handler" } }
+                runCatching { handler(it) }.onFailure { e -> logger.error(e) { "Error in frame handler" } }
             }
         }
     }
@@ -28,8 +29,8 @@ public abstract class BaseTransport : Transport {
     override val state: StateFlow<Transport.State>
         get() = _state.asStateFlow()
 
-    protected fun fireMessage(message: JsonRpcMessage) {
-        messageHandlers.value(message)
+    protected fun fireFrame(frame: TransportFrame) {
+        frameHandlers.value(frame)
     }
 
     override fun onClose(handler: CloseListener) {
