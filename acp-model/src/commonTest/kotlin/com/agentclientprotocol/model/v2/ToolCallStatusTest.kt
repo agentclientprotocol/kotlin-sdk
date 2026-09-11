@@ -24,6 +24,7 @@ class ToolCallStatusTest {
         assertEquals(ToolCallStatus.InProgress, decode("\"in_progress\""))
         assertEquals(ToolCallStatus.Completed, decode("\"completed\""))
         assertEquals(ToolCallStatus.Failed, decode("\"failed\""))
+        assertEquals(ToolCallStatus.Cancelled, decode("\"cancelled\""))
     }
 
     @Test
@@ -32,6 +33,7 @@ class ToolCallStatusTest {
         assertEquals("\"in_progress\"", encode(ToolCallStatus.InProgress))
         assertEquals("\"completed\"", encode(ToolCallStatus.Completed))
         assertEquals("\"failed\"", encode(ToolCallStatus.Failed))
+        assertEquals("\"cancelled\"", encode(ToolCallStatus.Cancelled))
     }
 
     // Unknown values (forward compatibility)
@@ -95,11 +97,23 @@ class ToolCallStatusTest {
     // v2 <-> v1 conversion
 
     @Test
-    fun `converts all known values to v1`() {
+    fun `converts statuses shared with v1`() {
         assertEquals(V1ToolCallStatus.PENDING, ToolCallStatus.Pending.toV1())
         assertEquals(V1ToolCallStatus.IN_PROGRESS, ToolCallStatus.InProgress.toV1())
         assertEquals(V1ToolCallStatus.COMPLETED, ToolCallStatus.Completed.toV1())
         assertEquals(V1ToolCallStatus.FAILED, ToolCallStatus.Failed.toV1())
+    }
+
+    @Test
+    fun `converting Cancelled to v1 fails instead of reporting failure`() {
+        val exception = assertFailsWith<ProtocolConversionException> {
+            ToolCallStatus.Cancelled.toV1()
+        }
+
+        assertEquals(
+            "v2 ToolCallStatus variant `cancelled` cannot be represented in v1 because v1 has no cancellation status",
+            exception.message,
+        )
     }
 
     @Test

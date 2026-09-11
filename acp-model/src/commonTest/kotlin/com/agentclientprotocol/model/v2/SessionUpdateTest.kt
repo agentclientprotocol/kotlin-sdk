@@ -68,17 +68,21 @@ class SessionUpdateTest {
     }
 
     @Test
-    fun `round-trips a tool call upsert`() {
-        val json = """{"sessionUpdate":"tool_call_update","toolCallId":"tc_1","status":"completed"}"""
-        val update = SessionUpdate.ToolCallUpdate(
-            ToolCallUpdate(
-                toolCallId = ToolCallId("tc_1"),
-                status = MaybeUndefined.Value(ToolCallStatus.Completed),
-            ),
+    fun `round-trips completed and cancelled tool call upserts`() {
+        val cases = listOf(
+            "completed" to ToolCallStatus.Completed,
+            "cancelled" to ToolCallStatus.Cancelled,
         )
 
-        assertEquals(update, decode(json))
-        assertEquals(json, encode(update))
+        cases.forEach { (wireStatus, status) ->
+            val json = """{"sessionUpdate":"tool_call_update","toolCallId":"tc_1","status":"$wireStatus"}"""
+            val update = SessionUpdate.ToolCallUpdate(
+                ToolCallUpdate(toolCallId = ToolCallId("tc_1"), status = MaybeUndefined.Value(status)),
+            )
+
+            assertEquals(update, decode(json), "decoding $wireStatus")
+            assertEquals(json, encode(update), "encoding $wireStatus")
+        }
     }
 
     @Test

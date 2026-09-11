@@ -20,6 +20,15 @@ class ToolCallUpdateTest {
     // Encoding: Undefined is omitted, Null is an explicit null, Value is encoded
 
     @Test
+    fun `round-trips an upsert with only the tool call id`() {
+        val json = """{"toolCallId":"tc_1"}"""
+        val update = ToolCallUpdate(toolCallId = ToolCallId("tc_1"))
+
+        assertEquals(update, decode(json))
+        assertEquals(json, encode(update))
+    }
+
+    @Test
     fun `encodes only set fields as an upsert`() {
         val update = ToolCallUpdate(
             toolCallId = ToolCallId("tc_1"),
@@ -150,6 +159,27 @@ class ToolCallUpdateTest {
     }
 
     // Upsert application
+
+    @Test
+    fun `applyUpdate replaces collections with nonempty or empty arrays`() {
+        val stored = ToolCallUpdate(
+            toolCallId = ToolCallId("tc_1"),
+            title = MaybeUndefined.Value("Read config"),
+            content = MaybeUndefined.Value(listOf(ToolCallContent.Content(ContentBlock.Text("old")))),
+            locations = MaybeUndefined.Value(listOf(ToolCallLocation("/old"))),
+        )
+
+        val cases = listOf(
+            """{"toolCallId":"tc_1","content":[{"type":"content","content":{"type":"text","text":"replacement"}}],"locations":[{"path":"/replacement"}]}""" to
+                stored.copy(
+                    content = MaybeUndefined.Value(listOf(ToolCallContent.Content(ContentBlock.Text("replacement")))),
+                    locations = MaybeUndefined.Value(listOf(ToolCallLocation("/replacement"))),
+                ),
+            """{"toolCallId":"tc_1","content":[],"locations":[]}""" to
+                stored.copy(content = MaybeUndefined.Value(emptyList()), locations = MaybeUndefined.Value(emptyList())),
+        )
+        cases.forEach { (json, expected) -> assertEquals(expected, stored.applyUpdate(decode(json)), json) }
+    }
 
     @Test
     fun `applyUpdate patches stored state and preserves explicit nulls`() {

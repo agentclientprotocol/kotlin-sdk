@@ -13359,6 +13359,14 @@ public abstract class com/agentclientprotocol/model/v2/ToolCallStatus {
 	public abstract fun getValue ()Ljava/lang/String;
 }
 
+public final class com/agentclientprotocol/model/v2/ToolCallStatus$Cancelled : com/agentclientprotocol/model/v2/ToolCallStatus {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/v2/ToolCallStatus$Cancelled;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/agentclientprotocol/model/v2/ToolCallStatus$Companion {
 	public final fun extension (Ljava/lang/String;)Lcom/agentclientprotocol/model/v2/ToolCallStatus$Unknown;
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;

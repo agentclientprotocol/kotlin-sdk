@@ -57,8 +57,8 @@ public fun V1ToolKind.toV2(): ToolKind = when (this) {
 /**
  * Converts this v2 status to its v1 equivalent.
  *
- * @throws ProtocolConversionException if this is an [ToolCallStatus.Unknown] value,
- * which cannot be represented in v1 without data loss
+ * @throws ProtocolConversionException if this is [ToolCallStatus.Cancelled] or a
+ * [ToolCallStatus.Unknown] value, which cannot be represented in v1 without data loss
  */
 @UnstableApi
 public fun ToolCallStatus.toV1(): V1ToolCallStatus = when (this) {
@@ -66,6 +66,9 @@ public fun ToolCallStatus.toV1(): V1ToolCallStatus = when (this) {
     ToolCallStatus.InProgress -> V1ToolCallStatus.IN_PROGRESS
     ToolCallStatus.Completed -> V1ToolCallStatus.COMPLETED
     ToolCallStatus.Failed -> V1ToolCallStatus.FAILED
+    ToolCallStatus.Cancelled -> throw ProtocolConversionException(
+        "v2 ToolCallStatus variant `cancelled` cannot be represented in v1 because v1 has no cancellation status"
+    )
     is ToolCallStatus.Unknown -> throw unknownV2EnumVariant("ToolCallStatus", value)
 }
 
@@ -115,9 +118,14 @@ private fun V1ToolCallContent.toV2OrNull(): ToolCallContent? = when (this) {
  * v1 has no patch semantics, so the tri-state fields collapse: a value becomes a set field,
  * while both "no update" and an explicit clear become an unset field. Collections are the
  * exception — an explicit clear becomes an empty list, because that is how v1 expresses
- * "no content". Fields whose own conversion fails (an [ToolKind.Unknown] kind, say) are
- * dropped rather than failing the whole update, and content items with no v1 representation
- * are skipped.
+ * "no content". Fields whose own conversion fails (such as a [ToolKind.Unknown] kind or
+ * [ToolCallStatus.Cancelled] status) are dropped rather than failing the whole update,
+ * and content items with no v1 representation are skipped.
+ *
+ * Cancellation follows this same skip-on-error policy: mapping it to a failure would
+ * misreport why the tool stopped. A v1 client may therefore retain its previous status,
+ * such as `in_progress`; applications bridging versions must choose their own policy
+ * for reporting cancelled tools as finished in v1.
  *
  * @throws ProtocolConversionException if [ToolCallUpdate._meta] is an explicit clear, which
  * v1 cannot express
