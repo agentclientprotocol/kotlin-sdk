@@ -35,6 +35,7 @@ import com.agentclientprotocol.model.SessionConfigSelectOption
 import com.agentclientprotocol.model.SessionConfigValueId
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.ToolCallId
+import com.agentclientprotocol.model.v2.AuthMethod
 import com.agentclientprotocol.model.v2.ContentBlock
 import com.agentclientprotocol.model.v2.CloseSessionResponse
 import com.agentclientprotocol.model.v2.ContentChunk
@@ -244,7 +245,10 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         }
     }
 
-    private class V2Support(private val hangUntilCancelled: Boolean = false) : V2AgentSupport {
+    private class V2Support(
+        private val hangUntilCancelled: Boolean = false,
+        private val authMethods: List<AuthMethod> = emptyList(),
+    ) : V2AgentSupport {
         val sessions = mutableListOf<EchoV2Session>()
         var initializeCalls = 0
 
@@ -252,6 +256,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
             initializeCalls++
             return V2AgentInfo(
                 implementation = Implementation(name = "test-agent", version = "1.0.0"),
+                authMethods = authMethods,
             )
         }
 
@@ -549,7 +554,10 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         val listed = mutableListOf<Pair<String?, String?>>()
 
         override suspend fun initialize(clientInfo: V2ClientInfo) =
-            V2AgentInfo(implementation = Implementation(name = "test-agent", version = "1.0.0"))
+            V2AgentInfo(
+                implementation = Implementation(name = "test-agent", version = "1.0.0"),
+                authMethods = listOf(AuthMethod.Agent(methodId = AuthMethodId("oauth"), name = "Sign in with OAuth")),
+            )
 
         override suspend fun createSession(
             parameters: V2SessionCreationParameters,
@@ -653,17 +661,27 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     }
 
     @Test
-    fun `a method the agent did not implement refuses instead of pretending`() = testWithProtocols { clientProtocol, agentProtocol ->
+    fun `advertised auth methods the agent did not implement refuse instead of pretending`() = testWithProtocols { clientProtocol, agentProtocol ->
         // The defaults on V2AgentSupport must fail loudly: an `Error` from a handler would leave the caller
         // waiting forever, and a silent success would be worse.
-        V2Agent(agentProtocol, V2Support())
+        V2Agent(
+            agentProtocol,
+            V2Support(
+                authMethods = listOf(AuthMethod.Agent(methodId = AuthMethodId("oauth"), name = "Sign in with OAuth")),
+            ),
+        )
         val client = V2Client(clientProtocol)
         client.initialize(v2ClientInfo())
 
-        val failure = assertFails { withTimeout(10.seconds) { client.login(AuthMethodId("oauth")) } }
+        val loginFailure = assertFails { withTimeout(10.seconds) { client.login(AuthMethodId("oauth")) } }
         assertTrue(
-            failure.message!!.contains("auth/login is not implemented"),
-            "unexpected failure: ${failure.message}",
+            loginFailure.message!!.contains("auth/login is not implemented"),
+            "unexpected failure: ${loginFailure.message}",
+        )
+        val logoutFailure = assertFails { withTimeout(10.seconds) { client.logout() } }
+        assertTrue(
+            logoutFailure.message!!.contains("auth/logout is not implemented"),
+            "unexpected failure: ${logoutFailure.message}",
         )
         // The connection survives a refusal, so the client can carry on.
         assertNotNull(client.newSession(cwd = "."))

@@ -7,6 +7,7 @@ import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.AuthMethodId
 import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
 import com.agentclientprotocol.model.SessionId
+import com.agentclientprotocol.model.v2.AuthMethod
 import com.agentclientprotocol.model.v2.CompleteElicitationNotification
 import com.agentclientprotocol.model.v2.CreateElicitationRequest
 import com.agentclientprotocol.model.v2.DeleteSessionRequest
@@ -322,15 +323,47 @@ public class Client(
     /**
      * Authenticates with `auth/login`.
      *
-     * Only call this when the initialize response listed [AgentInfo.authMethods]; when it is empty, the
-     * agent is not obliged to implement authentication at all.
+     * Call this only after [initialize] succeeds. Calls made before or during initialization fail locally
+     * without waiting or sending a request.
+     *
+     * [methodId] must be one the agent advertised in [AgentInfo.authMethods]; anything else fails locally
+     * without sending a request. That covers every call when the list is empty, since an agent that
+     * advertised nothing is not obliged to implement authentication at all.
      */
-    public suspend fun login(methodId: AuthMethodId, _meta: JsonElement? = null): LoginAuthResponse =
-        AcpMethod.AgentMethods.V2.AuthLogin(protocol, LoginAuthRequest(methodId, _meta))
+    public suspend fun login(methodId: AuthMethodId, _meta: JsonElement? = null): LoginAuthResponse {
+        val method = AcpMethod.AgentMethods.V2.AuthLogin
+        val authMethods = requireAuthenticationSupport(method)
+        if (authMethods.none { it.methodId == methodId }) {
+            acpFail(
+                "Cannot call ${method.methodName.name} with methodId '${methodId.value}': the agent " +
+                        "advertised only ${authMethods.joinToString { "'${it.methodId.value}'" }}"
+            )
+        }
+        return method(protocol, LoginAuthRequest(methodId, _meta))
+    }
 
-    /** Logs out with `auth/logout`. See [login]. */
-    public suspend fun logout(_meta: JsonElement? = null): LogoutAuthResponse =
-        AcpMethod.AgentMethods.V2.AuthLogout(protocol, LogoutAuthRequest(_meta))
+    /**
+     * Logs out with `auth/logout`.
+     *
+     * The same initialization and [AgentInfo.authMethods] requirements as [login] apply.
+     */
+    public suspend fun logout(_meta: JsonElement? = null): LogoutAuthResponse {
+        val method = AcpMethod.AgentMethods.V2.AuthLogout
+        requireAuthenticationSupport(method)
+        return method(protocol, LogoutAuthRequest(_meta))
+    }
+
+    /** Fails unless [initialize] finished and the agent advertised authentication; returns what it advertised. */
+    private suspend fun requireAuthenticationSupport(method: AcpMethod): List<AuthMethod> {
+        // _agentInfo only completes on successful initialization. Awaiting it before completion could
+        // hang forever if initialization was never started or failed.
+        if (!_agentInfo.isCompleted) {
+            acpFail("Cannot call ${method.methodName.name} before initialization completes")
+        }
+        return _agentInfo.await().authMethods.ifEmpty {
+            acpFail("Cannot call ${method.methodName.name}: the agent did not advertise any authMethods")
+        }
+    }
 
     /**
      * Lists sessions with `session/list`, one page at a time.
