@@ -33,23 +33,18 @@ import kotlin.uuid.Uuid
  * @param TInput the paginated request type containing an optional cursor
  * @param TOutput the paginated response type containing items and the next cursor
  * @param batchSize the number of items to return per page (default: 10)
+ * @param orphanedIteratorsEvictionTimeout how long an unused cursor remains valid (default: 1 minute)
+ * @param timeoutJobScope scope used to evict unused cursors; must stay active while the adapter is in use
  */
 @OptIn(ExperimentalAtomicApi::class, UnstableApi::class)
-public class SequenceToPaginatedResponseAdapter<TItem, TInput : AcpPaginatedRequest, TOutput : AcpPaginatedResponse<TItem>> internal constructor(
-    public val batchSize: Int,
-    public val orphanedIteratorsEvictionTimeout: Duration,
-    private val timeoutJobScope: CoroutineScope,
+public class SequenceToPaginatedResponseAdapter<TItem, TInput : AcpPaginatedRequest, TOutput : AcpPaginatedResponse<TItem>>(
+    public val batchSize: Int = 10,
+    public val orphanedIteratorsEvictionTimeout: Duration = 1.minutes,
+    // All timeout jobs eventually finish, so the default scope does not need a separate close method.
+    private val timeoutJobScope: CoroutineScope = CoroutineScope(
+        Dispatchers.Default + SupervisorJob() + CoroutineName("SequenceToPaginatedResponseAdapter.timeoutJobScope")
+    ),
 ) {
-    public constructor(
-        batchSize: Int = 10,
-        orphanedIteratorsEvictionTimeout: Duration = 1.minutes,
-    ) : this(
-        batchSize,
-        orphanedIteratorsEvictionTimeout,
-        // All timeout jobs eventually finish, so this scope does not need a separate close method.
-        CoroutineScope(Dispatchers.Default + SupervisorJob() + CoroutineName("SequenceToPaginatedResponseAdapter.timeoutJobScope")),
-    )
-
     init {
         require(orphanedIteratorsEvictionTimeout > Duration.ZERO) { "orphanedIteratorsEvictionTimeout must be positive" }
     }
