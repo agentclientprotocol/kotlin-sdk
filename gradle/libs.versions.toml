@@ -10,6 +10,8 @@ slf4j = "2.0.16"
 kotest = "6.0.3"
 atomicfu = "0.25.0"
 mavenPublish = "0.34.0"
+javax-servlet = "4.0.1"
+javax-websocket = "1.1"
 
 [libraries]
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
@@ -32,6 +34,8 @@ ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.ref = "ktor" }
 kotlin-logging = { module = "io.github.oshai:kotlin-logging", version.ref = "kotlin-logging" }
 slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
+javax-servlet-api = { module = "javax.servlet:javax.servlet-api", version.ref = "javax-servlet" }
+javax-websocket-api = { module = "javax.websocket:javax.websocket-api", version.ref = "javax-websocket" }
 
 kotest-assertions-json = { module = "io.kotest:kotest-assertions-json-jvm", version.ref = "kotest" }
 

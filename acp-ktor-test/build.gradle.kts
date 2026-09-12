@@ -20,5 +20,11 @@ kotlin {
                 implementation(libs.ktor.client.core)
             }
         }
+        jvmTest {
+            dependencies {
+                implementation(project(":acp-servlet-client"))
+                implementation(project(":acp-servlet-server"))
+            }
+        }
     }
 }
