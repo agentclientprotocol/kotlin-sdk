@@ -133,10 +133,16 @@ public class ClientSession internal constructor(
      *
      * The agent keeps reporting afterwards and finishes with an idle update carrying the `cancelled`
      * stop reason, so keep collecting [updates] after calling this.
+     *
+     * Encoding and transport failures throw synchronously. Pending local permission handlers are
+     * cancelled even if the cancellation notification cannot be sent.
      */
     public fun cancel(_meta: JsonElement? = null) {
-        AcpMethod.AgentMethods.V2.SessionCancel(protocol, CancelSessionNotification(sessionId, _meta))
-        // Answers whatever permission request is in flight; see [handlePermissionRequest].
-        _cancelled.value.complete(Unit)
+        try {
+            AcpMethod.AgentMethods.V2.SessionCancel(protocol, CancelSessionNotification(sessionId, _meta))
+        } finally {
+            // Answers whatever permission request is in flight even if sending fails.
+            _cancelled.value.complete(Unit)
+        }
     }
 }

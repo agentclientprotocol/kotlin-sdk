@@ -1,13 +1,7 @@
 package com.agentclientprotocol.protocol
 
 import com.agentclientprotocol.annotations.UnstableApi
-import com.agentclientprotocol.model.AcpMethod
-import com.agentclientprotocol.model.AcpNotification
-import com.agentclientprotocol.model.AcpPaginatedRequest
-import com.agentclientprotocol.model.AcpPaginatedResponse
-import com.agentclientprotocol.model.AcpRequest
-import com.agentclientprotocol.model.AcpResponse
-import com.agentclientprotocol.model.AcpWithSessionId
+import com.agentclientprotocol.model.*
 import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.util.PaginatedResponseToFlowAdapter
@@ -35,7 +29,7 @@ public suspend fun <TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOp
 }
 
 /**
- * Send a batched request and return a cold [Flow] that automatically fetches subsequent pages.
+ * Fetch paginated results (not a JSON-RPC batch) as a cold [Flow].
  * The flow is cold - it won't start fetching until collection begins.
  */
 @UnstableApi
@@ -74,6 +68,18 @@ public fun<TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOperations.
     }
 }
 
+@UnstableApi
+public fun <TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOperations.setRequestOutcomeHandler(
+    method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
+    additionalContext: CoroutineContext = EmptyCoroutineContext,
+    handler: suspend (TRequest) -> RequestOutcome<TResponse>,
+) {
+    setRequestOutcomeHandlerRaw(method, additionalContext) { request ->
+        val params = ACPJson.decodeFromJsonElement(method.requestSerializer, request.params ?: JsonNull)
+        handler(params).mapResponse { ACPJson.encodeToJsonElement(method.responseSerializer, it) }
+    }
+}
+
 @OptIn(UnstableApi::class)
 public fun<TRequest : AcpPaginatedRequest, TResponse : AcpPaginatedResponse<TItem>, TItem> RpcMethodsOperations.setPaginatedRequestHandler(
     method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
@@ -109,32 +115,18 @@ public suspend operator fun <TRequest: AcpRequest, TResponse: AcpResponse> AcpMe
     return rpc.sendRequest(this, request)
 }
 
+/**
+ * Send a typed notification via [sendNotification], propagating encoding and transport failures
+ * synchronously to the caller.
+ */
 public operator fun <TNotification : AcpNotification> AcpMethod.AcpNotificationMethod<TNotification>.invoke(rpc: RpcMethodsOperations, notification: TNotification) {
     return rpc.sendNotification(this, notification)
 }
 
-internal class RequestHolder(val jsonRpcRequest: JsonRpcRequest) {
-    // probably make it thread safe
-    internal val handlers = mutableListOf<suspend () -> Unit>()
-    fun executeAfterCurrentRequest(block: suspend () -> Unit) {
-        handlers.add(block)
-    }
-}
-
-internal class JsonRpcRequestContextElement(val requestHolder: RequestHolder) : AbstractCoroutineContextElement(Key) {
+internal class JsonRpcRequestContextElement(val request: JsonRpcRequest) : AbstractCoroutineContextElement(Key) {
     object Key : CoroutineContext.Key<JsonRpcRequestContextElement>
 }
 
-internal val CoroutineContext.requestHolder: RequestHolder
-    get() = this[JsonRpcRequestContextElement.Key]?.requestHolder ?: error("There is no active incoming request in this context")
-
 public val CoroutineContext.jsonRpcRequest: JsonRpcRequest
-    get() = this.requestHolder.jsonRpcRequest
+    get() = this[JsonRpcRequestContextElement.Key]?.request ?: error("There is no active incoming request in this context")
 
-
-/**
- * Execute a block after the current request is processed and the response is sent back to the client.
- */
-internal fun CoroutineContext.executeAfterCurrentRequest(block: suspend () -> Unit) {
-    requestHolder.executeAfterCurrentRequest(block)
-}

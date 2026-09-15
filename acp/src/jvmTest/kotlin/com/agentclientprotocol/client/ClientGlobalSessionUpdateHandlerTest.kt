@@ -6,6 +6,7 @@ import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.rpc.ACPJson
+import com.agentclientprotocol.rpc.TransportFrame
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.transport.BaseTransport
@@ -69,7 +70,9 @@ private class NotifyingTransport : BaseTransport() {
         _state.value = Transport.State.CLOSED
     }
 
-    override fun send(message: JsonRpcMessage) = Unit
+    private fun fireMessage(message: JsonRpcMessage) = fireFrame(TransportFrame.Single(message))
+
+    override fun send(frame: TransportFrame) = Unit
 
     fun emitSessionUpdate(sessionId: SessionId, update: SessionUpdate) {
         fireMessage(

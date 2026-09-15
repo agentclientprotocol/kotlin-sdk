@@ -12,9 +12,12 @@ import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.JsonRpcError
 import com.agentclientprotocol.rpc.JsonRpcErrorCode
+import com.agentclientprotocol.rpc.JsonRpcErrorResponse
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.rpc.JsonRpcResponse
+import com.agentclientprotocol.rpc.JsonRpcSuccessResponse
+import com.agentclientprotocol.rpc.TransportFrame
 import com.agentclientprotocol.transport.BaseTransport
 import com.agentclientprotocol.transport.Transport
 import kotlinx.coroutines.runBlocking
@@ -154,21 +157,25 @@ class V2ClientAuthenticationTest {
             fireClose()
         }
 
-        override fun send(message: JsonRpcMessage) {
+        override fun send(frame: TransportFrame) {
+            val message = (frame as? TransportFrame.Single)?.message
+                ?: throw IllegalArgumentException("Only TransportFrame.Single is supported")
+
             sent += message
             if (message !is JsonRpcRequest) return
             val response = when (message.method.name) {
-                "initialize" -> JsonRpcResponse(message.id, result = initializeResponse)
-                "auth/login", "auth/logout" -> JsonRpcResponse(
+                "initialize" -> JsonRpcSuccessResponse(message.id, result = initializeResponse)
+                "auth/login", "auth/logout" -> JsonRpcSuccessResponse(
                     message.id,
                     result = ACPJson.parseToJsonElement("""{"_meta":{"source":"agent"}}"""),
                 )
-                else -> JsonRpcResponse(
+                else -> JsonRpcErrorResponse(
                     message.id,
                     error = JsonRpcError(JsonRpcErrorCode.METHOD_NOT_FOUND.code, "Unexpected method"),
                 )
             }
-            fireMessage(response)
+
+            fireFrame(TransportFrame.Single(response))
         }
     }
 
