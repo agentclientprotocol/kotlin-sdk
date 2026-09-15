@@ -51,6 +51,16 @@ public class Protocol(
 
     private val protocolJob = SupervisorJob(parentScope.coroutineContext[Job])
     private val scope = CoroutineScope(parentScope.coroutineContext + protocolJob + CoroutineName(options.protocolDebugName))
+    /**
+     * Serializes handler execution, which is what preserves wire order between handlers.
+     *
+     * `parallelism = 1` is load-bearing beyond ordering: tests use it as a barrier, on the reasoning
+     * that a handler queued later cannot run before one queued earlier, so awaiting a marker sent after
+     * a message proves that message's handler has already run. That is the only way to order a test
+     * against a handler with no observable effect, such as a `$/cancel_request` that is correctly
+     * ignored. Raising this parallelism would not fail those tests — it would quietly turn them into
+     * races that pass most of the time. See the notes in `BatchProtocolTest` and `AgentTest`.
+     */
     private val handlerDispatcher = Dispatchers.Default.limitedParallelism(parallelism = 1)
     // a scope and dispatcher that executes handlers to avoid blocking of message processing
     private val handlerScope = CoroutineScope(scope.coroutineContext + SupervisorJob(protocolJob)
@@ -59,7 +69,7 @@ public class Protocol(
     private val requestIdCounter: AtomicInt = atomic(0)
     private val pendingOutgoingRequests: AtomicRef<PersistentMap<OutgoingRequestId, OutgoingRequest>> =
         atomic(persistentMapOf())
-    private val pendingIncomingRequests: AtomicRef<PersistentMap<IncomingRequestId, Job>> =
+    private val pendingIncomingRequests: AtomicRef<PersistentMap<IncomingRequestId, IncomingRequest>> =
         atomic(persistentMapOf())
 
     /**
@@ -106,17 +116,26 @@ public class Protocol(
     public fun start() {
         protocolJob.ensureActive()
         setNotificationHandler(AcpMethod.MetaMethods.CancelRequest) { request ->
-            var requestJob: Job? = null
             val incomingRequestId = IncomingRequestId(request.requestId)
-            pendingIncomingRequests.update { map ->
-                requestJob = map[incomingRequestId]
-                map.remove(incomingRequestId)
-            }
-            if (requestJob == null) {
+            val incoming = pendingIncomingRequests.value[incomingRequestId]
+            if (incoming == null) {
                 logger.warn { "Received CancelRequest for unknown request: ${request.requestId}" }
                 return@setNotificationHandler
             }
-            requestJob.cancel(JsonRpcIncomingRequestCanceledException(request.message ?: "Cancelled by the counterpart", incomingRequestId))
+            val cancelled = incoming.cancelByCounterpart(
+                IncomingRequestCancelledException(
+                    "Cancelled by the counterpart",
+                    incomingRequestId,
+                )
+            )
+            if (!cancelled) {
+                // A reply for this request has already been collected, so the counterpart is getting its
+                // answer either way and this cancellation is redundant. Acting on it would only discard
+                // after-response work, which for a v2 prompt turn means losing the idle update that ends it.
+                logger.debug {
+                    "Ignoring CancelRequest for request ${request.requestId}: it has already been answered"
+                }
+            }
         }
 
         // Start processing incoming frames
@@ -144,8 +163,8 @@ public class Protocol(
     ): JsonElement {
         currentCoroutineContext().ensureActive()
         val requestId = OutgoingRequestId(RequestId.create(requestIdCounter.incrementAndGet()))
-        val deferred = CompletableDeferred<JsonElement>()
-        val outgoingRequest = OutgoingRequest(deferred, sessionId)
+        val response = CompletableDeferred<JsonElement>()
+        val outgoingRequest = OutgoingRequest(response, sessionId)
 
         pendingOutgoingRequests.update { it.put(requestId, outgoingRequest) }
 
@@ -157,7 +176,7 @@ public class Protocol(
             )
             sendFrame(TransportFrame.Single(request))
 
-            return deferred.await()
+            return response.await()
         } catch (jsonRpcException: JsonRpcException) {
             throw jsonRpcException.toProtocolException()
         } catch (ce: CancellationException) {
@@ -166,15 +185,15 @@ public class Protocol(
                 if (!protocolJob.isActive) return@withContext
 
                 val cancellationSent = runCatching {
-                    AcpMethod.MetaMethods.CancelRequest(this@Protocol, CancelRequestNotification(requestId.id, ce.message))
+                    AcpMethod.MetaMethods.CancelRequest(this@Protocol, CancelRequestNotification(requestId.id))
                 }.isSuccess
                 if (!cancellationSent) return@withContext
 
                 // here we have to try waiting for graceful CANCELLED response from the other side, do it with timeout
-                if (!deferred.isCancelled) {
+                if (!response.isCancelled) {
                     try {
                         withTimeout(options.gracefulRequestCancellationTimeout) {
-                            deferred.await()
+                            response.await()
                         }
                     } catch (e: TimeoutCancellationException) {
                         logger.trace(e) { "Timed out waiting for graceful cancellation response for request: $requestId" }
@@ -183,7 +202,7 @@ public class Protocol(
                         logger.trace(ce) { "Graceful cancellation response received for request: $requestId" }
                     } catch (e: JsonRpcException) {
                         val convertedException = e.toProtocolException()
-                        if (convertedException is CancellationException) {
+                        if (convertedException is AcpRequestCancelledException) {
                             logger.trace(convertedException) { "Graceful cancellation response received for request: $requestId" }
                         } else {
                             logger.warn(convertedException) { "Unexpected error while waiting for graceful cancellation response for request: $requestId" }
@@ -191,7 +210,7 @@ public class Protocol(
                     } catch (e: Exception) {
                         logger.warn(e) { "Unexpected error while waiting for graceful cancellation response for request: $requestId" }
                     }
-                    deferred.cancel()
+                    response.cancel()
                 }
             }
 
@@ -235,7 +254,7 @@ public class Protocol(
 
             return outgoing.map { (_, request) ->
                 try {
-                    Result.success(request.result.await())
+                    Result.success(request.response.await())
                 } catch (e: JsonRpcException) {
                     currentCoroutineContext().ensureActive()
                     Result.failure(e.toProtocolException())
@@ -245,8 +264,8 @@ public class Protocol(
             // If the scope is still active when cancellation is encountered, cancel other pending requests in this batch
             if (sent && protocolJob.isActive) {
                 for ((id, request) in outgoing) {
-                    if (!request.result.isCompleted) runCatching {
-                        AcpMethod.MetaMethods.CancelRequest(this, CancelRequestNotification(id.id, ce.message))
+                    if (!request.response.isCompleted) runCatching {
+                        AcpMethod.MetaMethods.CancelRequest(this, CancelRequestNotification(id.id))
                     }
                 }
             }
@@ -257,7 +276,7 @@ public class Protocol(
             pendingOutgoingRequests.update { pendingOutgoing ->
                 pendingOutgoing.mutate { pendingOutgoing ->
                     outgoing.entries.forEach { (id, request) ->
-                        request.result.cancel()
+                        request.response.cancel()
                         if (pendingOutgoing[id] === request) pendingOutgoing.remove(id)
                     }
                 }
@@ -339,25 +358,38 @@ public class Protocol(
      * Cancels all requests that are currently being executed by this side.
      *
      * The message of [ce] will be rethrown as a [CancellationException] on the counterpart side.
+     *
+     * Unlike a counterpart's `$/cancel_request`, this also reaches a request whose reply has already been
+     * collected, and so **discards its after-response work** — for a v2 prompt, the rest of the turn's
+     * update stream. The reply itself is never withheld. To end a v2 turn while letting it report its own
+     * outcome, use `session/cancel` / `AgentSession.cancel()` instead.
      */
     public fun cancelPendingIncomingRequests(ce: CancellationException? = null) {
         val requests = pendingIncomingRequests.getAndUpdate { it.clear() }
-        for (job in requests.values) {
-            logger.trace { "Canceling pending incoming request: ${job.key}" }
-            job.cancel(ce)
+        for (incoming in requests.values) {
+            logger.trace { "Canceling pending incoming request: ${incoming.handlerJob.key}" }
+            incoming.handlerJob.cancel(ce)
         }
     }
 
+    /**
+     * Cancels one request that is currently being executed by this side.
+     *
+     * The message of [ce] will be rethrown as a [CancellationException] on the counterpart side.
+     *
+     * Carries the same caveat as [cancelPendingIncomingRequests]: it reaches a request whose reply has
+     * already been collected and discards its after-response work.
+     */
     public fun cancelPendingIncomingRequest(requestId: RequestId, ce: CancellationException? = null) {
-        var job: Job? = null
+        var incoming: IncomingRequest? = null
         val incomingRequestId = IncomingRequestId(requestId)
         pendingIncomingRequests.getAndUpdate {
-            job = it[incomingRequestId]
+            incoming = it[incomingRequestId]
             it.remove(incomingRequestId)
         }
-        if (job != null) {
+        if (incoming != null) {
             logger.trace { "Canceling pending incoming request: $requestId" }
-            job.cancel(ce)
+            incoming.handlerJob.cancel(ce)
         }
     }
 
@@ -370,25 +402,8 @@ public class Protocol(
         val requests = pendingOutgoingRequests.getAndUpdate { it.clear() }
         for ((requestId, outgoing) in requests) {
             logger.trace { "Canceling pending outgoing request: $requestId" }
-            outgoing.result.cancel(ce)
+            outgoing.response.cancel(ce)
         }
-    }
-
-    /**
-     * Coordinates one incoming entry's reply with the response frame that contains it.
-     * Each request or invalid entry gets its own slot, even when request IDs repeat in a batch.
-     * Separating reply readiness from enqueueing lets the protocol collect all batch replies
-     * without waiting for after-response work, such as streaming, to finish.
-     *
-     * @property response Completes with this entry's reply, or null when its reply should be omitted.
-     * The frame collector waits for every slot before assembling the response.
-     * @property responseFrameQueued Shared by all slots in the incoming frame. Completes after the response
-     * frame is accepted by the transport queue (or no replies remain), allowing after-response
-     * work to start. Failure or cancellation prevents that work from starting; success does not
-     * imply a network flush or peer acknowledgement.
-     */
-    private class ResponseSlot(val responseFrameQueued: CompletableDeferred<Unit>) {
-        val response = CompletableDeferred<JsonRpcResponse?>()
     }
 
     private suspend fun handleIncomingFrame(frame: TransportFrame) {
@@ -434,14 +449,12 @@ public class Protocol(
         // Dispatch is now complete. This job never joins handler jobs or their continuations.
         scope.launch {
             try {
-                val replies = slots.mapNotNull { it.response.await() }.map { TransportFrame.Single(it) }
-                if (replies.isNotEmpty()) {
-                    currentCoroutineContext().ensureActive()
-                    sendFrame(
-                        if (frame is TransportFrame.Batch) TransportFrame.Batch(replies)
-                        else replies.single()
-                    )
-                }
+                val replies = slots.map { TransportFrame.Single(it.response.await()) }
+                currentCoroutineContext().ensureActive()
+                sendFrame(
+                    if (frame is TransportFrame.Batch) TransportFrame.Batch(replies)
+                    else replies.single()
+                )
                 responseFrameQueued.complete(Unit)
             } catch (ce: CancellationException) {
                 responseFrameQueued.cancel(ce)
@@ -461,12 +474,14 @@ public class Protocol(
     private fun dispatchRequest(request: JsonRpcRequest, slot: ResponseSlot) {
         val requestId = IncomingRequestId(request.id)
         // Register before execution or cancellation can complete this job.
-        val job = handlerScope.launch(start = CoroutineStart.LAZY) { handleRequest(request, slot) }
+        val handlerJob = handlerScope.launch(start = CoroutineStart.LAZY) { handleRequest(request, slot) }
+        val incoming = IncomingRequest(handlerJob)
+
         val previous = pendingIncomingRequests.getAndUpdate {
-            if (requestId in it) it else it.put(requestId, job)
+            if (requestId in it) it else it.put(requestId, incoming)
         }
         if (requestId in previous) {
-            job.cancel()
+            handlerJob.cancel()
             slot.response.complete(JsonRpcErrorResponse(
                 request.id,
                 JsonRpcError(JsonRpcErrorCode.INVALID_REQUEST.code, "Request ID is already in use"),
@@ -474,16 +489,20 @@ public class Protocol(
             return
         }
 
-        job.invokeOnCompletion { cause ->
+        // Collecting a reply settles the request for the counterpart, so its `$/cancel_request` stops
+        // applying from here on. Registered for every completion path rather than at each `complete` call.
+        slot.response.invokeOnCompletion { incoming.settle() }
+
+        handlerJob.invokeOnCompletion { cause ->
             // Also resolves a slot if cancellation prevented the coroutine body from starting.
             if (!slot.response.isCompleted) {
                 val error = (cause ?: IllegalStateException("Request completed without a response")).toJsonRpcError()
-                slot.response.complete(error?.let { JsonRpcErrorResponse(request.id, it) })
+                slot.response.complete(JsonRpcErrorResponse(request.id, error))
             }
-            pendingIncomingRequests.update { if (it[requestId] === job) it.remove(requestId) else it }
+            pendingIncomingRequests.update { if (it[requestId] === incoming) it.remove(requestId) else it }
         }
 
-        job.start()
+        handlerJob.start()
     }
 
     private suspend fun handleRequest(request: JsonRpcRequest, slot: ResponseSlot) {
@@ -501,13 +520,27 @@ public class Protocol(
                 currentCoroutineContext().ensureActive()
                 slot.response.complete(JsonRpcSuccessResponse(request.id, outcome!!.response ?: JsonNull))
             } catch (t: Throwable) {
-                slot.response.complete(t.toJsonRpcError()?.let { JsonRpcErrorResponse(request.id, it) })
+                slot.response.complete(JsonRpcErrorResponse(request.id, t.toJsonRpcError()))
                 return
             }
 
-            // A cancelled request discards follow-up work even if its reply was already collected.
-            slot.responseFrameQueued.await()
-            currentCoroutineContext().ensureActive()
+            /*
+            Follow-up work must wait until the reply frame is queued, otherwise updates could reach the
+            peer before the response that announced them. This wait still runs during cancellation;
+            `responseFrameQueued` is completed or canceled by the protocol's normal shutdown paths.
+             */
+            val queued = runCatching { withContext(NonCancellable) { slot.responseFrameQueued.await() } }
+            if (queued.isFailure && currentCoroutineContext().isActive) {
+                // The reply never reached the transport and nothing cancelled this job: there is no
+                // follow-up work to do, because nothing announced it.
+                throw queued.exceptionOrNull()!!
+            }
+
+            /*
+            Run follow-up work even if this job was already canceled, so it can observe cancellation and
+            finish whatever the sent reply promised. Counterpart cancellation no longer reaches a settled
+            request; local cancellation does, and is handled cooperatively inside afterResponse.
+             */
             outcome.afterResponse?.invoke()
         } catch (t: Throwable) {
             // The response is already finalized: a continuation must never send a second response.
@@ -548,18 +581,18 @@ public class Protocol(
             currentRequests.remove(outgoingRequestId)
         }
 
-        val result = outgoing?.result
+        val result = outgoing?.response
         if (result != null) {
             when (response) {
                 is JsonRpcSuccessResponse -> result.complete(response.result)
-                is JsonRpcErrorResponse -> {
-                    // CANCELLED is converted to CancellationException by sendRequestRaw, not here.
-                    result.completeExceptionally(JsonRpcException(
+
+                is JsonRpcErrorResponse -> result.completeExceptionally(
+                    JsonRpcException(
                         code = response.error.code,
                         message = response.error.message,
                         data = response.error.data,
-                    ))
-                }
+                    )
+                )
             }
         } else {
             logger.warn { "Received response for unknown request ID: ${response.id}" }
@@ -579,6 +612,56 @@ internal value class IncomingRequestId(val id: RequestId)
 internal value class OutgoingRequestId(val id: RequestId)
 
 internal data class OutgoingRequest(
-    val result: CompletableDeferred<JsonElement>,
+    val response: CompletableDeferred<JsonElement>,
     val sessionId: SessionId? = null
 )
+
+/**
+ * An incoming request being served, and whether a reply for it has been collected yet.
+ *
+ * The distinction exists for `$/cancel_request`. Once a reply has been collected the request is settled
+ * from the counterpart's perspective, so its cancellation can only be redundant, while honoring it
+ * would still discard after-response work — for a v2 prompt turn, the idle update that MUST end the
+ * turn. Local cancellation ([Protocol.cancelPendingIncomingRequests], [Protocol.close]) deliberately
+ * still reaches the job, because shutdown does have to discard that work.
+ */
+internal class IncomingRequest(val handlerJob: Job) {
+    private val cancellableByCounterpart = atomic(true)
+
+    /** Records that a reply was collected, after which [cancelByCounterpart] does nothing. */
+    fun settle() {
+        cancellableByCounterpart.value = false
+    }
+
+    /**
+     * Cancels this request on the counterpart's behalf, unless a reply has already been collected.
+     *
+     * @return whether the request was cancelled.
+     */
+    fun cancelByCounterpart(ce: CancellationException): Boolean {
+        if (!cancellableByCounterpart.compareAndSet(expect = true, update = false)) return false
+        handlerJob.cancel(ce)
+        return true
+    }
+}
+
+/**
+ * Coordinates one incoming entry's reply with the response frame that contains it.
+ * Each request or invalid entry gets its own slot, even when request IDs repeat in a batch.
+ * Separating reply readiness from enqueueing lets the protocol collect all batch replies
+ * without waiting for after-response work, such as streaming, to finish.
+ *
+ * Every incoming request is answered, a cancelled one included: the counterpart that asked to cancel
+ * MUST get back either a valid response or `-32800`, so it is never left waiting for a reply that
+ * cannot come ([cancellation](https://agentclientprotocol.com/protocol/v2/draft/cancellation)).
+ *
+ * @property response Completes with this entry's reply. Every incoming request is answered, so the
+ * frame collector waits for every slot and each one contributes a reply to the response.
+ * @property responseFrameQueued Shared by all slots in the incoming frame. Completes after the response
+ * frame is accepted by the transport queue (or no replies remain), allowing after-response
+ * work to start. Failure or cancellation prevents that work from starting; success does not
+ * imply a network flush or peer acknowledgement.
+ */
+internal class ResponseSlot(val responseFrameQueued: CompletableDeferred<Unit>) {
+    val response = CompletableDeferred<JsonRpcResponse>()
+}

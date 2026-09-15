@@ -286,7 +286,12 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
         val cancellationMessage = "Test cancellation"
         promptJob.cancel(CancellationException(cancellationMessage))
         val agentSideCe = withTimeout(1000) { agentSideCeDeferred.await() }
-        assertEquals(cancellationMessage, agentSideCe.message, "Cancellation exception should be propagated to agent")
+        // $/cancel_request carries only a request id, so the reason stays on the cancelling side.
+        assertEquals(
+            "Cancelled by the counterpart",
+            agentSideCe.message,
+            "Cancellation should be propagated to agent",
+        )
     }
 
     @Test
@@ -355,7 +360,12 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
         val cancellationMessage = "Test cancellation"
         promptJob.cancel(CancellationException(cancellationMessage))
         val agentSideCe = withTimeout(1000) { agentSideCeDeferred.await() }
-        assertEquals(cancellationMessage, agentSideCe.message, "Cancellation exception should be propagated to agent")
+        // $/cancel_request carries only a request id, so the reason stays on the cancelling side.
+        assertEquals(
+            "Cancelled by the counterpart",
+            agentSideCe.message,
+            "Cancellation should be propagated to agent",
+        )
     }
 
     @Test
@@ -522,7 +532,12 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
         delay(500)
         promptJob.cancel(CancellationException("Test cancellation"))
         val permissionResponseCe = permissionResponseCeDeferred.await()
-        assertEquals("Test cancellation", permissionResponseCe.message, "Cancellation exception should be propagated to agent")
+        // $/cancel_request carries only a request id, so the reason stays on the cancelling side.
+        assertEquals(
+            "Cancelled by the counterpart",
+            permissionResponseCe.message,
+            "Cancellation should be propagated to agent",
+        )
     }
 
 
@@ -614,7 +629,12 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
         promptJob.cancel(CancellationException("Test cancellation"))
 
         val permissionResponseCe = permissionResponseCeDeferred.await()
-        assertEquals("Test cancellation", permissionResponseCe.message, "Cancellation exception should be propagated to agent")
+        // $/cancel_request carries only a request id, so the reason stays on the cancelling side.
+        assertEquals(
+            "Cancelled by the counterpart",
+            permissionResponseCe.message,
+            "Cancellation should be propagated to agent",
+        )
     }
 
     @Test

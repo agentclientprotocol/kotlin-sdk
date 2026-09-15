@@ -24,8 +24,11 @@ import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.AuthMethodId
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.protocol.JsonRpcCall
+import com.agentclientprotocol.protocol.JsonRpcException
+import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.setRequestHandler
 import com.agentclientprotocol.rpc.ACPJson
+import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import com.agentclientprotocol.model.ElicitationId
 import com.agentclientprotocol.model.ElicitationContentValue
 import com.agentclientprotocol.model.ElicitationScope
@@ -78,23 +81,31 @@ import com.agentclientprotocol.model.v2.ToolCallUpdate
 import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.model.v2.StateUpdate
 import com.agentclientprotocol.model.v2.StopReason
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -186,6 +197,91 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         }
     }
 
+    /**
+     * Lets a failure from `session/request_permission` escape the turn.
+     *
+     * The prompt lifecycle warns that implementations often let an aborted operation surface as a plain
+     * error instead of reporting it, which is exactly the case the SDK has to cover.
+     */
+    private class UnguardedPermissionV2Session(
+        override val sessionId: SessionId,
+        private val client: V2ClientOperations,
+    ) : V2AgentSession {
+        override fun prompt(content: List<ContentBlock>, _meta: JsonElement?) = flow {
+            emit(SessionUpdate.StateUpdate(StateUpdate.Running()))
+            client.requestPermission(
+                title = "Run read_file?",
+                options = listOf(
+                    PermissionOption(PermissionOptionId("allow"), "Allow", PermissionOptionKind.AllowOnce),
+                ),
+            )
+            emit(SessionUpdate.StateUpdate(StateUpdate.Idle(stopReason = StopReason.EndTurn)))
+        }
+    }
+
+    private class UnguardedPermissionSupport : V2AgentSupport {
+        override suspend fun initialize(clientInfo: V2ClientInfo) =
+            V2AgentInfo(implementation = Implementation(name = "test-agent", version = "1.0.0"))
+
+        override suspend fun createSession(
+            parameters: V2SessionCreationParameters,
+            client: V2ClientOperations,
+        ): V2AgentSession = UnguardedPermissionV2Session(SessionId("v2-1"), client)
+    }
+
+    /** Answers `session/request_permission` with `-32800` rather than with an outcome. */
+    private class CancellingPermissions : V2ClientSessionOperations {
+        override suspend fun requestPermission(request: RequestPermissionRequest): RequestPermissionResponse =
+            throw JsonRpcException(JsonRpcErrorCode.CANCELLED.code, "Permission request was cancelled")
+    }
+
+    /**
+     * Fails mid-turn without reporting, the way an implementation bug or a broken tool would.
+     *
+     * The failure is not a cancellation, so nothing in the protocol carries it to the client: the turn
+     * would simply stop streaming unless the SDK closes it.
+     */
+    private class FailingV2Session(override val sessionId: SessionId) : V2AgentSession {
+        override fun prompt(content: List<ContentBlock>, _meta: JsonElement?) = flow<SessionUpdate> {
+            emit(SessionUpdate.StateUpdate(StateUpdate.Running()))
+            throw IllegalStateException("the turn broke")
+        }
+    }
+
+    private class FailingSupport : V2AgentSupport {
+        override suspend fun initialize(clientInfo: V2ClientInfo) =
+            V2AgentInfo(implementation = Implementation(name = "test-agent", version = "1.0.0"))
+
+        override suspend fun createSession(
+            parameters: V2SessionCreationParameters,
+            client: V2ClientOperations,
+        ): V2AgentSession = FailingV2Session(SessionId("v2-1"))
+    }
+
+    /**
+     * Reports its own cancelled turn and only then has its flow cancelled.
+     *
+     * That is the shape of an implementation which cancels its own turn coroutines after reporting, and it
+     * must not be given a second terminal update on top of the one it already sent.
+     */
+    private class SelfReportingCancelledV2Session(override val sessionId: SessionId) : V2AgentSession {
+        override fun prompt(content: List<ContentBlock>, _meta: JsonElement?) = flow<SessionUpdate> {
+            emit(SessionUpdate.StateUpdate(StateUpdate.Running()))
+            emit(SessionUpdate.StateUpdate(StateUpdate.Idle(stopReason = StopReason.Cancelled)))
+            throw CancellationException("the implementation cancelled its own turn")
+        }
+    }
+
+    private class SelfReportingCancelledSupport : V2AgentSupport {
+        override suspend fun initialize(clientInfo: V2ClientInfo) =
+            V2AgentInfo(implementation = Implementation(name = "test-agent", version = "1.0.0"))
+
+        override suspend fun createSession(
+            parameters: V2SessionCreationParameters,
+            client: V2ClientOperations,
+        ): V2AgentSession = SelfReportingCancelledV2Session(SessionId("v2-1"))
+    }
+
     /** A session that carries one config option, for resume and set_config_option. */
     private class ConfigurableV2Session(override val sessionId: SessionId) : V2AgentSession {
         var lastSet: Pair<SessionConfigId, SessionConfigValueId>? = null
@@ -248,6 +344,30 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         override suspend fun cancel() {
             cancelRequested.complete(Unit)
         }
+    }
+
+    /** Reports a finished turn without ever checking whether that turn is still wanted. */
+    private class ObliviousV2Session(override val sessionId: SessionId) : V2AgentSession {
+        override fun prompt(content: List<ContentBlock>, _meta: JsonElement?): Flow<SessionUpdate> =
+            object : Flow<SessionUpdate> {
+                // A hand-rolled Flow, because emitting straight into the collector skips the cancellation
+                // check `flow {}` would make: this turn cannot notice that it has been discarded.
+                override suspend fun collect(collector: FlowCollector<SessionUpdate>) {
+                    collector.emit(SessionUpdate.StateUpdate(StateUpdate.Idle(stopReason = StopReason.EndTurn)))
+                }
+            }
+
+        override suspend fun cancel() {}
+    }
+
+    private class ObliviousSupport : V2AgentSupport {
+        override suspend fun initialize(clientInfo: V2ClientInfo) =
+            V2AgentInfo(implementation = Implementation(name = "test-agent", version = "1.0.0"))
+
+        override suspend fun createSession(
+            parameters: V2SessionCreationParameters,
+            client: V2ClientOperations,
+        ): V2AgentSession = ObliviousV2Session(SessionId("v2-1"))
     }
 
     private class V2Support(
@@ -476,6 +596,206 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         assertNull(client.getSession(SessionId("nope")))
         assertEquals(session, client.getSession(session.sessionId))
     }
+
+    @Test
+    fun `a permission request answered with CANCELLED still ends the turn as cancelled`() = testWithProtocols { clientProtocol, agentProtocol ->
+        // A client MAY answer any request with -32800 instead of a result, and the agent's own work MAY be
+        // cancelled internally. Either way the turn still owes the client the idle update that ends it, so
+        // a cancellation must not leave the turn silent.
+        // https://agentclientprotocol.com/protocol/v2/draft/cancellation
+        V2Agent(agentProtocol, UnguardedPermissionSupport())
+        val client = V2Client(clientProtocol)
+        client.initialize(v2ClientInfo())
+
+        val session = client.newSession(cwd = ".", operations = CancellingPermissions())
+        session.prompt(listOf(ContentBlock.Text("hi")))
+
+        val updates = withTimeout(10.seconds) { session.updates.take(2).toList() }.map { it.update }
+        assertIs<StateUpdate.Running>(assertIs<SessionUpdate.StateUpdate>(updates[0]).state)
+        val idle = assertIs<StateUpdate.Idle>(assertIs<SessionUpdate.StateUpdate>(updates[1]).state)
+        assertEquals(StopReason.Cancelled, idle.stopReason)
+    }
+
+    @Test
+    fun `a turn that fails for any other reason still ends with an idle update`() = testWithProtocols { clientProtocol, agentProtocol ->
+        // The lifecycle needs a terminal idle update to close a turn, and the agent is the only party that
+        // can send one — so a flow that dies without reporting must not leave the client waiting. There is
+        // no stop reason for a failure, so the SDK reports none rather than misinform the client.
+        // https://agentclientprotocol.com/protocol/v2/prompt-lifecycle
+        V2Agent(agentProtocol, FailingSupport())
+        val client = V2Client(clientProtocol)
+        client.initialize(v2ClientInfo())
+
+        val session = client.newSession(cwd = ".")
+        session.prompt(listOf(ContentBlock.Text("hi")))
+
+        val updates = withTimeout(10.seconds) { session.updates.take(2).toList() }.map { it.update }
+        assertIs<StateUpdate.Running>(assertIs<SessionUpdate.StateUpdate>(updates[0]).state)
+        val idle = assertIs<StateUpdate.Idle>(assertIs<SessionUpdate.StateUpdate>(updates[1]).state)
+        assertNull(idle.stopReason, "the SDK cannot characterise the failure, so it reports no reason")
+    }
+
+    @Test
+    fun `closing the protocol mid-turn does not synthesise an idle update`() = testWithProtocols { clientProtocol, agentProtocol ->
+        // The counterpart to the test above: a closed protocol cancels its handler jobs, and there is no
+        // connection left to report anything over, so the terminal update must not be synthesised there.
+        val support = V2Support(hangUntilCancelled = true)
+        V2Agent(agentProtocol, support)
+        val client = V2Client(clientProtocol)
+        client.initialize(v2ClientInfo())
+
+        val session = client.newSession(cwd = ".")
+        session.prompt(listOf(ContentBlock.Text("hi")))
+        val seen = Channel<SessionUpdate>(Channel.UNLIMITED)
+        val collector = launch {
+            // The connection dies under this collector, which is the point of the test.
+            try {
+                session.updates.collect { seen.send(it.update) }
+            } catch (_: Throwable) {
+            }
+        }
+        assertIs<StateUpdate.Running>(
+            assertIs<SessionUpdate.StateUpdate>(withTimeout(100.milliseconds) { seen.receive() }).state
+        )
+
+        agentProtocol.close()
+
+        assertNull(
+            withTimeoutOrNull(100.milliseconds) { seen.receive() },
+            "there is nothing to report the turn over once the protocol is closed",
+        )
+        collector.cancel()
+    }
+
+    @Test
+    fun `locally cancelling a settled prompt still ends the turn as cancelled`() =
+        testWithProtocols { clientProtocol, agentProtocol ->
+            // `cancelPendingIncomingRequests` is public and callable on a live protocol, and it reaches a
+            // request whose reply was already collected — which a v2 prompt's is, immediately. The client
+            // keeps its successful `session/prompt` response, so the turn still owes it a terminal update.
+            val support = V2Support(hangUntilCancelled = true)
+            V2Agent(agentProtocol, support)
+            val client = V2Client(clientProtocol)
+            client.initialize(v2ClientInfo())
+
+            val session = client.newSession(cwd = ".")
+            withTimeout(10.seconds) { session.prompt(listOf(ContentBlock.Text("hi"))) }
+            // The turn has to be streaming before it is cancelled, otherwise this passes without
+            // exercising the after-response path at all.
+            withTimeout(10.seconds) { support.sessions.single().turnStarted.await() }
+
+            // The bulk variant, because the typed client does not expose the prompt's request id.
+            agentProtocol.cancelPendingIncomingRequests()
+
+            val updates = withTimeout(10.seconds) { session.updates.take(2).toList() }.map { it.update }
+            assertIs<StateUpdate.Running>(assertIs<SessionUpdate.StateUpdate>(updates[0]).state)
+            val idle = assertIs<StateUpdate.Idle>(assertIs<SessionUpdate.StateUpdate>(updates[1]).state)
+            assertEquals(StopReason.Cancelled, idle.stopReason)
+        }
+
+    @Test
+    fun `cancelling between the prompt reply and the turn still ends the turn as cancelled`() =
+        testWithProtocols { clientProtocol, agentProtocol ->
+            // The window the test above cannot reach: the cancel arrives after the prompt's reply but
+            // before the turn starts streaming. The client has its successful `session/prompt`, so it is
+            // still owed the idle update that ends the turn.
+            val support = V2Support(hangUntilCancelled = true)
+            V2Agent(agentProtocol, support)
+            val session = cancelBetweenTheReplyAndTheTurn(clientProtocol, agentProtocol)
+
+            val idle = assertIs<StateUpdate.Idle>(assertIsSoleUpdate(session))
+            assertEquals(StopReason.Cancelled, idle.stopReason)
+            assertFalse(support.sessions.single().turnStarted.isCompleted, "the turn's own flow never ran")
+        }
+
+    @Test
+    fun `a turn cancelled in that window does not get to report an outcome it never reached`() =
+        testWithProtocols { clientProtocol, agentProtocol ->
+            // A flow need not check for cancellation, and this one does not: left to itself it would
+            // report `end_turn` for a turn whose updates were all discarded.
+            V2Agent(agentProtocol, ObliviousSupport())
+            val session = cancelBetweenTheReplyAndTheTurn(clientProtocol, agentProtocol)
+
+            val idle = assertIs<StateUpdate.Idle>(assertIsSoleUpdate(session))
+            assertEquals(StopReason.Cancelled, idle.stopReason, "the turn was discarded, not finished")
+        }
+
+    /**
+     * Prompts, and cancels the prompt after its reply but before its turn starts. Returns the session.
+     *
+     * The prompt goes out in a batch with a second request, whose handler does the cancelling. A batch's
+     * reply frame is queued only once every entry has a reply, so while that second handler runs the
+     * prompt handler is parked in exactly the window under test: reply collected, turn not started.
+     *
+     * The timing is deterministic, not lucky: handlers run in wire order on a single dispatcher, and the
+     * prompt handler reaches its wait without suspending, so it is always parked by then. Cancelling in
+     * bulk because the prompt's request id is not visible here; it takes the second request with it,
+     * which only completes the batch sooner.
+     */
+    private suspend fun cancelBetweenTheReplyAndTheTurn(
+        clientProtocol: Protocol,
+        agentProtocol: Protocol,
+    ): V2ClientSession {
+        val client = V2Client(clientProtocol)
+        client.initialize(v2ClientInfo())
+        val session = client.newSession(cwd = ".")
+
+        val cancelled = CompletableDeferred<Unit>()
+        agentProtocol.setRequestHandlerRaw(AcpMethod.AgentMethods.V2.SessionList) {
+            agentProtocol.cancelPendingIncomingRequests()
+            cancelled.complete(Unit)
+            buildJsonObject {}
+        }
+
+        val prompt = AcpMethod.AgentMethods.V2.SessionPrompt
+        val results = withTimeout(10.seconds) {
+            clientProtocol.sendBatchRequestRaw(listOf(
+                JsonRpcCall.Request(prompt.methodName, ACPJson.encodeToJsonElement(prompt.requestSerializer,
+                    com.agentclientprotocol.model.v2.PromptRequest(session.sessionId, listOf(ContentBlock.Text("hi"))))),
+                JsonRpcCall.Request(AcpMethod.AgentMethods.V2.SessionList.methodName, buildJsonObject {}),
+            ))
+        }
+        withTimeout(10.seconds) { cancelled.await() }
+        // The prompt was answered, so a turn really did begin. Had the cancel landed any earlier the
+        // reply would be an error, there would be no turn to strand, and the caller would pass for free.
+        results.first().getOrThrow()
+        return session
+    }
+
+    /** The only update a cancelled-in-the-window turn sends is the one that ends it. */
+    private suspend fun assertIsSoleUpdate(session: V2ClientSession): StateUpdate =
+        assertIs<SessionUpdate.StateUpdate>(
+            withTimeout(10.seconds) { session.updates.take(1).toList() }.single().update
+        ).state
+
+    @Test
+    fun `a turn that reported itself cancelled is not given a second idle update`() =
+        testWithProtocols { clientProtocol, agentProtocol ->
+            // A turn ends at its idle update, so the safety net must stay off once the implementation has
+            // sent one — a second terminal update after the turn has ended is as wrong as none at all.
+            V2Agent(agentProtocol, SelfReportingCancelledSupport())
+            val client = V2Client(clientProtocol)
+            client.initialize(v2ClientInfo())
+
+            val session = client.newSession(cwd = ".")
+            val seen = Channel<SessionUpdate>(Channel.UNLIMITED)
+            val collector = launch { session.updates.collect { seen.send(it.update) } }
+            session.prompt(listOf(ContentBlock.Text("hi")))
+
+            assertIs<StateUpdate.Running>(
+                assertIs<SessionUpdate.StateUpdate>(withTimeout(10.seconds) { seen.receive() }).state
+            )
+            val idle = assertIs<StateUpdate.Idle>(
+                assertIs<SessionUpdate.StateUpdate>(withTimeout(10.seconds) { seen.receive() }).state
+            )
+            assertEquals(StopReason.Cancelled, idle.stopReason)
+
+            assertNull(
+                withTimeoutOrNull(100.milliseconds) { seen.receive() },
+                "the implementation already ended the turn, so the SDK must not end it again",
+            )
+            collector.cancel()
+        }
 
     @Test
     fun `a granted permission lets the turn finish`() = testWithProtocols { clientProtocol, agentProtocol ->

@@ -17,6 +17,17 @@ import kotlinx.serialization.json.*
 import kotlin.test.*
 import kotlin.time.Duration.Companion.milliseconds
 
+/**
+ * Frame-level protocol behaviour: batching, reply collection, and cancellation.
+ *
+ * Several tests here order themselves with a barrier — a notification sent *after* the message under
+ * test, whose handler completing proves the earlier handler has already run. That depends on
+ * [Protocol]'s handler dispatcher having `parallelism = 1`: handlers are queued in wire order and run
+ * one at a time, so a later one cannot overtake an earlier one. If that parallelism is ever raised,
+ * these tests will not fail — they will silently become races. The barrier is used because the handlers
+ * being ordered against have no observable effect of their own; a correctly ignored `$/cancel_request`
+ * is precisely a no-op, so there is nothing else to await.
+ */
 class BatchProtocolTest {
     private val method = AcpMethod.AgentMethods.V1.Initialize
     private val notification = AcpMethod.ClientMethods.V1.SessionUpdate
@@ -74,6 +85,15 @@ class BatchProtocolTest {
     }
 
     private fun request(id: Int) = TransportFrame.Single(JsonRpcRequest(RequestId.create(id), method.methodName))
+    private fun cancelRequest(id: Int) = TransportFrame.Single(
+        JsonRpcNotification(
+            AcpMethod.MetaMethods.CancelRequest.methodName,
+            ACPJson.encodeToJsonElement(
+                AcpMethod.MetaMethods.CancelRequest.serializer,
+                CancelRequestNotification(RequestId.create(id)),
+            ),
+        )
+    )
     private fun TransportFrame.replies(): List<JsonRpcResponse> = when (this) {
         is TransportFrame.Single -> listOf(assertIs<JsonRpcResponse>(message))
         is TransportFrame.Batch -> entries.map { assertIs<JsonRpcResponse>(assertIs<TransportFrame.Single>(it).message) }
@@ -167,32 +187,45 @@ class BatchProtocolTest {
     }
 
     @Test
-    fun cancelledPreparedOutcomeIsCleanedWithoutStartingFollowUp() = test { protocol, transport ->
+    fun cancellationBetweenTheReplyAndFollowUpIsDeliveredToTheFollowUp() = test { protocol, transport ->
+        // Id 1's reply is collected, but its frame waits on the slow sibling, so the cancellation lands
+        // after `afterResponse` was owed and before it was called. A pre-emptive discard would drop it
+        // there unseen; entering it already cancelled gives the handler its one chance to close out what
+        // the reply announced, such as a v2 turn's terminal update.
         val prepared = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val cleaned = CompletableDeferred<Unit>()
-        val starts = atomic(0)
+        val activeAtEntry = CompletableDeferred<Boolean>()
         val cleanups = atomic(0)
         protocol.setRequestOutcomeHandlerRaw(method) { request ->
             if (request.id.value == 2) release.await()
-            RequestOutcome<JsonElement?>(JsonNull, afterResponse = { starts.incrementAndGet() }, onCompletion = {
+            RequestOutcome<JsonElement?>(JsonNull, afterResponse = {
                 if (request.id.value == 1) {
-                    cleanups.incrementAndGet(); cleaned.complete(Unit)
+                    activeAtEntry.complete(currentCoroutineContext().isActive)
+                    currentCoroutineContext().ensureActive()
+                }
+            }, onCompletion = {
+                if (request.id.value == 1) {
+                    cleanups.incrementAndGet()
+                    cleaned.complete(Unit)
                 }
             }).also { if (request.id.value == 1) prepared.complete(Unit) }
         }
         transport.receive(TransportFrame.Batch(listOf(request(1), request(2))))
         prepared.await()
         protocol.cancelPendingIncomingRequest(RequestId.create(1))
-        cleaned.await()
-        assertEquals(0, starts.value)
+        // Entering cannot overtake the reply frame: follow-up work must never reach the counterpart
+        // before the response that announced it, cancelled or not.
+        assertFalse(activeAtEntry.isCompleted)
         release.complete(Unit)
         assertIs<TransportFrame.Batch>(transport.sent.receive())
+        assertFalse(activeAtEntry.await(), "Follow-up work is entered already cancelled")
+        cleaned.await()
         assertEquals(1, cleanups.value)
     }
 
     @Test
-    fun peerCancellationTerminatesSlotWithoutReply() = test { protocol, transport ->
+    fun peerCancellationRepliesWithCancelledCode() = test { protocol, transport ->
         val started = CompletableDeferred<Unit>()
         protocol.setRequestHandlerRaw(method) { request ->
             if (request.id.value == 1) {
@@ -202,18 +235,70 @@ class BatchProtocolTest {
         }
         transport.receive(TransportFrame.Batch(listOf(request(1), request(2))))
         started.await()
-        val cancel = AcpMethod.MetaMethods.CancelRequest
-        transport.receive(
-            TransportFrame.Single(
-                JsonRpcNotification(
-                    cancel.methodName,
-                    ACPJson.encodeToJsonElement(cancel.serializer, CancelRequestNotification(RequestId.create(1), null))
-                )
+        transport.receive(cancelRequest(1))
+        // The cancelled entry is answered rather than dropped, so the peer that asked to cancel is not
+        // left waiting for a reply that can never come.
+        val replies = assertIs<TransportFrame.Batch>(transport.sent.receive()).replies()
+        assertEquals(listOf(RequestId.create(1), RequestId.create(2)), replies.map { it.id })
+        assertEquals(-32800, assertIs<JsonRpcErrorResponse>(replies.first()).error.code)
+        assertIs<JsonRpcSuccessResponse>(replies.last())
+    }
+
+    @Test
+    fun peerCancellationAfterTheReplyIsIgnoredAndKeepsFollowUpRunning() = test { protocol, transport ->
+        // Once a reply has been collected the request is settled for the counterpart, so its cancel can
+        // only be redundant. Acting on it would discard after-response work — for a v2 prompt turn, the
+        // idle update that MUST end the turn.
+        val followUpStarted = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val followUpFinished = CompletableDeferred<Unit>()
+        val barrier = CompletableDeferred<Unit>()
+        protocol.setNotificationHandlerRaw(notification) { barrier.complete(Unit) }
+        protocol.setRequestOutcomeHandlerRaw(method) {
+            RequestOutcome(JsonNull, afterResponse = {
+                followUpStarted.complete(Unit)
+                release.await()
+                followUpFinished.complete(Unit)
+            })
+        }
+        transport.receive(request(1))
+        assertIs<JsonRpcSuccessResponse>(transport.sent.receive().replies().single())
+        followUpStarted.await()
+
+        transport.receive(cancelRequest(1))
+        // Notification handlers run in wire order on one dispatcher, so the cancel has been processed by
+        // the time this later notification is handled.
+        transport.receive(TransportFrame.Single(JsonRpcNotification(notification.methodName)))
+        barrier.await()
+
+        release.complete(Unit)
+        followUpFinished.await()
+        assertTrue(transport.sent.tryReceive().isFailure, "The request was already answered; no second reply")
+    }
+
+    @Test
+    fun localCancellationAfterTheReplyStillDiscardsFollowUp() = test { protocol, transport ->
+        // The counterpart of the test above: `close()` and `cancelPendingIncomingRequest` must keep
+        // reaching a settled request, because shutdown does have to drop streaming work.
+        val followUpStarted = CompletableDeferred<Unit>()
+        val cleaned = CompletableDeferred<Unit>()
+        protocol.setRequestOutcomeHandlerRaw(method) {
+            RequestOutcome(
+                JsonNull,
+                afterResponse = {
+                    followUpStarted.complete(Unit)
+                    awaitCancellation()
+                },
+                onCompletion = { cleaned.complete(Unit) },
             )
-        )
-        assertEquals(
-            listOf(RequestId.create(2)),
-            assertIs<TransportFrame.Batch>(transport.sent.receive()).replies().map { it.id })
+        }
+        transport.receive(request(1))
+        assertIs<JsonRpcSuccessResponse>(transport.sent.receive().replies().single())
+        followUpStarted.await()
+
+        protocol.cancelPendingIncomingRequest(RequestId.create(1))
+        cleaned.await()
+        assertTrue(transport.sent.tryReceive().isFailure, "The reply was already sent; cancelling must not add one")
     }
 
     @Test
@@ -455,7 +540,10 @@ class BatchProtocolTest {
         )
         val results = result.await()
         assertIs<JsonRpcException>(results[0].exceptionOrNull())
-        assertIs<CancellationException>(results[1].exceptionOrNull())
+        // A counterpart's cancellation is a failed result, not a CancellationException: this batch's
+        // coroutine was never cancelled.
+        val cancelled = assertIs<AcpRequestCancelledException>(results[1].exceptionOrNull())
+        assertEquals("remote cancellation", cancelled.message)
         assertEquals(JsonPrimitive("ok"), results[2].getOrThrow())
     }
 
@@ -545,24 +633,21 @@ class BatchProtocolTest {
     }
 
     @Test
-    fun duplicateRejectionPreservesCancellationById() = duplicateIdCancellation(expectReply = true) { protocol, _ ->
+    fun duplicateRejectionPreservesCancellationById() = duplicateIdCancellation { protocol, _ ->
         protocol.cancelPendingIncomingRequest(RequestId.create(1))
     }
 
     @Test
-    fun duplicateRejectionPreservesBulkCancellation() = duplicateIdCancellation(expectReply = true) { protocol, _ ->
+    fun duplicateRejectionPreservesBulkCancellation() = duplicateIdCancellation { protocol, _ ->
         protocol.cancelPendingIncomingRequests()
     }
 
     @Test
-    fun duplicateRejectionPreservesPeerCancellation() = duplicateIdCancellation(expectReply = false) { _, transport ->
-        transport.receive(TransportFrame.Single(JsonRpcNotification(
-            AcpMethod.MetaMethods.CancelRequest.methodName,
-            ACPJson.encodeToJsonElement(AcpMethod.MetaMethods.CancelRequest.serializer, CancelRequestNotification(RequestId.create(1), null)),
-        )))
+    fun duplicateRejectionPreservesPeerCancellation() = duplicateIdCancellation { _, transport ->
+        transport.receive(cancelRequest(1))
     }
 
-    private fun duplicateIdCancellation(expectReply: Boolean, cancel: (Protocol, FrameTransport) -> Unit) = test { protocol, transport ->
+    private fun duplicateIdCancellation(cancel: (Protocol, FrameTransport) -> Unit) = test { protocol, transport ->
         val started = Channel<Unit>(Channel.UNLIMITED)
         val cleaned = CompletableDeferred<Unit>()
         protocol.setRequestHandlerRaw(method) { request ->
@@ -588,11 +673,9 @@ class BatchProtocolTest {
 
         cancel(protocol, transport)
         cleaned.await()
-        if (expectReply) {
-            val response = assertIs<JsonRpcErrorResponse>(transport.sent.receive().replies().single())
-            assertEquals(RequestId.create(1), response.id)
-            assertEquals(-32800, response.error.code)
-        }
+        val response = assertIs<JsonRpcErrorResponse>(transport.sent.receive().replies().single())
+        assertEquals(RequestId.create(1), response.id)
+        assertEquals(-32800, response.error.code)
         assertTrue(transport.sent.tryReceive().isFailure)
     }
 
