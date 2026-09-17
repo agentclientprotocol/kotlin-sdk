@@ -237,6 +237,34 @@ Never use:
 
 Keep KDoc focused on the public contract. Document parameters, results, exceptions, cancellation, ownership, or lifecycle semantics when they are not evident from the signature.
 
+### Where property and parameter documentation goes
+
+The location of a declaration decides where its documentation lives:
+
+- A public property declared in the primary constructor is documented in the class KDoc with a `@property` tag. Do not put a KDoc comment above a primary constructor property.
+- A property declared in the class body is documented with a KDoc comment directly above it.
+- A primary constructor argument that is not a public property is documented in the class KDoc with a `@param` tag.
+
+This keeps a type's whole contract readable in one place and keeps the constructor's parameter list scannable.
+
+Example:
+
+```kotlin
+/**
+ * A chunk of bytes appended to an agent-owned terminal's output.
+ *
+ * @property data independently base64-encoded terminal output bytes
+ * @property _meta chunk-scoped metadata; omitted and `null` are equivalent
+ */
+public data class TerminalOutputChunk(
+    val terminalId: TerminalId,
+    val data: String,
+    override val _meta: JsonElement? = null,
+) : AcpWithMeta
+```
+
+Phrase `@property` and `@param` text as a lowercase continuation with no trailing period, matching the existing `@param` and `@throws` style. Not every property needs a tag: document the ones whose contract is not evident from the name and type, and leave the rest to the class prose.
+
 ## Testing Strategy
 
 Use proportional verification while keeping core changes well covered.
