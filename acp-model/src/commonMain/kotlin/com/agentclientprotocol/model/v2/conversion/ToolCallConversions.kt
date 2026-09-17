@@ -85,12 +85,20 @@ public fun V1ToolCallStatus.toV2(): ToolCallStatus = when (this) {
     V1ToolCallStatus.FAILED -> ToolCallStatus.Failed
 }
 
-// Tool call content crosses versions only as plain content blocks: v2's structured diffs
-// and v1's `oldText`/`newText` diffs have no faithful mutual representation, v1's
-// `terminal` variant was removed in v2, and v1's `content` variant has no `_meta` field.
-// Items that cannot cross are dropped, mirroring the Rust conversion's skip-on-error
-// handling of tool call content collections. This is why neither `ToolCallContent` union
-// exposes a public conversion.
+/*
+ * Tool call content crosses versions only as plain content blocks: v2's structured diffs
+ * and v1's `oldText`/`newText` diffs have no faithful mutual representation, and v1's
+ * `content` variant has no `_meta` field.
+ *
+ * The `terminal` variant exists in both versions but does not cross either: v1 references a
+ * terminal the client created and owns through `terminal/create`, while v2 references a
+ * display-only terminal the agent owns and executes. Mapping one onto the other would
+ * misattribute ownership and imply control methods that the receiving side does not have.
+ *
+ * Items that cannot cross are dropped, mirroring the Rust conversion's skip-on-error
+ * handling of tool call content collections. This is why neither `ToolCallContent` union
+ * exposes a public conversion.
+ */
 
 private fun ToolCallContent.toV1OrNull(): V1ToolCallContent? = when (this) {
     // A v2 content item carrying chunk metadata would lose it in v1, so it does not cross.
@@ -104,7 +112,7 @@ private fun ToolCallContent.toV1OrNull(): V1ToolCallContent? = when (this) {
         }
     }
 
-    is ToolCallContent.Diff, is ToolCallContent.Unknown -> null
+    is ToolCallContent.Diff, is ToolCallContent.Terminal, is ToolCallContent.Unknown -> null
 }
 
 private fun V1ToolCallContent.toV2OrNull(): ToolCallContent? = when (this) {

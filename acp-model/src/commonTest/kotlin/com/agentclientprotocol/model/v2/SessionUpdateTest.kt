@@ -102,6 +102,33 @@ class SessionUpdateTest {
     }
 
     @Test
+    fun `round-trips a terminal upsert with patch fields flattened`() {
+        val json = """{"sessionUpdate":"terminal_update","terminalId":"term_001",""" +
+            """"command":"cargo test","exitStatus":{"exitCode":0}}"""
+        val update = SessionUpdate.TerminalUpdate(
+            TerminalUpdate(
+                terminalId = TerminalId("term_001"),
+                command = MaybeUndefined.Value("cargo test"),
+                exitStatus = MaybeUndefined.Value(TerminalExitStatus(exitCode = 0u)),
+            ),
+        )
+
+        assertEquals(update, decode(json))
+        assertEquals(json, encode(update))
+    }
+
+    @Test
+    fun `round-trips a terminal output chunk`() {
+        val json = """{"sessionUpdate":"terminal_output_chunk","terminalId":"term_001","data":"YWJj"}"""
+        val update = SessionUpdate.TerminalOutputChunk(
+            TerminalOutputChunk(terminalId = TerminalId("term_001"), data = "YWJj"),
+        )
+
+        assertEquals(update, decode(json))
+        assertEquals(json, encode(update))
+    }
+
+    @Test
     fun `round-trips plan update and plan removal`() {
         val planUpdate = """{"sessionUpdate":"plan_update","plan":{"type":"items","planId":"main","entries":[]}}"""
         val planRemoved = """{"sessionUpdate":"plan_removed","planId":"main"}"""

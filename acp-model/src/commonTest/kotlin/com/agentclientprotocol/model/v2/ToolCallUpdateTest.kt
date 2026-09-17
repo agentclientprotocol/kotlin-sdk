@@ -141,12 +141,12 @@ class ToolCallUpdateTest {
     @Test
     fun `unknown content item types are preserved not skipped`() {
         val update = decode(
-            """{"toolCallId":"tc_1","content":[{"type":"terminal","terminalId":"term-1"}]}"""
+            """{"toolCallId":"tc_1","content":[{"type":"audio_stream","streamId":"stream-1"}]}"""
         )
 
         val content = assertIs<MaybeUndefined.Value<List<ToolCallContent>>>(update.content)
         val item = assertIs<ToolCallContent.Unknown>(content.value.single())
-        assertEquals("terminal", item.type)
+        assertEquals("audio_stream", item.type)
     }
 
     // Strictness: the one required field still fails hard
