@@ -316,6 +316,16 @@ Prefer a fully wired example? Launch the repository sample that pairs the agent 
 
 Each sample includes comments that explain the protocol lifecycle and can be used as templates for real applications.
 
+The v2 samples expose a response mode through session config options. The client selects “Uppercase once”
+with `session/set_config_option`; after replying, the agent resets to Echo and sends a `config_option_update`.
+`ClientSession.setConfigOption` returns the complete option list rather than the one option that changed,
+because one choice can affect the others, and later changes arrive on `session.updates` as
+`SessionUpdate.ConfigOptionUpdate` — also carrying the full list.
+
+Agents report those changes with `agent.v2.ClientOperations.notify(SessionUpdate.ConfigOptionUpdate(...))`,
+which works while the session is idle as well as mid-turn. ACP v2 uses config options for mode selection;
+dedicated modes remain available in the SDK's v1 API.
+
 ## Capabilities
 
 - **Protocol**
