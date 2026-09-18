@@ -22,7 +22,7 @@ import kotlinx.serialization.json.JsonElement
 public interface AgentSession {
     public val sessionId: SessionId
 
-    /** Configuration options to report from `session/new`, if any. */
+    /** Complete current configuration to report from `session/new`, `session/resume`, and `session/fork`. */
     public val configOptions: List<SessionConfigOption> get() = emptyList()
 
     /**
@@ -42,6 +42,10 @@ public interface AgentSession {
      * Handles `session/set_config_option` for this session, returning the options as they now stand.
      *
      * v2 replaced v1's `session/set_mode` with this; a mode is just one option among others.
+     * Return the complete option list, including changes to other options and their available values,
+     * and keep [configOptions] consistent with it. An additional notification is not required for the
+     * requesting client: the response contains the full state. Agent-initiated changes can be sent with
+     * [ClientOperations.notify] as [SessionUpdate.ConfigOptionUpdate].
      */
     public suspend fun setConfigOption(
         configId: SessionConfigId,
