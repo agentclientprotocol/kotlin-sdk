@@ -233,6 +233,7 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         val notificationCompleted = CompletableDeferred<Unit>()
         val requestStarted = CompletableDeferred<RequestId>()
         val requestCancelled = CompletableDeferred<CancellationException>()
+        val requestCancellationReported = CompletableDeferred<AcpRequestCancelledException>()
 
         clientProtocol.setNotificationHandler(TestNotificationMethod) {
             notificationStarted.complete(Unit)
@@ -253,7 +254,12 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         withTimeout(5_000) { notificationStarted.await() }
 
         val requestJob = launch {
-            agentProtocol.sendRequest(TestMethod, TestRequest("cancel"))
+            try {
+                val response = agentProtocol.sendRequest(TestMethod, TestRequest("cancel"))
+                fail("Cancelled request should not return $response")
+            } catch (e: AcpRequestCancelledException) {
+                requestCancellationReported.complete(e)
+            }
         }
         val requestId = withTimeout(5_000) { requestStarted.await() }
         agentProtocol.sendNotification(
@@ -263,11 +269,12 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
 
         val cancellationException = withTimeout(5_000) { requestCancelled.await() }
         assertEquals(counterpartCancellationMessage, cancellationException.message)
+        val reportedCancellation = withTimeout(5_000) { requestCancellationReported.await() }
+        assertEquals(counterpartCancellationMessage, reportedCancellation.message)
         assertTrue(!releaseNotification.isCompleted, "Notification handler should still be suspended")
 
         releaseNotification.complete(Unit)
         withTimeout(5_000) { notificationCompleted.await() }
-        agentProtocol.cancelPendingOutgoingRequests(CancellationException("Test request completed"))
         requestJob.join()
     }
 
