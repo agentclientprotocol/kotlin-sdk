@@ -40,9 +40,30 @@ public class JsonRpcException(
 }
 
 /**
- * Exception thrown when a request is cancelled explicitly by invoking [AcpMethod.MetaMethods.CancelRequest] from the calling site
+ * Thrown when the counterpart answers a request with `-32800`, reporting that it cancelled that
+ * request instead of completing it.
+ *
+ * Deliberately **not** a [CancellationException]: nothing cancelled this coroutine, the counterpart
+ * cancelled its own work. A [CancellationException] would cancel the caller's scope silently, and
+ * would leave callers unable to tell the counterpart's cancellation from their own — a distinction
+ * that matters because the counterpart MAY report `-32800` for an internal cancellation of its own,
+ * such as a context limit or a timeout, without ever having been asked to cancel
+ * ([cancellation](https://agentclientprotocol.com/protocol/v2/draft/cancellation)).
  */
-internal class JsonRpcIncomingRequestCanceledException(
+@OptIn(ExperimentalCoroutinesApi::class)
+public class AcpRequestCancelledException(
+    public override val message: String,
+    public val data: JsonElement? = null,
+    cause: Throwable? = null,
+) : Exception(message, cause), CopyableThrowable<AcpRequestCancelledException> {
+    override fun createCopy(): AcpRequestCancelledException =
+        AcpRequestCancelledException(message, data, cause).also { it.addSuppressed(this) }
+}
+
+/**
+ * Exception thrown when a request is canceled explicitly by invoking [AcpMethod.MetaMethods.CancelRequest] from the calling site
+ */
+internal class IncomingRequestCancelledException(
     message: String,
     internal val requestId: IncomingRequestId,
     val data: JsonElement? = null
@@ -50,18 +71,16 @@ internal class JsonRpcIncomingRequestCanceledException(
 
 
 /**
- * Try to convert an exception to a [JsonRpcError] wire representation.
+ * Convert an exception to a [JsonRpcError] wire representation.
  */
-internal fun Throwable.toJsonRpcError(): JsonRpcError? {
-    if (this is JsonRpcIncomingRequestCanceledException) return null
-
-    return when (this) {
-        is AcpExpectedError -> JsonRpcError(JsonRpcErrorCode.INVALID_PARAMS.code, this.message)
-        is JsonRpcException -> JsonRpcError(this.code, this.message, this.data)
-        is SerializationException -> JsonRpcError(JsonRpcErrorCode.PARSE_ERROR.code, this.message ?: "Serialization error")
-        is CancellationException -> JsonRpcError(JsonRpcErrorCode.CANCELLED.code, this.message ?: "Cancelled")
-        else -> JsonRpcError(JsonRpcErrorCode.INTERNAL_ERROR.code, this.message ?: "Internal error")
-    }
+internal fun Throwable.toJsonRpcError(): JsonRpcError = when (this) {
+    is AcpExpectedError -> JsonRpcError(JsonRpcErrorCode.INVALID_PARAMS.code, this.message)
+    is JsonRpcException -> JsonRpcError(this.code, this.message, this.data)
+    is SerializationException -> JsonRpcError(JsonRpcErrorCode.PARSE_ERROR.code, this.message ?: "Serialization error")
+    is IncomingRequestCancelledException ->
+        JsonRpcError(JsonRpcErrorCode.CANCELLED.code, this.message ?: "Cancelled", this.data)
+    is CancellationException -> JsonRpcError(JsonRpcErrorCode.CANCELLED.code, this.message ?: "Cancelled")
+    else -> JsonRpcError(JsonRpcErrorCode.INTERNAL_ERROR.code, this.message ?: "Internal error")
 }
 
 /**
@@ -72,7 +91,7 @@ internal fun JsonRpcException.toProtocolException(): Exception {
     return when (this.code) {
         JsonRpcErrorCode.PARSE_ERROR.code -> SerializationException(this.message, this)
         JsonRpcErrorCode.INVALID_PARAMS.code -> AcpExpectedError(this.message)
-        JsonRpcErrorCode.CANCELLED.code -> CancellationException(this.message, this)
+        JsonRpcErrorCode.CANCELLED.code -> AcpRequestCancelledException(this.message, this.data, this)
         else -> this
     }
 }

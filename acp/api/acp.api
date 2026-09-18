@@ -657,6 +657,15 @@ public final class com/agentclientprotocol/protocol/AcpExpectedError : java/lang
 	public fun getMessage ()Ljava/lang/String;
 }
 
+public final class com/agentclientprotocol/protocol/AcpRequestCancelledException : java/lang/Exception, kotlinx/coroutines/CopyableThrowable {
+	public fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun createCopy ()Lcom/agentclientprotocol/protocol/AcpRequestCancelledException;
+	public synthetic fun createCopy ()Ljava/lang/Throwable;
+	public final fun getData ()Lkotlinx/serialization/json/JsonElement;
+	public fun getMessage ()Ljava/lang/String;
+}
+
 public final class com/agentclientprotocol/protocol/ExceptionsKt {
 	public static final fun acpFail (Ljava/lang/String;)Ljava/lang/Void;
 	public static final fun jsonRpcInvalidParams (Ljava/lang/String;)Ljava/lang/Void;

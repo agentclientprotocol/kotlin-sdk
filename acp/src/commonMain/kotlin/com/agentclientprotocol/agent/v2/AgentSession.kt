@@ -35,6 +35,11 @@ public interface AgentSession {
      *   history — it is the source of truth for the agent-owned `messageId`;
      * - [StateUpdate.Running] when work starts or resumes;
      * - a final [StateUpdate.Idle] carrying the `stopReason` when the turn's work ends.
+     *
+     * If the flow fails instead of reporting, the SDK closes the turn with an [StateUpdate.Idle] that
+     * carries **no** stop reason — a last resort that keeps a client from waiting on a dead turn, not a
+     * substitute for reporting. None of the defined stop reasons describes a failure, so only the
+     * implementation can say why its turn ended.
      */
     public fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): Flow<SessionUpdate>
 

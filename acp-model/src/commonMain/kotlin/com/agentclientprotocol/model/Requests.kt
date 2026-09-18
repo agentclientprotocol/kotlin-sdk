@@ -1076,10 +1076,12 @@ public data class SessionNotification(
  * Notification used to cancel a running request with [requestId] on a counterpart side.
  *
  * (The same method is used in LSP)
+ *
+ * The schema defines no other payload than [requestId] and [_meta]: there is no field for a
+ * human-readable reason, so the cancelling side only logs one locally.
  */
 @Serializable
 public class CancelRequestNotification(
     public val requestId: RequestId,
-    public val message: String?,
     override val _meta: JsonElement? = null,
 ) : AcpNotification

@@ -122,7 +122,9 @@ public interface RpcMethodsOperations {
  *
  * @property response The handler's reply payload, mapped to JSON before it is queued.
  * @property afterResponse Optional work started after the response frame (including any batch)
- * is accepted by the transport's ordered queue.
+ * is accepted by the transport's ordered queue. Cancelling it is cooperative: it is entered even when
+ * its request was already cancelled, and SHOULD observe cancellation as its first suspension point.
+ * This lets it close out whatever the reply announced.
  * @property onCompletion Optional non-suspending cleanup, called exactly once when follow-up work
  * finishes, fails, or is discarded—even if cancellation or a send failure prevents it from starting.
  */
