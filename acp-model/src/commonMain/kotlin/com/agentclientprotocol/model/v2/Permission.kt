@@ -61,7 +61,7 @@ public sealed class RequestPermissionSubject {
         val command: String,
         val cwd: String,
         val toolCallId: ToolCallId? = null,
-        val terminalId: String? = null,
+        val terminalId: TerminalId? = null,
         override val _meta: JsonElement? = null,
     ) : RequestPermissionSubject(), AcpWithMeta {
         public companion object {

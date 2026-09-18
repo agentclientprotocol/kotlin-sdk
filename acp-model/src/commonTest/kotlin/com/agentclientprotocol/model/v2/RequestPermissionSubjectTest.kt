@@ -31,7 +31,7 @@ class RequestPermissionSubjectTest {
             command = "cargo test",
             cwd = "/home/user/project",
             toolCallId = ToolCallId("call_001"),
-            terminalId = "term_001",
+            terminalId = TerminalId("term_001"),
             _meta = buildJsonObject { put("source", "agent") },
         )
 

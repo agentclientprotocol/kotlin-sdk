@@ -548,8 +548,8 @@ public data class DiffPatch(
 /**
  * Content produced by a tool call.
  *
- * Tool calls can produce different types of content including
- * standard content blocks (text, images) or file diffs.
+ * Tool calls can produce different types of content including standard content blocks
+ * (text, images), file diffs, or display-only terminals.
  *
  * This is an open tagged union: an unrecognized `type` discriminator deserializes to
  * [Unknown] with the full raw JSON preserved, so newer ACP variants and `_`-prefixed
@@ -557,8 +557,9 @@ public data class DiffPatch(
  *
  * No v1 conversions are provided for this union: v2 diffs (structured changes plus
  * standard patch text) and v1 diffs (`oldText`/`newText`) have no faithful mutual
- * representation, and v1's `terminal` variant was removed in v2. Convert the
- * [Content] payload with the [ContentBlock] conversions where needed.
+ * representation, and v2 redefined `terminal` as an agent-owned display reference, which
+ * is a different thing from v1's client-created terminal despite the shared tag. Convert
+ * the [Content] payload with the [ContentBlock] conversions where needed.
  *
  * See protocol docs: [Content](https://agentclientprotocol.com/protocol/v2/tool-calls#content)
  */
@@ -596,6 +597,25 @@ public sealed class ToolCallContent {
     }
 
     /**
+     * A display-only reference to an agent-owned terminal.
+     *
+     * Unlike v1's `terminal` variant, which pointed at a terminal the *client* created
+     * through `terminal/create`, this reference points at a terminal the agent owns and
+     * executes. It carries no mutable state: the terminal's command, working directory,
+     * output, and exit status arrive separately through [TerminalUpdate] and
+     * [TerminalOutputChunk] session updates.
+     */
+    @Serializable
+    public data class Terminal(
+        val terminalId: TerminalId,
+        override val _meta: JsonElement? = null,
+    ) : ToolCallContent(), AcpWithMeta {
+        public companion object {
+            internal const val DISCRIMINATOR: String = "terminal"
+        }
+    }
+
+    /**
      * Custom or future tool call content.
      *
      * [rawJson] holds the complete payload as received (including the discriminator), so
@@ -613,11 +633,13 @@ internal object ToolCallContentSerializer : OpenTaggedUnionSerializer<ToolCallCo
     known = mapOf(
         ToolCallContent.Content.DISCRIMINATOR to ToolCallContent.Content.serializer(),
         ToolCallContent.Diff.DISCRIMINATOR to ToolCallContent.Diff.serializer(),
+        ToolCallContent.Terminal.DISCRIMINATOR to ToolCallContent.Terminal.serializer(),
     ),
     discriminator = { value ->
         when (value) {
             is ToolCallContent.Content -> ToolCallContent.Content.DISCRIMINATOR
             is ToolCallContent.Diff -> ToolCallContent.Diff.DISCRIMINATOR
+            is ToolCallContent.Terminal -> ToolCallContent.Terminal.DISCRIMINATOR
             is ToolCallContent.Unknown -> value.type
         }
     },
