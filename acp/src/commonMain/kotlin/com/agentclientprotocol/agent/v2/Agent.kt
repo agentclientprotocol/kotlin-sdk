@@ -26,10 +26,14 @@ import com.agentclientprotocol.model.v2.ResumeSessionRequest
 import com.agentclientprotocol.model.v2.ResumeSessionResponse
 import com.agentclientprotocol.model.v2.SessionConfigOption
 import com.agentclientprotocol.model.v2.SessionConfigOptionValue
+import com.agentclientprotocol.model.v2.SessionUpdate
+import com.agentclientprotocol.model.v2.StateUpdate
+import com.agentclientprotocol.model.v2.StopReason
 import com.agentclientprotocol.model.v2.SetProviderRequest
 import com.agentclientprotocol.model.v2.SetSessionConfigOptionRequest
 import com.agentclientprotocol.model.v2.SetSessionConfigOptionResponse
 import com.agentclientprotocol.model.v2.UpdateSessionNotification
+import com.agentclientprotocol.protocol.AcpRequestCancelledException
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.acpFail
 import com.agentclientprotocol.protocol.RequestOutcome
@@ -44,8 +48,11 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 
@@ -94,14 +101,83 @@ public class Agent(
                 throw t
             }
 
+            /*
+            A turn ends at its idle update, so track whether one has gone out: the branches below owe the
+            client a terminal update only if the implementation did not already report one, and sending a
+            second one after a turn has ended would be just as wrong as sending none.
+             */
+            val terminalIdleSent = atomic(false)
+
+            fun sendSessionUpdate(update: SessionUpdate) {
+                if (update is SessionUpdate.StateUpdate && update.state is StateUpdate.Idle) {
+                    terminalIdleSent.value = true
+                }
+                AcpMethod.ClientMethods.V2.SessionUpdate(
+                    protocol,
+                    UpdateSessionNotification(session.sessionId, update, _meta)
+                )
+            }
+
+            /**
+             * Closes a turn the implementation left open, unless it already reported one itself.
+             *
+             * `runCatching` because the turn is over either way: the failure that got us here is what
+             * matters, so a send that fails must not replace it or skip `onCompletion`. A dead protocol
+             * fails here on [Protocol]'s own liveness check, which is what keeps a shutdown silent.
+             */
+            fun reportIdle(stopReason: StopReason?) {
+                if (terminalIdleSent.value) return
+                runCatching {
+                    sendSessionUpdate(SessionUpdate.StateUpdate(StateUpdate.Idle(stopReason = stopReason)))
+                }.onFailure { t ->
+                    logger.debug(t) { "Could not report session ${session.sessionId} idle" }
+                }
+            }
+
             return RequestOutcome(
                 response = PromptResponse(),
                 afterResponse = {
-                    updates.collect { update ->
-                        AcpMethod.ClientMethods.V2.SessionUpdate(
-                            protocol,
-                            UpdateSessionNotification(session.sessionId, update, _meta)
-                        )
+                    try {
+                        /*
+                        A cancellation that arrived between the reply and this call is delivered here:
+                        the protocol enters after-response work even when it is already cancelled, so
+                        this is the first point at which the turn can see it. Checked explicitly rather
+                        than left to the flow, which is free not to look — and a turn that never looks
+                        would otherwise report an outcome it computed without knowing it was discarded.
+                         */
+                        currentCoroutineContext().ensureActive()
+                        updates.collect { update -> sendSessionUpdate(update) }
+                    } catch (e: AcpRequestCancelledException) {
+                        /*
+                        The turn died because the client answered one of this turn's requests with
+                        `-32800` rather than because the implementation finished reporting, so the idle
+                        update that MUST end a turn is still owed to the client.
+                         */
+                        logger.debug(e) { "Reporting a cancelled turn for session ${session.sessionId}" }
+                        reportIdle(StopReason.Cancelled)
+                    } catch (e: CancellationException) {
+                        /*
+                        Local cancellation: `close()` or `cancelPendingIncomingRequest(s)` is deliberately
+                        discarding this turn's follow-up work. On a live protocol the client keeps the
+                        successful `session/prompt` response and loses everything after it, so the turn is
+                        still owed the idle update that ends it — and `cancelled` is honest, because the turn
+                        really was cancelled, just locally rather than on the client's asking.
+                         */
+                        logger.debug(e) { "Reporting a locally cancelled turn for session ${session.sessionId}" }
+                        reportIdle(StopReason.Cancelled)
+                        throw e
+                    } catch (t: Throwable) {
+                        /*
+                        The turn failed for a reason the SDK cannot characterise, and the protocol swallows
+                        the exception because the response was already sent. Without a terminal update the
+                        client waits forever on a turn that is already dead, so send one here — with no stop
+                        reason, because none of the defined ones is honest about a failure.
+                        Reporting the real reason stays the implementation's job.
+                         */
+                        logger.error(t) {
+                            "Turn for session ${session.sessionId} failed; reporting it idle with no stop reason"
+                        }
+                        reportIdle(stopReason = null)
                     }
                 },
                 onCompletion = { _activePrompt.value = false },

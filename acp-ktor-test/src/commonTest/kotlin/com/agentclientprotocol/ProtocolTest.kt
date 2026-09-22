@@ -7,6 +7,7 @@ import com.agentclientprotocol.model.AcpRequest
 import com.agentclientprotocol.model.AcpResponse
 import com.agentclientprotocol.model.CancelRequestNotification
 import com.agentclientprotocol.protocol.AcpExpectedError
+import com.agentclientprotocol.protocol.AcpRequestCancelledException
 import com.agentclientprotocol.protocol.JsonRpcCall
 import com.agentclientprotocol.protocol.JsonRpcException
 import com.agentclientprotocol.protocol.acpFail
@@ -22,6 +23,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -52,6 +54,12 @@ data class TestNotification(val message: String, override val _meta: JsonElement
 
 abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by protocolDriver {
     val cancellationMessage = "Cancelled from test"
+
+    /**
+     * `$/cancel_request` carries only a request id, so the cancelled side never learns the caller's
+     * reason and reports this fixed message instead.
+     */
+    val counterpartCancellationMessage = "Cancelled by the counterpart"
 
     companion object {
         object TestMethod : AcpMethod.AcpRequestResponseMethod<TestRequest, TestResponse>("test/testRequest", TestRequest.serializer(), TestResponse.serializer())
@@ -225,6 +233,7 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         val notificationCompleted = CompletableDeferred<Unit>()
         val requestStarted = CompletableDeferred<RequestId>()
         val requestCancelled = CompletableDeferred<CancellationException>()
+        val requestCancellationReported = CompletableDeferred<AcpRequestCancelledException>()
 
         clientProtocol.setNotificationHandler(TestNotificationMethod) {
             notificationStarted.complete(Unit)
@@ -245,21 +254,27 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         withTimeout(5_000) { notificationStarted.await() }
 
         val requestJob = launch {
-            agentProtocol.sendRequest(TestMethod, TestRequest("cancel"))
+            try {
+                val response = agentProtocol.sendRequest(TestMethod, TestRequest("cancel"))
+                fail("Cancelled request should not return $response")
+            } catch (e: AcpRequestCancelledException) {
+                requestCancellationReported.complete(e)
+            }
         }
         val requestId = withTimeout(5_000) { requestStarted.await() }
         agentProtocol.sendNotification(
             AcpMethod.MetaMethods.CancelRequest,
-            CancelRequestNotification(requestId, cancellationMessage)
+            CancelRequestNotification(requestId)
         )
 
         val cancellationException = withTimeout(5_000) { requestCancelled.await() }
-        assertEquals(cancellationMessage, cancellationException.message)
+        assertEquals(counterpartCancellationMessage, cancellationException.message)
+        val reportedCancellation = withTimeout(5_000) { requestCancellationReported.await() }
+        assertEquals(counterpartCancellationMessage, reportedCancellation.message)
         assertTrue(!releaseNotification.isCompleted, "Notification handler should still be suspended")
 
         releaseNotification.complete(Unit)
         withTimeout(5_000) { notificationCompleted.await() }
-        agentProtocol.cancelPendingOutgoingRequests(CancellationException("Test request completed"))
         requestJob.join()
     }
 
@@ -354,7 +369,7 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
             }
             val agentCe = withTimeoutOrNull(1000) { agentCeDeferred.await() }
             assertNotNull(agentCe, "Cancellation exception should be propagated to agent")
-            assertEquals(cancellationMessage, agentCe.message, "Cancellation exception should be propagated to agent")
+            assertEquals(counterpartCancellationMessage, agentCe.message, "Cancellation exception should be propagated to agent")
         }
     }
 
@@ -380,7 +395,7 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
 
         val agentCe = withTimeoutOrNull(1000) { agentCeDeferred.await() }
         assertNotNull(agentCe, "Cancellation exception should be propagated to agent")
-        assertEquals(cancellationMessage, agentCe.message, "Cancellation exception should be propagated to agent")
+        assertEquals(counterpartCancellationMessage, agentCe.message, "Cancellation exception should be propagated to agent")
     }
 
     @Test
@@ -423,7 +438,49 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     }
 
     @Test
-    fun `request cancelled from agent by cancelPendingIncomingRequests should be cancelled on client`() = testWithProtocols { clientProtocol, agentProtocol ->
+    fun `cancelled request is answered with CANCELLED instead of the graceful timeout`() = testWithProtocols { clientProtocol, agentProtocol ->
+        // The counterpart that receives $/cancel_request MUST answer the original request, with either a
+        // valid response or -32800, so the caller stops waiting as soon as that reply lands rather than
+        // burning gracefulRequestCancellationTimeout on a reply that never comes.
+        // https://agentclientprotocol.com/protocol/v2/draft/cancellation
+        val handlerStarted = CompletableDeferred<Unit>()
+        val handlerCancelled = CompletableDeferred<Unit>()
+        agentProtocol.setRequestHandler(TestMethod) {
+            handlerStarted.complete(Unit)
+            try {
+                awaitCancellation()
+            }
+            catch (ce: CancellationException) {
+                handlerCancelled.complete(Unit)
+                throw ce
+            }
+        }
+
+        val clientCeDeferred = CompletableDeferred<CancellationException>()
+        val requestJob = launch {
+            try {
+                clientProtocol.sendRequest(TestMethod, TestRequest("Test"))
+            }
+            catch (ce: CancellationException) {
+                clientCeDeferred.complete(ce)
+                throw ce
+            }
+        }
+
+        withTimeout(5000) { handlerStarted.await() }
+        requestJob.cancel(kotlinx.coroutines.CancellationException(cancellationMessage))
+
+        val cancellation = withTimeout(5000) { measureTimedValue { clientCeDeferred.await() } }
+        assertEquals(cancellationMessage, cancellation.value.message, "Cancellation exception should be propagated to client")
+        withTimeout(5000) { handlerCancelled.await() }
+        assertTrue(
+            cancellation.duration < 500.milliseconds,
+            "Caller should finish on the counterpart's CANCELLED reply, not on the graceful timeout, but took ${cancellation.duration}",
+        )
+    }
+
+    @Test
+    fun `request cancelled from agent by cancelPendingIncomingRequests is reported to client as a request cancellation`() = testWithProtocols { clientProtocol, agentProtocol ->
         val agentCeDeferred = CompletableDeferred<CancellationException>()
         agentProtocol.setRequestHandler(TestMethod) { request ->
             try {
@@ -442,13 +499,15 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
 
         try {
             val response = withTimeout(1000) { clientProtocol.sendRequest(TestMethod, TestRequest("Test")) }
+            fail("Request should be reported as cancelled by the agent, but returned $response")
+        }
+        catch (e: AcpRequestCancelledException) {
+            // The agent cancelled its own work and said so with -32800. This coroutine was never
+            // cancelled, so the report must not arrive as a CancellationException.
+            assertEquals(cancellationMessage, e.message, "Cancellation message should be propagated to client")
         }
         catch (te: TimeoutCancellationException) {
             fail("Request should be cancelled explicitly and not timed out")
-        }
-        catch (ce: CancellationException) {
-            //expected
-            assertEquals(cancellationMessage, ce.message, "Cancellation exception should be propagated to client")
         }
         catch (e: Exception) {
             fail("Unexpected exception: ${e.message}", e)
@@ -460,7 +519,7 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     }
 
     @Test
-    fun `request cancelled from agent by throwing CE should be cancelled on client`() = testWithProtocols { clientProtocol, agentProtocol ->
+    fun `request cancelled from agent by throwing CE is reported to client as a request cancellation`() = testWithProtocols { clientProtocol, agentProtocol ->
         val agentCeDeferred = CompletableDeferred<CancellationException>()
         agentProtocol.setRequestHandler(TestMethod) { request ->
             try {
@@ -475,13 +534,14 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
 
         try {
             val response = withTimeout(1000) { clientProtocol.sendRequest(TestMethod, TestRequest("Test")) }
+            fail("Request should be reported as cancelled by the agent, but returned $response")
+        }
+        catch (e: AcpRequestCancelledException) {
+            //expected
+            assertEquals(cancellationMessage, e.message, "Cancellation message should be propagated to client")
         }
         catch (te: TimeoutCancellationException) {
             fail("Request should be cancelled explicitly and not timed out")
-        }
-        catch (ce: CancellationException) {
-            //expected
-            assertEquals(cancellationMessage, ce.message, "Cancellation exception should be propagated to client")
         }
         catch (e: Exception) {
             fail("Unexpected exception: ${e.message}", e)
@@ -490,6 +550,43 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         val agentCe = withTimeoutOrNull(1000) { agentCeDeferred.await() }
         assertNotNull(agentCe, "Cancellation exception should be propagated to agent")
         assertEquals(cancellationMessage, agentCe.message, "Cancellation exception should be propagated to agent")
+    }
+
+    @Test
+    fun `a counterpart cancellation does not cancel the caller's scope`() = testWithProtocols { clientProtocol, agentProtocol ->
+        // -32800 says the counterpart cancelled its own work; it says nothing about this side. Reporting it
+        // as a CancellationException would cancel the caller's scope silently and take unrelated work in
+        // that scope down with it. https://agentclientprotocol.com/protocol/v2/draft/cancellation
+        val handlerStarted = CompletableDeferred<Unit>()
+        agentProtocol.setRequestHandler(TestMethod) {
+            handlerStarted.complete(Unit)
+            awaitCancellation()
+        }
+
+        val siblingFinished = CompletableDeferred<Unit>()
+        var caught: AcpRequestCancelledException? = null
+        coroutineScope {
+            val sibling = launch {
+                handlerStarted.await()
+                delay(100)
+                siblingFinished.complete(Unit)
+            }
+            launch {
+                handlerStarted.await()
+                agentProtocol.cancelPendingIncomingRequests(kotlinx.coroutines.CancellationException(cancellationMessage))
+            }
+            try {
+                val response = clientProtocol.sendRequest(TestMethod, TestRequest("Test"))
+                fail("The counterpart cancelled the request, so it must not answer with $response")
+            }
+            catch (e: AcpRequestCancelledException) {
+                caught = e
+            }
+            sibling.join()
+        }
+
+        assertEquals(cancellationMessage, assertNotNull(caught).message)
+        assertTrue(siblingFinished.isCompleted, "Sibling work in the caller's scope should survive the counterpart's cancellation")
     }
 
     @Test

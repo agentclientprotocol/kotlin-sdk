@@ -1,44 +1,23 @@
 package com.agentclientprotocol.agent
 
+import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.model.*
+import com.agentclientprotocol.protocol.Protocol
+import com.agentclientprotocol.protocol.setNotificationHandler
+import com.agentclientprotocol.rpc.*
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.flow
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.*
+import kotlin.test.*
+import kotlin.time.Duration.Companion.seconds
 import com.agentclientprotocol.agent.v2.Agent as V2Agent
 import com.agentclientprotocol.agent.v2.AgentInfo as V2AgentInfo
 import com.agentclientprotocol.agent.v2.AgentSession as V2AgentSession
 import com.agentclientprotocol.agent.v2.AgentSupport as V2AgentSupport
 import com.agentclientprotocol.agent.v2.ClientOperations as V2ClientOperations
 import com.agentclientprotocol.agent.v2.SessionCreationParameters as V2SessionCreationParameters
-import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.v2.ClientInfo as V2ClientInfo
-import com.agentclientprotocol.model.*
-import com.agentclientprotocol.protocol.Protocol
-import com.agentclientprotocol.rpc.ACPJson
-import com.agentclientprotocol.rpc.RequestId
-import com.agentclientprotocol.rpc.JsonRpcErrorCode
-import com.agentclientprotocol.rpc.JsonRpcSuccessResponse
-import com.agentclientprotocol.rpc.JsonRpcErrorResponse
-import kotlinx.serialization.json.buildJsonArray
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonObject
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.delay
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
 
 @OptIn(UnstableApi::class)
 class AgentTest {
@@ -81,6 +60,43 @@ class AgentTest {
         protocolVersion = PROTOCOL_VERSION_V2,
         info = Implementation(name = "test-client", version = "1.0.0"),
     )
+
+    /**
+     * An inert notification used to order a test against a handler that has no observable effect.
+     *
+     * Handlers are queued in wire order and run one at a time, because [Protocol]'s handler dispatcher
+     * has `parallelism = 1`, so a barrier fired after the message under test cannot be handled before
+     * it. Awaiting the barrier therefore proves the earlier handler has already run — the only way to
+     * order against something like a `$/cancel_request` that is correctly ignored and so changes
+     * nothing a test can observe.
+     *
+     * That parallelism is load-bearing here: raising it would not fail these tests, it would silently
+     * turn them into races.
+     */
+    @Serializable
+    private data class BarrierNotification(override val _meta: JsonElement? = null) :
+        AcpNotification
+
+    private object BarrierMethod :
+        AcpMethod.AcpNotificationMethod<BarrierNotification>("test/barrier", BarrierNotification.serializer())
+
+    /** Reads the next message from the agent as a `session/update`. */
+    private suspend fun TestV2Agent.receiveSessionUpdate(): com.agentclientprotocol.model.v2.UpdateSessionNotification =
+        ACPJson.decodeFromJsonElement(
+            AcpMethod.ClientMethods.V2.SessionUpdate.serializer,
+            assertNotNull(assertIs<JsonRpcNotification>(transport.receiveTestMessages(1).single()).params),
+        )
+
+    /** Completes once every notification fired before this call has been handled. */
+    private fun TestV2Agent.barrier(): CompletableDeferred<Unit> {
+        val reached = CompletableDeferred<Unit>()
+        agent.protocol.setNotificationHandler(BarrierMethod) { reached.complete(Unit) }
+        transport.fireTestNotification(
+            BarrierMethod.methodName,
+            ACPJson.encodeToJsonElement(BarrierMethod.serializer, BarrierNotification()),
+        )
+        return reached
+    }
 
     @Test
     fun `a v2 agent speaks v2`() {
@@ -199,6 +215,45 @@ class AgentTest {
             val error = assertNotNull((received.last() as JsonRpcErrorResponse).error)
             assertEquals(JsonRpcErrorCode.METHOD_NOT_FOUND.code, error.code, "unexpected error: $error")
         }
+    }
+
+    /** A v2 session whose turn holds at a gate before reporting itself idle. */
+    private class GatedV2Session(override val sessionId: SessionId) : V2AgentSession {
+        val turnStarted = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+
+        override fun prompt(
+            content: List<com.agentclientprotocol.model.v2.ContentBlock>,
+            _meta: kotlinx.serialization.json.JsonElement?,
+        ) = flow {
+            emit(
+                com.agentclientprotocol.model.v2.SessionUpdate.StateUpdate(
+                    com.agentclientprotocol.model.v2.StateUpdate.Running()
+                )
+            )
+            turnStarted.complete(Unit)
+            release.await()
+            emit(
+                com.agentclientprotocol.model.v2.SessionUpdate.StateUpdate(
+                    com.agentclientprotocol.model.v2.StateUpdate.Idle(
+                        stopReason = com.agentclientprotocol.model.v2.StopReason.EndTurn
+                    )
+                )
+            )
+        }
+    }
+
+    private class GatedV2Support : V2AgentSupport {
+        val sessions = mutableListOf<GatedV2Session>()
+
+        override suspend fun initialize(clientInfo: V2ClientInfo) = V2AgentInfo(
+            implementation = Implementation(name = "test-agent-v2", version = "1.0.0")
+        )
+
+        override suspend fun createSession(
+            parameters: V2SessionCreationParameters,
+            client: V2ClientOperations,
+        ): V2AgentSession = GatedV2Session(SessionId("v2-gated-${sessions.size + 1}")).also { sessions += it }
     }
 
     /** A v2 session that streams one agent message and then reports the turn as idle. */
@@ -490,13 +545,72 @@ class AgentTest {
                 AcpMethod.MetaMethods.CancelRequest.methodName,
                 ACPJson.encodeToJsonElement(
                     AcpMethod.MetaMethods.CancelRequest.serializer,
-                    CancelRequestNotification(requestId, message = "cancelled by the test")
+                    CancelRequestNotification(requestId)
                 )
             )
 
             // Fails by timeout if the cancel notification was swallowed by the version switch.
             withTimeout(5.seconds) { v2Support.cancelled.await() }
             inFlight.cancel()
+        }
+    }
+
+    @Test
+    fun `a cancel for an already answered prompt leaves the turn running`() {
+        // v2 answers session/prompt before the turn streams, so by the time updates flow the request is
+        // settled and a $/cancel_request for its id can only be redundant. Acting on it would discard the
+        // rest of the turn, including the idle update that MUST end it.
+        // https://agentclientprotocol.com/protocol/v2/draft/cancellation
+        val support = GatedV2Support()
+        withTestV2Agent(support) { testAgent ->
+            testAgent.testInitialize(v2InitializeRequest())
+            val (newSession) = testAgent.testRequest(
+                AcpMethod.AgentMethods.V2.SessionNew,
+                com.agentclientprotocol.model.v2.NewSessionRequest(cwd = "."),
+            )
+            val sessionId = assertNotNull(newSession).sessionId
+            val session = support.sessions.single()
+
+            val promptId = RequestId.create(99)
+            val prompt = AcpMethod.AgentMethods.V2.SessionPrompt
+            val promptReplies = testAgent.transport.fireTestRequest(
+                prompt.methodName,
+                ACPJson.encodeToJsonElement(
+                    prompt.requestSerializer,
+                    com.agentclientprotocol.model.v2.PromptRequest(
+                        sessionId,
+                        listOf(com.agentclientprotocol.model.v2.ContentBlock.Text("hi")),
+                    ),
+                ),
+                promptId,
+            )
+            assertIs<JsonRpcSuccessResponse>(promptReplies.last())
+            withTimeout(5.seconds) { session.turnStarted.await() }
+            // The turn's opening update, consumed here so the tail read after the cancel is unambiguous.
+            assertIs<com.agentclientprotocol.model.v2.StateUpdate.Running>(
+                assertIs<com.agentclientprotocol.model.v2.SessionUpdate.StateUpdate>(
+                    testAgent.receiveSessionUpdate().update
+                ).state
+            )
+
+            testAgent.transport.fireTestNotification(
+                AcpMethod.MetaMethods.CancelRequest.methodName,
+                ACPJson.encodeToJsonElement(
+                    AcpMethod.MetaMethods.CancelRequest.serializer,
+                    CancelRequestNotification(promptId),
+                ),
+            )
+            // Firing a notification says nothing about when its handler runs, and an ignored cancel has no
+            // observable effect to wait on, waiting for the barrier explicitly.
+            withTimeout(5.seconds) { testAgent.barrier().await() }
+
+            session.release.complete(Unit)
+            val update = testAgent.receiveSessionUpdate()
+            assertEquals(sessionId, update.sessionId)
+            val idle = assertIs<com.agentclientprotocol.model.v2.StateUpdate.Idle>(
+                assertIs<com.agentclientprotocol.model.v2.SessionUpdate.StateUpdate>(update.update).state
+            )
+            assertEquals(com.agentclientprotocol.model.v2.StopReason.EndTurn, idle.stopReason)
         }
     }
 
