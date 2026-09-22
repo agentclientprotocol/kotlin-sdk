@@ -72,6 +72,26 @@ class ToolCallContentTest {
         assertEquals(diff, decode(encode(diff)))
     }
 
+    @Test
+    fun `decodes the terminal variant as a bare reference`() {
+        assertEquals(
+            ToolCallContent.Terminal(terminalId = TerminalId("term_001")),
+            decode("""{"type":"terminal","terminalId":"term_001"}"""),
+        )
+    }
+
+    @Test
+    fun `terminal variant round-trips with content-scoped meta`() {
+        val json = """{"type":"terminal","terminalId":"term_001","_meta":{"scope":"reference"}}"""
+
+        assertEquals(json, encode(decode(json)))
+    }
+
+    @Test
+    fun `terminal variant requires a terminal id`() {
+        assertFailsWith<SerializationException> { decode("""{"type":"terminal"}""") }
+    }
+
     // Open leaves of the diff graph
 
     @Test
@@ -119,12 +139,12 @@ class ToolCallContentTest {
 
     @Test
     fun `decodes unknown content type as Unknown preserving the full payload`() {
-        val json = """{"type":"terminal","terminalId":"term-1"}"""
+        val json = """{"type":"audio_stream","streamId":"stream-1"}"""
 
         val content = decode(json)
 
         assertIs<ToolCallContent.Unknown>(content)
-        assertEquals("terminal", content.type)
+        assertEquals("audio_stream", content.type)
         assertEquals(json, encode(content))
     }
 

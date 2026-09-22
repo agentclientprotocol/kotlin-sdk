@@ -218,8 +218,10 @@ private fun MaybeUndefined<JsonElement>.metaValueOrThrow(context: String): JsonE
  * @throws ProtocolConversionException if this update has no v1 representation:
  * [SessionUpdate.StateUpdate] (v1 reports completion in the `session/prompt` response),
  * [SessionUpdate.ToolCallContentChunk] (v1 content updates replace rather than append),
- * [SessionUpdate.Unknown], a message upsert whose content is absent, cleared, or empty, or
- * a nested payload that cannot itself be converted
+ * [SessionUpdate.TerminalUpdate] and [SessionUpdate.TerminalOutputChunk] (v1 terminals are
+ * client-owned and have no session-update form), [SessionUpdate.Unknown], a message upsert
+ * whose content is absent, cleared, or empty, or a nested payload that cannot itself be
+ * converted
  */
 @UnstableApi
 public fun SessionUpdate.toV1(): List<V1SessionUpdate> = when (this) {
@@ -267,6 +269,22 @@ public fun SessionUpdate.toV1(): List<V1SessionUpdate> = when (this) {
     )
 
     is SessionUpdate.ToolCallUpdate -> listOf(update.toV1())
+
+    /*
+     * v1 has no terminal session updates at all: terminal state lived on a client-owned
+     * terminal that the agent drove with the `terminal/create` method family, so there is
+     * nothing to carry an agent-owned display terminal's state across.
+     */
+    is SessionUpdate.TerminalUpdate -> throw ProtocolConversionException(
+        "v2 SessionUpdate variant `terminal_update` cannot be represented in v1 because v1 " +
+            "terminals are client-owned and have no session-update form"
+    )
+
+    is SessionUpdate.TerminalOutputChunk -> throw ProtocolConversionException(
+        "v2 SessionUpdate variant `terminal_output_chunk` cannot be represented in v1 " +
+            "because v1 terminals are client-owned and have no session-update form"
+    )
+
     is SessionUpdate.PlanUpdate -> listOf(update.toV1())
     is SessionUpdate.PlanRemoved -> listOf(removed.toV1())
     is SessionUpdate.AvailableCommandsUpdate -> listOf(update.toV1())

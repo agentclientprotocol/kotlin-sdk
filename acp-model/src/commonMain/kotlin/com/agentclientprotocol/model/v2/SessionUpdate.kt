@@ -33,6 +33,8 @@ import kotlinx.serialization.json.jsonObject
 @OptIn(UnstableApi::class) private typealias StateUpdatePayload = StateUpdate
 @OptIn(UnstableApi::class) private typealias ToolCallContentChunkPayload = ToolCallContentChunk
 @OptIn(UnstableApi::class) private typealias ToolCallUpdatePayload = ToolCallUpdate
+@OptIn(UnstableApi::class) private typealias TerminalUpdatePayload = TerminalUpdate
+@OptIn(UnstableApi::class) private typealias TerminalOutputChunkPayload = TerminalOutputChunk
 @OptIn(UnstableApi::class) private typealias PlanUpdatePayload = PlanUpdate
 @OptIn(UnstableApi::class) private typealias PlanRemovedPayload = PlanRemoved
 @OptIn(UnstableApi::class) private typealias AvailableCommandsUpdatePayload = AvailableCommandsUpdate
@@ -646,6 +648,8 @@ public data class CompactionSummaryChunk(
  *   [AgentThought]) rather than only as chunks.
  * - [StateUpdate] replaces reporting a turn's outcome through the prompt response.
  * - Plans are identified by ID and can be removed.
+ * - [TerminalUpdate] and [TerminalOutputChunk] report agent-owned terminal output for
+ *   display, replacing v1's client-executed terminal methods.
  *
  * See protocol docs: [Agent Reports Output](https://agentclientprotocol.com/protocol/v2/prompt-turn#3-agent-reports-output)
  */
@@ -730,6 +734,27 @@ public sealed class SessionUpdate {
     public data class ToolCallUpdate(val update: ToolCallUpdatePayload) : SessionUpdate() {
         internal companion object {
             internal const val DISCRIMINATOR: String = "tool_call_update"
+        }
+    }
+
+    /**
+     * An agent-owned terminal was created or its stored state changed.
+     *
+     * The payload has patch semantics, and a concrete
+     * [TerminalUpdatePayload.output] replaces the terminal's stored bytes outright.
+     */
+    public data class TerminalUpdate(val update: TerminalUpdatePayload) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "terminal_update"
+        }
+    }
+
+    /**
+     * Bytes appended to an agent-owned terminal's output.
+     */
+    public data class TerminalOutputChunk(val chunk: TerminalOutputChunkPayload) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "terminal_output_chunk"
         }
     }
 
@@ -907,6 +932,14 @@ internal object SessionUpdateSerializer : OpenTaggedUnionSerializer<SessionUpdat
             "ToolCallUpdate", ToolCallUpdatePayload.serializer(),
             SessionUpdate::ToolCallUpdate, SessionUpdate.ToolCallUpdate::update,
         ),
+        SessionUpdate.TerminalUpdate.DISCRIMINATOR to SessionUpdateVariantSerializer(
+            "TerminalUpdate", TerminalUpdatePayload.serializer(),
+            SessionUpdate::TerminalUpdate, SessionUpdate.TerminalUpdate::update,
+        ),
+        SessionUpdate.TerminalOutputChunk.DISCRIMINATOR to SessionUpdateVariantSerializer(
+            "TerminalOutputChunk", TerminalOutputChunkPayload.serializer(),
+            SessionUpdate::TerminalOutputChunk, SessionUpdate.TerminalOutputChunk::chunk,
+        ),
         SessionUpdate.PlanUpdate.DISCRIMINATOR to SessionUpdateVariantSerializer(
             "PlanUpdate", PlanUpdatePayload.serializer(),
             SessionUpdate::PlanUpdate, SessionUpdate.PlanUpdate::update,
@@ -955,6 +988,8 @@ internal object SessionUpdateSerializer : OpenTaggedUnionSerializer<SessionUpdat
             is SessionUpdate.StateUpdate -> SessionUpdate.StateUpdate.DISCRIMINATOR
             is SessionUpdate.ToolCallContentChunk -> SessionUpdate.ToolCallContentChunk.DISCRIMINATOR
             is SessionUpdate.ToolCallUpdate -> SessionUpdate.ToolCallUpdate.DISCRIMINATOR
+            is SessionUpdate.TerminalUpdate -> SessionUpdate.TerminalUpdate.DISCRIMINATOR
+            is SessionUpdate.TerminalOutputChunk -> SessionUpdate.TerminalOutputChunk.DISCRIMINATOR
             is SessionUpdate.PlanUpdate -> SessionUpdate.PlanUpdate.DISCRIMINATOR
             is SessionUpdate.PlanRemoved -> SessionUpdate.PlanRemoved.DISCRIMINATOR
             is SessionUpdate.AvailableCommandsUpdate -> SessionUpdate.AvailableCommandsUpdate.DISCRIMINATOR

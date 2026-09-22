@@ -122,6 +122,23 @@ class SessionUpdateConversionTest {
     }
 
     @Test
+    fun `agent-owned terminal updates have no v1 form`() {
+        assertFailsWith<ProtocolConversionException> {
+            SessionUpdate.TerminalUpdate(
+                TerminalUpdate(
+                    terminalId = TerminalId("term_001"),
+                    command = MaybeUndefined.Value("cargo test"),
+                ),
+            ).toV1()
+        }
+        assertFailsWith<ProtocolConversionException> {
+            SessionUpdate.TerminalOutputChunk(
+                TerminalOutputChunk(terminalId = TerminalId("term_001"), data = "YWJj"),
+            ).toV1()
+        }
+    }
+
+    @Test
     fun `an unknown v2 update has no v1 form`() {
         assertFailsWith<ProtocolConversionException> {
             SessionUpdate.Unknown("_vendor", buildJsonObject { put("sessionUpdate", JsonPrimitive("_vendor")) })
@@ -246,6 +263,44 @@ class SessionUpdateConversionTest {
                 ),
             ),
             update.toV1(),
+        )
+    }
+
+    @Test
+    fun `terminal tool call content does not cross versions in either direction`() {
+        /*
+         * Both versions tag this content `terminal`, but v1 points at a client-created
+         * terminal and v2 at an agent-owned display terminal, so neither crosses.
+         */
+        val v2 = SessionUpdate.ToolCallUpdate(
+            ToolCallUpdate(
+                toolCallId = ToolCallId("tc_1"),
+                content = MaybeUndefined.Value(
+                    listOf(
+                        ToolCallContent.Terminal(terminalId = TerminalId("term_001")),
+                        ToolCallContent.Content(ContentBlock.Text("kept")),
+                    ),
+                ),
+            ),
+        )
+
+        val v1Updates = v2.toV1()
+        assertEquals(
+            listOf(V1ToolCallContent.Content(V1ContentBlock.Text("kept"))),
+            assertIs<V1SessionUpdate.ToolCallUpdate>(v1Updates.single()).content,
+        )
+
+        val v1: V1SessionUpdate = V1SessionUpdate.ToolCallUpdate(
+            toolCallId = ToolCallId("tc_1"),
+            content = listOf(
+                V1ToolCallContent.Terminal(terminalId = "term_001"),
+                V1ToolCallContent.Content(V1ContentBlock.Text("kept")),
+            ),
+        )
+
+        assertEquals(
+            MaybeUndefined.Value(listOf(ToolCallContent.Content(ContentBlock.Text("kept")))),
+            assertIs<SessionUpdate.ToolCallUpdate>(v1.toV2()).update.content,
         )
     }
 
