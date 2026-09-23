@@ -282,7 +282,9 @@ public class Agent(
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.V2.SessionResume) { params: ResumeSessionRequest ->
-            val clientOperations = RemoteClientOperations(protocol)
+            // Bound up front, unlike `session/new`: replaying history is part of resuming, not something
+            // that can wait until this call has answered.
+            val clientOperations = RemoteClientOperations(protocol, params.sessionId)
             val session = agentSupport.resumeSession(
                 params.sessionId,
                 SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta),

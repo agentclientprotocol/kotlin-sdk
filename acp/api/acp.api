@@ -256,6 +256,8 @@ public abstract interface class com/agentclientprotocol/agent/v2/ClientOperation
 	public static synthetic fun completeElicitation-hBnOb4M$default (Lcom/agentclientprotocol/agent/v2/ClientOperations;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)V
 	public abstract fun createElicitation (Ljava/lang/String;Lcom/agentclientprotocol/model/v2/ElicitationMode;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun createElicitation$default (Lcom/agentclientprotocol/agent/v2/ClientOperations;Ljava/lang/String;Lcom/agentclientprotocol/model/v2/ElicitationMode;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public abstract fun notify (Lcom/agentclientprotocol/model/v2/SessionUpdate;Lkotlinx/serialization/json/JsonElement;)V
+	public static synthetic fun notify$default (Lcom/agentclientprotocol/agent/v2/ClientOperations;Lcom/agentclientprotocol/model/v2/SessionUpdate;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)V
 	public abstract fun requestPermission (Ljava/lang/String;Ljava/util/List;Lcom/agentclientprotocol/model/v2/RequestPermissionSubject;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun requestPermission$default (Lcom/agentclientprotocol/agent/v2/ClientOperations;Ljava/lang/String;Ljava/util/List;Lcom/agentclientprotocol/model/v2/RequestPermissionSubject;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
@@ -263,6 +265,7 @@ public abstract interface class com/agentclientprotocol/agent/v2/ClientOperation
 public final class com/agentclientprotocol/agent/v2/ClientOperations$DefaultImpls {
 	public static synthetic fun completeElicitation-hBnOb4M$default (Lcom/agentclientprotocol/agent/v2/ClientOperations;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)V
 	public static synthetic fun createElicitation$default (Lcom/agentclientprotocol/agent/v2/ClientOperations;Ljava/lang/String;Lcom/agentclientprotocol/model/v2/ElicitationMode;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun notify$default (Lcom/agentclientprotocol/agent/v2/ClientOperations;Lcom/agentclientprotocol/model/v2/SessionUpdate;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)V
 	public static synthetic fun requestPermission$default (Lcom/agentclientprotocol/agent/v2/ClientOperations;Ljava/lang/String;Ljava/util/List;Lcom/agentclientprotocol/model/v2/RequestPermissionSubject;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 

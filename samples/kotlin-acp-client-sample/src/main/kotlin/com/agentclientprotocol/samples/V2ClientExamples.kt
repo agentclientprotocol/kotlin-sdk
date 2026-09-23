@@ -13,10 +13,13 @@ import com.agentclientprotocol.client.v2.ClientInfo as V2ClientInfo
 import com.agentclientprotocol.client.v2.ClientSessionOperations
 import com.agentclientprotocol.model.Implementation
 import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
+import com.agentclientprotocol.model.SessionConfigId
+import com.agentclientprotocol.model.SessionConfigValueId
 import com.agentclientprotocol.model.v2.ContentBlock
 import com.agentclientprotocol.model.v2.RequestPermissionOutcome
 import com.agentclientprotocol.model.v2.RequestPermissionRequest
 import com.agentclientprotocol.model.v2.RequestPermissionResponse
+import com.agentclientprotocol.model.v2.SessionConfigOptionValue
 import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.model.v2.StateUpdate
 import com.agentclientprotocol.protocol.Protocol
@@ -94,6 +97,14 @@ private suspend fun CoroutineScope.runV2Conversation(client: Client) {
         }
     }
 
+    if (session.configOptions.any { it.configId == SessionConfigId("response_mode") }) {
+        // The response is the complete option list, not just the one that changed.
+        val configured = session.setConfigOption(
+            SessionConfigId("response_mode"),
+            SessionConfigOptionValue.Id(SessionConfigValueId("uppercase")),
+        )
+        println("Configured next reply: $configured")
+    }
     session.prompt(listOf(ContentBlock.Text("Hello from the v2 client")))
     turnFinished.await()
     session.close()

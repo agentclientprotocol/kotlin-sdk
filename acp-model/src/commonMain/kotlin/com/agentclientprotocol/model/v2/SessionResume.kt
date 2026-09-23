@@ -143,7 +143,7 @@ internal object SetSessionConfigOptionRequestSerializer : KSerializer<SetSession
         val jsonDecoder = decoder as? JsonDecoder
             ?: throw SerializationException("${descriptor.serialName} supports only JSON")
         val jsonObject = jsonDecoder.decodeJsonElement().jsonObject
-        fun string(key: String): String = (jsonObject[key] as? JsonPrimitive)?.content
+        fun string(key: String): String = (jsonObject[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
             ?: throw SerializationException("Missing '$key' in ${descriptor.serialName}")
 
         val value = jsonDecoder.json.decodeFromJsonElement(

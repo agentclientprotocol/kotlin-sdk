@@ -277,9 +277,8 @@ public open class AcpMethod(public val methodName: MethodName) {
         /**
          * Agent-side methods as they exist in the v2 draft, with v2's own payload types.
          *
-         * Only `initialize` so far: the rest of the v2 surface (`auth/login`, `session/resume`,
-         * `session/set_config_option`, ...) is not implemented yet, and a method absent from this group
-         * is refused on a v2 connection rather than answered with a v1 payload.
+         * Dedicated session modes are absent: use `session/set_config_option` for mode-like state.
+         * A method absent from this group is not installed by the v2 agent.
          */
         @UnstableApi
         public object V2 {
