@@ -27,9 +27,9 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver by protocolDriver {
-    private open class StatusSupport(private val status: Boolean?) : AgentSupport {
+    private open class StatusSupport(private val advertisedStatus: Boolean?) : AgentSupport {
         override suspend fun initialize(clientInfo: ClientInfo): AgentInfo = AgentInfo(
-            capabilities = AgentCapabilities(auth = AgentAuthCapabilities(status = status)),
+            capabilities = AgentCapabilities(auth = AgentAuthCapabilities(status = advertisedStatus)),
         )
 
         override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession =
@@ -61,9 +61,9 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
     @Test
     fun `v1 auth status with false capability fails locally`() = assertUnadvertisedStatus(false)
 
-    private fun assertUnadvertisedStatus(status: Boolean?) = testWithProtocols { clientProtocol, agentProtocol ->
+    private fun assertUnadvertisedStatus(advertisedStatus: Boolean?) = testWithProtocols { clientProtocol, agentProtocol ->
         var received = 0
-        Agent(agentProtocol, object : StatusSupport(status) {
+        Agent(agentProtocol, object : StatusSupport(advertisedStatus) {
             override suspend fun authStatus(_meta: JsonElement?): AuthStatusResponse {
                 received++
                 return AuthStatusResponse(false)

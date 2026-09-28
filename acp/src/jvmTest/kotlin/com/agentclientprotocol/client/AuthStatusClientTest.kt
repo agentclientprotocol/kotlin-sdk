@@ -114,23 +114,16 @@ class AuthStatusClientTest {
         initialize: Boolean = true,
         statusImplemented: Boolean = true,
         block: suspend (Client, StatusTransport) -> Unit,
-    ) = runBlocking {
-        val capabilities = if (status == null) "{}" else """{"auth":{"status":$status}}"""
-        val transport = StatusTransport(
-            ACPJson.parseToJsonElement("""{"protocolVersion":1,"agentCapabilities":$capabilities}"""),
-            statusImplemented,
-        )
-        val protocol = Protocol(this, transport)
+    ) = withClient(
+        statusImplemented = statusImplemented,
+        initialization = ACPJson.parseToJsonElement(
+            """{"protocolVersion":1,"agentCapabilities":${capabilities(status)}}"""
+        ),
+    ) { protocol, transport ->
         val client = Client(protocol)
-        protocol.start()
-        try {
-            withTimeout(10.seconds) {
-                if (initialize) client.initialize(ClientInfo())
-                block(client, transport)
-            }
-        } finally {
-            protocol.close()
-        }
+        if (initialize) client.initialize(ClientInfo())
+
+        block(client, transport)
     }
 
     private fun withV2Client(
@@ -138,21 +131,33 @@ class AuthStatusClientTest {
         initialize: Boolean = true,
         statusImplemented: Boolean = true,
         block: suspend (V2Client, StatusTransport) -> Unit,
-    ) = runBlocking {
-        val capabilities = if (status == null) "{}" else """{"auth":{"status":$status}}"""
-        val transport = StatusTransport(
-            ACPJson.parseToJsonElement(
-                """{"protocolVersion":2,"info":{"name":"agent","version":"1"},"capabilities":$capabilities}"""
-            ),
-            statusImplemented,
-        )
-        val protocol = Protocol(this, transport)
+    ) = withClient(
+        statusImplemented = statusImplemented,
+        initialization = ACPJson.parseToJsonElement(
+            """{"protocolVersion":2,"info":{"name":"agent","version":"1"},"capabilities":${capabilities(status)}}"""
+        ),
+    ) { protocol, transport ->
         val client = V2Client(protocol)
+        if (initialize) client.initialize(V2ClientInfo(PROTOCOL_VERSION_V2, Implementation("client", "1")))
+
+        block(client, transport)
+    }
+
+    private fun capabilities(status: Boolean?): String =
+        if (status == null) "{}" else """{"auth":{"status":$status}}"""
+
+    private fun withClient(
+        initialization: JsonElement,
+        statusImplemented: Boolean,
+        block: suspend (Protocol, StatusTransport) -> Unit,
+    ) = runBlocking {
+        val transport = StatusTransport(initialization, statusImplemented)
+        val protocol = Protocol(this, transport)
         protocol.start()
+
         try {
             withTimeout(10.seconds) {
-                if (initialize) client.initialize(V2ClientInfo(PROTOCOL_VERSION_V2, Implementation("client", "1")))
-                block(client, transport)
+                block(protocol, transport)
             }
         } finally {
             protocol.close()
