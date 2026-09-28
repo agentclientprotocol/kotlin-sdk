@@ -14,7 +14,9 @@ import com.agentclientprotocol.model.v2.LogoutAuthResponse
 import com.agentclientprotocol.model.v2.ProviderId
 import com.agentclientprotocol.model.v2.ReplayFrom
 import com.agentclientprotocol.model.v2.SetProviderResponse
+import com.agentclientprotocol.model.v2.StatusAuthResponse
 import com.agentclientprotocol.protocol.acpFail
+import com.agentclientprotocol.protocol.jsonRpcMethodNotFound
 import kotlinx.serialization.json.JsonElement
 import com.agentclientprotocol.client.v2.ClientInfo
 
@@ -66,6 +68,16 @@ public interface AgentSupport {
     /** Handles `auth/logout`. See [login]. */
     public suspend fun logout(_meta: JsonElement? = null): LogoutAuthResponse =
         notAdvertised("auth/logout", "authMethods in the initialize response")
+
+    /**
+     * Reports whether credentials are configured, without validating them or creating a session.
+     *
+     * @param _meta optional request metadata
+     * @return the current authentication state
+     */
+    @UnstableApi
+    public suspend fun authStatus(_meta: JsonElement? = null): StatusAuthResponse =
+        jsonRpcMethodNotFound("auth/status is not implemented by this agent")
 
     /**
      * Handles `session/list`, one page at a time.

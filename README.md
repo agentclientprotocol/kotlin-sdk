@@ -326,6 +326,56 @@ Agents report those changes with `agent.v2.ClientOperations.notify(SessionUpdate
 which works while the session is idle as well as mid-turn. ACP v2 uses config options for mode selection;
 dedicated modes remain available in the SDK's v1 API.
 
+### Authentication status (unstable)
+
+An agent can advertise the draft `auth/status` query with `auth.status = true` in its initialize response.
+V1 uses `agentCapabilities.auth.status`. V2 uses `capabilities.auth.status`, independent of `authMethods`.
+This V2 location follows the V2 authentication model; the draft RFD does not yet define a V2 schema entry.
+Both request and response types, capabilities, methods, and runtime hooks require `@OptIn(UnstableApi::class)`.
+
+```kotlin
+import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.model.AgentAuthCapabilities
+import com.agentclientprotocol.model.AgentCapabilities
+
+@OptIn(UnstableApi::class)
+val v1Capabilities = AgentCapabilities(auth = AgentAuthCapabilities(status = true))
+
+@OptIn(UnstableApi::class)
+val v2Capabilities = com.agentclientprotocol.model.v2.AgentCapabilities(
+    auth = com.agentclientprotocol.model.v2.AgentAuthCapabilities(status = true)
+)
+```
+
+After initialization, check the advertised capability before querying either client. A query does not create a session or start a prompt.
+
+```kotlin
+import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.model.AuthStatusResponse
+
+@OptIn(UnstableApi::class)
+suspend fun showV1AuthStatus(client: com.agentclientprotocol.client.Client, clientInfo: com.agentclientprotocol.client.ClientInfo) {
+    val agent = client.initialize(clientInfo)
+    if (agent.capabilities.auth.status == true) {
+        val status: AuthStatusResponse = client.authStatus()
+        println("Credentials configured: ${status.authenticated}")
+    }
+}
+
+@OptIn(UnstableApi::class)
+suspend fun showV2AuthStatus(client: com.agentclientprotocol.client.v2.Client, clientInfo: com.agentclientprotocol.client.v2.ClientInfo) {
+    val agent = client.initialize(clientInfo)
+    if (agent.capabilities.auth?.status == true) {
+        val status: com.agentclientprotocol.model.v2.StatusAuthResponse = client.authStatus()
+        println("Credentials configured: ${status.authenticated}")
+    }
+}
+```
+
+Implement `AgentSupport.authStatus` to return `AuthStatusResponse` in V1, or `StatusAuthResponse` in V2.
+The response can include a human-readable `message` and `_meta`. `authenticated` means credentials are configured, not necessarily valid.
+Calls with a missing or `false` capability fail locally. An agent without a status handler returns JSON-RPC method not found (`-32601`).
+
 ## Capabilities
 
 - **Protocol**

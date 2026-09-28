@@ -192,6 +192,10 @@ public class Agent(
             return@setRequestHandler agentSupport.logout(params._meta)
         }
 
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.AuthStatus) { params: AuthStatusRequest ->
+            return@setRequestHandler agentSupport.authStatus(params._meta)
+        }
+
         @OptIn(UnstableApi::class)
         protocol.setRequestHandler(AcpMethod.AgentMethods.V1.ProvidersList) { params: ListProvidersRequest ->
             return@setRequestHandler agentSupport.listProviders(params._meta)

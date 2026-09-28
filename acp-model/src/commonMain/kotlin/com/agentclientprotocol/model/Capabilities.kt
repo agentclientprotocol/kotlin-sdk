@@ -230,6 +230,8 @@ public data class LogoutCapabilities(
 @Serializable
 public data class AgentAuthCapabilities(
     val logout: LogoutCapabilities? = null,
+    @property:UnstableApi
+    val status: Boolean? = null,
     override val _meta: JsonElement? = null
 ) : AcpWithMeta
 

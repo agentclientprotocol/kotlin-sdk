@@ -204,6 +204,43 @@ class CapabilitiesConversionTest {
     }
 
     @Test
+    fun `auth status preserves absent false and true in both directions`() {
+        val baselineV1 = baselineV1AgentCapabilities()
+        val baselineV2 = baselineV2AgentCapabilities()
+        assertNull(baselineV1.toV2().auth)
+        assertNull(baselineV2.toV1().auth.status)
+
+        for (status in listOf(false, true)) {
+            val v1 = baselineV1.copy(auth = V1AgentAuthCapabilities(status = status))
+            val v2 = baselineV2.copy(auth = AgentAuthCapabilities(status = status))
+            assertEquals(v2, v1.toV2())
+            assertEquals(v1, v2.toV1())
+            assertEquals(v1, v1.toV2().toV1())
+            assertEquals(v2, v2.toV1().toV2())
+        }
+    }
+
+    @Test
+    fun `auth status is independent of auth methods when converting initialization`() {
+        val info = Implementation(name = "acme-agent", version = "2.0.0")
+        val authMethod = AuthMethod.Agent(methodId = AuthMethodId("oauth"), name = "OAuth")
+        for (status in listOf(false, true)) {
+            for (methods in listOf(emptyList(), listOf(authMethod))) {
+                val v2 = InitializeResponse(
+                    protocolVersion = 1,
+                    info = info,
+                    capabilities = baselineV2AgentCapabilities().copy(auth = AgentAuthCapabilities(status = status)),
+                    authMethods = methods,
+                )
+                val v1 = v2.toV1()
+                assertEquals(status, v1.agentCapabilities.auth.status)
+                assertEquals(methods.isNotEmpty(), v1.agentCapabilities.auth.logout != null)
+                assertEquals(v2, v1.toV2())
+            }
+        }
+    }
+
+    @Test
     fun `converting a v1 logout marker on its own to v2 fails`() {
         val v1 = baselineV1AgentCapabilities()
             .copy(auth = V1AgentAuthCapabilities(logout = LogoutCapabilities()))

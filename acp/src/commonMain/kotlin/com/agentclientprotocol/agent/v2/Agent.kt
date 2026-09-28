@@ -32,6 +32,7 @@ import com.agentclientprotocol.model.v2.StopReason
 import com.agentclientprotocol.model.v2.SetProviderRequest
 import com.agentclientprotocol.model.v2.SetSessionConfigOptionRequest
 import com.agentclientprotocol.model.v2.SetSessionConfigOptionResponse
+import com.agentclientprotocol.model.v2.StatusAuthRequest
 import com.agentclientprotocol.model.v2.UpdateSessionNotification
 import com.agentclientprotocol.protocol.AcpRequestCancelledException
 import com.agentclientprotocol.protocol.Protocol
@@ -348,6 +349,10 @@ public class Agent(
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.V2.AuthLogout) { params: LogoutAuthRequest ->
             return@setRequestHandler agentSupport.logout(params._meta)
+        }
+
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V2.AuthStatus) { params: StatusAuthRequest ->
+            return@setRequestHandler agentSupport.authStatus(params._meta)
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.V2.ProvidersList) { params: ListProvidersRequest ->

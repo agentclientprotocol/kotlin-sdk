@@ -1,6 +1,7 @@
 package com.agentclientprotocol.agent
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.setNotificationHandler
@@ -18,6 +19,8 @@ import com.agentclientprotocol.agent.v2.AgentSupport as V2AgentSupport
 import com.agentclientprotocol.agent.v2.ClientOperations as V2ClientOperations
 import com.agentclientprotocol.agent.v2.SessionCreationParameters as V2SessionCreationParameters
 import com.agentclientprotocol.client.v2.ClientInfo as V2ClientInfo
+import com.agentclientprotocol.model.v2.StatusAuthRequest as V2StatusAuthRequest
+import com.agentclientprotocol.model.v2.StatusAuthResponse as V2StatusAuthResponse
 
 @OptIn(UnstableApi::class)
 class AgentTest {
@@ -32,7 +35,7 @@ class AgentTest {
     }
 
     /** A v2 implementation: v2 types only, nothing shared with the v1 one. */
-    private class TestV2Support : V2AgentSupport {
+    private open class TestV2Support(private val status: Boolean? = null) : V2AgentSupport {
         var initializedWith: V2ClientInfo? = null
 
         override suspend fun createSession(
@@ -50,7 +53,8 @@ class AgentTest {
                         prompt = com.agentclientprotocol.model.v2.PromptCapabilities(
                             image = com.agentclientprotocol.model.v2.PromptImageCapabilities()
                         )
-                    )
+                    ),
+                    auth = status?.let { com.agentclientprotocol.model.v2.AgentAuthCapabilities(status = it) },
                 ),
             )
         }
@@ -60,6 +64,106 @@ class AgentTest {
         protocolVersion = PROTOCOL_VERSION_V2,
         info = Implementation(name = "test-client", version = "1.0.0"),
     )
+
+    private open class StatusV1Support : AgentSupport {
+        override suspend fun initialize(clientInfo: com.agentclientprotocol.client.ClientInfo): AgentInfo = AgentInfo(
+            capabilities = AgentCapabilities(auth = AgentAuthCapabilities(status = true)),
+        )
+
+        override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession =
+            error("auth/status does not need a session")
+    }
+
+    @Test
+    fun `v1 agent answers repeated status queries with request and response metadata`() = runBlocking {
+        val requestMeta = buildJsonObject { put("request", "v1") }
+        val responseMeta = buildJsonObject { put("response", "v1") }
+        val seen = mutableListOf<JsonElement?>()
+        val support = object : StatusV1Support() {
+            override suspend fun authStatus(_meta: JsonElement?): AuthStatusResponse {
+                seen += _meta
+                return AuthStatusResponse(authenticated = seen.size > 1, message = "Configured", _meta = responseMeta)
+            }
+        }
+        val transport = TestTransport(5.seconds)
+        val protocol = Protocol(this, transport)
+        Agent(protocol, support)
+        protocol.start()
+        try {
+            val initialized = transport.testRequest(AcpMethod.AgentMethods.V1.Initialize, InitializeRequest(LATEST_PROTOCOL_VERSION))
+            assertEquals(true, assertNotNull(initialized.first).agentCapabilities.auth.status)
+
+            assertEquals(
+                AuthStatusResponse(false, "Configured", responseMeta),
+                transport.testRequest(AcpMethod.AgentMethods.V1.AuthStatus, AuthStatusRequest(_meta = requestMeta)).first,
+            )
+            assertEquals(
+                AuthStatusResponse(true, "Configured", responseMeta),
+                transport.testRequest(AcpMethod.AgentMethods.V1.AuthStatus, AuthStatusRequest()).first,
+            )
+            assertEquals(listOf<JsonElement?>(requestMeta, null), seen)
+        } finally {
+            protocol.close()
+        }
+    }
+
+    @Test
+    fun `v1 agent without status hook returns method not found`() = runBlocking {
+        val transport = TestTransport(5.seconds)
+        val protocol = Protocol(this, transport)
+        Agent(protocol, StatusV1Support())
+        protocol.start()
+        try {
+            transport.testRequest(AcpMethod.AgentMethods.V1.Initialize, InitializeRequest(LATEST_PROTOCOL_VERSION))
+            val received = transport.fireTestRequest(AcpMethod.AgentMethods.V1.AuthStatus.methodName, buildJsonObject { })
+            val error = assertNotNull(assertIs<JsonRpcErrorResponse>(received.last()).error)
+            assertEquals(JsonRpcErrorCode.METHOD_NOT_FOUND.code, error.code)
+            assertTrue(error.message.contains("auth/status"))
+        } finally {
+            protocol.close()
+        }
+    }
+
+    @Test
+    fun `v2 agent answers repeated status queries with request and response metadata`() {
+        val requestMeta = buildJsonObject { put("request", "v2") }
+        val responseMeta = buildJsonObject { put("response", "v2") }
+        val seen = mutableListOf<JsonElement?>()
+        val support = object : TestV2Support(status = true) {
+            override suspend fun authStatus(_meta: JsonElement?): V2StatusAuthResponse {
+                seen += _meta
+                return V2StatusAuthResponse(authenticated = seen.size > 1, message = "Configured", _meta = responseMeta)
+            }
+        }
+        withTestV2Agent(support) { testAgent ->
+            val (initialized) = testAgent.testInitialize(v2InitializeRequest())
+            assertEquals(true, assertNotNull(initialized).capabilities.auth?.status)
+
+            assertEquals(
+                V2StatusAuthResponse(false, "Configured", responseMeta),
+                testAgent.testRequest(AcpMethod.AgentMethods.V2.AuthStatus, V2StatusAuthRequest(_meta = requestMeta)).first,
+            )
+            assertEquals(
+                V2StatusAuthResponse(true, "Configured", responseMeta),
+                testAgent.testRequest(AcpMethod.AgentMethods.V2.AuthStatus, V2StatusAuthRequest()).first,
+            )
+            assertEquals(listOf<JsonElement?>(requestMeta, null), seen)
+        }
+    }
+
+    @Test
+    fun `v2 agent without status hook returns method not found`() {
+        withTestV2Agent(TestV2Support(status = true)) { testAgent ->
+            testAgent.testInitialize(v2InitializeRequest())
+            val received = testAgent.transport.fireTestRequest(
+                AcpMethod.AgentMethods.V2.AuthStatus.methodName,
+                buildJsonObject { },
+            )
+            val error = assertNotNull(assertIs<JsonRpcErrorResponse>(received.last()).error)
+            assertEquals(JsonRpcErrorCode.METHOD_NOT_FOUND.code, error.code)
+            assertTrue(error.message.contains("auth/status"))
+        }
+    }
 
     /**
      * An inert notification used to order a test against a handler that has no observable effect.
