@@ -1,4 +1,5 @@
 @file:Suppress("unused")
+@file:OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 
 package com.agentclientprotocol.model.v2
 
@@ -8,7 +9,9 @@ import com.agentclientprotocol.model.AcpRequest
 import com.agentclientprotocol.model.AcpResponse
 import com.agentclientprotocol.model.AcpWithMeta
 import com.agentclientprotocol.model.AcpWithSessionId
+import com.agentclientprotocol.model.SessionAdditionalDirectoriesCapabilities
 import com.agentclientprotocol.model.SessionId
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
@@ -16,14 +19,25 @@ import kotlinx.serialization.json.JsonElement
  * Request parameters for the v2 `session/new` method.
  *
  * `additionalDirectories` is gated by the agent's
- * [SessionAdditionalDirectoriesCapabilities]; a client must not send a non-empty list unless the agent
- * advertised it.
+ * [SessionAdditionalDirectoriesCapabilities]; a client must omit the field unless the agent advertised it.
+ * An empty `additionalDirectories` is omitted when encoding; `mcpServers` is always encoded, as `[]` when
+ * empty.
+ *
+ * Both lists decode leniently, as in the Rust schema: an entry that fails to decode is dropped, and `null`
+ * reads as empty.
+ *
+ * @property cwd the session's primary working directory; must be an absolute path
+ * @property additionalDirectories further workspace roots, each an absolute path; sending this field requires
+ * the agent's additionalDirectories capability
  */
 @UnstableApi
 @Serializable
 public data class NewSessionRequest(
     val cwd: String,
+    @Serializable(with = LenientMcpServerListSerializer::class)
     val mcpServers: List<McpServer> = emptyList(),
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    @Serializable(with = LenientStringListSerializer::class)
     val additionalDirectories: List<String> = emptyList(),
     override val _meta: JsonElement? = null
 ) : AcpRequest
@@ -33,12 +47,19 @@ public data class NewSessionRequest(
  *
  * Unlike v1 there are no separate `modes` and `models` fields: everything configurable arrives as
  * [SessionConfigOption]s.
+ *
+ * @property availableCommands initial commands the agent advertises; omitted when empty, and a later
+ * [SessionUpdate.AvailableCommandsUpdate] replaces the whole list
  */
 @UnstableApi
 @Serializable
 public data class NewSessionResponse(
     val sessionId: SessionId,
+    @Serializable(with = LenientSessionConfigOptionListSerializer::class)
     val configOptions: List<SessionConfigOption> = emptyList(),
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    @Serializable(with = LenientAvailableCommandListSerializer::class)
+    val availableCommands: List<AvailableCommand> = emptyList(),
     override val _meta: JsonElement? = null
 ) : AcpResponse
 

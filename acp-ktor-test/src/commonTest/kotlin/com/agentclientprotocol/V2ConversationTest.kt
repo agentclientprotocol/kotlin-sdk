@@ -17,10 +17,6 @@ import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
 import com.agentclientprotocol.model.ToolCallId
 import com.agentclientprotocol.model.v2.*
 import com.agentclientprotocol.protocol.Protocol
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
@@ -48,7 +44,7 @@ abstract class V2ConversationTest(protocolDriver: ProtocolDriver) : ProtocolDriv
     @Test
     fun `one conversation runs from initialize through turns and a cancellation to resume list and delete`() =
         testWithProtocols { clientProtocol, agentProtocol ->
-            ConversationScenario(this, clientProtocol, agentProtocol).run {
+            ConversationScenario(clientProtocol, agentProtocol).run {
                 initialize()
                 login()
                 newSession()
@@ -66,13 +62,22 @@ abstract class V2ConversationTest(protocolDriver: ProtocolDriver) : ProtocolDriv
         }
 }
 
+/** How the resume replays the scenario's three earlier turns, one label per update. */
+private val REPLAYED = listOf(
+    "user_message", "tool_call:pending", "tool_call:in_progress", "tool_call_content_chunk", "tool_call:completed",
+    "agent_message", "agent_message_chunk",
+    "user_message", "tool_call:in_progress", "tool_call:completed", "agent_message", "agent_message_chunk",
+    "user_message", "tool_call:in_progress", "tool_call:cancelled",
+)
+
 private class ConversationScenario(
-    private val scope: CoroutineScope,
     clientProtocol: Protocol,
     agentProtocol: Protocol,
 ) {
     private val agent = ConversationAgent()
     private val user = User(fillsIn = mapOf("port" to ElicitationContentValue.IntegerValue(9090)))
+    private val received = SessionUpdates()
+    private var configOptions: List<SessionConfigOption> = emptyList()
     private val client: Client
     private lateinit var session: ClientSession
     private lateinit var conversation: Conversation
@@ -80,7 +85,7 @@ private class ConversationScenario(
 
     init {
         Agent(agentProtocol, agent)
-        client = Client(clientProtocol, elicitation = user)
+        client = Client(clientProtocol, elicitation = user, operations = user, onSessionUpdate = received::accept)
     }
 
     suspend fun initialize() {
@@ -113,13 +118,14 @@ private class ConversationScenario(
         val docsServer = McpServer.Stdio(name = "docs", command = "/opt/docs-mcp", args = listOf("--stdio"))
 
         // Act
-        session = client.newSession(
+        val response = client.newSession(
             cwd = "/work",
             mcpServers = listOf(docsServer),
             additionalDirectories = listOf("/work/vendor"),
-            operations = user,
         )
-        conversation = Conversation(scope, session)
+        configOptions = response.configOptions
+        session = client.session(response.sessionId)
+        conversation = Conversation(session, received)
 
         // Assert
         with(assertNotNull(agent.newSessionParameters.singleOrNull())) {
@@ -131,7 +137,7 @@ private class ConversationScenario(
 
     suspend fun selectArchitectMode() {
         // Arrange
-        assertEquals(ASK, currentMode(session.configOptions))
+        assertEquals(ASK, currentMode(configOptions))
 
         // Act
         val options = session.setConfigOption(MODE, SessionConfigOptionValue.Id(ARCHITECT))
@@ -219,22 +225,19 @@ private class ConversationScenario(
     suspend fun closeSession() {
         // Act
         session.close()
-        conversation.stop()
 
         // Assert
         assertEquals(listOf(session.sessionId), agent.closedSessions)
-        assertNull(client.getSession(session.sessionId), "a closed session is not addressable any more")
     }
 
     suspend fun resumeSession() {
         // Act
-        val resumedSession = client.resumeSession(
+        val response = client.resumeSession(
             sessionId = session.sessionId,
             cwd = "/work",
             replayFrom = ReplayFrom.Start(),
-            operations = user,
         )
-        resumedConversation = Conversation(scope, resumedSession)
+        resumedConversation = Conversation(session, received)
 
         // Assert
         with(assertNotNull(agent.resume)) {
@@ -242,8 +245,15 @@ private class ConversationScenario(
             assertEquals("/work", cwd)
             assertIs<ReplayFrom.Start>(replayFrom)
         }
-        assertEquals(ARCHITECT, currentMode(resumedSession.configOptions))
-        assertEquals(3, agent.historyOf(session.sessionId).count { it.label().startsWith("state:idle") })
+        assertEquals(ARCHITECT, currentMode(response.configOptions))
+        // The three earlier turns, replayed before the resume answered: messages and tool calls, with each
+        // chunked reply cleared first, and none of the turns' state updates.
+        val replay = resumedConversation.next(REPLAYED.size)
+        assertEquals(REPLAYED, replay.labels)
+        assertEquals(
+            listOf("read config.toml", "set the port", "tail server.log"),
+            replay.userTexts,
+        )
     }
 
     suspend fun recapSession() {
@@ -274,14 +284,12 @@ private class ConversationScenario(
 
         // Assert
         assertEquals(listOf(session.sessionId), agent.deletedSessions)
-        assertNull(client.getSession(session.sessionId))
         assertTrue(client.listSessions(cwd = "/work").sessions.isEmpty())
     }
 
     suspend fun logout() {
         // Act
         client.logout()
-        resumedConversation.stop()
 
         // Assert
         assertTrue(agent.loggedOut)
@@ -292,9 +300,7 @@ private class ConversationScenario(
  * The person on the client's side of the conversation: allows what the agent asks to do, and fills in the
  * forms it sends.
  *
- * One object for both surfaces because that is how it looks to a user, even though the SDK takes them in
- * two places — permissions per session, elicitations for the whole connection, since a v2 elicitation
- * carries its own scope and may belong to no session at all.
+ * Both handlers are installed on the connection before any session is opened.
  */
 private class User(private val fillsIn: Map<String, ElicitationContentValue>) :
     ClientSessionOperations, ElicitationHandler {
@@ -313,15 +319,9 @@ private class User(private val fillsIn: Map<String, ElicitationContentValue>) :
 }
 
 /**
- * A session whose updates are already being collected, so a test can read the conversation turn by turn.
- *
- * [ClientSession.updates] is a cold flow over a buffer that may be collected once — collecting it per turn
- * would consume the buffer and drop everything after it — so a multi-turn test has to fan it out itself.
+ * Reads the application's queue turn by turn, including history delivered during resume.
  */
-private class Conversation(scope: CoroutineScope, private val session: ClientSession) {
-    private val received = Channel<ClientSession.UpdateWithMeta>(Channel.UNLIMITED)
-    private val collecting: Job = scope.launch { session.updates.collect { received.send(it) } }
-
+private class Conversation(private val session: ClientSession, private val received: SessionUpdates) {
     /** Prompts, and returns the whole turn that follows. */
     suspend fun turn(text: String, _meta: JsonElement? = null): Turn {
         prompt(text, _meta)
@@ -339,16 +339,14 @@ private class Conversation(scope: CoroutineScope, private val session: ClientSes
     /** Everything up to and including the first update with this [label]. */
     suspend fun updatesUntil(label: String): Turn = collectUntil { it == label }
 
-    /** Ends the collection, so the test's scope is not held open by it. */
-    fun stop() {
-        collecting.cancel()
-    }
+    /** The next [count] updates, for a replay, which is not a turn and has no idle update to end at. */
+    suspend fun next(count: Int): Turn = withTimeout(10.seconds) { Turn(List(count) { received.next() }) }
 
     private suspend fun collectUntil(reached: (String) -> Boolean): Turn = withTimeout(10.seconds) {
         Turn(
             buildList {
                 while (true) {
-                    val update = received.receive()
+                    val update = received.next()
                     add(update)
                     if (reached(update.update.label())) break
                 }
@@ -358,7 +356,7 @@ private class Conversation(scope: CoroutineScope, private val session: ClientSes
 }
 
 /** One turn as the client saw it. */
-private class Turn(private val updates: List<ClientSession.UpdateWithMeta>) {
+private class Turn(private val updates: List<UpdateSessionNotification>) {
     /** The updates in order, by name: the sequence is most of what a turn is. */
     val labels: List<String> = updates.map { it.update.label() }
 
@@ -371,6 +369,11 @@ private class Turn(private val updates: List<ClientSession.UpdateWithMeta>) {
 
     /** The metadata the turn's updates arrived with. */
     val meta: JsonElement? get() = updates.first()._meta
+
+    /** The text of each user message, in order. */
+    val userTexts: List<String>
+        get() = updates.mapNotNull { (it.update as? SessionUpdate.UserMessage)?.message?.content?.valueOrNull() }
+            .map { content -> content.filterIsInstance<ContentBlock.Text>().joinToString(" ") { it.text } }
 }
 
 /**
@@ -381,6 +384,7 @@ private class Turn(private val updates: List<ClientSession.UpdateWithMeta>) {
  */
 private fun SessionUpdate.label(): String = when (this) {
     is SessionUpdate.UserMessage -> "user_message"
+    is SessionUpdate.AgentMessage -> "agent_message"
     is SessionUpdate.AgentMessageChunk -> "agent_message_chunk"
     is SessionUpdate.ToolCallContentChunk -> "tool_call_content_chunk"
     is SessionUpdate.ToolCallUpdate -> "tool_call:${update.status.valueOrNull()?.value ?: "unchanged"}"

@@ -1,4 +1,5 @@
 @file:Suppress("unused")
+@file:OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 
 package com.agentclientprotocol.model.v2
 
@@ -10,6 +11,7 @@ import com.agentclientprotocol.model.AcpWithSessionId
 import com.agentclientprotocol.model.SessionConfigId
 import com.agentclientprotocol.model.SessionId
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.descriptors.SerialDescriptor
@@ -34,7 +36,9 @@ import kotlinx.serialization.json.put
 @UnstableApi
 @Serializable(with = ReplayFromSerializer::class)
 public sealed class ReplayFrom {
-    /** Replay the whole conversation from its first replayable entry. */
+    /**
+     * Replay all retained conversation history from its first replayable entry.
+     */
     @Serializable
     public data class Start(
         override val _meta: JsonElement? = null,
@@ -66,24 +70,48 @@ internal object ReplayFromSerializer : OpenTaggedUnionSerializer<ReplayFrom>(
 /**
  * Request parameters for the v2 `session/resume` method.
  *
- * v2 has no `session/load`: resuming replaces it, and [replayFrom] says how much history to replay.
+ * v2 has no `session/load`: resuming replaces it, and [replayFrom] says how much history to replay. The
+ * environment is sent in full on every resume, just as for `session/new`: omitted `additionalDirectories` do
+ * not restore the roots the session had before.
+ *
+ * The lists and [replayFrom] decode leniently, as in the Rust schema: a list entry that fails to decode is
+ * dropped, and a `replayFrom` that fails to decode reads as `null`, so the session resumes without replay.
+ *
+ * @property cwd the session's primary working directory; must be an absolute path
+ * @property additionalDirectories further workspace roots, each an absolute path; sending this field requires
+ * the agent's additionalDirectories capability
+ * @property replayFrom where to start replaying history; `null` means no replay. For [ReplayFrom.Start] the
+ * agent replays all retained history as `session/update` notifications before it responds
  */
 @UnstableApi
 @Serializable
 public data class ResumeSessionRequest(
     override val sessionId: SessionId,
     val cwd: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    @Serializable(with = LenientStringListSerializer::class)
     val additionalDirectories: List<String> = emptyList(),
+    @Serializable(with = LenientMcpServerListSerializer::class)
     val mcpServers: List<McpServer> = emptyList(),
+    @Serializable(with = ReplayFromOrNullSerializer::class)
     val replayFrom: ReplayFrom? = null,
     override val _meta: JsonElement? = null
 ) : AcpRequest, AcpWithSessionId
 
-/** Response to the v2 `session/resume` method. */
+/**
+ * Response to the v2 `session/resume` method.
+ *
+ * @property availableCommands initial commands the agent advertises; omitted when empty, and a later
+ * [SessionUpdate.AvailableCommandsUpdate] replaces the whole list
+ */
 @UnstableApi
 @Serializable
 public data class ResumeSessionResponse(
+    @Serializable(with = LenientSessionConfigOptionListSerializer::class)
     val configOptions: List<SessionConfigOption> = emptyList(),
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    @Serializable(with = LenientAvailableCommandListSerializer::class)
+    val availableCommands: List<AvailableCommand> = emptyList(),
     override val _meta: JsonElement? = null
 ) : AcpResponse
 
@@ -161,13 +189,20 @@ internal object SetSessionConfigOptionRequestSerializer : KSerializer<SetSession
 
 /**
  * Request parameters for the v2 `session/fork` method: start a new session from an existing one's history.
+ *
+ * @property cwd the new session's primary working directory; must be an absolute path
+ * @property additionalDirectories further workspace roots, each an absolute path; sending this field requires
+ * the agent's additionalDirectories capability
  */
 @UnstableApi
 @Serializable
 public data class ForkSessionRequest(
     override val sessionId: SessionId,
     val cwd: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    @Serializable(with = LenientStringListSerializer::class)
     val additionalDirectories: List<String> = emptyList(),
+    @Serializable(with = LenientMcpServerListSerializer::class)
     val mcpServers: List<McpServer> = emptyList(),
     override val _meta: JsonElement? = null
 ) : AcpRequest, AcpWithSessionId
@@ -176,11 +211,18 @@ public data class ForkSessionRequest(
  * Response to the v2 `session/fork` method.
  *
  * The id is the **new** session's, not the one that was forked.
+ *
+ * @property availableCommands initial commands the agent advertises; omitted when empty, and a later
+ * [SessionUpdate.AvailableCommandsUpdate] replaces the whole list
  */
 @UnstableApi
 @Serializable
 public data class ForkSessionResponse(
     val sessionId: SessionId,
+    @Serializable(with = LenientSessionConfigOptionListSerializer::class)
     val configOptions: List<SessionConfigOption> = emptyList(),
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    @Serializable(with = LenientAvailableCommandListSerializer::class)
+    val availableCommands: List<AvailableCommand> = emptyList(),
     override val _meta: JsonElement? = null
 ) : AcpResponse

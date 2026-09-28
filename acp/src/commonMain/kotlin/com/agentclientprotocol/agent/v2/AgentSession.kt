@@ -3,6 +3,7 @@ package com.agentclientprotocol.agent.v2
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.SessionConfigId
 import com.agentclientprotocol.model.SessionId
+import com.agentclientprotocol.model.v2.AvailableCommand
 import com.agentclientprotocol.model.v2.ContentBlock
 import com.agentclientprotocol.model.v2.SessionConfigOption
 import com.agentclientprotocol.model.v2.SessionConfigOptionValue
@@ -24,6 +25,14 @@ public interface AgentSession {
 
     /** Complete current configuration to report from `session/new`, `session/resume`, and `session/fork`. */
     public val configOptions: List<SessionConfigOption> get() = emptyList()
+
+    /**
+     * Initial commands to report from `session/new`, `session/resume`, and `session/fork`.
+     *
+     * Later changes go out with [ClientOperations.notify] as [SessionUpdate.AvailableCommandsUpdate], and each
+     * one replaces the whole list.
+     */
+    public val availableCommands: List<AvailableCommand> get() = emptyList()
 
     /**
      * Runs one turn: every emitted update is sent to the client as `session/update`, and the turn ends

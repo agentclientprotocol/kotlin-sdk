@@ -24,6 +24,7 @@ import com.agentclientprotocol.model.v2.SessionConfigOption
 import com.agentclientprotocol.model.v2.SessionConfigOptionCategory
 import com.agentclientprotocol.model.v2.SessionConfigOptionValue
 import com.agentclientprotocol.model.v2.SessionConfigSelectOptions
+import com.agentclientprotocol.model.v2.UpdateSessionNotification
 import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.protocol.AcpExpectedError
 import com.agentclientprotocol.protocol.JsonRpcException
@@ -41,7 +42,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.SerializationException
@@ -57,9 +57,10 @@ import kotlin.time.Duration.Companion.seconds
 class SessionConfigOptionsTest {
     @Test
     fun `setter sends configId with a flattened value and replaces the whole option list`() = withConnection {
-        val session = client.newSession(".")
+        val response = client.newSession("/work")
+        val session = client.session(response.sessionId)
         val agentSession = support.sessions.getValue(session.sessionId)
-        assertEquals(initialOptions, session.configOptions)
+        assertEquals(initialOptions, response.configOptions)
         val meta = json("""{"trace":"setter"}""")
         val changed = listOf(toggle(true), mode("code")) // Changes another option and the preferred order.
         agentSession.onSet = { id, value, receivedMeta ->
@@ -90,9 +91,8 @@ class SessionConfigOptionsTest {
 
     @Test
     fun `an idle agent reports a configuration change as a notification`() = withConnection {
-        val session = client.newSession(".")
-        val received = Channel<ClientSession.UpdateWithMeta>(Channel.UNLIMITED)
-        val collector = scope.launch { session.updates.collect { received.send(it) } }
+        val response = client.newSession("/work")
+        val session = client.session(response.sessionId)
         val meta = json("""{"trace":"notification"}""")
         val payloadMeta = json("""{"source":"agent"}""")
         val changed = listOf(mode("code")) // The missing verbose option must be removed.
@@ -104,18 +104,17 @@ class SessionConfigOptionsTest {
         val notification = received.receive()
         assertEquals(update, notification.update)
         assertEquals(meta, notification._meta)
-        collector.cancel()
     }
 
     @Test
     fun `new resume and fork report the options the session currently has`() = withConnection {
-        val created = client.newSession(".")
+        val created = client.newSession("/work")
         support.sessions.getValue(created.sessionId).options = listOf(mode("code"))
-        val resumed = client.resumeSession(created.sessionId, ".")
-        val forked = client.forkSession(resumed.sessionId, ".")
+        val resumed = client.resumeSession(created.sessionId, "/work")
+        val forked = client.forkSession(created.sessionId, "/work")
         assertEquals(listOf(mode("code")), resumed.configOptions)
         assertEquals(resumed.configOptions, forked.configOptions)
-        assertFalse(resumed.sessionId == forked.sessionId)
+        assertFalse(created.sessionId == forked.sessionId)
     }
 
     @Test
@@ -124,19 +123,17 @@ class SessionConfigOptionsTest {
         // Replay belongs inside the callback: ACP wants it before `session/resume` answers.
         support.onResume = { it.publish(replayed) }
 
-        val resumed = client.resumeSession(SessionId("from-disk"), ".", replayFrom = ReplayFrom.Start())
+        val resumed = client.resumeSession(SessionId("from-disk"), "/work", replayFrom = ReplayFrom.Start())
 
-        // Buffered while the call was still in flight, and delivered once the session exists.
-        val received = Channel<ClientSession.UpdateWithMeta>(Channel.UNLIMITED)
-        val collector = scope.launch { resumed.updates.collect { received.send(it) } }
+        // The application queue receives replay independently of the setup response.
         assertEquals(replayed, received.receive().update)
         assertEquals(listOf(mode("code")), resumed.configOptions)
-        collector.cancel()
     }
 
     @Test
     fun `a rejected or malformed setter response leaves the connection usable`() = withConnection {
-        val session = client.newSession(".")
+        val response = client.newSession("/work")
+        val session = client.session(response.sessionId)
         support.sessions.getValue(session.sessionId).onSet = { _, _, _ -> jsonRpcInvalidParams("Unknown option") }
         assertFailsWith<AcpExpectedError> {
             session.setConfigOption(SessionConfigId("missing"), SessionConfigOptionValue.Boolean(true))
@@ -154,7 +151,8 @@ class SessionConfigOptionsTest {
 
     @Test
     fun `v2 agent refuses the removed set mode method`() = withConnection {
-        val session = client.newSession(".")
+        val response = client.newSession("/work")
+        val session = client.session(response.sessionId)
         val error = assertFailsWith<JsonRpcException> {
             client.protocol.sendRequestRaw(
                 MethodName("session/set_mode"),
@@ -169,7 +167,8 @@ class SessionConfigOptionsTest {
         val unbound = com.agentclientprotocol.agent.v2.RemoteClientOperations(agentProtocol)
         val update = SessionUpdate.ConfigOptionUpdate(ConfigOptionUpdate(emptyList()))
         assertFailsWith<IllegalStateException> { unbound.notify(update) }
-        val session = client.newSession(".")
+        val response = client.newSession("/work")
+        val session = client.session(response.sessionId)
         agentWire.failure = IllegalStateException("writer closed")
         assertFailsWith<IllegalStateException> { support.sessions.getValue(session.sessionId).client.notify(update) }
     }
@@ -275,7 +274,8 @@ private class ConfigConnection(val scope: CoroutineScope) {
     val clientWire = ConfigWire()
     val agentWire = ConfigWire()
     val agentProtocol = Protocol(scope, agentWire)
-    val client = Client(Protocol(scope, clientWire))
+    val received = Channel<UpdateSessionNotification>(Channel.UNLIMITED)
+    val client = Client(Protocol(scope, clientWire), onSessionUpdate = { received.trySend(it).getOrThrow() })
     val support = ConfigSupport()
 
     init {

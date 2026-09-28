@@ -8,13 +8,13 @@ import com.agentclientprotocol.model.v2.RequestPermissionResponse
 /**
  * **UNSTABLE**
  *
- * What a client provides to a v2 session so the agent can reach the user.
+ * Connection-wide permission handling for v2 sessions, routed by the request's sessionId.
  *
  * The v1 counterpart is [com.agentclientprotocol.common.ClientSessionOperations], which also carries `fs`
  * and `terminal`; v2 has neither — file and terminal access moves to MCP-over-ACP — so this interface stays
  * small and will grow only with what v2 actually asks of a client.
  *
- * A session created without operations refuses these requests with a clear error instead of leaving the
+ * A client constructed without operations refuses these requests with a clear error instead of leaving the
  * agent waiting.
  */
 @UnstableApi

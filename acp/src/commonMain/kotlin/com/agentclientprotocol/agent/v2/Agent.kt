@@ -274,6 +274,7 @@ public class Agent(
             return@setRequestHandler NewSessionResponse(
                 sessionId = session.sessionId,
                 configOptions = session.configOptions,
+                availableCommands = session.availableCommands,
             )
         }
 
@@ -294,7 +295,10 @@ public class Agent(
             )
             clientOperations.bindTo(session.sessionId)
             register(session)
-            return@setRequestHandler ResumeSessionResponse(configOptions = session.configOptions)
+            return@setRequestHandler ResumeSessionResponse(
+                configOptions = session.configOptions,
+                availableCommands = session.availableCommands,
+            )
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.V2.SessionFork) { params: ForkSessionRequest ->
@@ -310,6 +314,7 @@ public class Agent(
             return@setRequestHandler ForkSessionResponse(
                 sessionId = session.sessionId,
                 configOptions = session.configOptions,
+                availableCommands = session.availableCommands,
             )
         }
 

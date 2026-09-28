@@ -4,6 +4,7 @@ import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
+import com.agentclientprotocol.protocol.acpFail
 import com.agentclientprotocol.protocol.setNotificationHandler
 import com.agentclientprotocol.rpc.*
 import kotlinx.coroutines.*
@@ -19,6 +20,7 @@ import com.agentclientprotocol.agent.v2.AgentSupport as V2AgentSupport
 import com.agentclientprotocol.agent.v2.ClientOperations as V2ClientOperations
 import com.agentclientprotocol.agent.v2.SessionCreationParameters as V2SessionCreationParameters
 import com.agentclientprotocol.client.v2.ClientInfo as V2ClientInfo
+import com.agentclientprotocol.model.v2.ReplayFrom
 import com.agentclientprotocol.model.v2.StatusAuthRequest as V2StatusAuthRequest
 import com.agentclientprotocol.model.v2.StatusAuthResponse as V2StatusAuthResponse
 
@@ -448,6 +450,114 @@ class AgentTest {
             assertEquals(com.agentclientprotocol.model.v2.StopReason.EndTurn, idle.stopReason)
 
             assertEquals(1, assertNotNull(support.sessions.single().promptSeen).size)
+        }
+    }
+
+    /**
+     * Resumes any id, replaying two message chunks through [V2ClientOperations.notify] when asked to, and
+     * failing afterwards when [failAfterReplay] is set.
+     */
+    private class ResumingV2Support(private val failAfterReplay: Boolean = false) : V2AgentSupport {
+        val replayedFrom = mutableListOf<ReplayFrom?>()
+
+        override suspend fun initialize(clientInfo: V2ClientInfo) =
+            V2AgentInfo(implementation = Implementation(name = "test-agent-v2", version = "1.0.0"))
+
+        override suspend fun createSession(
+            parameters: V2SessionCreationParameters,
+            client: V2ClientOperations,
+        ): V2AgentSession = error("this agent only resumes")
+
+        override suspend fun resumeSession(
+            sessionId: SessionId,
+            parameters: V2SessionCreationParameters,
+            replayFrom: ReplayFrom?,
+            client: V2ClientOperations,
+        ): V2AgentSession {
+            replayedFrom += replayFrom
+            if (replayFrom is ReplayFrom.Start) {
+                for (text in listOf("one", "two")) {
+                    client.notify(
+                        com.agentclientprotocol.model.v2.SessionUpdate.AgentMessageChunk(
+                            com.agentclientprotocol.model.v2.ContentChunk(
+                                messageId = MessageId("replayed"),
+                                content = com.agentclientprotocol.model.v2.ContentBlock.Text(text),
+                            )
+                        )
+                    )
+                }
+            }
+            if (failAfterReplay) acpFail("Session $sessionId could not be restored")
+            return TestV2Session(sessionId)
+        }
+    }
+
+    private fun resumeRequest(replayFrom: ReplayFrom?) = com.agentclientprotocol.model.v2.ResumeSessionRequest(
+        sessionId = SessionId("old-session"),
+        cwd = "/work",
+        replayFrom = replayFrom,
+    )
+
+    private fun List<JsonRpcNotification>.replayedTexts(): List<String> = map { notification ->
+        val update = ACPJson.decodeFromJsonElement(
+            AcpMethod.ClientMethods.V2.SessionUpdate.serializer,
+            assertNotNull(notification.params),
+        ).update
+        val chunk = assertIs<com.agentclientprotocol.model.v2.SessionUpdate.AgentMessageChunk>(update).chunk
+        (chunk.content as com.agentclientprotocol.model.v2.ContentBlock.Text).text
+    }
+
+    @Test
+    fun `a v2 resume sends the replay before it answers`() {
+        val support = ResumingV2Support()
+        withTestV2Agent(support) { testAgent ->
+            testAgent.testInitialize(v2InitializeRequest())
+
+            val (response, beforeResponse) = testAgent.testRequest(
+                AcpMethod.AgentMethods.V2.SessionResume,
+                resumeRequest(ReplayFrom.Start()),
+            )
+
+            assertNotNull(response)
+            assertEquals(listOf("one", "two"), beforeResponse.replayedTexts())
+            assertEquals(listOf<ReplayFrom?>(ReplayFrom.Start()), support.replayedFrom)
+        }
+    }
+
+    @Test
+    fun `a v2 resume without replayFrom passes null to the implementation`() {
+        val support = ResumingV2Support()
+        withTestV2Agent(support) { testAgent ->
+            testAgent.testInitialize(v2InitializeRequest())
+
+            val (response, beforeResponse) = testAgent.testRequest(
+                AcpMethod.AgentMethods.V2.SessionResume,
+                resumeRequest(replayFrom = null),
+            )
+
+            assertNotNull(response)
+            assertEquals(emptyList(), beforeResponse)
+            assertEquals(listOf<ReplayFrom?>(null), support.replayedFrom)
+        }
+    }
+
+    @Test
+    fun `a v2 resume that fails after replaying registers nothing`() {
+        withTestV2Agent(ResumingV2Support(failAfterReplay = true)) { testAgent ->
+            testAgent.testInitialize(v2InitializeRequest())
+
+            val (response, beforeResponse) = testAgent.testRequest(
+                AcpMethod.AgentMethods.V2.SessionResume,
+                resumeRequest(ReplayFrom.Start()),
+            )
+            assertNull(response)
+            assertEquals(listOf("one", "two"), beforeResponse.replayedTexts(), "the replay went out before the failure")
+
+            val (promptResponse) = testAgent.testRequest(
+                AcpMethod.AgentMethods.V2.SessionPrompt,
+                com.agentclientprotocol.model.v2.PromptRequest(sessionId = SessionId("old-session"), prompt = emptyList()),
+            )
+            assertNull(promptResponse, "a session whose resume failed must not be prompt-able")
         }
     }
 

@@ -5,6 +5,7 @@ import com.agentclientprotocol.agent.v2.AgentInfo as V2AgentInfo
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.v2.Client as V2Client
 import com.agentclientprotocol.client.v2.ClientInfo as V2ClientInfo
+import com.agentclientprotocol.client.v2.ClientSessionOperations as V2ClientSessionOperations
 import com.agentclientprotocol.client.v2.ElicitationHandler as V2ElicitationHandler
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.InitializeRequest as V1InitializeRequest
@@ -12,6 +13,7 @@ import com.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
 import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
 import com.agentclientprotocol.model.ProtocolVersion
 import com.agentclientprotocol.model.v2.InitializeRequest as V2InitializeRequest
+import com.agentclientprotocol.model.v2.UpdateSessionNotification
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.acpFail
 import com.agentclientprotocol.protocol.readProtocolVersionOrNull
@@ -37,11 +39,18 @@ public class V1ClientConfig(
     }
 }
 
-/** Configuration used when negotiation selects protocol version 2. */
+/**
+ * Configuration used when negotiation selects protocol version 2.
+ *
+ * @property operations connection-wide permission handler, installed before any session setup
+ * @property onSessionUpdate receives full notifications independently of session setup results
+ */
 @UnstableApi
 public class V2ClientConfig(
     public val clientInfo: V2ClientInfo,
     public val elicitationHandler: V2ElicitationHandler? = null,
+    public val operations: V2ClientSessionOperations? = null,
+    public val onSessionUpdate: (UpdateSessionNotification) -> Unit = {},
 ) {
     init {
         require(clientInfo.protocolVersion == PROTOCOL_VERSION_V2) {
@@ -178,7 +187,12 @@ public class ClientNegotiator(
 
     private fun initializeV2(rawResponse: JsonElement): NegotiatedClient.V2 {
         val config = checkNotNull(v2)
-        val client = V2Client(protocol, elicitation = config.elicitationHandler)
+        val client = V2Client(
+            protocol,
+            elicitation = config.elicitationHandler,
+            operations = config.operations,
+            onSessionUpdate = config.onSessionUpdate,
+        )
         val agentInfo = client.completeInitialize(config.clientInfo, rawResponse)
         return NegotiatedClient.V2(client, agentInfo)
     }

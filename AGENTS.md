@@ -136,6 +136,18 @@ Lifecycle correctness is part of the public behavior. Changes to startup, cancel
 - Do not parent per-request `CompletableDeferred` values casually. Any change to their ownership must account for pending-map cleanup and peer cancellation.
 - Keep normal close, timeout/abort, parent cancellation, and I/O failure paths distinct and testable.
 
+For v2 session setup, keep client update and permission handlers at connection scope. Setup methods
+return full protocol responses; `Client.session(id)` is a command handle with no registry, update buffer,
+or cached configuration. Applications own routing, history assembly, and buffering. Deliver notifications
+independently of setup success, failure, or cancellation; do not add automatic replay rollback or retry.
+Track pending permission requests by session id so `session.cancel()` cancels only requests already pending
+for that session, including when sending the cancellation notification fails.
+
+Agent-side v2 replay belongs in `AgentSupport.resumeSession`, which receives `replayFrom` and a
+`ClientOperations` already bound to the requested id. Implementations send retained history with `notify`
+before returning. Empty `additionalDirectories` are omitted from v2 setup JSON, and empty `availableCommands`
+from v2 setup responses; the high-level client requires the advertised capability before sending a nonempty list.
+
 For WebSocket shutdown, preserve the established sequence: reject new work, enter closing state, drain accepted frames within the configured timeout, then perform a normal WebSocket close. Reserve cancellation/abort for timeout, cancellation, or writer failure.
 
 For STDIO, preserve newline-delimited frame behavior. Protocol output belongs on stdout; diagnostics and logs belong on stderr.

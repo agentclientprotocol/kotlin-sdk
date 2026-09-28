@@ -21,13 +21,12 @@ import com.agentclientprotocol.model.v2.RequestPermissionRequest
 import com.agentclientprotocol.model.v2.RequestPermissionResponse
 import com.agentclientprotocol.model.v2.SessionConfigOptionValue
 import com.agentclientprotocol.model.v2.SessionUpdate
+import com.agentclientprotocol.model.v2.UpdateSessionNotification
 import com.agentclientprotocol.model.v2.StateUpdate
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.transport.Transport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.launch
 import java.nio.file.Paths
 import kotlin.io.path.absolutePathString
 
@@ -39,23 +38,29 @@ private class AllowFirstPermission : ClientSessionOperations {
     }
 }
 
-/** Connects directly with a v2 client. */
+/**
+ * Connects directly with a v2 client.
+ */
 suspend fun CoroutineScope.runDirectV2Client(transport: Transport) {
     val protocol = Protocol(this, transport)
-    val client = Client(protocol)
+    val conversation = V2Conversation()
+    val client = Client(protocol, operations = AllowFirstPermission(), onSessionUpdate = conversation::onUpdate)
     protocol.start()
 
     try {
         val agentInfo = client.initialize(v2ClientInfo())
         println("Connected directly to ${agentInfo.implementation.name} over ACP v2")
-        runV2Conversation(client)
+        conversation.run(client)
     } finally {
         protocol.close()
     }
 }
 
-/** Negotiates once and then uses the concrete v1 or v2 client returned by the SDK. */
+/**
+ * Negotiates once and then uses the concrete v1 or v2 client returned by the SDK.
+ */
 suspend fun CoroutineScope.runNegotiatedClient(transport: Transport) {
+    val conversation = V2Conversation()
     val protocol = Protocol(this, transport)
     protocol.start()
 
@@ -63,14 +68,18 @@ suspend fun CoroutineScope.runNegotiatedClient(transport: Transport) {
         val negotiated = ClientNegotiator(
             protocol = protocol,
             v1 = V1ClientConfig(ClientInfo(implementation = Implementation("sample-client", "1.0.0"))),
-            v2 = V2ClientConfig(v2ClientInfo()),
+            v2 = V2ClientConfig(
+                v2ClientInfo(),
+                operations = AllowFirstPermission(),
+                onSessionUpdate = conversation::onUpdate,
+            ),
         ).negotiate()
 
         when (negotiated) {
             is NegotiatedClient.V1 -> println("Agent selected ACP v1: ${negotiated.agentInfo.implementation?.name}")
             is NegotiatedClient.V2 -> {
                 println("Agent selected ACP v2: ${negotiated.agentInfo.implementation.name}")
-                runV2Conversation(negotiated.client)
+                conversation.run(negotiated.client)
             }
         }
     } finally {
@@ -83,30 +92,31 @@ private fun v2ClientInfo() = V2ClientInfo(
     implementation = Implementation("sample-client", "2.0.0"),
 )
 
-private suspend fun CoroutineScope.runV2Conversation(client: Client) {
-    val session = client.newSession(
-        cwd = Paths.get("").absolutePathString(),
-        operations = AllowFirstPermission(),
-    )
-    val turnFinished = CompletableDeferred<Unit>()
-    val collecting = launch {
-        session.updates.collect { received ->
-            received.update.render()
-            val state = (received.update as? SessionUpdate.StateUpdate)?.state
-            if (state is StateUpdate.Idle) turnFinished.complete(Unit)
-        }
+/**
+ * Application state for this sample's single session and single turn.
+ */
+private class V2Conversation {
+    private val turnFinished = CompletableDeferred<Unit>()
+
+    fun onUpdate(received: UpdateSessionNotification) {
+        received.update.render()
+        val state = (received.update as? SessionUpdate.StateUpdate)?.state
+        if (state is StateUpdate.Idle) turnFinished.complete(Unit)
     }
 
-    if (session.configOptions.any { it.configId == SessionConfigId("response_mode") }) {
-        // The response is the complete option list, not just the one that changed.
-        val configured = session.setConfigOption(
-            SessionConfigId("response_mode"),
-            SessionConfigOptionValue.Id(SessionConfigValueId("uppercase")),
-        )
-        println("Configured next reply: $configured")
+    suspend fun run(client: Client) {
+        val response = client.newSession(cwd = Paths.get("").absolutePathString())
+        val session = client.session(response.sessionId)
+
+        if (response.configOptions.any { it.configId == SessionConfigId("response_mode") }) {
+            val configured = session.setConfigOption(
+                SessionConfigId("response_mode"),
+                SessionConfigOptionValue.Id(SessionConfigValueId("uppercase")),
+            )
+            println("Configured next reply: $configured")
+        }
+        session.prompt(listOf(ContentBlock.Text("Hello from the v2 client")))
+        turnFinished.await()
+        session.close()
     }
-    session.prompt(listOf(ContentBlock.Text("Hello from the v2 client")))
-    turnFinished.await()
-    session.close()
-    collecting.cancelAndJoin()
 }

@@ -7,107 +7,293 @@ import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.Implementation
 import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
+import com.agentclientprotocol.model.SessionAdditionalDirectoriesCapabilities
+import com.agentclientprotocol.model.SessionConfigId
 import com.agentclientprotocol.model.SessionId
+import com.agentclientprotocol.model.v2.AgentCapabilities
+import com.agentclientprotocol.model.v2.AvailableCommand
 import com.agentclientprotocol.model.v2.ContentBlock
 import com.agentclientprotocol.model.v2.ContentChunk
+import com.agentclientprotocol.model.v2.ForkSessionResponse
 import com.agentclientprotocol.model.v2.InitializeResponse
 import com.agentclientprotocol.model.v2.NewSessionResponse
+import com.agentclientprotocol.model.v2.ReplayFrom
 import com.agentclientprotocol.model.v2.RequestPermissionOutcome
 import com.agentclientprotocol.model.v2.RequestPermissionRequest
 import com.agentclientprotocol.model.v2.RequestPermissionResponse
 import com.agentclientprotocol.model.v2.ResumeSessionResponse
+import com.agentclientprotocol.model.v2.SessionCapabilities
+import com.agentclientprotocol.model.v2.SessionConfigKind
+import com.agentclientprotocol.model.v2.SessionConfigOption
 import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.model.v2.UpdateSessionNotification
+import com.agentclientprotocol.protocol.AcpExpectedError
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.rpc.ACPJson
-import com.agentclientprotocol.rpc.TransportFrame
+import com.agentclientprotocol.rpc.JsonRpcError
+import com.agentclientprotocol.rpc.JsonRpcErrorCode
+import com.agentclientprotocol.rpc.JsonRpcErrorResponse
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.rpc.JsonRpcSuccessResponse
+import com.agentclientprotocol.rpc.TransportFrame
 import com.agentclientprotocol.transport.BaseTransport
 import com.agentclientprotocol.transport.Transport
-import kotlinx.coroutines.CompletableDeferred
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedSendChannelException
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
 
 class ClientSessionTest {
+    @Test
+    fun `new updates reach the callback before setup responds`() = withV2Client { client, agent, scope, received ->
+        val opening = scope.async { client.newSession("/work") }
+        val request = agent.requests.receive()
+        agent.sendUpdate(SessionId("new"), "early")
+
+        assertEquals(listOf("early"), received.takeTexts(1))
+        assertFalse(opening.isCompleted)
+        agent.complete(request, """{"sessionId":"new"}""")
+        assertEquals(SessionId("new"), opening.await().sessionId)
+    }
 
     @Test
-    fun `cancel releases pending permission when notification send fails`() = withV2Client { client, agent, scope ->
-        val permissionStarted = CompletableDeferred<Unit>()
-        val permissionCleanedUp = CompletableDeferred<Unit>()
-        val sessionId = SessionId("session")
-        agent.onNewSession(sessionId) { }
-        val session = client.newSession(
-            cwd = ".",
-            operations = object : ClientSessionOperations {
-                override suspend fun requestPermission(request: RequestPermissionRequest): RequestPermissionResponse {
-                    permissionStarted.complete(Unit)
-                    try {
-                        awaitCancellation()
-                    } finally {
-                        permissionCleanedUp.complete(Unit)
+    fun `replay reaches the callback before resume responds without a handle`() = withV2Client { client, agent, scope, received ->
+        val resuming = scope.async { client.resumeSession(SessionId("saved"), "/work", replayFrom = ReplayFrom.Start()) }
+        val request = agent.requests.receive()
+        agent.sendUpdate(SessionId("saved"), "history")
+
+        assertEquals(listOf("history"), received.takeTexts(1))
+        assertFalse(resuming.isCompleted)
+        agent.complete(request)
+        resuming.await()
+    }
+
+    @Test
+    fun `failed resume keeps partial replay and later notifications`() = withV2Client { client, agent, scope, received ->
+        val resuming = scope.async {
+            runCatching { client.resumeSession(SessionId("saved"), "/work", replayFrom = ReplayFrom.Start()) }
+        }
+        val request = agent.requests.receive()
+        agent.sendUpdate(SessionId("saved"), "partial replay")
+        assertEquals(listOf("partial replay"), received.takeTexts(1))
+        agent.fail(request)
+        assertTrue(resuming.await().isFailure)
+
+        agent.sendUpdate(SessionId("saved"), "after failure")
+        assertEquals(listOf("after failure"), received.takeTexts(1))
+    }
+
+    @Test
+    fun `failure before replay permits an explicit retry`() = withV2Client { client, agent, scope, received ->
+        val failed = scope.async { runCatching { client.resumeSession(SessionId("saved"), "/work") } }
+        agent.fail(agent.requests.receive())
+        assertTrue(failed.await().isFailure)
+        val retry = scope.async { client.resumeSession(SessionId("saved"), "/work", replayFrom = ReplayFrom.Start()) }
+        val request = agent.requests.receive()
+        agent.sendUpdate(SessionId("saved"), "retry history")
+        assertEquals(listOf("retry history"), received.takeTexts(1))
+        agent.complete(request)
+        retry.await()
+    }
+
+    @Test
+    fun `failed resume without replay still delivers live events`() = withV2Client { client, agent, scope, received ->
+        val resuming = scope.async { runCatching { client.resumeSession(SessionId("saved"), "/work") } }
+        val request = agent.requests.receive()
+        assertFalse(request.params!!.jsonObject.containsKey("replayFrom"))
+        agent.sendUpdate(SessionId("saved"), "live during resume")
+        agent.fail(request)
+        assertTrue(resuming.await().isFailure)
+        assertEquals(listOf("live during resume"), received.takeTexts(1))
+    }
+
+    @Test
+    fun `cancelled resume leaves updates available for an explicit retry`() = withV2Client { client, agent, scope, received ->
+        val resuming = scope.async { client.resumeSession(SessionId("saved"), "/work", replayFrom = ReplayFrom.Start()) }
+        agent.requests.receive()
+        agent.sendUpdate(SessionId("saved"), "partial")
+        assertEquals(listOf("partial"), received.takeTexts(1))
+        resuming.cancelAndJoin()
+        agent.sendUpdate(SessionId("saved"), "after cancellation")
+        val retry = scope.async { client.resumeSession(SessionId("saved"), "/work", replayFrom = ReplayFrom.Start()) }
+        val request = agent.requests.receive()
+        agent.sendUpdate(SessionId("saved"), "replayed again")
+        agent.complete(request)
+        retry.await()
+        assertEquals(listOf("after cancellation", "replayed again"), received.takeTexts(2))
+    }
+
+    @Test
+    fun `overlapping and repeated resumes share the connection callback`() = withV2Client { client, agent, scope, received ->
+        val id = SessionId("saved")
+        val first = scope.async { client.resumeSession(id, "/work", replayFrom = ReplayFrom.Start()) }
+        val firstRequest = agent.requests.receive()
+        val second = scope.async { client.resumeSession(id, "/work", replayFrom = ReplayFrom.Start()) }
+        val secondRequest = agent.requests.receive()
+        agent.sendUpdate(id, "first replay")
+        agent.complete(firstRequest)
+        first.await()
+        agent.sendUpdate(SessionId("other"), "other session")
+        agent.sendUpdate(id, "second replay")
+        agent.complete(secondRequest)
+        second.await()
+        val third = scope.async { client.resumeSession(id, "/work") }
+        agent.complete(agent.requests.receive())
+        third.await()
+        agent.sendUpdate(id, "live")
+
+        val events = received.take(4)
+        assertEquals(listOf(id, SessionId("other"), id, id), events.map { it.sessionId })
+        assertEquals(listOf("first replay", "other session", "second replay", "live"), events.map { it.text() })
+    }
+
+    @Test
+    fun `all setup methods preserve complete responses`() = withV2Client { client, agent, scope, _ ->
+        val options = listOf(SessionConfigOption(SessionConfigId("verbose"), "Verbose", kind = SessionConfigKind.Boolean(true)))
+        val commands = listOf(AvailableCommand("test", "Run project tests"))
+        val meta = buildJsonObject { put("trace", "setup") }
+        val new = NewSessionResponse(SessionId("new"), configOptions = options, availableCommands = commands, _meta = meta)
+        val opening = scope.async { client.newSession("/work") }
+        agent.complete(agent.requests.receive(), ACPJson.encodeToString(NewSessionResponse.serializer(), new))
+        assertEquals(new, opening.await())
+
+        val resumed = ResumeSessionResponse(configOptions = options, availableCommands = commands, _meta = meta)
+        val resuming = scope.async { client.resumeSession(SessionId("saved"), "/work") }
+        agent.complete(agent.requests.receive(), ACPJson.encodeToString(ResumeSessionResponse.serializer(), resumed))
+        assertEquals(resumed, resuming.await())
+
+        val forked = ForkSessionResponse(SessionId("fork"), configOptions = options, availableCommands = commands, _meta = meta)
+        val forking = scope.async { client.forkSession(SessionId("saved"), "/work") }
+        agent.complete(agent.requests.receive(), ACPJson.encodeToString(ForkSessionResponse.serializer(), forked))
+        assertEquals(forked, forking.await())
+    }
+
+    @Test
+    fun `null resume result reads as an empty response`() = withV2Client { client, agent, scope, _ ->
+        val resuming = scope.async { client.resumeSession(SessionId("saved"), "/work") }
+        agent.complete(agent.requests.receive(), "null")
+        assertEquals(ResumeSessionResponse(), resuming.await())
+    }
+
+    @Test
+    fun `callback failure does not prevent later updates`() {
+        val received = SessionReader()
+        withV2Client(onUpdate = {
+            if (it.text() == "bad") error("callback failed")
+            received.accept(it)
+        }) { _, agent, _, _ ->
+            agent.sendUpdate(SessionId("unregistered"), "bad")
+            agent.sendUpdate(SessionId("unregistered"), "good")
+            assertEquals(listOf("good"), received.takeTexts(1))
+        }
+    }
+
+    @Test
+    fun `cancel releases pending permission when notification send fails`() {
+        val operations = WaitingPermissions()
+        withV2Client(operations = operations) { client, agent, scope, _ ->
+            val id = SessionId("session")
+            val permission = scope.async { client.handlePermissionRequest(RequestPermissionRequest(id, "Allow?", emptyList())) }
+            operations.started.receive()
+            agent.sendFailure = ClosedSendChannelException("Writer queue closed")
+
+            assertFailsWith<ClosedSendChannelException> { client.session(id).cancel() }
+            assertEquals(RequestPermissionOutcome.Cancelled, permission.await().outcome)
+            assertEquals(id, operations.cleaned.receive())
+        }
+    }
+
+    @Test
+    fun `permission cancellation spans handles but isolates sessions and future requests`() {
+        val operations = WaitingPermissions()
+        withV2Client(operations = operations) { client, _, scope, _ ->
+            val id = SessionId("session")
+            val other = SessionId("other")
+            val first = scope.async { client.handlePermissionRequest(RequestPermissionRequest(id, "First", emptyList())) }
+            assertEquals(id, operations.started.receive())
+            val second = scope.async { client.handlePermissionRequest(RequestPermissionRequest(id, "Second", emptyList())) }
+            assertEquals(id, operations.started.receive())
+            val isolated = scope.async { client.handlePermissionRequest(RequestPermissionRequest(other, "Other", emptyList())) }
+            assertEquals(other, operations.started.receive())
+            val handle = client.session(id)
+            val duplicate = client.session(id)
+            handle.cancel()
+            assertEquals(RequestPermissionOutcome.Cancelled, first.await().outcome)
+            assertEquals(RequestPermissionOutcome.Cancelled, second.await().outcome)
+            assertFalse(isolated.isCompleted)
+
+            val future = scope.async { client.handlePermissionRequest(RequestPermissionRequest(id, "Future", emptyList())) }
+            assertEquals(id, operations.started.receive())
+            assertFalse(future.isCompleted)
+            duplicate.cancel()
+            assertEquals(RequestPermissionOutcome.Cancelled, future.await().outcome)
+            client.session(other).cancel()
+            assertEquals(RequestPermissionOutcome.Cancelled, isolated.await().outcome)
+        }
+    }
+
+    @Test
+    fun `additional directories require the capability without sending a request`() = withV2Client { client, agent, _, _ ->
+        assertFailsWith<AcpExpectedError> { client.newSession("/work", additionalDirectories = listOf("/lib")) }
+        assertFailsWith<AcpExpectedError> { client.resumeSession(SessionId("saved"), "/work", additionalDirectories = listOf("/lib")) }
+        assertFailsWith<AcpExpectedError> { client.forkSession(SessionId("saved"), "/work", additionalDirectories = listOf("/lib")) }
+        assertTrue(agent.requests.tryReceive().isFailure)
+    }
+
+    @Test
+    fun `additional directories fail before initialization instead of waiting`() = withV2Client(initialize = false) { client, agent, _, _ ->
+        assertFailsWith<AcpExpectedError> { client.newSession("/work", additionalDirectories = listOf("/lib")) }
+        assertTrue(agent.requests.tryReceive().isFailure)
+    }
+
+    @Test
+    fun `setup omits empty roots and forwards supported roots`() {
+        for (supported in listOf(false, true)) {
+            val capabilities = if (supported) AgentCapabilities(
+                session = SessionCapabilities(additionalDirectories = SessionAdditionalDirectoriesCapabilities())
+            ) else AgentCapabilities()
+            withV2Client(capabilities = capabilities) { client, agent, scope, _ ->
+                for (roots in if (supported) listOf(emptyList(), listOf("/lib")) else listOf(emptyList())) {
+                    val calls: List<suspend () -> Any> = listOf(
+                        { client.newSession("/work", additionalDirectories = roots) },
+                        { client.resumeSession(SessionId("saved"), "/work", additionalDirectories = roots) },
+                        { client.forkSession(SessionId("saved"), "/work", additionalDirectories = roots) },
+                    )
+                    for (call in calls) {
+                        val pending = scope.async { call() }
+                        val request = agent.requests.receive()
+                        val field = request.params!!.jsonObject["additionalDirectories"]
+                        assertEquals(roots.takeIf { it.isNotEmpty() }?.map(::JsonPrimitive), field?.jsonArray?.toList())
+                        agent.complete(request, """{"sessionId":"opened"}""")
+                        pending.await()
                     }
                 }
-            },
-        )
-        val permission = scope.async {
-            session.handlePermissionRequest(RequestPermissionRequest(sessionId, "Allow?", emptyList()))
+            }
         }
-        permissionStarted.await()
-        agent.sendFailure = ClosedSendChannelException("Writer queue closed")
-
-        assertFailsWith<ClosedSendChannelException> { session.cancel() }
-
-        assertEquals(RequestPermissionOutcome.Cancelled, permission.await().outcome)
-        assertTrue(permissionCleanedUp.isCompleted)
-    }
-
-    /** Delivers updates sent before `session/new` responds to the returned session in order. */
-    @Test
-    fun `updates sent before the session new response reach the session`() = withV2Client { client, agent, scope ->
-        agent.onNewSession(SessionId("session-1")) {
-            sendUpdate(SessionId("session-1"), "first")
-            sendUpdate(SessionId("session-1"), "second")
-        }
-
-        val session = client.newSession(cwd = ".")
-
-        assertEquals(listOf("first", "second"), scope.read(session).takeTexts(2))
-    }
-
-    /** Delivers replay updates sent before `session/resume` responds to the resumed session. */
-    @Test
-    fun `history replayed during session resume reaches the session`() = withV2Client { client, agent, scope ->
-        agent.onResumeSession {
-            sendUpdate(SessionId("old-session"), "replay-1")
-            sendUpdate(SessionId("old-session"), "replay-2")
-        }
-
-        val session = client.resumeSession(sessionId = SessionId("old-session"), cwd = ".")
-
-        assertEquals(listOf("replay-1", "replay-2"), scope.read(session).takeTexts(2))
     }
 
     @Test
-    fun `delivers tool call updates in order with payloads and metadata intact`() = withV2Client { client, agent, scope ->
+    fun `delivers tool call updates in order with payloads and metadata intact`() = withV2Client { client, agent, _, received ->
         val sessionId = SessionId("session-1")
         val notificationMeta = buildJsonObject { put("scope", "notification") }
         val updates = listOf(
@@ -126,65 +312,52 @@ class ClientSessionTest {
         agent.onNewSession(sessionId) {
             updates.take(3).forEach { sendRawUpdate(sessionId, it, notificationMeta) }
         }
-
-        val session = client.newSession(cwd = ".")
-        val reader = scope.read(session)
+        client.newSession(cwd = "/work")
         updates.drop(3).forEach { agent.sendRawUpdate(sessionId, it, notificationMeta) }
 
-        reader.take(updates.size).forEachIndexed { index, actual ->
+        received.take(updates.size).forEachIndexed { index, actual ->
+            assertEquals(sessionId, actual.sessionId)
             assertEquals(updates[index], ACPJson.encodeToJsonElement(SessionUpdate.serializer(), actual.update), "update $index")
             assertEquals(notificationMeta, actual._meta, "notification metadata for update $index")
         }
     }
-
-    /** Discards early updates whose session id is not claimed by the opening call. */
-    @Test
-    fun `buffered updates that no session claims do not reach a later session with that id`() =
-        withV2Client { client, agent, scope ->
-            agent.onNewSession(SessionId("session-1")) { sendUpdate(SessionId("ghost-session"), "ghost") }
-            client.newSession(cwd = ".")
-
-            agent.onResumeSession { }
-            val ghost = client.resumeSession(sessionId = SessionId("ghost-session"), cwd = ".")
-            agent.sendUpdate(SessionId("ghost-session"), "after resume")
-
-            assertEquals(listOf("after resume"), scope.read(ghost).takeTexts(1))
-        }
-
-    /** Routes updates only to the latest session object after the same session is resumed again. */
-    @Test
-    fun `resuming a session again hands the updates to the session that came back last`() =
-        withV2Client { client, agent, scope ->
-            agent.onResumeSession { }
-            val first = client.resumeSession(sessionId = SessionId("session-1"), cwd = ".")
-            val firstUpdates = scope.read(first)
-            val second = client.resumeSession(sessionId = SessionId("session-1"), cwd = ".")
-
-            agent.sendUpdate(SessionId("session-1"), "after the second resume")
-
-            assertEquals(listOf("after the second resume"), scope.read(second).takeTexts(1))
-            assertEquals(emptyList(), firstUpdates.rest())
-        }
 }
 
-/**
- * Runs [block] against a v2 client whose agent is the raw-JSON [ScriptedAgent], handing it the scope the
- * connection lives in so it can read sessions with [read].
- */
-private fun withV2Client(block: suspend (Client, ScriptedAgent, CoroutineScope) -> Unit) {
+private class WaitingPermissions : ClientSessionOperations {
+    val started = Channel<SessionId>(Channel.UNLIMITED)
+    val cleaned = Channel<SessionId>(Channel.UNLIMITED)
+
+    override suspend fun requestPermission(request: RequestPermissionRequest): RequestPermissionResponse {
+        started.send(request.sessionId)
+        try {
+            awaitCancellation()
+        } finally {
+            cleaned.trySend(request.sessionId).getOrThrow()
+        }
+    }
+}
+
+private fun withV2Client(
+    operations: ClientSessionOperations? = null,
+    onUpdate: ((UpdateSessionNotification) -> Unit)? = null,
+    capabilities: AgentCapabilities = AgentCapabilities(),
+    initialize: Boolean = true,
+    block: suspend (Client, ScriptedAgent, CoroutineScope, SessionReader) -> Unit,
+) {
     val scope = CoroutineScope(SupervisorJob())
     try {
-        val agent = ScriptedAgent()
+        val agent = ScriptedAgent(capabilities)
         val protocol = Protocol(scope, agent)
+        val received = SessionReader()
+        val client = Client(protocol, operations = operations, onSessionUpdate = onUpdate ?: received::accept)
         protocol.start()
         agent.start()
-        val client = Client(protocol)
         runBlocking {
             withTimeout(10.seconds) {
-                client.initialize(
+                if (initialize) client.initialize(
                     ClientInfo(protocolVersion = PROTOCOL_VERSION_V2, implementation = Implementation("test", "1.0.0"))
                 )
-                block(client, agent, scope)
+                block(client, agent, scope, received)
             }
         }
     } finally {
@@ -192,62 +365,42 @@ private fun withV2Client(block: suspend (Client, ScriptedAgent, CoroutineScope) 
     }
 }
 
-/** Starts reading [session], from the buffered updates onwards. */
-private fun CoroutineScope.read(session: ClientSession) = SessionReader(this, session)
+private class SessionReader {
+    private val updates = Channel<UpdateSessionNotification>(Channel.UNLIMITED)
 
-/**
- * Reads one session's updates in the background, retaining notification metadata.
- *
- * Collecting the whole flow rather than `take`-ing from it: `take` aborts the collection with an exception
- * that the channel behind [ClientSession.updates] does not always keep to itself, which showed up as a rare
- * `AbortFlowException` escaping a test.
- */
-private class SessionReader(scope: CoroutineScope, session: ClientSession) {
-    private val updates = Channel<ClientSession.UpdateWithMeta>(Channel.UNLIMITED)
-
-    init {
-        scope.launch {
-            session.updates.collect { updates.send(it) }
-            // The session's buffer was closed, so nothing more can arrive.
-            updates.close()
-        }
+    fun accept(notification: UpdateSessionNotification) {
+        updates.trySend(notification).getOrThrow()
     }
 
-    /** The next [count] updates, waiting for them if they have not arrived yet. */
-    suspend fun take(count: Int): List<ClientSession.UpdateWithMeta> =
-        withTimeout(10.seconds) { List(count) { updates.receive() } }
+    suspend fun take(count: Int): List<UpdateSessionNotification> = List(count) { updates.receive() }
 
-    /** The next [count] agent message chunks, as their texts. */
-    suspend fun takeTexts(count: Int): List<String> = take(count).map {
-        ((it.update as SessionUpdate.AgentMessageChunk).chunk.content as ContentBlock.Text).text
-    }
-
-    /** Everything up to the end of the session's updates, which is empty when it has already ended. */
-    suspend fun rest(): List<ClientSession.UpdateWithMeta> =
-        withTimeout(10.seconds) { buildList { for (update in updates) add(update) } }
+    suspend fun takeTexts(count: Int): List<String> = take(count).map { it.text() }
 }
 
+private fun UpdateSessionNotification.text(): String =
+    ((update as SessionUpdate.AgentMessageChunk).chunk.content as ContentBlock.Text).text
+
 /**
- * An agent scripted at the JSON-RPC level: it answers `initialize` on its own, and answers the call that
- * opens a session only after sending the updates the test asked for.
+ * Holds setup responses until the test completes them, so early updates never depend on timing.
  */
-private class ScriptedAgent : BaseTransport() {
+private class ScriptedAgent(private val capabilities: AgentCapabilities) : BaseTransport() {
     var sendFailure: Throwable? = null
-    private var newSession: (JsonRpcRequest) -> Unit = { error("no answer scripted for session/new") }
-    private var resumeSession: (JsonRpcRequest) -> Unit = { error("no answer scripted for session/resume") }
+    val requests = Channel<JsonRpcRequest>(Channel.UNLIMITED)
+    private var newSession: ((JsonRpcRequest) -> Unit)? = null
 
     fun onNewSession(sessionId: SessionId, beforeResponse: ScriptedAgent.() -> Unit) {
         newSession = { request ->
             beforeResponse()
-            respond(request, AcpMethod.AgentMethods.V2.SessionNew.responseSerializer, NewSessionResponse(sessionId))
+            respond(request, NewSessionResponse.serializer(), NewSessionResponse(sessionId))
         }
     }
 
-    fun onResumeSession(beforeResponse: ScriptedAgent.() -> Unit) {
-        resumeSession = { request ->
-            beforeResponse()
-            respond(request, AcpMethod.AgentMethods.V2.SessionResume.responseSerializer, ResumeSessionResponse())
-        }
+    fun complete(request: JsonRpcRequest, result: String = "{}") {
+        fireMessage(JsonRpcSuccessResponse(request.id, ACPJson.parseToJsonElement(result)))
+    }
+
+    fun fail(request: JsonRpcRequest) {
+        fireMessage(JsonRpcErrorResponse(request.id, JsonRpcError(JsonRpcErrorCode.INTERNAL_ERROR.code, "resume failed")))
     }
 
     fun sendUpdate(sessionId: SessionId, text: String) {
@@ -301,10 +454,14 @@ private class ScriptedAgent : BaseTransport() {
             AcpMethod.AgentMethods.V2.Initialize.methodName -> respond(
                 message,
                 AcpMethod.AgentMethods.V2.Initialize.responseSerializer,
-                InitializeResponse(PROTOCOL_VERSION_V2, Implementation("scripted-agent", "1.0.0")),
+                InitializeResponse(PROTOCOL_VERSION_V2, Implementation("scripted-agent", "1.0.0"), capabilities = capabilities),
             )
-            AcpMethod.AgentMethods.V2.SessionNew.methodName -> newSession(message)
-            AcpMethod.AgentMethods.V2.SessionResume.methodName -> resumeSession(message)
+            AcpMethod.AgentMethods.V2.SessionNew.methodName -> {
+                val handler = newSession
+                if (handler == null) requests.trySend(message).getOrThrow() else handler(message)
+            }
+            AcpMethod.AgentMethods.V2.SessionResume.methodName,
+            AcpMethod.AgentMethods.V2.SessionFork.methodName -> requests.trySend(message).getOrThrow()
             else -> {}
         }
     }

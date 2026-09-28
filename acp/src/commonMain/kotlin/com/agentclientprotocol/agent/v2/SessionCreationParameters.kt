@@ -7,7 +7,7 @@ import kotlinx.serialization.json.JsonElement
 /**
  * **UNSTABLE**
  *
- * What `session/new` was asked for.
+ * The session environment a client sent with `session/new`, `session/resume` or `session/fork`.
  *
  * Separate from the v1 [com.agentclientprotocol.common.SessionCreationParameters] because v2 has its own
  * `McpServer` union.

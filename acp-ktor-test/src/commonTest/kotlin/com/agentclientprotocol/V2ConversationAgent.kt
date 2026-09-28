@@ -22,6 +22,7 @@ import com.agentclientprotocol.model.SessionConfigValueId
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.ToolCallId
 import com.agentclientprotocol.model.v2.*
+import com.agentclientprotocol.protocol.acpFail
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
@@ -73,7 +74,7 @@ internal class ConversationAgent : AgentSupport {
     /** What the user did with the last elicitation. */
     val elicitedAction: ElicitationAction? get() = openSession.elicitedAction
 
-    /** Every update the session has sent, which is also what it would replay on a resume. */
+    /** Every update the session has sent, which is what a replay rebuilds the conversation from. */
     fun historyOf(sessionId: SessionId): List<SessionUpdate> = records.getValue(sessionId).history
 
     private val records = mutableMapOf<SessionId, SessionRecord>()
@@ -115,6 +116,12 @@ internal class ConversationAgent : AgentSupport {
         client: ClientOperations,
     ): AgentSession {
         resume = Resume(sessionId, parameters.cwd, replayFrom)
+        when (replayFrom) {
+            null -> {}
+            // Sent before this returns, so the whole replay reaches the client ahead of the resume response.
+            is ReplayFrom.Start -> replayOf(records.getValue(sessionId).history).forEach { client.notify(it) }
+            is ReplayFrom.Unknown -> acpFail("Cannot replay from a '${replayFrom.type}' cursor")
+        }
         // The record outlived the close, so the session comes back with the mode that was chosen on it and
         // the history behind it.
         return open(sessionId, client)
@@ -148,6 +155,27 @@ internal class ConversationAgent : AgentSupport {
 
     private fun open(sessionId: SessionId, client: ClientOperations): AgentSession =
         ConversationSession(sessionId, records.getValue(sessionId), client).also { openSession = it }
+}
+
+/**
+ * The conversation in [history], as a resume replays it: messages and tool calls, with each chunked reply
+ * cleared first so the client drops what it already holds before the chunks append to it.
+ *
+ * A turn's state updates are left out: they describe the live turn, not the conversation, and a replayed idle
+ * would read as the end of a live one.
+ */
+private fun replayOf(history: List<SessionUpdate>): List<SessionUpdate> = buildList {
+    val rebuilt = mutableSetOf<MessageId>()
+    for (update in history) {
+        when (update) {
+            is SessionUpdate.StateUpdate -> continue
+            is SessionUpdate.AgentMessageChunk -> if (rebuilt.add(update.chunk.messageId)) {
+                add(SessionUpdate.AgentMessage(AgentMessage(update.chunk.messageId, MaybeUndefined.Value(emptyList()))))
+            }
+            else -> {}
+        }
+        add(update)
+    }
 }
 
 /** What the agent keeps about one session between turns, and across a close and a resume. */

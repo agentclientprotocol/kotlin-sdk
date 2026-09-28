@@ -12,139 +12,65 @@ import com.agentclientprotocol.model.v2.PromptRequest
 import com.agentclientprotocol.model.v2.SessionConfigOption
 import com.agentclientprotocol.model.v2.SessionConfigOptionValue
 import com.agentclientprotocol.model.v2.SetSessionConfigOptionRequest
-import com.agentclientprotocol.model.v2.SessionUpdate
-import com.agentclientprotocol.model.v2.RequestPermissionOutcome
-import com.agentclientprotocol.model.v2.RequestPermissionRequest
-import com.agentclientprotocol.model.v2.RequestPermissionResponse
-import com.agentclientprotocol.protocol.Protocol
-import com.agentclientprotocol.protocol.acpFail
 import com.agentclientprotocol.protocol.invoke
-import kotlinx.atomicfu.atomic
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.selects.select
-import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonElement
 
 /**
  * **UNSTABLE**
  *
- * A v2 session as seen from the client.
+ * A command handle for a v2 session. Incoming updates and permission requests belong to [Client],
+ * independently of this handle's lifetime. Multiple handles may refer to the same session.
  *
- * Separate from [com.agentclientprotocol.client.ClientSession] because a v2 turn is shaped differently:
- * `session/prompt` answers with nothing, and everything the client wants to know — the content, the tool
- * calls, and how the turn ended — arrives as [updates]. The turn is over when an update carrying
- * [com.agentclientprotocol.model.v2.StateUpdate.Idle] shows up, and its `stopReason` says why
- * ([prompt lifecycle](https://agentclientprotocol.com/protocol/v2/prompt-lifecycle)).
+ * @property sessionId the session addressed by this handle
  */
 @UnstableApi
 public class ClientSession internal constructor(
     public val sessionId: SessionId,
-    public val configOptions: List<SessionConfigOption>,
-    private val protocol: Protocol,
-    private val operations: ClientSessionOperations?,
-    private val updatesFlow: Flow<UpdateWithMeta>,
-    private val onClosed: () -> Unit = {},
+    private val client: Client,
 ) {
-    // Completed when the client cancels the turn, so pending permission requests can be answered.
-    private val _cancelled = atomic(CompletableDeferred<Unit>())
-
-    /**
-     * One `session/update` notification: the update and the metadata it came with.
-     */
-    @UnstableApi
-    public class UpdateWithMeta(public val update: SessionUpdate, public val _meta: JsonElement? = null)
-
-    /**
-     * A single-consumer stream of this session's `session/update` notifications, in arrival order.
-     *
-     * It includes updates buffered before this object was created. Collect it once: the stream completes
-     * when the session is closed or deleted.
-     */
-    public val updates: Flow<UpdateWithMeta>
-        get() = updatesFlow
-
     /**
      * Sends a prompt and returns once the agent has accepted it.
      *
-     * Returning does **not** mean the turn is done: v2 reports completion through [updates], not here.
+     * Turn completion arrives through the connection's update callback as
+     * [com.agentclientprotocol.model.v2.StateUpdate.Idle], whose stop reason says why the agent stopped.
      */
     public suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null) {
-        // A fresh signal per turn: a cancel belongs to the turn it interrupted.
-        _cancelled.value = CompletableDeferred()
-        AcpMethod.AgentMethods.V2.SessionPrompt(protocol, PromptRequest(sessionId, content, _meta))
+        AcpMethod.AgentMethods.V2.SessionPrompt(client.protocol, PromptRequest(sessionId, content, _meta))
     }
 
     /**
-     * Answers an incoming `session/request_permission` for this session.
+     * Sets a configuration option, returning the complete option list as it now stands.
      *
-     * Races the handler against a cancel of the turn, because a client that cancels MUST answer every
-     * pending permission request with [RequestPermissionOutcome.Cancelled] rather than leave the agent
-     * waiting
-     * ([prompt lifecycle](https://agentclientprotocol.com/protocol/v2/prompt-lifecycle#cancellation)).
-     */
-    internal suspend fun handlePermissionRequest(request: RequestPermissionRequest): RequestPermissionResponse {
-        val handler = operations
-            ?: acpFail(
-                "This client has no v2 session operations, so it cannot answer session/request_permission. " +
-                    "Pass operations to Client.v2.newSession to handle permissions"
-            )
-        val cancelled = _cancelled.value
-        return coroutineScope {
-            val answer = async { handler.requestPermission(request) }
-            select {
-                answer.onAwait { it }
-                cancelled.onAwait {
-                    answer.cancel()
-                    RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
-                }
-            }
-        }
-    }
-
-    /**
-     * Sets a configuration option with `session/set_config_option`, returning the options as they now stand.
-     *
-     * v2 folded v1's `session/set_mode` into this: a mode is one option among others. The agent answers with
-     * the complete option list rather than the one that changed, because one choice can affect the others,
-     * so this supersedes [configOptions] — as does every [SessionUpdate.ConfigOptionUpdate] on [updates].
+     * One choice can affect other options. This response, and subsequent config option updates received
+     * by the connection, supersede the configuration from the setup response.
      */
     public suspend fun setConfigOption(
         configId: SessionConfigId,
         value: SessionConfigOptionValue,
         _meta: JsonElement? = null,
     ): List<SessionConfigOption> = AcpMethod.AgentMethods.V2.SessionSetConfigOption(
-        protocol,
+        client.protocol,
         SetSessionConfigOptionRequest(sessionId, configId, value, _meta)
     ).configOptions
 
     /**
-     * Ends this session with `session/close`.
-     *
-     * The session is forgotten locally afterwards, so its [updates] stop being routed anywhere.
+     * Ends this session with `session/close` and returns the agent's response.
      */
-    public suspend fun close(_meta: JsonElement? = null): CloseSessionResponse {
-        val response = AcpMethod.AgentMethods.V2.SessionClose(protocol, CloseSessionRequest(sessionId, _meta))
-        onClosed()
-        return response
-    }
+    public suspend fun close(_meta: JsonElement? = null): CloseSessionResponse =
+        AcpMethod.AgentMethods.V2.SessionClose(client.protocol, CloseSessionRequest(sessionId, _meta))
 
     /**
-     * Asks the agent to stop the active work.
+     * Asks the agent to stop active work and cancels pending permission handlers for this session.
      *
-     * The agent keeps reporting afterwards and finishes with an idle update carrying the `cancelled`
-     * stop reason, so keep collecting [updates] after calling this.
-     *
-     * Encoding and transport failures throw synchronously. Pending local permission handlers are
-     * cancelled even if the cancellation notification cannot be sent.
+     * The agent continues reporting updates until it sends an idle update with the `cancelled` stop reason.
+     * Encoding and transport failures throw synchronously. Pending local permission handlers are cancelled
+     * even if the notification cannot be sent. Future permission requests are unaffected.
      */
     public fun cancel(_meta: JsonElement? = null) {
         try {
-            AcpMethod.AgentMethods.V2.SessionCancel(protocol, CancelSessionNotification(sessionId, _meta))
+            AcpMethod.AgentMethods.V2.SessionCancel(client.protocol, CancelSessionNotification(sessionId, _meta))
         } finally {
-            // Answers whatever permission request is in flight even if sending fails.
-            _cancelled.value.complete(Unit)
+            client.cancelPendingPermissions(sessionId)
         }
     }
 }

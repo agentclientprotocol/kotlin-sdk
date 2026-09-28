@@ -324,12 +324,54 @@ Each sample includes comments that explain the protocol lifecycle and can be use
 The v2 samples expose a response mode through session config options. The client selects “Uppercase once”
 with `session/set_config_option`; after replying, the agent resets to Echo and sends a `config_option_update`.
 `ClientSession.setConfigOption` returns the complete option list rather than the one option that changed,
-because one choice can affect the others, and later changes arrive on `session.updates` as
-`SessionUpdate.ConfigOptionUpdate` — also carrying the full list.
+because one choice can affect the others. Later changes arrive through the v2 client's `onSessionUpdate`
+callback as `SessionUpdate.ConfigOptionUpdate`, also carrying the full list.
 
 Agents report those changes with `agent.v2.ClientOperations.notify(SessionUpdate.ConfigOptionUpdate(...))`,
 which works while the session is idle as well as mid-turn. ACP v2 uses config options for mode selection;
 dedicated modes remain available in the SDK's v1 API.
+
+### V2 session setup (unstable)
+
+Install update and permission handlers on `client.v2.Client` before opening or resuming sessions:
+
+```kotlin
+val updates = Channel<UpdateSessionNotification>(Channel.UNLIMITED)
+val client = Client(
+    protocol,
+    operations = permissions,
+    onSessionUpdate = { updates.trySend(it).getOrThrow() },
+)
+client.initialize(clientInfo)
+val response = client.newSession(cwd = "/absolute/workspace")
+val session = client.session(response.sessionId)
+```
+
+The queue above belongs to the application; size and drain it for your workload. The callback runs
+synchronously in notification order, so enqueue longer work. Each notification retains its `sessionId`
+and `_meta`, allowing the application to route events from several sessions. Without a callback,
+notifications are ignored. `V2ClientConfig` accepts the same handlers when using `ClientNegotiator`.
+
+`newSession`, `resumeSession`, and `forkSession` return their full protocol responses, including
+`configOptions`, `availableCommands`, and `_meta`. `client.session(id)` creates a command handle without
+sending a request. Handles have no update stream or configuration snapshot; the application maintains its
+own session state.
+
+To request all retained history, call `client.resumeSession(id, cwd, replayFrom = ReplayFrom.Start())`.
+History arrives as ordinary notifications before the response. With no cursor, resume requests no history.
+Updates received during an unsuccessful or cancelled resume remain delivered; the SDK does not roll them
+back or retry. The application decides whether to retry and how to reconcile repeated history. Permission
+requests use the connection handler even during setup; cancelling a session answers its pending requests
+with `cancelled` and leaves other sessions and future permission requests unaffected.
+
+Environment parameters are supplied on every setup request: absolute `cwd`, optional `mcpServers`, and
+optional `additionalDirectories`. Empty additional directories are omitted from JSON; a nonempty list
+requires the agent's `session.additionalDirectories` capability. On the agent side, replay belongs inside
+`AgentSupport.resumeSession`, using the supplied `ClientOperations.notify` before returning the session.
+`AgentSession.configOptions` and `AgentSession.availableCommands` supply the initial state reported in setup
+responses; empty commands are omitted from the JSON.
+
+Session setup follows the [ACP v2 specification at 326840d2](https://github.com/agentclientprotocol/agent-client-protocol/blob/326840d2ac016ef55d921548829a7fc5fa80d9bd/docs/protocol/v2/session-setup.mdx).
 
 ### Authentication status (unstable)
 

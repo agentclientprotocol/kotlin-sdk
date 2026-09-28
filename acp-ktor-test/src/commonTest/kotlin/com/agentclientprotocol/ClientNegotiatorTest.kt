@@ -20,24 +20,39 @@ import com.agentclientprotocol.client.UnsupportedProtocolVersionException
 import com.agentclientprotocol.client.V1ClientConfig
 import com.agentclientprotocol.client.V2ClientConfig
 import com.agentclientprotocol.client.v2.ClientInfo as V2ClientInfo
+import com.agentclientprotocol.client.v2.ClientSessionOperations
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.Implementation
 import com.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
+import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
 import com.agentclientprotocol.model.SessionId
+import com.agentclientprotocol.model.v2.ContentBlock
+import com.agentclientprotocol.model.v2.ContentChunk
+import com.agentclientprotocol.model.v2.ReplayFrom
+import com.agentclientprotocol.model.v2.RequestPermissionOutcome
+import com.agentclientprotocol.model.v2.RequestPermissionRequest
+import com.agentclientprotocol.model.v2.RequestPermissionResponse
+import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.protocol.acpFail
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertSame
+import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 abstract class ClientNegotiatorTest(protocolDriver: ProtocolDriver) : ProtocolDriver by protocolDriver {
 
@@ -67,6 +82,54 @@ abstract class ClientNegotiatorTest(protocolDriver: ProtocolDriver) : ProtocolDr
         assertEquals(PROTOCOL_VERSION_V2, negotiated.protocolVersion)
         assertEquals("v2-agent", negotiated.agentInfo.implementation.name)
         assertEquals(listOf(PROTOCOL_VERSION_V2), support.initializedVersions)
+    }
+
+    @Test
+    fun `v2 config installs update and permission handlers before resume`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val received = SessionUpdates()
+        val permission = CompletableDeferred<RequestPermissionRequest>()
+        val releaseResume = CompletableDeferred<Unit>()
+        val outcome = CompletableDeferred<RequestPermissionOutcome>()
+        val id = SessionId("saved")
+        val replay = SessionUpdate.AgentMessageChunk(ContentChunk(MessageId("history"), ContentBlock.Text("hello")))
+        val meta = buildJsonObject { put("trace", "replay") }
+        V2Agent(agentProtocol, object : V2AgentSupport by V2Support() {
+            override suspend fun resumeSession(
+                sessionId: SessionId,
+                parameters: V2SessionCreationParameters,
+                replayFrom: ReplayFrom?,
+                client: V2ClientOperations,
+            ): V2AgentSession {
+                client.notify(replay, meta)
+                outcome.complete(client.requestPermission("Allow?", emptyList()).outcome)
+                releaseResume.await()
+                return object : V2AgentSession {
+                    override val sessionId = id
+                    override fun prompt(content: List<ContentBlock>, _meta: JsonElement?) = emptyFlow<SessionUpdate>()
+                }
+            }
+        })
+        val config = V2ClientConfig(
+            clientInfo = v2Config().clientInfo,
+            operations = object : ClientSessionOperations {
+                override suspend fun requestPermission(request: RequestPermissionRequest): RequestPermissionResponse {
+                    permission.complete(request)
+                    return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+                }
+            },
+            onSessionUpdate = received::accept,
+        )
+        val client = assertIs<NegotiatedClient.V2>(ClientNegotiator(clientProtocol, v1Config(), config).negotiate()).client
+        val resume = async { client.resumeSession(id, "/work", replayFrom = ReplayFrom.Start()) }
+        val notification = received.next()
+        assertEquals(id, notification.sessionId)
+        assertEquals(replay, notification.update)
+        assertEquals(meta, notification._meta)
+        assertEquals(id, withTimeout(10.seconds) { permission.await() }.sessionId)
+        assertEquals(RequestPermissionOutcome.Cancelled, withTimeout(10.seconds) { outcome.await() })
+        assertFalse(resume.isCompleted)
+        releaseResume.complete(Unit)
+        withTimeout(10.seconds) { resume.await() }
     }
 
     /** Selects v1 from the raw response without sending `initialize` again. */
