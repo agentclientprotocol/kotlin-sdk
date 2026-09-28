@@ -225,6 +225,8 @@ public data class LogoutCapabilities(
  * This capability is not part of the spec yet, and may be removed or changed at any point.
  *
  * Authentication-related capabilities supported by the agent.
+ *
+ * @property status only `true` advertises support for the `auth/status` query
  */
 @UnstableApi
 @Serializable
