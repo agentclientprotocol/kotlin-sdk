@@ -401,6 +401,24 @@ public class Client(
     }
 
     /**
+     * Queries whether credentials are configured, not whether they are valid.
+     *
+     * Requires a completed [initialize] call and `agentCapabilities.auth.status == true`.
+     * Unadvertised calls fail locally without sending a request. No session is required.
+     */
+    @UnstableApi
+    public suspend fun authStatus(_meta: JsonElement? = null): AuthStatusResponse {
+        val method = AcpMethod.AgentMethods.V1.AuthStatus
+        if (!_agentInfo.isCompleted) {
+            acpFail("Cannot call ${method.methodName.name} before initialization completes")
+        }
+        if (_agentInfo.await().capabilities.auth.status != true) {
+            acpFail("Cannot call ${method.methodName.name}: the agent did not advertise auth.status")
+        }
+        return method(protocol, AuthStatusRequest(_meta))
+    }
+
+    /**
      * **UNSTABLE**
      *
      * This capability is not part of the spec yet, and may be removed or changed at any point.

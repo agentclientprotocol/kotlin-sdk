@@ -4,6 +4,7 @@ import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.ClientInfo
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.AuthMethodId
+import com.agentclientprotocol.model.AuthStatusResponse
 import com.agentclientprotocol.model.AuthenticateResponse
 import com.agentclientprotocol.model.DeleteSessionResponse
 import com.agentclientprotocol.model.DisableProvidersResponse
@@ -58,6 +59,16 @@ public interface AgentSupport {
     public suspend fun logout(_meta: JsonElement?): LogoutResponse {
         throw NotImplementedError("logout is not implemented. The capability is declared in AgentCapabilities.auth.logout")
     }
+
+    /**
+     * Reports whether credentials are configured, without validating them or creating a session.
+     *
+     * @param _meta optional request metadata
+     * @return the current authentication state
+     */
+    @UnstableApi
+    public suspend fun authStatus(_meta: JsonElement? = null): AuthStatusResponse =
+        jsonRpcMethodNotFound("auth/status is not implemented by this agent")
 
     /**
      * **UNSTABLE**

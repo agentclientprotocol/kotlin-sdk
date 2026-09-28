@@ -27,6 +27,8 @@ import com.agentclientprotocol.model.v2.LoginAuthRequest as V2LoginAuthRequest
 import com.agentclientprotocol.model.v2.LoginAuthResponse as V2LoginAuthResponse
 import com.agentclientprotocol.model.v2.LogoutAuthRequest as V2LogoutAuthRequest
 import com.agentclientprotocol.model.v2.LogoutAuthResponse as V2LogoutAuthResponse
+import com.agentclientprotocol.model.v2.StatusAuthRequest as V2StatusAuthRequest
+import com.agentclientprotocol.model.v2.StatusAuthResponse as V2StatusAuthResponse
 import com.agentclientprotocol.model.v2.InitializeRequest as V2InitializeRequest
 import com.agentclientprotocol.model.v2.InitializeResponse as V2InitializeResponse
 import com.agentclientprotocol.model.v2.NewSessionRequest as V2NewSessionRequest
@@ -109,6 +111,13 @@ public open class AcpMethod(public val methodName: MethodName) {
                 "logout",
                 LogoutRequest.serializer(),
                 LogoutResponse.serializer()
+            )
+
+            @UnstableApi
+            public object AuthStatus : AcpRequestResponseMethod<AuthStatusRequest, AuthStatusResponse>(
+                "auth/status",
+                AuthStatusRequest.serializer(),
+                AuthStatusResponse.serializer()
             )
 
             @UnstableApi
@@ -315,6 +324,13 @@ public open class AcpMethod(public val methodName: MethodName) {
                 "auth/logout",
                 V2LogoutAuthRequest.serializer(),
                 V2LogoutAuthResponse.serializer(),
+            )
+
+            @UnstableApi
+            public object AuthStatus : AcpRequestResponseMethod<V2StatusAuthRequest, V2StatusAuthResponse>(
+                "auth/status",
+                V2StatusAuthRequest.serializer(),
+                V2StatusAuthResponse.serializer(),
             )
 
             public object SessionList : AcpRequestResponseMethod<V2ListSessionsRequest, V2ListSessionsResponse>(

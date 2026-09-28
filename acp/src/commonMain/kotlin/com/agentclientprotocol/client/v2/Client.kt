@@ -34,6 +34,8 @@ import com.agentclientprotocol.model.v2.ResumeSessionRequest
 import com.agentclientprotocol.model.v2.SessionConfigOption
 import com.agentclientprotocol.model.v2.SetProviderRequest
 import com.agentclientprotocol.model.v2.SetProviderResponse
+import com.agentclientprotocol.model.v2.StatusAuthRequest
+import com.agentclientprotocol.model.v2.StatusAuthResponse
 import com.agentclientprotocol.model.v2.UpdateSessionNotification
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.acpFail
@@ -351,6 +353,25 @@ public class Client(
         val method = AcpMethod.AgentMethods.V2.AuthLogout
         requireAuthenticationSupport(method)
         return method(protocol, LogoutAuthRequest(_meta))
+    }
+
+    /**
+     * Queries whether credentials are configured, not whether they are valid.
+     *
+     * Requires a completed [initialize] call and `capabilities.auth.status == true`.
+     * This query is independent of [AgentInfo.authMethods] and needs no session.
+     * Unadvertised calls fail locally without sending a request.
+     */
+    @UnstableApi
+    public suspend fun authStatus(_meta: JsonElement? = null): StatusAuthResponse {
+        val method = AcpMethod.AgentMethods.V2.AuthStatus
+        if (!_agentInfo.isCompleted) {
+            acpFail("Cannot call ${method.methodName.name} before initialization completes")
+        }
+        if (_agentInfo.await().capabilities.auth?.status != true) {
+            acpFail("Cannot call ${method.methodName.name}: the agent did not advertise auth.status")
+        }
+        return method(protocol, StatusAuthRequest(_meta))
     }
 
     /** Fails unless [initialize] finished and the agent advertised authentication; returns what it advertised. */

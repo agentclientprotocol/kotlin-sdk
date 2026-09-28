@@ -181,11 +181,14 @@ public data class SessionCapabilities(
  *
  * Unlike v1, this object does **not** advertise support for `auth/login` or `auth/logout`
  * — the v1 `logout` marker is gone. Those methods are advertised by a non-empty
- * [InitializeResponse.authMethods] list instead.
+ * [InitializeResponse.authMethods] list instead. `status` advertises the independent
+ * `auth/status` query.
  */
 @UnstableApi
 @Serializable
 public data class AgentAuthCapabilities(
+    @property:UnstableApi
+    val status: Boolean? = null,
     override val _meta: JsonElement? = null,
 ) : AcpWithMeta
 

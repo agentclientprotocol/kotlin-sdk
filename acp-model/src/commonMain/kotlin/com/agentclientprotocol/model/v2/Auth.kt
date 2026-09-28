@@ -42,3 +42,25 @@ public data class LogoutAuthRequest(
 public data class LogoutAuthResponse(
     override val _meta: JsonElement? = null
 ) : AcpResponse
+
+/**
+ * Request parameters for the unstable v2 `auth/status` method.
+ */
+@UnstableApi
+@Serializable
+public data class StatusAuthRequest(
+    override val _meta: JsonElement? = null
+) : AcpRequest
+
+/**
+ * Status of configured credentials, which does not guarantee that they are valid.
+ *
+ * @property message optional human-readable explanation of the authentication state
+ */
+@UnstableApi
+@Serializable
+public data class StatusAuthResponse(
+    val authenticated: Boolean,
+    val message: String? = null,
+    override val _meta: JsonElement? = null
+) : AcpResponse

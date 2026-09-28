@@ -212,6 +212,7 @@ public fun SessionCapabilities.Companion.fromV1(
 @UnstableApi
 public fun AgentAuthCapabilities.toV1(): V1AgentAuthCapabilities = V1AgentAuthCapabilities(
     logout = null,
+    status = status,
     _meta = _meta,
 )
 
@@ -225,7 +226,7 @@ public fun AgentAuthCapabilities.toV1(): V1AgentAuthCapabilities = V1AgentAuthCa
 @UnstableApi
 public fun V1AgentAuthCapabilities.toV2(): AgentAuthCapabilities {
     if (logout != null) throw unrepresentableV1Field("AgentAuthCapabilities", "logout")
-    return AgentAuthCapabilities(_meta = _meta)
+    return AgentAuthCapabilities(status = status, _meta = _meta)
 }
 
 /**
@@ -235,7 +236,7 @@ public fun V1AgentAuthCapabilities.toV2(): AgentAuthCapabilities {
 @UnstableApi
 internal fun V1AgentAuthCapabilities.toV2OrNull(): AgentAuthCapabilities? {
     if (logout != null) throw unrepresentableV1Field("AgentAuthCapabilities", "logout")
-    return if (_meta == null) null else AgentAuthCapabilities(_meta = _meta)
+    return if (status == null && _meta == null) null else AgentAuthCapabilities(status = status, _meta = _meta)
 }
 
 /**

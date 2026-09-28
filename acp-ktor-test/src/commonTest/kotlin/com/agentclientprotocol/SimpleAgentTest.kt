@@ -13,6 +13,7 @@ import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.JsonRpcException
+import com.agentclientprotocol.protocol.AcpExpectedError
 import com.agentclientprotocol.protocol.invoke
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -26,6 +27,66 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver by protocolDriver {
+    private open class StatusSupport(private val status: Boolean?) : AgentSupport {
+        override suspend fun initialize(clientInfo: ClientInfo): AgentInfo = AgentInfo(
+            capabilities = AgentCapabilities(auth = AgentAuthCapabilities(status = status)),
+        )
+
+        override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession =
+            error("auth/status does not need a session")
+    }
+
+    @Test
+    fun `v1 auth status queries traverse the transport without a session`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val seen = mutableListOf<JsonElement?>()
+        val requestMeta = buildJsonObject { put("trace", "client") }
+        val responseMeta = buildJsonObject { put("source", "agent") }
+        Agent(agentProtocol, object : StatusSupport(true) {
+            override suspend fun authStatus(_meta: JsonElement?): AuthStatusResponse {
+                seen += _meta
+                return AuthStatusResponse(seen.size == 2, "Credentials configured", responseMeta)
+            }
+        })
+        val client = Client(clientProtocol)
+        assertEquals(true, client.initialize(ClientInfo()).capabilities.auth.status)
+
+        assertEquals(AuthStatusResponse(false, "Credentials configured", responseMeta), client.authStatus(requestMeta))
+        assertEquals(AuthStatusResponse(true, "Credentials configured", responseMeta), client.authStatus())
+        assertEquals(listOf<JsonElement?>(requestMeta, null), seen)
+    }
+
+    @Test
+    fun `v1 auth status without capability fails locally`() = assertUnadvertisedStatus(null)
+
+    @Test
+    fun `v1 auth status with false capability fails locally`() = assertUnadvertisedStatus(false)
+
+    private fun assertUnadvertisedStatus(status: Boolean?) = testWithProtocols { clientProtocol, agentProtocol ->
+        var received = 0
+        Agent(agentProtocol, object : StatusSupport(status) {
+            override suspend fun authStatus(_meta: JsonElement?): AuthStatusResponse {
+                received++
+                return AuthStatusResponse(false)
+            }
+        })
+        val client = Client(clientProtocol)
+        client.initialize(ClientInfo())
+
+        val failure = assertFailsWith<AcpExpectedError> { client.authStatus() }
+        assertTrue(failure.message.contains("auth.status"))
+        assertEquals(0, received)
+    }
+
+    @Test
+    fun `v1 advertised auth status without a handler reports method not found`() = testWithProtocols { clientProtocol, agentProtocol ->
+        Agent(agentProtocol, StatusSupport(true))
+        val client = Client(clientProtocol)
+        client.initialize(ClientInfo())
+
+        val failure = assertFailsWith<JsonRpcException> { client.authStatus() }
+        assertEquals(JsonRpcErrorCode.METHOD_NOT_FOUND.code, failure.code)
+    }
+
     @Test
     fun initialization() = testWithProtocols { clientProtocol, agentProtocol ->
         val agentInitialized = CompletableDeferred<ClientInfo>()
