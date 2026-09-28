@@ -29,9 +29,7 @@ public interface ClientOperations {
      *
      * Available once the session has an id: from anywhere for `session/new` and `session/fork` once creation
      * has returned, and inside `AgentSupport.resumeSession` as well, so history can be replayed before
-     * `session/resume` answers. For configuration changes, send
-     * [SessionUpdate.ConfigOptionUpdate] with the complete current option list, including dependent
-     * changes. Keep [AgentSession.configOptions] consistent with that list for subsequent session setup.
+     * `session/resume` answers.
      *
      * Throws synchronously if serialization fails or the transport cannot accept the notification.
      */
