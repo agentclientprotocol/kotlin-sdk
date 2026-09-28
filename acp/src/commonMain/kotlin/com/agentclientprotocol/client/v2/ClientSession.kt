@@ -106,7 +106,9 @@ public class ClientSession internal constructor(
     /**
      * Sets a configuration option with `session/set_config_option`, returning the options as they now stand.
      *
-     * v2 folded v1's `session/set_mode` into this: a mode is one option among others.
+     * v2 folded v1's `session/set_mode` into this: a mode is one option among others. The agent answers with
+     * the complete option list rather than the one that changed, because one choice can affect the others,
+     * so this supersedes [configOptions] — as does every [SessionUpdate.ConfigOptionUpdate] on [updates].
      */
     public suspend fun setConfigOption(
         configId: SessionConfigId,

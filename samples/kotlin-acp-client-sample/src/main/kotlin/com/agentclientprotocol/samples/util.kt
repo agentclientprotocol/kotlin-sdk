@@ -94,6 +94,7 @@ fun ContentBlock.render(): String {
 fun V2SessionUpdate.render() {
     when (this) {
         is V2SessionUpdate.UserMessage -> println("User message accepted: ${message.messageId}")
+        is V2SessionUpdate.ConfigOptionUpdate -> println("Configuration updated: ${update.configOptions}")
         is V2SessionUpdate.AgentMessageChunk -> println("Agent: ${chunk.content.render()}")
         is V2SessionUpdate.StateUpdate -> when (val current = state) {
             is V2StateUpdate.Idle -> println("Session idle: ${current.stopReason}")

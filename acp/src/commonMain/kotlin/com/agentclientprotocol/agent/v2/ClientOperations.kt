@@ -10,6 +10,7 @@ import com.agentclientprotocol.model.v2.RequestPermissionOutcome
 import com.agentclientprotocol.model.v2.RequestPermissionResponse
 import com.agentclientprotocol.model.v2.RequestPermissionSubject
 import com.agentclientprotocol.model.v2.StateUpdate
+import com.agentclientprotocol.model.v2.SessionUpdate
 import kotlinx.serialization.json.JsonElement
 
 /**
@@ -23,6 +24,17 @@ import kotlinx.serialization.json.JsonElement
  */
 @UnstableApi
 public interface ClientOperations {
+    /**
+     * Sends `session/update` for this session, including while no prompt is running.
+     *
+     * Available once the session has an id: from anywhere for `session/new` and `session/fork` once creation
+     * has returned, and inside `AgentSupport.resumeSession` as well, so history can be replayed before
+     * `session/resume` answers.
+     *
+     * Throws synchronously if serialization fails or the transport cannot accept the notification.
+     */
+    public fun notify(update: SessionUpdate, _meta: JsonElement? = null)
+
     /**
      * Asks the user for permission through the client and waits for the answer.
      *
