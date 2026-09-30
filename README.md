@@ -303,6 +303,10 @@ Prefer a fully wired example? Launch the repository sample that pairs the agent 
 # Select v1 or v2 with ClientNegotiator, then run the v2 conversation
 ./gradlew :samples:kotlin-acp-client-sample:run \
     -PmainClass=com.agentclientprotocol.samples.V2NegotiationAppKt
+
+# Query the unstable auth/status method over v1 and v2
+./gradlew :samples:kotlin-acp-client-sample:run \
+    -PmainClass=com.agentclientprotocol.samples.AuthStatusAppKt
 ```
 
 ## Sample projects
@@ -313,6 +317,7 @@ Prefer a fully wired example? Launch the repository sample that pairs the agent 
 | `GeminiClientApp.kt` | Interactive CLI client that talks to an external Gemini ACP agent | `./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=...GeminiClientAppKt` |
 | `V2SimpleAgentApp.kt` | Direct v2 client and agent conversation | `./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=...V2SimpleAgentAppKt` |
 | `V2NegotiationApp.kt` | Client negotiation followed by a v2 conversation | `./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=...V2NegotiationAppKt` |
+| `AuthStatusApp.kt` | Unstable `auth/status` query over v1 and v2, without a session | `./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=...AuthStatusAppKt` |
 
 Each sample includes comments that explain the protocol lifecycle and can be used as templates for real applications.
 
@@ -331,50 +336,13 @@ dedicated modes remain available in the SDK's v1 API.
 An agent can advertise the draft `auth/status` query with `auth.status = true` in its initialize response.
 V1 uses `agentCapabilities.auth.status`. V2 uses `capabilities.auth.status`, independent of `authMethods`.
 This V2 location follows the V2 authentication model; the draft RFD does not yet define a V2 schema entry.
-Both request and response types, capabilities, methods, and runtime hooks require `@OptIn(UnstableApi::class)`.
+The capability, request and response types, methods, and runtime hooks require `@OptIn(UnstableApi::class)`.
 
-```kotlin
-import com.agentclientprotocol.annotations.UnstableApi
-import com.agentclientprotocol.model.AgentAuthCapabilities
-import com.agentclientprotocol.model.AgentCapabilities
-
-@OptIn(UnstableApi::class)
-val v1Capabilities = AgentCapabilities(auth = AgentAuthCapabilities(status = true))
-
-@OptIn(UnstableApi::class)
-val v2Capabilities = com.agentclientprotocol.model.v2.AgentCapabilities(
-    auth = com.agentclientprotocol.model.v2.AgentAuthCapabilities(status = true)
-)
-```
-
-After initialization, check the advertised capability before querying either client. A query does not create a session or start a prompt.
-
-```kotlin
-import com.agentclientprotocol.annotations.UnstableApi
-import com.agentclientprotocol.model.AuthStatusResponse
-
-@OptIn(UnstableApi::class)
-suspend fun showV1AuthStatus(client: com.agentclientprotocol.client.Client, clientInfo: com.agentclientprotocol.client.ClientInfo) {
-    val agent = client.initialize(clientInfo)
-    if (agent.capabilities.auth.status == true) {
-        val status: AuthStatusResponse = client.authStatus()
-        println("Credentials configured: ${status.authenticated}")
-    }
-}
-
-@OptIn(UnstableApi::class)
-suspend fun showV2AuthStatus(client: com.agentclientprotocol.client.v2.Client, clientInfo: com.agentclientprotocol.client.v2.ClientInfo) {
-    val agent = client.initialize(clientInfo)
-    if (agent.capabilities.auth?.status == true) {
-        val status: com.agentclientprotocol.model.v2.StatusAuthResponse = client.authStatus()
-        println("Credentials configured: ${status.authenticated}")
-    }
-}
-```
-
-Implement `AgentSupport.authStatus` to return `AuthStatusResponse` in V1, or `StatusAuthResponse` in V2.
+After initialization, `Client.authStatus` queries the agent without a session or prompt. Agents answer through
+`AgentSupport.authStatus` with `AuthStatusResponse` in V1, or `StatusAuthResponse` in V2.
 The response can include a human-readable `message` and `_meta`. `authenticated` means credentials are configured, not necessarily valid.
 Calls with a missing or `false` capability fail locally. An agent without a status handler returns JSON-RPC method not found (`-32601`).
+`AuthStatusApp.kt` shows the V1 and V2 flows end to end.
 
 ## Capabilities
 
