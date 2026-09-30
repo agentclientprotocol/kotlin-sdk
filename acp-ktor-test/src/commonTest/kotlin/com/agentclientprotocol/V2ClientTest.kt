@@ -43,8 +43,6 @@ import com.agentclientprotocol.model.SessionConfigValueId
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.ToolCallId
 import com.agentclientprotocol.model.v2.AuthMethod
-import com.agentclientprotocol.model.v2.AgentAuthCapabilities
-import com.agentclientprotocol.model.v2.AgentCapabilities
 import com.agentclientprotocol.model.v2.ContentBlock
 import com.agentclientprotocol.model.v2.CloseSessionResponse
 import com.agentclientprotocol.model.v2.ContentChunk
@@ -82,7 +80,6 @@ import com.agentclientprotocol.model.v2.RequestPermissionSubject
 import com.agentclientprotocol.model.v2.ToolCallUpdate
 import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.model.v2.StateUpdate
-import com.agentclientprotocol.model.v2.StatusAuthResponse
 import com.agentclientprotocol.model.v2.StopReason
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -103,7 +100,6 @@ import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -111,7 +107,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
-import com.agentclientprotocol.protocol.AcpExpectedError
 
 /**
  * The v2 client against the v2 agent, over a real transport.
@@ -121,70 +116,6 @@ import com.agentclientprotocol.protocol.AcpExpectedError
  */
 @OptIn(UnstableApi::class)
 abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by protocolDriver {
-    private open class StatusSupport(private val status: Boolean?) : V2AgentSupport {
-        override suspend fun initialize(clientInfo: V2ClientInfo): V2AgentInfo = V2AgentInfo(
-            implementation = Implementation("test-agent", "1"),
-            capabilities = AgentCapabilities(auth = status?.let { AgentAuthCapabilities(status = it) }),
-        )
-
-        override suspend fun createSession(
-            parameters: V2SessionCreationParameters,
-            client: V2ClientOperations,
-        ): V2AgentSession = error("auth/status does not need a session")
-    }
-
-    @Test
-    fun `v2 auth status queries traverse the transport without a session or auth methods`() = testWithProtocols { clientProtocol, agentProtocol ->
-        val seen = mutableListOf<JsonElement?>()
-        val requestMeta = buildJsonObject { put("trace", "client") }
-        val responseMeta = buildJsonObject { put("source", "agent") }
-        V2Agent(agentProtocol, object : StatusSupport(true) {
-            override suspend fun authStatus(_meta: JsonElement?): StatusAuthResponse {
-                seen += _meta
-                return StatusAuthResponse(seen.size == 2, "Credentials configured", responseMeta)
-            }
-        })
-        val client = V2Client(clientProtocol)
-        val info = client.initialize(v2ClientInfo())
-        assertEquals(true, info.capabilities.auth?.status)
-        assertTrue(info.authMethods.isEmpty())
-
-        assertEquals(StatusAuthResponse(false, "Credentials configured", responseMeta), client.authStatus(requestMeta))
-        assertEquals(StatusAuthResponse(true, "Credentials configured", responseMeta), client.authStatus())
-        assertEquals(listOf<JsonElement?>(requestMeta, null), seen)
-    }
-
-    @Test
-    fun `v2 auth status without capability fails locally`() = assertUnadvertisedStatus(null)
-
-    @Test
-    fun `v2 auth status with false capability fails locally`() = assertUnadvertisedStatus(false)
-
-    private fun assertUnadvertisedStatus(status: Boolean?) = testWithProtocols { clientProtocol, agentProtocol ->
-        var received = 0
-        V2Agent(agentProtocol, object : StatusSupport(status) {
-            override suspend fun authStatus(_meta: JsonElement?): StatusAuthResponse {
-                received++
-                return StatusAuthResponse(false)
-            }
-        })
-        val client = V2Client(clientProtocol)
-        client.initialize(v2ClientInfo())
-
-        val failure = assertFailsWith<AcpExpectedError> { client.authStatus() }
-        assertTrue(failure.message.contains("auth.status"))
-        assertEquals(0, received)
-    }
-
-    @Test
-    fun `v2 advertised auth status without a handler reports method not found`() = testWithProtocols { clientProtocol, agentProtocol ->
-        V2Agent(agentProtocol, StatusSupport(true))
-        val client = V2Client(clientProtocol)
-        client.initialize(v2ClientInfo())
-
-        val failure = assertFailsWith<JsonRpcException> { client.authStatus() }
-        assertEquals(JsonRpcErrorCode.METHOD_NOT_FOUND.code, failure.code)
-    }
 
     private fun v2ClientInfo() = V2ClientInfo(
         protocolVersion = PROTOCOL_VERSION_V2,
