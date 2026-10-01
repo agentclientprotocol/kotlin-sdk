@@ -8,6 +8,7 @@ import com.agentclientprotocol.rpc.JsonRpcSuccessResponse
 import com.agentclientprotocol.rpc.MethodName
 import com.agentclientprotocol.rpc.RequestId
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
 import kotlinx.io.*
@@ -15,6 +16,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import java.nio.channels.Channels.newInputStream
 import java.nio.channels.Channels.newOutputStream
 import java.nio.channels.Pipe
+import java.util.concurrent.CountDownLatch
 import kotlin.test.*
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -30,6 +32,7 @@ class StdioTransportTest {
     private lateinit var errors: MutableList<Throwable>
     private lateinit var transport: StdioTransport
     private lateinit var messages: kotlinx.coroutines.channels.Channel<TransportFrame>
+    private var beforeSinkClose: () -> Unit = {}
 
     suspend fun expectState(state: Transport.State, timeout: Duration = 1.seconds, message: String? = null) {
         val observed = mutableListOf<Transport.State>()
@@ -59,7 +62,13 @@ class StdioTransportTest {
     fun setUp() {
         pipe = Pipe.open()
         source = newInputStream(pipe.source()).asSource().buffered()
-        sink = newOutputStream(pipe.sink()).asSink().buffered()
+        val rawSink = newOutputStream(pipe.sink()).asSink()
+        sink = object : RawSink by rawSink {
+            override fun close() {
+                beforeSinkClose()
+                rawSink.close()
+            }
+        }.buffered()
         scope = CoroutineScope(SupervisorJob())
         errors = mutableListOf()
         transport = StdioTransport(scope, Dispatchers.IO, input = source, output = sink).apply {
@@ -204,18 +213,45 @@ class StdioTransportTest {
         }
     }
 
-    private suspend fun CoroutineScope.testWhileBackgroundSend(block: suspend () -> Unit) {
+    @Test
+    fun `should stop background send when send is rejected while closing`(): Unit = runBlocking {
+        val sinkCloseGate = CountDownLatch(1)
+        /*
+         * Hold the transport in CLOSING so the background sender always hits the rejected-send window.
+         */
+        beforeSinkClose = { sinkCloseGate.await() }
+        try {
+            testWhileBackgroundSend { sendJob ->
+                pipe.source().close()
+                expectState(Transport.State.CLOSING, message = "While sink close is blocked")
+                assertFailsWith<ClosedSendChannelException> {
+                    transport.send(TransportFrame.Single(JsonRpcNotification(method = MethodName("late"))))
+                }
+                withTimeout(1.seconds) { sendJob.join() }
+                sinkCloseGate.countDown()
+                expectState(Transport.State.CLOSED, message = "After sink close released")
+            }
+        } finally {
+            sinkCloseGate.countDown()
+        }
+    }
+
+    private suspend fun CoroutineScope.testWhileBackgroundSend(block: suspend (sendJob: Job) -> Unit) {
         val testMethod = MethodName("test")
         expectState(Transport.State.STARTED)
-        launch {
+        val sendJob = launch {
             var i = 0
             while (transport.state.value != Transport.State.CLOSED) {
-                transport.send(TransportFrame.Single(JsonRpcRequest(RequestId.create(i++), testMethod)))
+                try {
+                    transport.send(TransportFrame.Single(JsonRpcRequest(RequestId.create(i++), testMethod)))
+                } catch (_: ClosedSendChannelException) {
+                    break
+                }
                 delay(10.milliseconds)
             }
         }
         delay(100.milliseconds)
-        block()
+        block(sendJob)
     }
 
 
