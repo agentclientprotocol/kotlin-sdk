@@ -1,4 +1,5 @@
 @file:Suppress("unused")
+@file:OptIn(ExperimentalSerializationApi::class)
 
 package com.agentclientprotocol.model.v2
 
@@ -9,6 +10,8 @@ import com.agentclientprotocol.model.AcpResponse
 import com.agentclientprotocol.model.AcpWithMeta
 import com.agentclientprotocol.model.AcpWithSessionId
 import com.agentclientprotocol.model.SessionId
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
@@ -16,15 +19,19 @@ import kotlinx.serialization.json.JsonElement
  * Request parameters for the v2 `session/new` method.
  *
  * `additionalDirectories` is gated by the agent's
- * [SessionAdditionalDirectoriesCapabilities]; a client must not send a non-empty list unless the agent
- * advertised it.
+ * [SessionAdditionalDirectoriesCapabilities]; a client must omit the field unless the agent advertised it.
+ * An empty `additionalDirectories` is omitted when encoding.
+ *
+ * @property cwd the session's primary working directory; must be an absolute path
+ * @property additionalDirectories further workspace roots, each an absolute path; sending this field requires
+ * the agent's additionalDirectories capability
  */
 @UnstableApi
 @Serializable
 public data class NewSessionRequest(
     val cwd: String,
     val mcpServers: List<McpServer> = emptyList(),
-    val additionalDirectories: List<String> = emptyList(),
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val additionalDirectories: List<String> = emptyList(),
     override val _meta: JsonElement? = null
 ) : AcpRequest
 

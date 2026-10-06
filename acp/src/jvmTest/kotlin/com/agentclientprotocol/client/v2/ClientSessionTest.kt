@@ -7,20 +7,29 @@ import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.Implementation
 import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
+import com.agentclientprotocol.model.SessionAdditionalDirectoriesCapabilities
 import com.agentclientprotocol.model.SessionId
+import com.agentclientprotocol.model.v2.AgentCapabilities
 import com.agentclientprotocol.model.v2.ContentBlock
 import com.agentclientprotocol.model.v2.ContentChunk
+import com.agentclientprotocol.model.v2.ForkSessionResponse
 import com.agentclientprotocol.model.v2.InitializeResponse
 import com.agentclientprotocol.model.v2.NewSessionResponse
+import com.agentclientprotocol.model.v2.ReplayFrom
 import com.agentclientprotocol.model.v2.RequestPermissionOutcome
 import com.agentclientprotocol.model.v2.RequestPermissionRequest
 import com.agentclientprotocol.model.v2.RequestPermissionResponse
 import com.agentclientprotocol.model.v2.ResumeSessionResponse
+import com.agentclientprotocol.model.v2.SessionCapabilities
 import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.model.v2.UpdateSessionNotification
+import com.agentclientprotocol.protocol.AcpExpectedError
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.TransportFrame
+import com.agentclientprotocol.rpc.JsonRpcError
+import com.agentclientprotocol.rpc.JsonRpcErrorCode
+import com.agentclientprotocol.rpc.JsonRpcErrorResponse
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.rpc.JsonRpcRequest
@@ -38,11 +47,15 @@ import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -165,25 +178,157 @@ class ClientSessionTest {
             assertEquals(listOf("after the second resume"), scope.read(second).takeTexts(1))
             assertEquals(emptyList(), firstUpdates.rest())
         }
+
+    /**
+     * Hands the replay of a session resumed while it is still open to the session that comes back.
+     */
+    @Test
+    fun `resuming an open session delivers the replay to the resumed session`() =
+        withV2Client { client, agent, scope ->
+            agent.onResumeSession { }
+            val open = client.resumeSession(sessionId = SessionId("session-1"), cwd = "/work")
+            val openUpdates = scope.read(open)
+            agent.onResumeSession {
+                sendUpdate(SessionId("session-1"), "replay-1")
+                sendUpdate(SessionId("session-1"), "replay-2")
+            }
+
+            val resumed = client.resumeSession(
+                sessionId = SessionId("session-1"),
+                cwd = "/work",
+                replayFrom = ReplayFrom.Start(),
+            )
+
+            assertEquals(listOf("replay-1", "replay-2"), scope.read(resumed).takeTexts(2))
+            assertEquals(emptyList(), openUpdates.rest())
+        }
+
+    /**
+     * Keeps updates that arrived during a failed resume for the session that stays open.
+     */
+    @Test
+    fun `a failed resume leaves the open session its updates`() = withV2Client { client, agent, scope ->
+        agent.onResumeSession { }
+        val open = client.resumeSession(sessionId = SessionId("session-1"), cwd = "/work")
+        val openUpdates = scope.read(open)
+        agent.onResumeSessionFailing { sendUpdate(SessionId("session-1"), "while resuming") }
+
+        assertFails { client.resumeSession(sessionId = SessionId("session-1"), cwd = "/work") }
+        agent.sendUpdate(SessionId("session-1"), "after the failure")
+
+        assertEquals(listOf("while resuming", "after the failure"), openUpdates.takeTexts(2))
+        assertEquals(open, client.getSession(SessionId("session-1")))
+    }
+
+    /**
+     * Refuses additional directories locally when the agent did not advertise support for them.
+     */
+    @Test
+    fun `additional directories require the capability without sending a request`() =
+        withV2Client { client, agent, _ ->
+            val calls: List<suspend () -> ClientSession> = listOf(
+                { client.newSession(cwd = "/work", additionalDirectories = listOf("/lib")) },
+                { client.resumeSession(SessionId("saved"), cwd = "/work", additionalDirectories = listOf("/lib")) },
+                { client.forkSession(SessionId("saved"), cwd = "/work", additionalDirectories = listOf("/lib")) },
+            )
+
+            for (call in calls) {
+                val error = assertFailsWith<AcpExpectedError> { call() }
+                assertEquals(
+                    "Cannot send additionalDirectories: the agent did not advertise session.additionalDirectories",
+                    error.message,
+                )
+            }
+
+            assertTrue(agent.requests.tryReceive().isFailure)
+        }
+
+    /**
+     * Fails instead of waiting on an initialization that may never happen.
+     */
+    @Test
+    fun `additional directories fail before initialization instead of waiting`() =
+        withV2Client(initialize = false) { client, agent, _ ->
+            val error = assertFailsWith<AcpExpectedError> {
+                client.newSession(cwd = "/work", additionalDirectories = listOf("/lib"))
+            }
+
+            assertEquals("Cannot send additionalDirectories before initialization completes", error.message)
+            assertTrue(agent.requests.tryReceive().isFailure)
+        }
+
+    /**
+     * The control for the capability check: an empty list needs no capability and is left off the wire.
+     */
+    @Test
+    fun `setup omits empty additional directories without the capability`() = withV2Client { client, agent, _ ->
+        agent.onNewSession(SessionId("opened")) { }
+        agent.onResumeSession { }
+        agent.onForkSession(SessionId("forked")) { }
+
+        client.setUpSessions(roots = emptyList())
+
+        repeat(3) { assertEquals(null, agent.requests.receive().params!!.jsonObject["additionalDirectories"]) }
+    }
+
+    /**
+     * Forwards additional directories as given once the agent has advertised support for them.
+     */
+    @Test
+    fun `setup forwards additional directories to an agent that supports them`() =
+        withV2Client(capabilities = additionalDirectoriesCapabilities) { client, agent, _ ->
+            agent.onNewSession(SessionId("opened")) { }
+            agent.onResumeSession { }
+            agent.onForkSession(SessionId("forked")) { }
+
+            client.setUpSessions(roots = listOf("/lib", "/shared"))
+            client.setUpSessions(roots = emptyList())
+
+            val expected = JsonArray(listOf(JsonPrimitive("/lib"), JsonPrimitive("/shared")))
+            repeat(3) { assertEquals(expected, agent.requests.receive().params!!.jsonObject["additionalDirectories"]) }
+            repeat(3) { assertEquals(null, agent.requests.receive().params!!.jsonObject["additionalDirectories"]) }
+        }
+}
+
+private val additionalDirectoriesCapabilities = AgentCapabilities(
+    session = SessionCapabilities(additionalDirectories = SessionAdditionalDirectoriesCapabilities()),
+)
+
+/**
+ * Opens a session with each of the three setup calls in turn, passing [roots] as the additional directories.
+ */
+private suspend fun Client.setUpSessions(roots: List<String>) {
+    newSession(cwd = "/work", additionalDirectories = roots)
+    resumeSession(SessionId("saved"), cwd = "/work", additionalDirectories = roots)
+    forkSession(SessionId("saved"), cwd = "/work", additionalDirectories = roots)
 }
 
 /**
  * Runs [block] against a v2 client whose agent is the raw-JSON [ScriptedAgent], handing it the scope the
  * connection lives in so it can read sessions with [read].
+ *
+ * The agent advertises [capabilities] in its `initialize` response. With [initialize] off the handshake is left
+ * to the test.
  */
-private fun withV2Client(block: suspend (Client, ScriptedAgent, CoroutineScope) -> Unit) {
+private fun withV2Client(
+    capabilities: AgentCapabilities = AgentCapabilities(),
+    initialize: Boolean = true,
+    block: suspend (Client, ScriptedAgent, CoroutineScope) -> Unit,
+) {
     val scope = CoroutineScope(SupervisorJob())
     try {
-        val agent = ScriptedAgent()
+        val agent = ScriptedAgent(capabilities)
         val protocol = Protocol(scope, agent)
         protocol.start()
         agent.start()
         val client = Client(protocol)
         runBlocking {
             withTimeout(10.seconds) {
-                client.initialize(
-                    ClientInfo(protocolVersion = PROTOCOL_VERSION_V2, implementation = Implementation("test", "1.0.0"))
-                )
+                if (initialize) {
+                    client.initialize(
+                        ClientInfo(protocolVersion = PROTOCOL_VERSION_V2, implementation = Implementation("test", "1.0.0"))
+                    )
+                }
                 block(client, agent, scope)
             }
         }
@@ -231,10 +376,16 @@ private class SessionReader(scope: CoroutineScope, session: ClientSession) {
  * An agent scripted at the JSON-RPC level: it answers `initialize` on its own, and answers the call that
  * opens a session only after sending the updates the test asked for.
  */
-private class ScriptedAgent : BaseTransport() {
+private class ScriptedAgent(private val capabilities: AgentCapabilities) : BaseTransport() {
     var sendFailure: Throwable? = null
+
+    /**
+     * Every request received after `initialize`, in arrival order.
+     */
+    val requests = Channel<JsonRpcRequest>(Channel.UNLIMITED)
     private var newSession: (JsonRpcRequest) -> Unit = { error("no answer scripted for session/new") }
     private var resumeSession: (JsonRpcRequest) -> Unit = { error("no answer scripted for session/resume") }
+    private var forkSession: (JsonRpcRequest) -> Unit = { error("no answer scripted for session/fork") }
 
     fun onNewSession(sessionId: SessionId, beforeResponse: ScriptedAgent.() -> Unit) {
         newSession = { request ->
@@ -247,6 +398,22 @@ private class ScriptedAgent : BaseTransport() {
         resumeSession = { request ->
             beforeResponse()
             respond(request, AcpMethod.AgentMethods.V2.SessionResume.responseSerializer, ResumeSessionResponse())
+        }
+    }
+
+    fun onResumeSessionFailing(beforeResponse: ScriptedAgent.() -> Unit) {
+        resumeSession = { request ->
+            beforeResponse()
+            fireMessage(
+                JsonRpcErrorResponse(request.id, JsonRpcError(JsonRpcErrorCode.INTERNAL_ERROR.code, "resume failed"))
+            )
+        }
+    }
+
+    fun onForkSession(sessionId: SessionId, beforeResponse: ScriptedAgent.() -> Unit) {
+        forkSession = { request ->
+            beforeResponse()
+            respond(request, AcpMethod.AgentMethods.V2.SessionFork.responseSerializer, ForkSessionResponse(sessionId))
         }
     }
 
@@ -297,14 +464,16 @@ private class ScriptedAgent : BaseTransport() {
         }
         val message = (frame as TransportFrame.Single).message
         if (message !is JsonRpcRequest) return
+        if (message.method != AcpMethod.AgentMethods.V2.Initialize.methodName) requests.trySend(message)
         when (message.method) {
             AcpMethod.AgentMethods.V2.Initialize.methodName -> respond(
                 message,
                 AcpMethod.AgentMethods.V2.Initialize.responseSerializer,
-                InitializeResponse(PROTOCOL_VERSION_V2, Implementation("scripted-agent", "1.0.0")),
+                InitializeResponse(PROTOCOL_VERSION_V2, Implementation("scripted-agent", "1.0.0"), capabilities),
             )
             AcpMethod.AgentMethods.V2.SessionNew.methodName -> newSession(message)
             AcpMethod.AgentMethods.V2.SessionResume.methodName -> resumeSession(message)
+            AcpMethod.AgentMethods.V2.SessionFork.methodName -> forkSession(message)
             else -> {}
         }
     }

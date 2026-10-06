@@ -94,16 +94,26 @@ public interface AgentSupport {
     /**
      * Handles `session/resume`: brings back an existing session so it can be prompted again.
      *
-     * v2 has no `session/load`. [replayFrom] says how much history the client wants replayed as
-     * `session/update` notifications; a cursor this implementation does not understand should be rejected
-     * rather than guessed at.
+     * v2 has no `session/load`. [replayFrom] says how much history the client wants replayed; `null` means
+     * none. Replay by sending each update with [ClientOperations.notify] before returning: the response goes
+     * out only after this returns, which keeps the replay ahead of it. A cursor this implementation does not
+     * understand should be rejected rather than guessed at.
+     *
+     * For [ReplayFrom.Start], replay all retained history. What
+     * [session setup](https://agentclientprotocol.com/protocol/v2/session-setup#resuming-sessions) requires
+     * of it:
+     * - every replayed message carries an opaque, unique `messageId`, and a user message inserted by
+     *   `session/prompt` keeps the id it was given then, even after the agent restarts;
+     * - a message rebuilt from chunks starts with its message update carrying empty `content`, so the client
+     *   drops what it already holds before the chunks append;
+     * - replaying a command reports its message; it does not run the command again.
      */
     public suspend fun resumeSession(
         sessionId: SessionId,
         parameters: SessionCreationParameters,
         replayFrom: ReplayFrom?,
         client: ClientOperations,
-    ): AgentSession = notAdvertised("session/resume", "SessionCapabilities.resume")
+    ): AgentSession = notAdvertised("session/resume", "AgentCapabilities.session")
 
     /**
      * Handles `session/fork`: start a new session from an existing one's history.
