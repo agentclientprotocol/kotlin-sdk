@@ -80,6 +80,10 @@ public fun <TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOperations
     }
 }
 
+@Deprecated(
+    "This handler forces to load the entire sequence into memory, which is suboptimal for large sequences backed by a real data source, e.g. by DB. " +
+    "Implement your own ListSessionRequest handler via setRequestHandler/setRequestOutcomeHandler or use AgentSupport.listSessions with cursor."
+)
 @OptIn(UnstableApi::class)
 public fun<TRequest : AcpPaginatedRequest, TResponse : AcpPaginatedResponse<TItem>, TItem> RpcMethodsOperations.setPaginatedRequestHandler(
     method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,

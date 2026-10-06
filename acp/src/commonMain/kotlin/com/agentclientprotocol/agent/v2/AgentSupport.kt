@@ -83,7 +83,9 @@ public interface AgentSupport {
      * Handles `session/list`, one page at a time.
      *
      * Cursors are the agent's to mint: [ListSessionsResponse.nextCursor] set means there is another page, and
-     * the client passes it back as `cursor`.
+     * the client passes it back as `cursor`. Each request reaches this method, so a page can be fetched lazily
+     * from a suspending source such as a database. An unknown or expired cursor should be rejected with
+     * [com.agentclientprotocol.protocol.jsonRpcInvalidParams].
      */
     public suspend fun listSessions(
         cwd: String? = null,

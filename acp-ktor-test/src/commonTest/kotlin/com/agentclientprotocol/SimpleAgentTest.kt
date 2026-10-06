@@ -12,8 +12,10 @@ import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.*
+import com.agentclientprotocol.protocol.AcpExpectedError
 import com.agentclientprotocol.protocol.JsonRpcException
 import com.agentclientprotocol.protocol.invoke
+import com.agentclientprotocol.protocol.jsonRpcInvalidParams
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import com.agentclientprotocol.rpc.JsonRpcErrorCode
@@ -2108,6 +2110,97 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
         assertTrue(fetchStarted, "Flow should start fetching when collection begins")
         assertEquals(1, sessions.size)
     }
+
+    @OptIn(UnstableApi::class)
+    private class PagedSessionsSupport : AgentSupport {
+        val requestedCursors = mutableListOf<String?>()
+        var sequenceRequested = false
+
+        override suspend fun initialize(clientInfo: ClientInfo): AgentInfo = AgentInfo(
+            clientInfo.protocolVersion,
+            capabilities = AgentCapabilities(
+                sessionCapabilities = SessionCapabilities(list = SessionListCapabilities())
+            )
+        )
+
+        override suspend fun listSessions(cwd: String?, additionalDirectories: List<String>?, _meta: JsonElement?): Sequence<SessionInfo> {
+            sequenceRequested = true
+            return emptySequence()
+        }
+
+        override suspend fun listSessions(
+            cwd: String?,
+            additionalDirectories: List<String>?,
+            cursor: String?,
+            _meta: JsonElement?,
+        ): ListSessionsResponse {
+            requestedCursors += cursor
+            // Stands in for a database query that has to suspend for each page.
+            yield()
+            val page = when (cursor) {
+                null -> 0
+                "page-1" -> 1
+                "page-2" -> 2
+                else -> jsonRpcInvalidParams("No such cursor: $cursor")
+            }
+            return ListSessionsResponse(
+                sessions = (1..2).map { SessionInfo(SessionId("session-$page-$it"), cwd = cwd ?: "/project") },
+                nextCursor = if (page < 2) "page-${page + 1}" else null,
+            )
+        }
+
+        override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+            TODO("Not yet implemented")
+        }
+    }
+
+    @OptIn(UnstableApi::class)
+    @Test
+    fun `list sessions serves pages from the per-page hook`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val support = PagedSessionsSupport()
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = support)
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val sessions = client.listSessions(cwd = "/work").toList()
+
+        assertEquals(
+            listOf("session-0-1", "session-0-2", "session-1-1", "session-1-2", "session-2-1", "session-2-2"),
+            sessions.map { it.sessionId.value }
+        )
+        assertTrue(sessions.all { it.cwd == "/work" })
+        assertEquals(listOf(null, "page-1", "page-2"), support.requestedCursors)
+        assertFalse(support.sequenceRequested, "the sequence hook is not used once the per-page hook is overridden")
+    }
+
+    @OptIn(UnstableApi::class)
+    @Test
+    fun `list sessions fetches only the pages that are collected`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val support = PagedSessionsSupport()
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = support)
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val sessions = client.listSessions().take(3).toList()
+
+        assertEquals(listOf("session-0-1", "session-0-2", "session-1-1"), sessions.map { it.sessionId.value })
+        assertEquals(listOf(null, "page-1"), support.requestedCursors)
+    }
+
+    @OptIn(UnstableApi::class)
+    @Test
+    fun `list sessions rejects a cursor unknown to the per-page hook`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = PagedSessionsSupport())
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        // An INVALID_PARAMS response reaches the caller as AcpExpectedError.
+        val exception = assertFailsWith<AcpExpectedError> {
+            AcpMethod.AgentMethods.V1.SessionList(clientProtocol, ListSessionsRequest(cursor = "bogus"))
+        }
+        assertEquals("No such cursor: bogus", exception.message)
+    }
+
 
     @OptIn(UnstableApi::class)
     @Test

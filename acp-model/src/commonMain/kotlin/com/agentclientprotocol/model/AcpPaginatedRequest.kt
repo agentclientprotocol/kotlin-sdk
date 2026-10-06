@@ -9,6 +9,7 @@ import com.agentclientprotocol.annotations.UnstableApi
  *
  * Interface for paginated requests that include a cursor for pagination.
  */
+@Deprecated("The only subtype is v1.ListSessionRequest, and v2 doesn't use this interface. Will be removed in the future.")
 @UnstableApi
 public interface AcpPaginatedRequest : AcpRequest {
     public val cursor: String?
