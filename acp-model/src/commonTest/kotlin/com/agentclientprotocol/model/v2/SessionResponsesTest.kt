@@ -5,12 +5,12 @@ package com.agentclientprotocol.model.v2
 import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.rpc.ACPJson
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
 
 class SessionResponsesTest {
     @Test
@@ -21,10 +21,6 @@ class SessionResponsesTest {
 
         assertEquals(json, ACPJson.encodeToJsonElement(PromptResponse.serializer(), response))
         assertEquals(response, ACPJson.decodeFromJsonElement(PromptResponse.serializer(), json))
-        assertEquals(
-            ACPJson.parseToJsonElement("""{"messageId":"user-1"}"""),
-            ACPJson.encodeToJsonElement(PromptResponse.serializer(), PromptResponse(MessageId("user-1"))),
-        )
     }
 
     @Test
@@ -33,18 +29,6 @@ class SessionResponsesTest {
             assertFailsWith<SerializationException>(json) {
                 ACPJson.decodeFromString(PromptResponse.serializer(), json)
             }
-        }
-    }
-
-    @Test
-    fun `setup responses omit an empty command list`() {
-        val encoded = listOf(
-            ACPJson.encodeToJsonElement(NewSessionResponse.serializer(), NewSessionResponse(SessionId("s"))),
-            ACPJson.encodeToJsonElement(ResumeSessionResponse.serializer(), ResumeSessionResponse()),
-            ACPJson.encodeToJsonElement(ForkSessionResponse.serializer(), ForkSessionResponse(SessionId("s"))),
-        )
-        for (json in encoded) {
-            assertFalse("availableCommands" in json.jsonObject, "$json")
         }
     }
 
@@ -59,20 +43,16 @@ class SessionResponsesTest {
                 """{"name":"review","description":"Review the change"}]"""
         )
 
-        val new = NewSessionResponse(SessionId("s"), availableCommands = commands)
-        val newJson = ACPJson.encodeToJsonElement(NewSessionResponse.serializer(), new)
-        assertEquals(commandsJson, newJson.jsonObject["availableCommands"])
-        assertEquals(new, ACPJson.decodeFromJsonElement(NewSessionResponse.serializer(), newJson))
+        fun <T> assertCarriesCommands(serializer: KSerializer<T>, response: T) {
+            val json = ACPJson.encodeToJsonElement(serializer, response)
+            assertEquals(commandsJson, json.jsonObject["availableCommands"])
+            assertEquals(response, ACPJson.decodeFromJsonElement(serializer, json))
+        }
 
-        val resume = ResumeSessionResponse(availableCommands = commands)
-        val resumeJson = ACPJson.encodeToJsonElement(ResumeSessionResponse.serializer(), resume)
-        assertEquals(commandsJson, resumeJson.jsonObject["availableCommands"])
-        assertEquals(resume, ACPJson.decodeFromJsonElement(ResumeSessionResponse.serializer(), resumeJson))
-
-        val fork = ForkSessionResponse(SessionId("s"), availableCommands = commands)
-        val forkJson = ACPJson.encodeToJsonElement(ForkSessionResponse.serializer(), fork)
-        assertEquals(commandsJson, forkJson.jsonObject["availableCommands"])
-        assertEquals(fork, ACPJson.decodeFromJsonElement(ForkSessionResponse.serializer(), forkJson))
+        val sessionId = SessionId("s")
+        assertCarriesCommands(NewSessionResponse.serializer(), NewSessionResponse(sessionId, availableCommands = commands))
+        assertCarriesCommands(ResumeSessionResponse.serializer(), ResumeSessionResponse(availableCommands = commands))
+        assertCarriesCommands(ForkSessionResponse.serializer(), ForkSessionResponse(sessionId, availableCommands = commands))
     }
 
     @Test

@@ -11,8 +11,6 @@ import com.agentclientprotocol.model.AcpWithMeta
 import com.agentclientprotocol.model.AcpWithSessionId
 import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.SessionId
-import kotlinx.serialization.EncodeDefault
-import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
@@ -42,16 +40,14 @@ public data class NewSessionRequest(
  * Unlike v1 there are no separate `modes` and `models` fields: everything configurable arrives as
  * [SessionConfigOption]s.
  *
- * @property availableCommands the commands the session starts with; omitted on the wire when empty.
- * Later changes arrive as [AvailableCommandsUpdate]
+ * @property availableCommands the commands the session starts with. Later changes arrive as
+ * [AvailableCommandsUpdate]
  */
 @UnstableApi
-@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 public data class NewSessionResponse(
     val sessionId: SessionId,
     val configOptions: List<SessionConfigOption> = emptyList(),
-    @EncodeDefault(EncodeDefault.Mode.NEVER)
     @Serializable(with = AvailableCommandListSerializer::class)
     val availableCommands: List<AvailableCommand> = emptyList(),
     override val _meta: JsonElement? = null

@@ -329,7 +329,7 @@ public class Protocol(
      * then surfaces a cancellation of this request, as after-response work would observe it.
      *
      * A failure, or a return, before `respond` answers the request with an error. After `respond` the
-     * reply stands: counterpart cancellation no longer applies, and a later failure is only logged.
+     * reply stands: counterpart cancellation no longer applies, and a later failure cannot replace it.
      * A second `respond` call throws [IllegalStateException].
      */
     internal fun <TRequest : AcpRequest, TResponse : AcpResponse> setRespondingRequestHandler(
@@ -355,12 +355,7 @@ public class Protocol(
                 queued.getOrThrow()
             }
 
-            try {
-                handler(params, respond)
-            } catch (t: Throwable) {
-                if (t is CancellationException || !responded) throw t
-                logger.error(t) { "Work after the reply failed for ${method.methodName}" }
-            }
+            handler(params, respond)
             check(responded) { "Handler for ${method.methodName} returned without a reply" }
             RequestOutcome(null)
         }

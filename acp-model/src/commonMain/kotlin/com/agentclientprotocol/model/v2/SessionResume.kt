@@ -10,8 +10,6 @@ import com.agentclientprotocol.model.AcpWithMeta
 import com.agentclientprotocol.model.AcpWithSessionId
 import com.agentclientprotocol.model.SessionConfigId
 import com.agentclientprotocol.model.SessionId
-import kotlinx.serialization.EncodeDefault
-import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -94,15 +92,13 @@ public data class ResumeSessionRequest(
 /**
  * Response to the v2 `session/resume` method.
  *
- * @property availableCommands the commands the resumed session starts with; omitted on the wire when
- * empty. Later changes arrive as [AvailableCommandsUpdate]
+ * @property availableCommands the commands the resumed session starts with. Later changes arrive as
+ * [AvailableCommandsUpdate]
  */
 @UnstableApi
-@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 public data class ResumeSessionResponse(
     val configOptions: List<SessionConfigOption> = emptyList(),
-    @EncodeDefault(EncodeDefault.Mode.NEVER)
     @Serializable(with = AvailableCommandListSerializer::class)
     val availableCommands: List<AvailableCommand> = emptyList(),
     override val _meta: JsonElement? = null
@@ -202,16 +198,14 @@ public data class ForkSessionRequest(
  *
  * The id is the **new** session's, not the one that was forked.
  *
- * @property availableCommands the commands the new session starts with; omitted on the wire when
- * empty. Later changes arrive as [AvailableCommandsUpdate]
+ * @property availableCommands the commands the new session starts with. Later changes arrive as
+ * [AvailableCommandsUpdate]
  */
 @UnstableApi
-@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 public data class ForkSessionResponse(
     val sessionId: SessionId,
     val configOptions: List<SessionConfigOption> = emptyList(),
-    @EncodeDefault(EncodeDefault.Mode.NEVER)
     @Serializable(with = AvailableCommandListSerializer::class)
     val availableCommands: List<AvailableCommand> = emptyList(),
     override val _meta: JsonElement? = null

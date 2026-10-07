@@ -142,15 +142,7 @@ internal object AvailableCommandListSerializer : KSerializer<List<AvailableComma
     override fun deserialize(decoder: Decoder): List<AvailableCommand> {
         val jsonDecoder = decoder as JsonDecoder
         val items = jsonDecoder.decodeJsonElement() as? JsonArray ?: return emptyList()
-        return items.mapNotNull { item ->
-            try {
-                jsonDecoder.json.decodeFromJsonElement(AvailableCommand.serializer(), item)
-            } catch (_: SerializationException) {
-                null
-            } catch (_: IllegalArgumentException) {
-                null
-            }
-        }
+        return items.decodeSkippingInvalid(jsonDecoder.json, AvailableCommand.serializer())
     }
 }
 

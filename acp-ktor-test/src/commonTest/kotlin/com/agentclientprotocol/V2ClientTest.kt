@@ -81,7 +81,6 @@ import com.agentclientprotocol.model.v2.ToolCallUpdate
 import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.model.v2.StateUpdate
 import com.agentclientprotocol.model.v2.StopReason
-import com.agentclientprotocol.model.v2.UserMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -90,7 +89,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -122,15 +120,6 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         protocolVersion = PROTOCOL_VERSION_V2,
         implementation = Implementation(name = "test-client", version = "1.0.0"),
     )
-
-    /**
-     * Collects the next [count] updates of a turn, after the user message that opens it.
-     */
-    private suspend fun V2ClientSession.turnUpdates(count: Int): List<SessionUpdate> {
-        val updates = withTimeout(10.seconds) { updates.take(count + 1).toList() }.map { it.update }
-        assertIs<SessionUpdate.UserMessage>(updates.first(), "a v2 turn opens with the inserted user message")
-        return updates.drop(1)
-    }
 
     /** Asks for permission before "running a tool", then reports how the turn ended. */
     private class PermissionV2Session(
@@ -1442,9 +1431,3 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         }
     }
 }
-
-/**
- * The update with which a v2 turn reports where the user message landed, which answers the prompt.
- */
-@OptIn(UnstableApi::class)
-private fun insertedUserMessage(): SessionUpdate = SessionUpdate.UserMessage(UserMessage(MessageId("user-1")))

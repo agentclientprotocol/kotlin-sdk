@@ -88,13 +88,6 @@ public class Agent(
     private class SessionWrapper(private val session: AgentSession) {
         private val _activePrompt = atomic(false)
 
-        /**
-         * Runs one turn and calls [respond] with the receipt once the turn inserts the user message.
-         *
-         * Before that point a failure or cancellation fails the request itself, and the SDK reports no
-         * idle update, because no turn was announced. After it, the reply stands and the turn is closed
-         * with an idle update instead.
-         */
         suspend fun runPrompt(
             protocol: Protocol,
             content: List<ContentBlock>,
@@ -153,43 +146,43 @@ public class Agent(
                         }
                     }
                 }
-                if (insertedMessageId == null) {
-                    error("The turn for session ${session.sessionId} ended before it inserted the user message")
-                }
-            } catch (e: AcpRequestCancelledException) {
-                if (insertedMessageId == null) throw e
-                /*
-                The turn died because the client answered one of this turn's requests with `-32800`
-                rather than because the implementation finished reporting, so the idle update that MUST
-                end a turn is still owed to the client.
-                 */
-                logger.debug(e) { "Reporting a cancelled turn for session ${session.sessionId}" }
-                reportIdle(StopReason.Cancelled)
-            } catch (e: CancellationException) {
-                if (insertedMessageId != null) {
-                    /*
-                    Local cancellation: `close()` or `cancelPendingIncomingRequest(s)` is deliberately
-                    discarding the rest of this turn. On a live protocol the client keeps the receipt and
-                    loses everything after it, so the turn is still owed the idle update that ends it —
-                    and `cancelled` is honest, because the turn really was cancelled, just locally rather
-                    than on the client's asking.
-                     */
-                    logger.debug(e) { "Reporting a locally cancelled turn for session ${session.sessionId}" }
-                    reportIdle(StopReason.Cancelled)
-                }
-                throw e
             } catch (t: Throwable) {
                 if (insertedMessageId == null) throw t
-                /*
-                The turn failed for a reason the SDK cannot characterise, after the receipt was sent.
-                Without a terminal update the client waits forever on a turn that is already dead, so
-                send one here — with no stop reason, because none of the defined ones is honest about a
-                failure. Reporting the real reason stays the implementation's job.
-                 */
-                logger.error(t) {
-                    "Turn for session ${session.sessionId} failed; reporting it idle with no stop reason"
+                when (t) {
+                    is AcpRequestCancelledException -> {
+                        /*
+                        The turn died because the client answered one of this turn's requests with `-32800`
+                        rather than because the implementation finished reporting, so the idle update that
+                        MUST end a turn is still owed to the client.
+                         */
+                        logger.debug(t) { "Reporting a cancelled turn for session ${session.sessionId}" }
+                        reportIdle(StopReason.Cancelled)
+                    }
+                    is CancellationException -> {
+                        /*
+                        Local cancellation: `close()` or `cancelPendingIncomingRequest(s)` is deliberately
+                        discarding the rest of this turn. On a live protocol the client keeps the receipt and
+                        loses everything after it, so the turn is still owed the idle update that ends it —
+                        and `cancelled` is honest, because the turn really was cancelled, just locally
+                        rather than on the client's asking.
+                         */
+                        logger.debug(t) { "Reporting a locally cancelled turn for session ${session.sessionId}" }
+                        reportIdle(StopReason.Cancelled)
+                        throw t
+                    }
+                    else -> {
+                        /*
+                        The turn failed for a reason the SDK cannot characterise, after the receipt was sent.
+                        Without a terminal update the client waits forever on a turn that is already dead,
+                        so send one here — with no stop reason, because none of the defined ones is honest
+                        about a failure. Reporting the real reason stays the implementation's job.
+                         */
+                        logger.error(t) {
+                            "Turn for session ${session.sessionId} failed; reporting it idle with no stop reason"
+                        }
+                        reportIdle(stopReason = null)
+                    }
                 }
-                reportIdle(stopReason = null)
             } finally {
                 _activePrompt.value = false
             }
