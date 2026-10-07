@@ -3,6 +3,8 @@
 package com.agentclientprotocol.protocol
 
 import com.agentclientprotocol.model.AcpMethod
+import com.agentclientprotocol.model.AcpRequest
+import com.agentclientprotocol.model.AcpResponse
 import com.agentclientprotocol.model.CancelRequestNotification
 import com.agentclientprotocol.model.ProtocolVersion
 import com.agentclientprotocol.model.SessionId
@@ -18,6 +20,7 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.jvm.JvmInline
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -318,6 +321,51 @@ public class Protocol(
         requestHandlers.update { it.put(method.methodName, wrapped) }
     }
 
+    /**
+     * Sets a handler for [method] that replies partway through its own work, by calling `respond` once.
+     *
+     * Messages the handler sends before `respond` reach the transport ahead of the reply, and messages
+     * sent after `respond` returns follow the reply frame. `respond` returns once that frame is queued,
+     * then surfaces a cancellation of this request, as after-response work would observe it.
+     *
+     * A failure, or a return, before `respond` answers the request with an error. After `respond` the
+     * reply stands: counterpart cancellation no longer applies, and a later failure is only logged.
+     * A second `respond` call throws [IllegalStateException].
+     */
+    internal fun <TRequest : AcpRequest, TResponse : AcpResponse> setRespondingRequestHandler(
+        method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
+        handler: suspend (request: TRequest, respond: suspend (TResponse) -> Unit) -> Unit,
+    ) {
+        setRequestOutcomeHandlerRaw(method, EmptyCoroutineContext) { request ->
+            val slot = checkNotNull(currentCoroutineContext()[JsonRpcRequestContextElement.Key]).slot
+            val params = ACPJson.decodeFromJsonElement(method.requestSerializer, request.params ?: JsonNull)
+            var responded = false
+
+            val respond: suspend (TResponse) -> Unit = { response ->
+                val reply = JsonRpcSuccessResponse(
+                    request.id,
+                    ACPJson.encodeToJsonElement(method.responseSerializer, response),
+                )
+                check(!responded) { "Request ${request.id} has already been answered" }
+                responded = true
+                slot.response.complete(reply)
+
+                val queued = runCatching { withContext(NonCancellable) { slot.responseFrameQueued.await() } }
+                currentCoroutineContext().ensureActive()
+                queued.getOrThrow()
+            }
+
+            try {
+                handler(params, respond)
+            } catch (t: Throwable) {
+                if (t is CancellationException || !responded) throw t
+                logger.error(t) { "Work after the reply failed for ${method.methodName}" }
+            }
+            check(responded) { "Handler for ${method.methodName} returned without a reply" }
+            RequestOutcome(null)
+        }
+    }
+
     override fun setNotificationHandlerRaw(
         method: AcpMethod.AcpNotificationMethod<*>,
         additionalContext: CoroutineContext,
@@ -513,10 +561,14 @@ public class Protocol(
                 val handler = requestHandlers.value[request.method]
                     ?: jsonRpcMethodNotFound("Method not supported: ${request.method}")
 
-                withContext(JsonRpcRequestContextElement(request)) {
+                withContext(JsonRpcRequestContextElement(request, slot)) {
                     outcome = handler(request)
                 }
 
+                /*
+                Once a responding handler has replied from inside its work, the slot is already complete:
+                this success, or the error below, is then a no-op and the earlier reply stands.
+                 */
                 currentCoroutineContext().ensureActive()
                 slot.response.complete(JsonRpcSuccessResponse(request.id, outcome!!.response ?: JsonNull))
             } catch (t: Throwable) {

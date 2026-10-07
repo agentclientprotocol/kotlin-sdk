@@ -3,6 +3,7 @@ package com.agentclientprotocol.agent.v2
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.v2.ClientInfo
 import com.agentclientprotocol.model.AcpMethod
+import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
 import com.agentclientprotocol.model.SessionConfigId
 import com.agentclientprotocol.model.SessionId
@@ -37,13 +38,11 @@ import com.agentclientprotocol.model.v2.UpdateSessionNotification
 import com.agentclientprotocol.protocol.AcpRequestCancelledException
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.acpFail
-import com.agentclientprotocol.protocol.RequestOutcome
 import com.agentclientprotocol.protocol.invoke
 import com.agentclientprotocol.protocol.jsonRpcInvalidParams
 import com.agentclientprotocol.protocol.readProtocolVersionOrNull
 import com.agentclientprotocol.protocol.setNotificationHandler
 import com.agentclientprotocol.protocol.setRequestHandler
-import com.agentclientprotocol.protocol.setRequestOutcomeHandler
 import com.agentclientprotocol.rpc.ACPJson
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
@@ -52,8 +51,6 @@ import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 
@@ -84,22 +81,28 @@ public class Agent(
     /**
      * One v2 session and the turn currently running in it.
      *
-     * A v2 turn is a stream of updates with no response payload, so this only has to forward updates and
-     * be cancellable — there is no stop reason to carry back, unlike v1's session wrapper.
+     * A v2 turn is a stream of updates, and its prompt response is only a receipt for the inserted user
+     * message. So this forwards updates, answers at the first user message, and stays cancellable —
+     * there is no stop reason to carry back, unlike v1's session wrapper.
      */
     private class SessionWrapper(private val session: AgentSession) {
         private val _activePrompt = atomic(false)
 
-        fun acceptPrompt(protocol: Protocol, content: List<ContentBlock>, _meta: JsonElement?): RequestOutcome<PromptResponse> {
+        /**
+         * Runs one turn and calls [respond] with the receipt once the turn inserts the user message.
+         *
+         * Before that point a failure or cancellation fails the request itself, and the SDK reports no
+         * idle update, because no turn was announced. After it, the reply stands and the turn is closed
+         * with an idle update instead.
+         */
+        suspend fun runPrompt(
+            protocol: Protocol,
+            content: List<ContentBlock>,
+            _meta: JsonElement?,
+            respond: suspend (PromptResponse) -> Unit,
+        ) {
             if (!_activePrompt.compareAndSet(expect = false, update = true)) {
                 acpFail("There is already active prompt execution")
-            }
-
-            val updates = try {
-                session.prompt(content, _meta)
-            } catch (t: Throwable) {
-                _activePrompt.value = false
-                throw t
             }
 
             /*
@@ -123,7 +126,7 @@ public class Agent(
              * Closes a turn the implementation left open, unless it already reported one itself.
              *
              * `runCatching` because the turn is over either way: the failure that got us here is what
-             * matters, so a send that fails must not replace it or skip `onCompletion`. A dead protocol
+             * matters, so a send that fails must not replace it or skip releasing the turn. A dead protocol
              * fails here on [Protocol]'s own liveness check, which is what keeps a shutdown silent.
              */
             fun reportIdle(stopReason: StopReason?) {
@@ -135,54 +138,61 @@ public class Agent(
                 }
             }
 
-            return RequestOutcome(
-                response = PromptResponse(),
-                afterResponse = {
-                    try {
-                        /*
-                        A cancellation that arrived between the reply and this call is delivered here:
-                        the protocol enters after-response work even when it is already cancelled, so
-                        this is the first point at which the turn can see it. Checked explicitly rather
-                        than left to the flow, which is free not to look — and a turn that never looks
-                        would otherwise report an outcome it computed without knowing it was discarded.
-                         */
-                        currentCoroutineContext().ensureActive()
-                        updates.collect { update -> sendSessionUpdate(update) }
-                    } catch (e: AcpRequestCancelledException) {
-                        /*
-                        The turn died because the client answered one of this turn's requests with
-                        `-32800` rather than because the implementation finished reporting, so the idle
-                        update that MUST end a turn is still owed to the client.
-                         */
-                        logger.debug(e) { "Reporting a cancelled turn for session ${session.sessionId}" }
-                        reportIdle(StopReason.Cancelled)
-                    } catch (e: CancellationException) {
-                        /*
-                        Local cancellation: `close()` or `cancelPendingIncomingRequest(s)` is deliberately
-                        discarding this turn's follow-up work. On a live protocol the client keeps the
-                        successful `session/prompt` response and loses everything after it, so the turn is
-                        still owed the idle update that ends it — and `cancelled` is honest, because the turn
-                        really was cancelled, just locally rather than on the client's asking.
-                         */
-                        logger.debug(e) { "Reporting a locally cancelled turn for session ${session.sessionId}" }
-                        reportIdle(StopReason.Cancelled)
-                        throw e
-                    } catch (t: Throwable) {
-                        /*
-                        The turn failed for a reason the SDK cannot characterise, and the protocol swallows
-                        the exception because the response was already sent. Without a terminal update the
-                        client waits forever on a turn that is already dead, so send one here — with no stop
-                        reason, because none of the defined ones is honest about a failure.
-                        Reporting the real reason stays the implementation's job.
-                         */
-                        logger.error(t) {
-                            "Turn for session ${session.sessionId} failed; reporting it idle with no stop reason"
+            var insertedMessageId: MessageId? = null
+            try {
+                session.prompt(content, _meta).collect { update ->
+                    /*
+                    The update goes out first: the receipt follows the user message it confirms, and
+                    `respond` returns only after the reply is queued, so later updates follow the reply.
+                     */
+                    sendSessionUpdate(update)
+                    if (insertedMessageId == null) {
+                        update.insertedUserMessageId()?.let { messageId ->
+                            insertedMessageId = messageId
+                            respond(PromptResponse(messageId))
                         }
-                        reportIdle(stopReason = null)
                     }
-                },
-                onCompletion = { _activePrompt.value = false },
-            )
+                }
+                if (insertedMessageId == null) {
+                    error("The turn for session ${session.sessionId} ended before it inserted the user message")
+                }
+            } catch (e: AcpRequestCancelledException) {
+                if (insertedMessageId == null) throw e
+                /*
+                The turn died because the client answered one of this turn's requests with `-32800`
+                rather than because the implementation finished reporting, so the idle update that MUST
+                end a turn is still owed to the client.
+                 */
+                logger.debug(e) { "Reporting a cancelled turn for session ${session.sessionId}" }
+                reportIdle(StopReason.Cancelled)
+            } catch (e: CancellationException) {
+                if (insertedMessageId != null) {
+                    /*
+                    Local cancellation: `close()` or `cancelPendingIncomingRequest(s)` is deliberately
+                    discarding the rest of this turn. On a live protocol the client keeps the receipt and
+                    loses everything after it, so the turn is still owed the idle update that ends it —
+                    and `cancelled` is honest, because the turn really was cancelled, just locally rather
+                    than on the client's asking.
+                     */
+                    logger.debug(e) { "Reporting a locally cancelled turn for session ${session.sessionId}" }
+                    reportIdle(StopReason.Cancelled)
+                }
+                throw e
+            } catch (t: Throwable) {
+                if (insertedMessageId == null) throw t
+                /*
+                The turn failed for a reason the SDK cannot characterise, after the receipt was sent.
+                Without a terminal update the client waits forever on a turn that is already dead, so
+                send one here — with no stop reason, because none of the defined ones is honest about a
+                failure. Reporting the real reason stays the implementation's job.
+                 */
+                logger.error(t) {
+                    "Turn for session ${session.sessionId} failed; reporting it idle with no stop reason"
+                }
+                reportIdle(stopReason = null)
+            } finally {
+                _activePrompt.value = false
+            }
         }
 
         /**
@@ -274,12 +284,13 @@ public class Agent(
             return@setRequestHandler NewSessionResponse(
                 sessionId = session.sessionId,
                 configOptions = session.configOptions,
+                availableCommands = session.availableCommands,
             )
         }
 
-        protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V2.SessionPrompt) { params: PromptRequest ->
+        protocol.setRespondingRequestHandler(AcpMethod.AgentMethods.V2.SessionPrompt) { params: PromptRequest, respond ->
             val wrapper = getSessionOrThrow(params.sessionId)
-            wrapper.acceptPrompt(protocol, params.prompt, params._meta)
+            wrapper.runPrompt(protocol, params.prompt, params._meta, respond)
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.V2.SessionResume) { params: ResumeSessionRequest ->
@@ -294,7 +305,10 @@ public class Agent(
             )
             clientOperations.bindTo(session.sessionId)
             register(session)
-            return@setRequestHandler ResumeSessionResponse(configOptions = session.configOptions)
+            return@setRequestHandler ResumeSessionResponse(
+                configOptions = session.configOptions,
+                availableCommands = session.availableCommands,
+            )
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.V2.SessionFork) { params: ForkSessionRequest ->
@@ -310,6 +324,7 @@ public class Agent(
             return@setRequestHandler ForkSessionResponse(
                 sessionId = session.sessionId,
                 configOptions = session.configOptions,
+                availableCommands = session.availableCommands,
             )
         }
 
@@ -380,4 +395,14 @@ public class Agent(
 
     private fun getSessionOrThrow(sessionId: SessionId): SessionWrapper =
         _sessions.value[sessionId] ?: acpFail("Session $sessionId not found")
+}
+
+/**
+ * The id of the user message that this update inserts, or `null` for any other update.
+ */
+@OptIn(UnstableApi::class)
+private fun SessionUpdate.insertedUserMessageId(): MessageId? = when (this) {
+    is SessionUpdate.UserMessage -> message.messageId
+    is SessionUpdate.UserMessageChunk -> chunk.messageId
+    else -> null
 }

@@ -3,6 +3,7 @@ package com.agentclientprotocol.agent.v2
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.SessionConfigId
 import com.agentclientprotocol.model.SessionId
+import com.agentclientprotocol.model.v2.AvailableCommand
 import com.agentclientprotocol.model.v2.ContentBlock
 import com.agentclientprotocol.model.v2.SessionConfigOption
 import com.agentclientprotocol.model.v2.SessionConfigOptionValue
@@ -26,6 +27,13 @@ public interface AgentSession {
     public val configOptions: List<SessionConfigOption> get() = emptyList()
 
     /**
+     * Commands the session starts with, reported from `session/new`, `session/resume`, and `session/fork`.
+     *
+     * Report later changes with [ClientOperations.notify] as [SessionUpdate.AvailableCommandsUpdate].
+     */
+    public val availableCommands: List<AvailableCommand> get() = emptyList()
+
+    /**
      * Runs one turn: every emitted update is sent to the client as `session/update`, and the turn ends
      * when the flow completes.
      *
@@ -36,9 +44,17 @@ public interface AgentSession {
      * - [StateUpdate.Running] when work starts or resumes;
      * - a final [StateUpdate.Idle] carrying the `stopReason` when the turn's work ends.
      *
-     * If the flow fails instead of reporting, the SDK closes the turn with an [StateUpdate.Idle] that
-     * carries **no** stop reason — a last resort that keeps a client from waiting on a dead turn, not a
-     * substitute for reporting. None of the defined stop reasons describes a failure, so only the
+     * The first `user_message` or `user_message_chunk` update is the insertion point. The SDK sends that
+     * update, and then answers `session/prompt` with its `messageId` as the receipt. Updates emitted
+     * before it go out before the response, and updates emitted after it follow the response.
+     *
+     * Until the insertion point, the prompt request itself fails if the flow throws, is cancelled, or
+     * completes, and the SDK sends no idle update. To reject a prompt, throw before the insertion point.
+     * A flow that never emits a user message fails every prompt.
+     *
+     * If the flow fails after the insertion point, the SDK closes the turn with an [StateUpdate.Idle]
+     * that carries **no** stop reason — a last resort that keeps a client from waiting on a dead turn,
+     * not a substitute for reporting. None of the defined stop reasons describes a failure, so only the
      * implementation can say why its turn ended.
      */
     public fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): Flow<SessionUpdate>

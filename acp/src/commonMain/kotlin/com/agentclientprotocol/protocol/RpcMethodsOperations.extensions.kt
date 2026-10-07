@@ -127,7 +127,10 @@ public operator fun <TNotification : AcpNotification> AcpMethod.AcpNotificationM
     return rpc.sendNotification(this, notification)
 }
 
-internal class JsonRpcRequestContextElement(val request: JsonRpcRequest) : AbstractCoroutineContextElement(Key) {
+internal class JsonRpcRequestContextElement(
+    val request: JsonRpcRequest,
+    val slot: ResponseSlot,
+) : AbstractCoroutineContextElement(Key) {
     object Key : CoroutineContext.Key<JsonRpcRequestContextElement>
 }
 

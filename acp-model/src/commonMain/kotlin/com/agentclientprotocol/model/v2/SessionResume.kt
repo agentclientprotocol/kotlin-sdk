@@ -91,11 +91,20 @@ public data class ResumeSessionRequest(
     override val _meta: JsonElement? = null
 ) : AcpRequest, AcpWithSessionId
 
-/** Response to the v2 `session/resume` method. */
+/**
+ * Response to the v2 `session/resume` method.
+ *
+ * @property availableCommands the commands the resumed session starts with; omitted on the wire when
+ * empty. Later changes arrive as [AvailableCommandsUpdate]
+ */
 @UnstableApi
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 public data class ResumeSessionResponse(
     val configOptions: List<SessionConfigOption> = emptyList(),
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    @Serializable(with = AvailableCommandListSerializer::class)
+    val availableCommands: List<AvailableCommand> = emptyList(),
     override val _meta: JsonElement? = null
 ) : AcpResponse
 
@@ -192,11 +201,18 @@ public data class ForkSessionRequest(
  * Response to the v2 `session/fork` method.
  *
  * The id is the **new** session's, not the one that was forked.
+ *
+ * @property availableCommands the commands the new session starts with; omitted on the wire when
+ * empty. Later changes arrive as [AvailableCommandsUpdate]
  */
 @UnstableApi
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 public data class ForkSessionResponse(
     val sessionId: SessionId,
     val configOptions: List<SessionConfigOption> = emptyList(),
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    @Serializable(with = AvailableCommandListSerializer::class)
+    val availableCommands: List<AvailableCommand> = emptyList(),
     override val _meta: JsonElement? = null
 ) : AcpResponse

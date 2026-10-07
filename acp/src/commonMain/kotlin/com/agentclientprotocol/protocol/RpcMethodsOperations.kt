@@ -116,7 +116,7 @@ public interface RpcMethodsOperations {
 }
 
 /**
- * Separates a handler's reply from work that must follow it, such as streaming v2 prompt updates.
+ * Separates a handler's reply from work that must follow it, such as streaming updates.
  * This lets the protocol queue the entire response before starting that work, without
  * waiting for streams to finish. The dispatcher takes ownership when the handler returns.
  *

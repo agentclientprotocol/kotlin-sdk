@@ -36,7 +36,7 @@ class ToolCallContentTest {
             {"type":"diff","changes":[
                 {"operation":"modify","path":"/src/main.rs","fileType":"text"},
                 {"operation":"move","oldPath":"/old.rs","path":"/new.rs"}
-            ],"patch":{"format":"git_patch","diff":"--- a/src/main.rs"}}
+            ],"patch":{"format":"git_patch","text":"--- a/src/main.rs"}}
         """.trimIndent().replace(Regex("\\n\\s*"), "")
 
         assertEquals(
@@ -70,6 +70,15 @@ class ToolCallContentTest {
         )
 
         assertEquals(diff, decode(encode(diff)))
+    }
+
+    @Test
+    fun `diff patch text is carried under the text key`() {
+        val json = """{"type":"diff","changes":[],"patch":{"format":"git_patch","text":"--- a/a.txt"}}"""
+        val diff = ToolCallContent.Diff(changes = emptyList(), patch = DiffPatch(diff = "--- a/a.txt"))
+
+        assertEquals(json, encode(diff))
+        assertEquals(diff, decode(json))
     }
 
     @Test
@@ -113,7 +122,7 @@ class ToolCallContentTest {
     fun `unknown file type and patch format deserialize to Unknown`() {
         val diff = decode(
             """{"type":"diff","changes":[{"operation":"add","path":"/a","fileType":"socket"}],""" +
-                """"patch":{"format":"_vendor_patch","diff":"x"}}""",
+                """"patch":{"format":"_vendor_patch","text":"x"}}""",
         )
 
         assertIs<ToolCallContent.Diff>(diff)

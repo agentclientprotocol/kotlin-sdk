@@ -15,6 +15,7 @@ import com.agentclientprotocol.model.v2.ContentChunk
 import com.agentclientprotocol.model.v2.ForkSessionResponse
 import com.agentclientprotocol.model.v2.InitializeResponse
 import com.agentclientprotocol.model.v2.NewSessionResponse
+import com.agentclientprotocol.model.v2.PromptResponse
 import com.agentclientprotocol.model.v2.ReplayFrom
 import com.agentclientprotocol.model.v2.RequestPermissionOutcome
 import com.agentclientprotocol.model.v2.RequestPermissionRequest
@@ -49,6 +50,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
@@ -57,6 +59,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -91,6 +94,26 @@ class ClientSessionTest {
 
         assertEquals(RequestPermissionOutcome.Cancelled, permission.await().outcome)
         assertTrue(permissionCleanedUp.isCompleted)
+    }
+
+    /**
+     * Returns the receipt id of `session/prompt`. The user message that it names may arrive before the receipt.
+     */
+    @Test
+    fun `prompt returns the id of the inserted user message`() = withV2Client { client, agent, scope ->
+        val sessionId = SessionId("session-1")
+        agent.onNewSession(sessionId) { }
+        agent.onPrompt(MessageId("user-7")) {
+            val userMessage = ACPJson.parseToJsonElement("""{"sessionUpdate":"user_message","messageId":"user-7"}""")
+            sendRawUpdate(sessionId, userMessage, JsonNull)
+        }
+        val session = client.newSession(cwd = ".")
+
+        val receipt = session.prompt(listOf(ContentBlock.Text("hi")))
+
+        assertEquals(MessageId("user-7"), receipt)
+        val inserted = assertIs<SessionUpdate.UserMessage>(scope.read(session).take(1).single().update)
+        assertEquals(receipt, inserted.message.messageId)
     }
 
     /** Delivers updates sent before `session/new` responds to the returned session in order. */
@@ -386,6 +409,7 @@ private class ScriptedAgent(private val capabilities: AgentCapabilities) : BaseT
     private var newSession: (JsonRpcRequest) -> Unit = { error("no answer scripted for session/new") }
     private var resumeSession: (JsonRpcRequest) -> Unit = { error("no answer scripted for session/resume") }
     private var forkSession: (JsonRpcRequest) -> Unit = { error("no answer scripted for session/fork") }
+    private var prompt: (JsonRpcRequest) -> Unit = { error("no answer scripted for session/prompt") }
 
     fun onNewSession(sessionId: SessionId, beforeResponse: ScriptedAgent.() -> Unit) {
         newSession = { request ->
@@ -414,6 +438,13 @@ private class ScriptedAgent(private val capabilities: AgentCapabilities) : BaseT
         forkSession = { request ->
             beforeResponse()
             respond(request, AcpMethod.AgentMethods.V2.SessionFork.responseSerializer, ForkSessionResponse(sessionId))
+        }
+    }
+
+    fun onPrompt(messageId: MessageId, beforeResponse: ScriptedAgent.() -> Unit) {
+        prompt = { request ->
+            beforeResponse()
+            respond(request, AcpMethod.AgentMethods.V2.SessionPrompt.responseSerializer, PromptResponse(messageId))
         }
     }
 
@@ -474,6 +505,7 @@ private class ScriptedAgent(private val capabilities: AgentCapabilities) : BaseT
             AcpMethod.AgentMethods.V2.SessionNew.methodName -> newSession(message)
             AcpMethod.AgentMethods.V2.SessionResume.methodName -> resumeSession(message)
             AcpMethod.AgentMethods.V2.SessionFork.methodName -> forkSession(message)
+            AcpMethod.AgentMethods.V2.SessionPrompt.methodName -> prompt(message)
             else -> {}
         }
     }

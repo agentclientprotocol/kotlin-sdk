@@ -9,8 +9,10 @@ import com.agentclientprotocol.agent.v2.SessionCreationParameters as V2SessionCr
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.v2.Client as V2Client
 import com.agentclientprotocol.client.v2.ClientInfo as V2ClientInfo
+import com.agentclientprotocol.client.v2.ClientSession as V2ClientSession
 import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.Implementation
+import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.ToolCallId
@@ -26,6 +28,7 @@ import com.agentclientprotocol.model.v2.TerminalOutputChunk
 import com.agentclientprotocol.model.v2.TerminalUpdate
 import com.agentclientprotocol.model.v2.ToolCallContent
 import com.agentclientprotocol.model.v2.ToolCallUpdate
+import com.agentclientprotocol.model.v2.UserMessage
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
@@ -67,6 +70,7 @@ abstract class V2TerminalTest(protocolDriver: ProtocolDriver) : ProtocolDriver b
         var emitSnapshotMidStream: Boolean = false
 
         override fun prompt(content: List<ContentBlock>, _meta: JsonElement?) = flow {
+            emit(SessionUpdate.UserMessage(UserMessage(MessageId("user-1"))))
             emit(SessionUpdate.StateUpdate(StateUpdate.Running()))
 
             emit(
@@ -141,6 +145,15 @@ abstract class V2TerminalTest(protocolDriver: ProtocolDriver) : ProtocolDriver b
         implementation = Implementation(name = "test-client", version = "1.0.0"),
     )
 
+    /**
+     * Collects the next [count] updates of a turn, after the user message that opens it.
+     */
+    private suspend fun V2ClientSession.turnUpdates(count: Int): List<SessionUpdate> {
+        val updates = withTimeout(10.seconds) { updates.take(count + 1).toList() }.map { it.update }
+        assertIs<SessionUpdate.UserMessage>(updates.first(), "a v2 turn opens with the inserted user message")
+        return updates.drop(1)
+    }
+
     @Test
     fun `a tool call references a terminal whose state arrives as separate updates`() =
         testWithProtocols { clientProtocol, agentProtocol ->
@@ -150,7 +163,7 @@ abstract class V2TerminalTest(protocolDriver: ProtocolDriver) : ProtocolDriver b
             val session = client.newSession(cwd = ".")
 
             session.prompt(listOf(ContentBlock.Text("run the tests")))
-            val updates = withTimeout(10.seconds) { session.updates.take(7).toList() }.map { it.update }
+            val updates = session.turnUpdates(7)
 
             val toolCall = assertIs<SessionUpdate.ToolCallUpdate>(updates[1])
             val content = assertIs<MaybeUndefined.Value<List<ToolCallContent>>>(toolCall.update.content)
@@ -179,7 +192,7 @@ abstract class V2TerminalTest(protocolDriver: ProtocolDriver) : ProtocolDriver b
             val session = client.newSession(cwd = ".")
 
             session.prompt(listOf(ContentBlock.Text("run the tests")))
-            val updates = withTimeout(10.seconds) { session.updates.take(7).toList() }.map { it.update }
+            val updates = session.turnUpdates(7)
 
             val chunks = updates.filterIsInstance<SessionUpdate.TerminalOutputChunk>().map { it.chunk }
             assertEquals(2, chunks.size)
@@ -204,7 +217,7 @@ abstract class V2TerminalTest(protocolDriver: ProtocolDriver) : ProtocolDriver b
             val session = client.newSession(cwd = ".")
 
             session.prompt(listOf(ContentBlock.Text("run the tests")))
-            val updates = withTimeout(10.seconds) { session.updates.take(8).toList() }.map { it.update }
+            val updates = session.turnUpdates(8)
 
             // Replay the stream the way a client stores it: snapshots replace, chunks append.
             var bytes = byteArrayOf()

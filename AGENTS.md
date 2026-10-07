@@ -134,6 +134,7 @@ Lifecycle correctness is part of the public behavior. Changes to startup, cancel
 - Register lifecycle callbacks only after all state they may access is initialized.
 - Isolate user/listener callback failures so one callback does not prevent later callbacks or lifecycle cleanup.
 - Do not parent per-request `CompletableDeferred` values casually. Any change to their ownership must account for pending-map cleanup and peer cancellation.
+- `Protocol.setRespondingRequestHandler` (internal) serves a request whose reply comes partway through the handler's work, such as the v2 `session/prompt` receipt. Messages sent before `respond` go out before the reply. `respond` returns only after the reply frame is queued, so later messages follow it. A failure before `respond` becomes the error reply. After `respond`, the reply stands and `$/cancel_request` no longer applies.
 - Keep normal close, timeout/abort, parent cancellation, and I/O failure paths distinct and testable.
 
 For WebSocket shutdown, preserve the established sequence: reject new work, enter closing state, drain accepted frames within the configured timeout, then perform a normal WebSocket close. Reserve cancellation/abort for timeout, cancellation, or writer failure.

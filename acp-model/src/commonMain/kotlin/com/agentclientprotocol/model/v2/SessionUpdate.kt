@@ -16,6 +16,7 @@ import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonEncoder
@@ -123,6 +124,37 @@ public data class AvailableCommand(
 ) : AcpWithMeta
 
 /**
+ * The command list of the session setup responses, decoded as leniently as the schema asks.
+ *
+ * `null` or a value that is not an array decodes as an empty list, and an item that fails to
+ * decode is skipped, so a bad command never fails `session/new`, `session/resume`, or `session/fork`.
+ */
+@OptIn(UnstableApi::class)
+internal object AvailableCommandListSerializer : KSerializer<List<AvailableCommand>> {
+    private val delegate = ListSerializer(AvailableCommand.serializer())
+
+    override val descriptor: SerialDescriptor = delegate.descriptor
+
+    override fun serialize(encoder: Encoder, value: List<AvailableCommand>) {
+        delegate.serialize(encoder, value)
+    }
+
+    override fun deserialize(decoder: Decoder): List<AvailableCommand> {
+        val jsonDecoder = decoder as JsonDecoder
+        val items = jsonDecoder.decodeJsonElement() as? JsonArray ?: return emptyList()
+        return items.mapNotNull { item ->
+            try {
+                jsonDecoder.json.decodeFromJsonElement(AvailableCommand.serializer(), item)
+            } catch (_: SerializationException) {
+                null
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+        }
+    }
+}
+
+/**
  * A streamed item of message content.
  *
  * Carries one [content] item of the message identified by [messageId]; all chunks of a
@@ -194,7 +226,7 @@ public data class UsageUpdate(
  * The agent's session state has changed.
  *
  * This is v2's mechanism for reporting session activity transitions. A `session/prompt`
- * response only acknowledges that the prompt was accepted; agents report that processing
+ * response only acknowledges that the prompt was inserted; agents report that processing
  * started, that the session went idle, or that progress is blocked on user action through
  * this update. v1 instead reported the outcome of a turn in the prompt response, so this
  * union has no v1 counterpart.

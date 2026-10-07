@@ -9,6 +9,7 @@ import com.agentclientprotocol.model.AcpRequest
 import com.agentclientprotocol.model.AcpResponse
 import com.agentclientprotocol.model.AcpWithMeta
 import com.agentclientprotocol.model.AcpWithSessionId
+import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.SessionId
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -40,12 +41,19 @@ public data class NewSessionRequest(
  *
  * Unlike v1 there are no separate `modes` and `models` fields: everything configurable arrives as
  * [SessionConfigOption]s.
+ *
+ * @property availableCommands the commands the session starts with; omitted on the wire when empty.
+ * Later changes arrive as [AvailableCommandsUpdate]
  */
 @UnstableApi
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 public data class NewSessionResponse(
     val sessionId: SessionId,
     val configOptions: List<SessionConfigOption> = emptyList(),
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    @Serializable(with = AvailableCommandListSerializer::class)
+    val availableCommands: List<AvailableCommand> = emptyList(),
     override val _meta: JsonElement? = null
 ) : AcpResponse
 
@@ -61,15 +69,19 @@ public data class PromptRequest(
 ) : AcpRequest, AcpWithSessionId
 
 /**
- * Response to the v2 `session/prompt` method.
+ * Response to the v2 `session/prompt` method: a receipt that the prompt was inserted into the conversation.
  *
- * Deliberately empty: v2 moved the outcome of a turn out of the prompt response and into a session
- * update, [StateUpdate.Idle], whose `stopReason` says why the agent stopped. A client that needs the
- * stop reason reads it from the updates, not from here.
+ * It does not mean that the agent only received or queued the prompt, or that the turn is complete.
+ * The outcome of a turn is a session update, [StateUpdate.Idle], whose `stopReason` says why the agent
+ * stopped.
+ *
+ * @property messageId the id of the inserted user message; required and never `null`. The
+ * `user_message` or `user_message_chunk` update with this id can arrive before or after this response
  */
 @UnstableApi
 @Serializable
 public data class PromptResponse(
+    val messageId: MessageId,
     override val _meta: JsonElement? = null
 ) : AcpResponse
 
