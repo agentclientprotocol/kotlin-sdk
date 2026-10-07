@@ -11,6 +11,8 @@ import com.agentclientprotocol.model.AcpWithMeta
 import com.agentclientprotocol.model.AcpWithSessionId
 import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.SessionId
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 

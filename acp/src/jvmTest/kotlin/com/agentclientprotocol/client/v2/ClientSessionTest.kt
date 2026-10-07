@@ -97,7 +97,7 @@ class ClientSessionTest {
     }
 
     /**
-     * Returns the receipt id of `session/prompt`. The user message that it names may arrive before the receipt.
+     * The user message arrives before the receipt that names it, so the session must still deliver it.
      */
     @Test
     fun `prompt returns the id of the inserted user message`() = withV2Client { client, agent, scope ->

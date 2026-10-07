@@ -1,10 +1,8 @@
 package com.agentclientprotocol.protocol
 
-import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.CancelRequestNotification
 import com.agentclientprotocol.model.SessionId
-import com.agentclientprotocol.model.v2.LogoutAuthResponse
 import com.agentclientprotocol.rpc.*
 import com.agentclientprotocol.transport.BaseTransport
 import com.agentclientprotocol.transport.Transport
@@ -30,11 +28,9 @@ import kotlin.time.Duration.Companion.milliseconds
  * being ordered against have no observable effect of their own; a correctly ignored `$/cancel_request`
  * is precisely a no-op, so there is nothing else to await.
  */
-@OptIn(UnstableApi::class)
 class BatchProtocolTest {
     private val method = AcpMethod.AgentMethods.V1.Initialize
     private val notification = AcpMethod.ClientMethods.V1.SessionUpdate
-    private val respondingMethod = AcpMethod.AgentMethods.V2.AuthLogout
 
     private class FrameTransport : BaseTransport() {
         val sent = Channel<TransportFrame>(Channel.UNLIMITED)
@@ -89,10 +85,6 @@ class BatchProtocolTest {
     }
 
     private fun request(id: Int) = TransportFrame.Single(JsonRpcRequest(RequestId.create(id), method.methodName))
-    private fun respondingRequest(id: Int) = TransportFrame.Single(
-        JsonRpcRequest(RequestId.create(id), respondingMethod.methodName, buildJsonObject {})
-    )
-    private suspend fun currentRequestId() = currentCoroutineContext().jsonRpcRequest.id.value
     private fun cancelRequest(id: Int) = TransportFrame.Single(
         JsonRpcNotification(
             AcpMethod.MetaMethods.CancelRequest.methodName,
@@ -307,119 +299,6 @@ class BatchProtocolTest {
         protocol.cancelPendingIncomingRequest(RequestId.create(1))
         cleaned.await()
         assertTrue(transport.sent.tryReceive().isFailure, "The reply was already sent; cancelling must not add one")
-    }
-
-    @Test
-    fun respondingHandlerSendsItsWorkAroundTheReplyInOrder() = test { protocol, transport ->
-        val release = CompletableDeferred<Unit>()
-        val finished = CompletableDeferred<Unit>()
-        fun step(name: String) = buildJsonObject { put("step", name) }
-        protocol.setRespondingRequestHandler(respondingMethod) { _, respond ->
-            protocol.sendNotificationRaw(notification, step("before"))
-            release.await()
-            respond(LogoutAuthResponse())
-            protocol.sendNotificationRaw(notification, step("after"))
-            finished.complete(Unit)
-        }
-        transport.receive(respondingRequest(1))
-
-        val before = assertIs<JsonRpcNotification>(assertIs<TransportFrame.Single>(transport.sent.receive()).message)
-        assertEquals(step("before"), before.params)
-        assertTrue(transport.sent.tryReceive().isFailure, "The reply waits for respond")
-
-        release.complete(Unit)
-        assertEquals(buildJsonObject {}, assertIs<JsonRpcSuccessResponse>(transport.sent.receive().replies().single()).result)
-        val after = assertIs<JsonRpcNotification>(assertIs<TransportFrame.Single>(transport.sent.receive()).message)
-        assertEquals(step("after"), after.params)
-        finished.await()
-    }
-
-    @Test
-    fun respondingHandlerThatReturnsWithoutAReplyAnswersWithInternalError() = test { protocol, transport ->
-        protocol.setRespondingRequestHandler(respondingMethod) { _, _ -> }
-        transport.receive(respondingRequest(1))
-        assertEquals(-32603, assertIs<JsonRpcErrorResponse>(transport.sent.receive().replies().single()).error.code)
-    }
-
-    @Test
-    fun respondingHandlerFailureIsTheReplyOnlyBeforeRespond() = test { protocol, transport ->
-        val secondReply = Channel<Throwable?>(Channel.UNLIMITED)
-        protocol.setRespondingRequestHandler(respondingMethod) { _, respond ->
-            if (currentRequestId() == 1) error("failed before the reply")
-            respond(LogoutAuthResponse())
-            secondReply.send(runCatching { respond(LogoutAuthResponse()) }.exceptionOrNull())
-            error("failed after the reply")
-        }
-        transport.receive(respondingRequest(1))
-        val failure = assertIs<JsonRpcErrorResponse>(transport.sent.receive().replies().single())
-        assertEquals(RequestId.create(1), failure.id)
-        assertEquals(-32603, failure.error.code)
-
-        transport.receive(respondingRequest(2))
-        assertEquals(RequestId.create(2), assertIs<JsonRpcSuccessResponse>(transport.sent.receive().replies().single()).id)
-        assertIs<IllegalStateException>(secondReply.receive())
-
-        // Handlers run one at a time, so this reply proves request 2 finished without another reply.
-        transport.receive(respondingRequest(3))
-        assertEquals(RequestId.create(3), assertIs<JsonRpcSuccessResponse>(transport.sent.receive().replies().single()).id)
-        assertIs<IllegalStateException>(secondReply.receive())
-    }
-
-    @Test
-    fun peerCancellationReachesARespondingHandlerOnlyBeforeItsReply() = test { protocol, transport ->
-        val started = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        val finished = CompletableDeferred<Unit>()
-        val barrier = CompletableDeferred<Unit>()
-        protocol.setNotificationHandlerRaw(notification) { barrier.complete(Unit) }
-        protocol.setRespondingRequestHandler(respondingMethod) { _, respond ->
-            if (currentRequestId() == 1) {
-                started.complete(Unit)
-                awaitCancellation()
-            }
-            respond(LogoutAuthResponse())
-            release.await()
-            finished.complete(Unit)
-        }
-        transport.receive(respondingRequest(1))
-        started.await()
-        transport.receive(cancelRequest(1))
-        assertEquals(-32800, assertIs<JsonRpcErrorResponse>(transport.sent.receive().replies().single()).error.code)
-
-        transport.receive(respondingRequest(2))
-        assertIs<JsonRpcSuccessResponse>(transport.sent.receive().replies().single())
-        transport.receive(cancelRequest(2))
-        transport.receive(TransportFrame.Single(JsonRpcNotification(notification.methodName)))
-        barrier.await()
-
-        release.complete(Unit)
-        finished.await()
-        assertTrue(transport.sent.tryReceive().isFailure, "The request was already answered; no second reply")
-    }
-
-    @Test
-    fun localCancellationWhileTheReplyIsQueuedReachesTheHandlerAfterTheFrame() = test { protocol, transport ->
-        val replying = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        val observed = CompletableDeferred<Throwable?>()
-        protocol.setRespondingRequestHandler(respondingMethod) { _, respond ->
-            if (currentRequestId() == 2) {
-                release.await()
-                respond(LogoutAuthResponse())
-            } else {
-                replying.complete(Unit)
-                observed.complete(runCatching { respond(LogoutAuthResponse()) }.exceptionOrNull())
-            }
-        }
-        transport.receive(TransportFrame.Batch(listOf(respondingRequest(1), respondingRequest(2))))
-        replying.await()
-        protocol.cancelPendingIncomingRequest(RequestId.create(1))
-        assertFalse(observed.isCompleted, "respond returns only after the whole reply frame is queued")
-
-        release.complete(Unit)
-        val replies = assertIs<TransportFrame.Batch>(transport.sent.receive()).replies()
-        assertEquals(listOf(RequestId.create(1), RequestId.create(2)), replies.map { assertIs<JsonRpcSuccessResponse>(it).id })
-        assertIs<CancellationException>(observed.await())
     }
 
     @Test

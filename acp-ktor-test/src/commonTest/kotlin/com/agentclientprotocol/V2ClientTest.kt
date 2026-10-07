@@ -88,6 +88,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -461,9 +462,13 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
             ))
         }
         otherRequestStarted.await()
-        assertTrue(!support.sessions.single().turnStarted.isCompleted)
+        assertTrue(support.sessions.single().turnStarted.isCompleted, "the collector has buffered the running update")
         agentProtocol.cancelPendingIncomingRequests()
-        assertTrue(batch.await()[1].isFailure)
+        val results = batch.await()
+        results.first().getOrThrow()
+        assertTrue(results[1].isFailure)
+        val idle = assertIs<StateUpdate.Idle>(assertIsSoleUpdate(session))
+        assertEquals(StopReason.Cancelled, idle.stopReason)
 
         // The first turn was discarded before it streamed; its cleanup must nevertheless allow another prompt.
         withTimeout(10.seconds) { session.prompt(listOf(ContentBlock.Text("retry"))) }
@@ -711,14 +716,16 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
 
             val idle = assertIs<StateUpdate.Idle>(assertIsSoleUpdate(session))
             assertEquals(StopReason.Cancelled, idle.stopReason)
-            assertFalse(support.sessions.single().turnStarted.isCompleted, "the turn's own flow never ran")
+            assertTrue(support.sessions.single().turnStarted.isCompleted, "the buffered running update was discarded")
         }
 
     @Test
-    fun `a turn cancelled in that window does not get to report an outcome it never reached`() =
+    fun `a turn cancelled before delivery does not publish its buffered end turn`() =
         testWithProtocols { clientProtocol, agentProtocol ->
-            // A flow need not check for cancellation, and this one does not: left to itself it would
-            // report `end_turn` for a turn whose updates were all discarded.
+            /*
+             * This flow completes without suspension. Its buffered end_turn must not escape
+             * when local cancellation discards update delivery before the batch reply is queued.
+             */
             V2Agent(agentProtocol, ObliviousSupport())
             val session = cancelBetweenTheReplyAndTheTurn(clientProtocol, agentProtocol)
 
@@ -727,16 +734,14 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         }
 
     /**
-     * Prompts, and cancels the prompt after its receipt is collected but before the rest of its turn
-     * runs. Returns the session.
+     * Cancels after the receipt is collected but before buffered updates reach the client.
      *
      * The prompt goes out in a batch with a second request, whose handler does the cancelling. A batch's
      * reply frame is queued only once every entry has a reply, so while that second handler runs the
-     * prompt handler is parked in exactly the window under test: the user message is sent and the receipt
-     * collected, but `respond` has not returned, so the rest of the turn has not started.
+     * receipt is collected but `afterResponse` has not started.
      *
      * The timing is deterministic, not lucky: handlers run in wire order on a single dispatcher, and the
-     * prompt handler reaches its wait without suspending, so it is always parked by then. Cancelling in
+     * these flows reach insertion without suspending, so the receipt is ready by then. Cancelling in
      * bulk because the prompt's request id is not visible here; it takes the second request with it,
      * which only completes the batch sooner.
      */
@@ -771,10 +776,10 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     }
 
     /**
-     * After its user message, the only update a cancelled-in-the-window turn sends is the one that ends it.
+     * Buffered updates must be discarded, so the first delivered update closes the cancelled turn.
      */
     private suspend fun assertIsSoleUpdate(session: V2ClientSession): StateUpdate =
-        assertIs<SessionUpdate.StateUpdate>(session.turnUpdates(1).single()).state
+        assertIs<SessionUpdate.StateUpdate>(withTimeout(10.seconds) { session.updates.first().update }).state
 
     @Test
     fun `a turn that reported itself cancelled is not given a second idle update`() =

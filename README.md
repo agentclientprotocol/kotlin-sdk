@@ -331,12 +331,6 @@ Agents report those changes with `agent.v2.ClientOperations.notify(SessionUpdate
 which works while the session is idle as well as mid-turn. ACP v2 uses config options for mode selection;
 dedicated modes remain available in the SDK's v1 API.
 
-A v2 `session/prompt` response is an insertion receipt. The agent runtime sends it after the first `user_message`
-or `user_message_chunk` update that the `AgentSession.prompt` flow emits, and `ClientSession.prompt` returns
-its `messageId`. That user message, and any update emitted before it, arrives on `session.updates` before the
-response. Every later update arrives after the response. If the flow fails, is cancelled, or completes before it
-emits a user message, the prompt request fails and no turn starts.
-
 ### Authentication status (unstable)
 
 An agent can advertise the draft `auth/status` query with `auth.status = true` in its initialize response.

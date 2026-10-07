@@ -37,12 +37,14 @@ import com.agentclientprotocol.model.v2.StatusAuthRequest
 import com.agentclientprotocol.model.v2.UpdateSessionNotification
 import com.agentclientprotocol.protocol.AcpRequestCancelledException
 import com.agentclientprotocol.protocol.Protocol
+import com.agentclientprotocol.protocol.RequestOutcome
 import com.agentclientprotocol.protocol.acpFail
 import com.agentclientprotocol.protocol.invoke
 import com.agentclientprotocol.protocol.jsonRpcInvalidParams
 import com.agentclientprotocol.protocol.readProtocolVersionOrNull
 import com.agentclientprotocol.protocol.setNotificationHandler
 import com.agentclientprotocol.protocol.setRequestHandler
+import com.agentclientprotocol.protocol.setRequestOutcomeHandler
 import com.agentclientprotocol.rpc.ACPJson
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
@@ -50,7 +52,15 @@ import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 
@@ -88,16 +98,65 @@ public class Agent(
     private class SessionWrapper(private val session: AgentSession) {
         private val _activePrompt = atomic(false)
 
-        suspend fun runPrompt(
+        suspend fun acceptPrompt(
             protocol: Protocol,
             content: List<ContentBlock>,
             _meta: JsonElement?,
-            respond: suspend (PromptResponse) -> Unit,
-        ) {
+        ): RequestOutcome<PromptResponse> {
             if (!_activePrompt.compareAndSet(expect = false, update = true)) {
                 acpFail("There is already active prompt execution")
             }
 
+            val insertedMessageId = CompletableDeferred<MessageId>()
+            /*
+             * Collection must not wait for the reply frame while user code holds a session lock.
+             * RequestOutcome owns this scope because a child job would delay the reply until the turn ends.
+             */
+            val updates = Channel<SessionUpdate>(Channel.UNLIMITED)
+            val promptScope = CoroutineScope(currentCoroutineContext().minusKey(Job))
+            val collector = promptScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                try {
+                    session.prompt(content, _meta).collect { update ->
+                        if (!insertedMessageId.isCompleted && update is SessionUpdate.StateUpdate &&
+                            (update.state as? StateUpdate.Idle)?.stopReason == StopReason.Cancelled
+                        ) {
+                            throw CancellationException("Prompt cancelled before user message insertion")
+                        }
+                        updates.send(update)
+                        update.insertedUserMessageId()?.let { insertedMessageId.complete(it) }
+                    }
+                    check(insertedMessageId.isCompleted) { "Prompt completed without inserting a user message" }
+                    updates.close()
+                } catch (t: Throwable) {
+                    insertedMessageId.completeExceptionally(t)
+                    updates.close(t)
+                    if (t is CancellationException) throw t
+                }
+            }
+
+            fun cleanup() {
+                promptScope.cancel()
+                updates.cancel()
+                collector.invokeOnCompletion { _activePrompt.value = false }
+            }
+
+            try {
+                return RequestOutcome(
+                    response = PromptResponse(insertedMessageId.await()),
+                    afterResponse = { forwardPromptUpdates(protocol, updates, _meta) },
+                    onCompletion = ::cleanup,
+                )
+            } catch (t: Throwable) {
+                cleanup()
+                throw t
+            }
+        }
+
+        private suspend fun forwardPromptUpdates(
+            protocol: Protocol,
+            updates: Channel<SessionUpdate>,
+            _meta: JsonElement?,
+        ) {
             /*
             A turn ends at its idle update, so track whether one has gone out: the branches below owe the
             client a terminal update only if the implementation did not already report one, and sending a
@@ -131,23 +190,12 @@ public class Agent(
                 }
             }
 
-            var insertedMessageId: MessageId? = null
             try {
-                session.prompt(content, _meta).collect { update ->
-                    /*
-                    The update goes out first: the receipt follows the user message it confirms, and
-                    `respond` returns only after the reply is queued, so later updates follow the reply.
-                     */
+                currentCoroutineContext().ensureActive()
+                for (update in updates) {
                     sendSessionUpdate(update)
-                    if (insertedMessageId == null) {
-                        update.insertedUserMessageId()?.let { messageId ->
-                            insertedMessageId = messageId
-                            respond(PromptResponse(messageId))
-                        }
-                    }
                 }
             } catch (t: Throwable) {
-                if (insertedMessageId == null) throw t
                 when (t) {
                     is AcpRequestCancelledException -> {
                         /*
@@ -183,8 +231,6 @@ public class Agent(
                         reportIdle(stopReason = null)
                     }
                 }
-            } finally {
-                _activePrompt.value = false
             }
         }
 
@@ -281,9 +327,9 @@ public class Agent(
             )
         }
 
-        protocol.setRespondingRequestHandler(AcpMethod.AgentMethods.V2.SessionPrompt) { params: PromptRequest, respond ->
+        protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V2.SessionPrompt) { params: PromptRequest ->
             val wrapper = getSessionOrThrow(params.sessionId)
-            wrapper.runPrompt(protocol, params.prompt, params._meta, respond)
+            wrapper.acceptPrompt(protocol, params.prompt, params._meta)
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.V2.SessionResume) { params: ResumeSessionRequest ->
@@ -390,9 +436,6 @@ public class Agent(
         _sessions.value[sessionId] ?: acpFail("Session $sessionId not found")
 }
 
-/**
- * The id of the user message that this update inserts, or `null` for any other update.
- */
 @OptIn(UnstableApi::class)
 private fun SessionUpdate.insertedUserMessageId(): MessageId? = when (this) {
     is SessionUpdate.UserMessage -> message.messageId

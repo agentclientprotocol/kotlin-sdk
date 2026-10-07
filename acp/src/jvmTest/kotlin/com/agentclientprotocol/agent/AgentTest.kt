@@ -450,10 +450,8 @@ class AgentTest {
                 )
             )
             assertEquals(MessageId("v2-user-1"), assertNotNull(promptResponse).messageId)
-            assertIs<V2SessionUpdate.UserMessage>(
-                notificationsBeforeResponse.single().sessionUpdate().update,
-                "the inserted user message precedes its receipt, and nothing else does",
-            )
+            assertTrue(notificationsBeforeResponse.isEmpty())
+            assertIs<V2SessionUpdate.UserMessage>(testAgent.receiveSessionUpdate().update)
 
             // The updates went out as v2 `session/update` notifications, in order.
             val updates = testAgent.transport.receiveTestMessages(2)
@@ -547,7 +545,8 @@ class AgentTest {
                 )
             )
             assertNotNull(promptResponse, "the agent must accept the prompt before the turn finishes")
-            assertIs<V2SessionUpdate.UserMessage>(notificationsBeforeResponse.single().sessionUpdate().update)
+            assertTrue(notificationsBeforeResponse.isEmpty())
+            assertIs<V2SessionUpdate.UserMessage>(testAgent.receiveSessionUpdate().update)
 
             // Without waiting the cancel can arrive before the turn registers, and then the test would
             // pass whether or not the SDK cuts the turn short.
@@ -688,10 +687,12 @@ class AgentTest {
 
     @Test
     fun `a cancel for an already answered prompt leaves the turn running`() {
-        // v2 answers session/prompt once the user message is inserted, so by the time the rest of the turn
-        // flows the request is settled and a $/cancel_request for its id can only be redundant. Acting on it
-        // would discard the rest of the turn, including the idle update that MUST end it.
-        // https://agentclientprotocol.com/protocol/v2/draft/cancellation
+        /*
+         * v2 answers session/prompt once the user message is inserted, so by the time the rest of the turn
+         * flows the request is settled and a $/cancel_request for its id can only be redundant. Acting on it
+         * would discard the rest of the turn, including the idle update that MUST end it.
+         * https://agentclientprotocol.com/protocol/v2/draft/cancellation
+         */
         val support = GatedV2Support()
         withTestV2Agent(support) { testAgent ->
             testAgent.testInitialize(v2InitializeRequest())
@@ -716,6 +717,7 @@ class AgentTest {
                 promptId,
             )
             assertIs<JsonRpcSuccessResponse>(promptReplies.last())
+            assertIs<V2SessionUpdate.UserMessage>(testAgent.receiveSessionUpdate().update)
             withTimeout(5.seconds) { session.turnStarted.await() }
             // The turn's opening update, consumed here so the tail read after the cancel is unambiguous.
             assertIs<com.agentclientprotocol.model.v2.StateUpdate.Running>(
@@ -808,7 +810,7 @@ class AgentTest {
         withTestV2Agent(support) { testAgent ->
             val replies = testAgent.firePrompt(testAgent.openV2Session())
             assertEquals(MessageId("user-chunk-1"), replies.promptReceipt())
-            assertIs<V2SessionUpdate.UserMessageChunk>(replies.single { it is JsonRpcNotification }.sessionUpdate().update)
+            assertIs<V2SessionUpdate.UserMessageChunk>(testAgent.receiveSessionUpdate().update)
 
             // Only the first user message update answers the prompt; a later upsert is an ordinary update.
             assertIs<V2SessionUpdate.UserMessage>(testAgent.receiveSessionUpdate().update)
@@ -839,16 +841,12 @@ class AgentTest {
             }
 
             val incomplete = testAgent.firePrompt(sessionId)
-            assertEquals(2, incomplete.size, "expected the running update and an error, got $incomplete")
-            assertIs<V2StateUpdate.Running>(
-                assertIs<V2SessionUpdate.StateUpdate>(incomplete.first().sessionUpdate().update).state
-            )
-            assertEquals(JsonRpcErrorCode.INTERNAL_ERROR.code, assertIs<JsonRpcErrorResponse>(incomplete.last()).error.code)
+            assertEquals(JsonRpcErrorCode.INTERNAL_ERROR.code, assertIs<JsonRpcErrorResponse>(incomplete.single()).error.code)
 
             // The next prompt is accepted, and no idle update for an unaccepted turn arrives ahead of it.
             val accepted = testAgent.firePrompt(sessionId)
             assertEquals(MessageId("user-4"), accepted.promptReceipt())
-            assertIs<V2SessionUpdate.UserMessage>(accepted.single { it is JsonRpcNotification }.sessionUpdate().update)
+            assertIs<V2SessionUpdate.UserMessage>(testAgent.receiveSessionUpdate().update)
             assertIs<V2StateUpdate.Idle>(assertIs<V2SessionUpdate.StateUpdate>(testAgent.receiveSessionUpdate().update).state)
         }
     }
@@ -866,6 +864,7 @@ class AgentTest {
             val sessionId = testAgent.openV2Session()
 
             assertEquals(MessageId("user-1"), testAgent.firePrompt(sessionId).promptReceipt())
+            assertIs<V2SessionUpdate.UserMessage>(testAgent.receiveSessionUpdate().update)
             val idle = assertIs<V2StateUpdate.Idle>(
                 assertIs<V2SessionUpdate.StateUpdate>(testAgent.receiveSessionUpdate().update).state
             )
@@ -874,7 +873,7 @@ class AgentTest {
             // Exactly one idle update and no error reply came before the next turn's messages.
             val next = testAgent.firePrompt(sessionId)
             assertEquals(MessageId("user-2"), next.promptReceipt())
-            assertIs<V2SessionUpdate.UserMessage>(next.single { it is JsonRpcNotification }.sessionUpdate().update)
+            assertIs<V2SessionUpdate.UserMessage>(testAgent.receiveSessionUpdate().update)
         }
     }
 
@@ -902,6 +901,7 @@ class AgentTest {
             assertEquals(JsonRpcErrorCode.CANCELLED.code, error.code)
 
             assertEquals(MessageId("user-2"), testAgent.firePrompt(sessionId).promptReceipt())
+            assertIs<V2SessionUpdate.UserMessage>(testAgent.receiveSessionUpdate().update)
             waiting.receive()
             testAgent.agent.protocol.cancelPendingIncomingRequests()
             val idle = assertIs<V2StateUpdate.Idle>(
@@ -911,7 +911,7 @@ class AgentTest {
 
             val next = testAgent.firePrompt(sessionId)
             assertEquals(MessageId("user-3"), next.promptReceipt())
-            assertIs<V2SessionUpdate.UserMessage>(next.single { it is JsonRpcNotification }.sessionUpdate().update)
+            assertIs<V2SessionUpdate.UserMessage>(testAgent.receiveSessionUpdate().update)
         }
     }
 
@@ -1031,9 +1031,6 @@ class AgentTest {
     }
 }
 
-/**
- * The update with which a v2 turn reports where the user message landed, which answers the prompt.
- */
 @OptIn(UnstableApi::class)
 private fun v2UserMessage(id: String) = V2SessionUpdate.UserMessage(V2UserMessage(MessageId(id)))
 
