@@ -998,6 +998,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         val first = client.listSessions(cwd = "/work")
         assertEquals(listOf(SessionId("s1")), first.sessions.map { it.sessionId })
         assertEquals("page-2", first.nextCursor)
+        assertEquals(listOf<Pair<String?, String?>>("/work" to null), support.listed.toList(), "the next page is fetched only on request")
 
         val second = client.listSessions(cwd = "/work", cursor = first.nextCursor)
         assertEquals(listOf(SessionId("s2")), second.sessions.map { it.sessionId })

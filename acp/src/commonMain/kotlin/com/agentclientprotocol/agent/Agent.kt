@@ -7,6 +7,7 @@ import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.*
+import com.agentclientprotocol.util.SequenceToPaginatedResponseAdapter
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
@@ -211,13 +212,19 @@ public class Agent(
             return@setRequestHandler agentSupport.disableProvider(params.id, params._meta)
         }
 
-        protocol.setPaginatedRequestHandler(
-            AcpMethod.AgentMethods.V1.SessionList,
-            // TODO: move to some global agent/client settings
-            batchSize = 10,
-            batchedResultFactory = { _, batch, newCursor -> ListSessionsResponse(batch, newCursor) },
-            sequenceFactory = { p -> agentSupport.listSessions(p.cwd, p.additionalDirectories, p._meta) }
-        )
+        // TODO: move batchSize to some global agent/client settings
+        val sessionListAdapter = SequenceToPaginatedResponseAdapter<SessionInfo, ListSessionsRequest, ListSessionsResponse>(batchSize = 10)
+        protocol.setRequestHandler(AcpMethod.AgentMethods.V1.SessionList) { params: ListSessionsRequest ->
+            try {
+                return@setRequestHandler agentSupport.listSessions(params.cwd, params.additionalDirectories, params.cursor, params._meta)
+            } catch (_: SessionListPagesNotImplemented) {
+                return@setRequestHandler sessionListAdapter.next(
+                    params = params,
+                    sequenceFactory = { p -> agentSupport.listSessions(p.cwd, p.additionalDirectories, p._meta) },
+                    resultFactory = { _, batch, newCursor -> ListSessionsResponse(batch, newCursor) }
+                )
+            }
+        }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.V1.SessionDelete) { params: DeleteSessionRequest ->
             return@setRequestHandler agentSupport.deleteSession(params.sessionId, params._meta)

@@ -9,6 +9,7 @@ import com.agentclientprotocol.model.AuthenticateResponse
 import com.agentclientprotocol.model.DeleteSessionResponse
 import com.agentclientprotocol.model.DisableProvidersResponse
 import com.agentclientprotocol.model.ListProvidersResponse
+import com.agentclientprotocol.model.ListSessionsResponse
 import com.agentclientprotocol.model.LlmProtocol
 import com.agentclientprotocol.model.LogoutResponse
 import com.agentclientprotocol.model.SessionId
@@ -134,6 +135,9 @@ public interface AgentSupport {
      * Lists existing sessions with optional filtering and pagination.
      * Pagination is automatically handled by [com.agentclientprotocol.util.SequenceToPaginatedResponseAdapter].
      *
+     * The returned sequence is iterated synchronously, so a source that has to suspend to fetch more
+     * sessions, such as a database, should override [listSessions] instead.
+     *
      * @param cwd optional current working directory filter
      * @param additionalDirectories optional additional directories filter
      * @param _meta optional metadata
@@ -143,6 +147,30 @@ public interface AgentSupport {
     public suspend fun listSessions(cwd: String?, additionalDirectories: List<String>?, _meta: JsonElement?): Sequence<SessionInfo> {
         throw NotImplementedError("listSessions is not implemented. The capability is declared in AgentCapabilities.sessionCapabilities.list")
     }
+
+    /**
+     * Handles `session/list` one page at a time, so each page can be fetched lazily from a suspending source.
+     *
+     * Cursors are the implementation's to mint: a non-null [ListSessionsResponse.nextCursor] means there is
+     * another page, and the client passes it back as [cursor]. An unknown or expired cursor should be rejected
+     * with [com.agentclientprotocol.protocol.jsonRpcInvalidParams].
+     *
+     * When this method is not overridden, the SDK serves pages from [listSessions] instead, and [listSessions]
+     * is not called once this method is overridden.
+     *
+     * @param cwd optional current working directory filter
+     * @param additionalDirectories optional additional directories filter
+     * @param cursor the cursor from the previous page, or `null` for the first page
+     * @param _meta optional metadata
+     * @return one page of sessions and the cursor of the next page, if any
+     */
+    @UnstableApi
+    public suspend fun listSessions(
+        cwd: String?,
+        additionalDirectories: List<String>?,
+        cursor: String?,
+        _meta: JsonElement?,
+    ): ListSessionsResponse = throw SessionListPagesNotImplemented()
 
     /**
      * Deletes a session from history.
@@ -226,3 +254,8 @@ public interface AgentSupport {
         throw NotImplementedError("createNesSession is not implemented. The capability is declared in AgentCapabilities.nes")
     }
 }
+
+/**
+ * Thrown by the default [AgentSupport.listSessions] so that [Agent] falls back to paging [AgentSupport.listSessions].
+ */
+internal class SessionListPagesNotImplemented : RuntimeException("listSessions with cursor is not overridden")

@@ -101,7 +101,9 @@ public abstract interface class com/agentclientprotocol/agent/AgentSupport {
 	public abstract fun initialize (Lcom/agentclientprotocol/client/ClientInfo;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun listProviders (Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun listProviders$suspendImpl (Lcom/agentclientprotocol/agent/AgentSupport;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun listSessions (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun listSessions (Ljava/lang/String;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun listSessions$suspendImpl (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun listSessions$suspendImpl (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun loadSession-nk3TnMc (Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun loadSession-nk3TnMc$suspendImpl (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -122,6 +124,7 @@ public final class com/agentclientprotocol/agent/AgentSupport$DefaultImpls {
 	public static fun disableProvider (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun forkSession-nk3TnMc (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun listProviders (Lcom/agentclientprotocol/agent/AgentSupport;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun listSessions (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun listSessions (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun loadSession-nk3TnMc (Lcom/agentclientprotocol/agent/AgentSupport;Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun logout (Lcom/agentclientprotocol/agent/AgentSupport;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
