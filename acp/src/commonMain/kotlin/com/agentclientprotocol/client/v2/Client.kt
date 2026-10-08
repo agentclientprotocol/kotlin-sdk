@@ -103,18 +103,22 @@ public class Client(
      * @property opening how many `session/new`, `session/resume` or `session/fork` calls are in flight, which
      *   is what tells an update for an unknown id apart from one for a session that is about to exist.
      * @property inboxes a buffer per session id, kept from the first update until the session is closed.
+     * @property resuming a buffer per id with a `session/resume` in flight. It takes precedence over the open
+     *   session's inbox, so the replay reaches the session the resume returns rather than the one it replaces.
      * @property sessions the sessions of this connection, once their opening call has answered.
      */
     private class Sessions(
         val opening: Int = 0,
         val inboxes: PersistentMap<SessionId, Inbox> = persistentMapOf(),
+        val resuming: PersistentMap<SessionId, Inbox> = persistentMapOf(),
         val sessions: PersistentMap<SessionId, ClientSession> = persistentMapOf(),
     ) {
         fun copy(
             opening: Int = this.opening,
             inboxes: PersistentMap<SessionId, Inbox> = this.inboxes,
+            resuming: PersistentMap<SessionId, Inbox> = this.resuming,
             sessions: PersistentMap<SessionId, ClientSession> = this.sessions,
-        ) = Sessions(opening, inboxes, sessions)
+        ) = Sessions(opening, inboxes, resuming, sessions)
     }
 
     private val _sessions = atomic(Sessions())
@@ -231,6 +235,8 @@ public class Client(
      *
      * Updates the agent sends before this call returns are kept and delivered through the returned session's
      * [ClientSession.updates], so the beginning of a session is not lost to the round trip.
+     *
+     * Nonempty [additionalDirectories] require the agent's `session.additionalDirectories` capability.
      */
     public suspend fun newSession(
         cwd: String,
@@ -238,12 +244,15 @@ public class Client(
         additionalDirectories: List<String> = emptyList(),
         operations: ClientSessionOperations? = null,
         _meta: JsonElement? = null,
-    ): ClientSession = whileOpeningSession {
-        val response = AcpMethod.AgentMethods.V2.SessionNew(
-            protocol,
-            NewSessionRequest(cwd, mcpServers, additionalDirectories, _meta)
-        )
-        register(response.sessionId, response.configOptions, operations)
+    ): ClientSession {
+        requireAdditionalDirectoriesSupport(additionalDirectories)
+        return whileOpeningSession {
+            val response = AcpMethod.AgentMethods.V2.SessionNew(
+                protocol,
+                NewSessionRequest(cwd, mcpServers, additionalDirectories, _meta)
+            )
+            register(response.sessionId, response.configOptions, operations)
+        }
     }
 
     /** The session with [sessionId], or `null` if this connection has no such session. */
@@ -253,7 +262,11 @@ public class Client(
      * Resumes an existing session with `session/resume`, v2's replacement for `session/load`.
      *
      * History replayed for [replayFrom] arrives as `session/update` while this call is still in flight, and
-     * is kept for the returned session's [ClientSession.updates] rather than dropped.
+     * is kept for the returned session's [ClientSession.updates] rather than dropped — also when [sessionId]
+     * is already open here, in which case the returned session replaces the open one. If the resume fails, the
+     * open session keeps receiving its updates, including any that arrived while the call was in flight.
+     *
+     * Nonempty [additionalDirectories] require the agent's `session.additionalDirectories` capability.
      */
     public suspend fun resumeSession(
         sessionId: SessionId,
@@ -263,18 +276,28 @@ public class Client(
         replayFrom: ReplayFrom? = null,
         operations: ClientSessionOperations? = null,
         _meta: JsonElement? = null,
-    ): ClientSession = whileOpeningSession {
-        val response = AcpMethod.AgentMethods.V2.SessionResume(
-            protocol,
-            ResumeSessionRequest(sessionId, cwd, additionalDirectories, mcpServers, replayFrom, _meta)
-        )
-        register(sessionId, response.configOptions, operations)
+    ): ClientSession {
+        requireAdditionalDirectoriesSupport(additionalDirectories)
+        return whileOpeningSession {
+            val reserved = reserveInbox(sessionId)
+            try {
+                val response = AcpMethod.AgentMethods.V2.SessionResume(
+                    protocol,
+                    ResumeSessionRequest(sessionId, cwd, additionalDirectories, mcpServers, replayFrom, _meta)
+                )
+                register(sessionId, response.configOptions, operations)
+            } finally {
+                releaseInbox(sessionId, reserved)
+            }
+        }
     }
 
     /**
      * Forks a session with `session/fork`, starting a new one from an existing session's history.
      *
      * The returned session has the **new** id the agent minted, not [sessionId].
+     *
+     * Nonempty [additionalDirectories] require the agent's `session.additionalDirectories` capability.
      */
     public suspend fun forkSession(
         sessionId: SessionId,
@@ -283,12 +306,31 @@ public class Client(
         additionalDirectories: List<String> = emptyList(),
         operations: ClientSessionOperations? = null,
         _meta: JsonElement? = null,
-    ): ClientSession = whileOpeningSession {
-        val response = AcpMethod.AgentMethods.V2.SessionFork(
-            protocol,
-            ForkSessionRequest(sessionId, cwd, additionalDirectories, mcpServers, _meta)
-        )
-        register(response.sessionId, response.configOptions, operations)
+    ): ClientSession {
+        requireAdditionalDirectoriesSupport(additionalDirectories)
+        return whileOpeningSession {
+            val response = AcpMethod.AgentMethods.V2.SessionFork(
+                protocol,
+                ForkSessionRequest(sessionId, cwd, additionalDirectories, mcpServers, _meta)
+            )
+            register(response.sessionId, response.configOptions, operations)
+        }
+    }
+
+    /**
+     * Fails locally, before any request is sent, when [directories] is nonempty and the agent did not
+     * advertise `session.additionalDirectories`; the schema forbids sending the field otherwise.
+     */
+    private suspend fun requireAdditionalDirectoriesSupport(directories: List<String>) {
+        if (directories.isEmpty()) return
+
+        // _agentInfo only completes on successful initialization, so awaiting it earlier could hang forever.
+        if (!_agentInfo.isCompleted) {
+            acpFail("Cannot send additionalDirectories before initialization completes")
+        }
+        if (_agentInfo.await().capabilities.session?.additionalDirectories == null) {
+            acpFail("Cannot send additionalDirectories: the agent did not advertise session.additionalDirectories")
+        }
     }
 
     /** Lists configurable providers with `providers/list`. */
@@ -441,13 +483,13 @@ public class Client(
      */
     private fun inboxFor(sessionId: SessionId): Inbox? {
         // Fast path for the common case of a session that has been open for a while.
-        _sessions.value.inboxes[sessionId]?.let { return it }
+        _sessions.value.let { it.resuming[sessionId] ?: it.inboxes[sessionId] }?.let { return it }
         var inbox: Inbox? = null
 
         // Every branch looks the inbox up in `current` rather than trusting the read above: a concurrent
         // newSession can register one, or stop the opening window, in between.
         _sessions.update { current ->
-            val existing = current.inboxes[sessionId]
+            val existing = current.resuming[sessionId] ?: current.inboxes[sessionId]
             when {
                 existing != null -> {
                     inbox = existing
@@ -468,30 +510,83 @@ public class Client(
     }
 
     /**
-     * The inbox for a session about to be registered: the one already filled for it during the opening
-     * window, or a fresh one if nothing arrived that early.
+     * The inbox for a session about to be registered: the one its resume reserved, the one already filled for
+     * it during the opening window, or a fresh one if nothing arrived that early.
      *
      * A session registered a second time — two `session/resume` calls for one id, or an agent answering with
-     * an id it has already handed out — gets a fresh buffer, and the buffer the previous session was reading
-     * is closed. Otherwise the two would compete over one channel, each swallowing some of the updates.
+     * an id it has already handed out — never reads the previous session's buffer, which is closed. Otherwise
+     * the two would compete over one channel, each swallowing some of the updates.
      */
     private fun claimInbox(sessionId: SessionId): Inbox {
         var claimed: Inbox? = null
         var replaced: Inbox? = null
         _sessions.update { current ->
             val buffered = current.inboxes[sessionId]
-            replaced = if (sessionId in current.sessions) buffered else null
-            if (buffered != null && replaced == null) {
-                claimed = buffered
-                current
-            } else {
-                val fresh = Inbox()
-                claimed = fresh
-                current.copy(inboxes = current.inboxes.put(sessionId, fresh))
+            val reserved = current.resuming[sessionId]
+            replaced = if (sessionId in current.sessions || reserved != null) buffered else null
+            when {
+                reserved != null -> {
+                    claimed = reserved
+                    current.copy(
+                        inboxes = current.inboxes.put(sessionId, reserved),
+                        resuming = current.resuming.remove(sessionId),
+                    )
+                }
+                buffered != null && replaced == null -> {
+                    claimed = buffered
+                    current
+                }
+                else -> {
+                    val fresh = Inbox()
+                    claimed = fresh
+                    current.copy(inboxes = current.inboxes.put(sessionId, fresh))
+                }
             }
         }
         replaced?.updates?.close()
         return claimed!!
+    }
+
+    /**
+     * Sets aside a buffer for the updates of a `session/resume` for [sessionId] before the request goes out.
+     *
+     * Needed because the id may already be open on this connection: without it the replay would go to the
+     * session being replaced, and be closed along with its buffer when the resumed one registers.
+     * Concurrent resumes of one id share the reservation; the first to register claims it.
+     */
+    private fun reserveInbox(sessionId: SessionId): Inbox {
+        var reserved: Inbox? = null
+        _sessions.update { current ->
+            val existing = current.resuming[sessionId]
+            reserved = existing ?: Inbox()
+            if (existing != null) current else current.copy(resuming = current.resuming.put(sessionId, reserved!!))
+        }
+        return reserved!!
+    }
+
+    /**
+     * Drops a reservation that [register] did not claim because the resume failed, handing whatever it
+     * buffered to the session that stays open under [sessionId], if there is one.
+     */
+    private fun releaseInbox(sessionId: SessionId, reserved: Inbox) {
+        var released = false
+        var stillOpen: Inbox? = null
+        _sessions.update { current ->
+            released = current.resuming[sessionId] === reserved
+            if (!released) return@update current
+            stillOpen = current.inboxes[sessionId]?.takeIf { sessionId in current.sessions }
+            current.copy(resuming = current.resuming.remove(sessionId))
+        }
+        if (!released) return
+
+        reserved.updates.close()
+        val target = stillOpen
+        for (update in generateSequence { reserved.updates.tryReceive().getOrNull() }) {
+            if (target == null || target.updates.trySend(update).isFailure) {
+                logger.warn { "Dropping v2 session/update notifications buffered by a failed resume of $sessionId" }
+                return
+            }
+        }
     }
 
     /**

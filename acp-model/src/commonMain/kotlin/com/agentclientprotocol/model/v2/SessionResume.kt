@@ -1,4 +1,5 @@
 @file:Suppress("unused")
+@file:OptIn(ExperimentalSerializationApi::class)
 
 package com.agentclientprotocol.model.v2
 
@@ -9,6 +10,8 @@ import com.agentclientprotocol.model.AcpWithMeta
 import com.agentclientprotocol.model.AcpWithSessionId
 import com.agentclientprotocol.model.SessionConfigId
 import com.agentclientprotocol.model.SessionId
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -67,13 +70,22 @@ internal object ReplayFromSerializer : OpenTaggedUnionSerializer<ReplayFrom>(
  * Request parameters for the v2 `session/resume` method.
  *
  * v2 has no `session/load`: resuming replaces it, and [replayFrom] says how much history to replay.
+ *
+ * The environment is sent in full on every resume, as for `session/new`; omitted `additionalDirectories` do
+ * not restore the roots the session had before.
+ *
+ * @property cwd the session's primary working directory; must be an absolute path
+ * @property additionalDirectories further workspace roots, each an absolute path; sending this field requires
+ * the agent's additionalDirectories capability
+ * @property replayFrom `null` means no replay; for [ReplayFrom.Start] the agent replays all retained history as
+ * `session/update` notifications before it responds
  */
 @UnstableApi
 @Serializable
 public data class ResumeSessionRequest(
     override val sessionId: SessionId,
     val cwd: String,
-    val additionalDirectories: List<String> = emptyList(),
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val additionalDirectories: List<String> = emptyList(),
     val mcpServers: List<McpServer> = emptyList(),
     val replayFrom: ReplayFrom? = null,
     override val _meta: JsonElement? = null
@@ -161,13 +173,17 @@ internal object SetSessionConfigOptionRequestSerializer : KSerializer<SetSession
 
 /**
  * Request parameters for the v2 `session/fork` method: start a new session from an existing one's history.
+ *
+ * @property cwd the new session's primary working directory; must be an absolute path
+ * @property additionalDirectories further workspace roots, each an absolute path; sending this field requires
+ * the agent's additionalDirectories capability
  */
 @UnstableApi
 @Serializable
 public data class ForkSessionRequest(
     override val sessionId: SessionId,
     val cwd: String,
-    val additionalDirectories: List<String> = emptyList(),
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val additionalDirectories: List<String> = emptyList(),
     val mcpServers: List<McpServer> = emptyList(),
     override val _meta: JsonElement? = null
 ) : AcpRequest, AcpWithSessionId
