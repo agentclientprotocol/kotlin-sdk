@@ -101,6 +101,20 @@ class ToolCallUpdateTest {
         assertEquals(json, encode(decode(json)))
     }
 
+    @Test
+    fun `name round-trips as a patch field after title`() {
+        val cases = listOf(
+            """{"toolCallId":"tc_1","title":"Read config","name":"read_file"}""" to MaybeUndefined.Value("read_file"),
+            """{"toolCallId":"tc_1","title":"Read config","name":null}""" to MaybeUndefined.Null,
+            """{"toolCallId":"tc_1","title":"Read config"}""" to MaybeUndefined.Undefined,
+        )
+        for ((json, name) in cases) {
+            val update = decode(json)
+            assertEquals(name, update.name, json)
+            assertEquals(json, encode(update))
+        }
+    }
+
     // Open enum leaves stay open
 
     @Test
@@ -115,9 +129,10 @@ class ToolCallUpdateTest {
 
     @Test
     fun `malformed optional fields degrade to undefined instead of failing`() {
-        val update = decode("""{"toolCallId":"tc_1","title":{"a":1},"kind":[],"content":"nope"}""")
+        val update = decode("""{"toolCallId":"tc_1","title":{"a":1},"name":["read_file"],"kind":[],"content":"nope"}""")
 
         assertEquals(MaybeUndefined.Undefined, update.title)
+        assertEquals(MaybeUndefined.Undefined, update.name)
         assertEquals(MaybeUndefined.Undefined, update.kind)
         assertEquals(MaybeUndefined.Undefined, update.content)
     }
@@ -201,6 +216,21 @@ class ToolCallUpdateTest {
         assertEquals(MaybeUndefined.Value("Reading configuration"), patched.title)
         assertEquals(MaybeUndefined.Value(ToolCallStatus.Completed), patched.status)
         assertEquals(MaybeUndefined.Null, patched._meta)
+    }
+
+    @Test
+    fun `applyUpdate patches the tool name`() {
+        val stored = ToolCallUpdate(toolCallId = ToolCallId("tc_1"), name = MaybeUndefined.Value("read_file"))
+
+        val cases = listOf(
+            MaybeUndefined.Undefined to MaybeUndefined.Value("read_file"),
+            MaybeUndefined.Value("write_file") to MaybeUndefined.Value("write_file"),
+            MaybeUndefined.Null to MaybeUndefined.Null,
+        )
+        for ((patch, expected) in cases) {
+            val patched = stored.applyUpdate(ToolCallUpdate(toolCallId = ToolCallId("tc_1"), name = patch))
+            assertEquals(expected, patched.name, "patch $patch")
+        }
     }
 
     @Test
