@@ -6,10 +6,7 @@ import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.setNotificationHandler
 import com.agentclientprotocol.rpc.*
-import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.Serializable
@@ -25,14 +22,10 @@ import com.agentclientprotocol.agent.v2.SessionCreationParameters as V2SessionCr
 import com.agentclientprotocol.client.v2.ClientInfo as V2ClientInfo
 import com.agentclientprotocol.model.v2.AvailableCommand as V2AvailableCommand
 import com.agentclientprotocol.model.v2.ContentBlock as V2ContentBlock
-import com.agentclientprotocol.model.v2.ContentChunk as V2ContentChunk
 import com.agentclientprotocol.model.v2.NewSessionRequest as V2NewSessionRequest
-import com.agentclientprotocol.model.v2.PromptRequest as V2PromptRequest
 import com.agentclientprotocol.model.v2.SessionUpdate as V2SessionUpdate
-import com.agentclientprotocol.model.v2.StateUpdate as V2StateUpdate
 import com.agentclientprotocol.model.v2.StatusAuthRequest as V2StatusAuthRequest
 import com.agentclientprotocol.model.v2.StatusAuthResponse as V2StatusAuthResponse
-import com.agentclientprotocol.model.v2.StopReason as V2StopReason
 import com.agentclientprotocol.model.v2.UserMessage as V2UserMessage
 
 @OptIn(UnstableApi::class)
@@ -747,178 +740,24 @@ class AgentTest {
         }
     }
 
-    /**
-     * A v2 session whose turns come from [turn], called with the 1-based number of each turn.
-     */
-    private class ScriptedV2Session(
-        override val availableCommands: List<V2AvailableCommand>,
-        private val turn: (number: Int) -> Flow<V2SessionUpdate>,
-    ) : V2AgentSession {
-        override val sessionId = SessionId("v2-scripted")
-        private val turns = atomic(0)
-
-        override fun prompt(content: List<V2ContentBlock>, _meta: JsonElement?) = turn(turns.incrementAndGet())
-    }
-
-    private fun scriptedV2Support(
-        availableCommands: List<V2AvailableCommand> = emptyList(),
-        turn: (number: Int) -> Flow<V2SessionUpdate>,
-    ) = object : V2AgentSupport {
-        override suspend fun initialize(clientInfo: V2ClientInfo) =
-            V2AgentInfo(implementation = Implementation(name = "test-agent-v2", version = "1.0.0"))
-
-        override suspend fun createSession(
-            parameters: V2SessionCreationParameters,
-            client: V2ClientOperations,
-        ): V2AgentSession = ScriptedV2Session(availableCommands, turn)
-    }
-
-    private suspend fun TestV2Agent.openV2Session(): SessionId {
-        testInitialize(v2InitializeRequest())
-        val (newSession) = testRequest(AcpMethod.AgentMethods.V2.SessionNew, V2NewSessionRequest(cwd = "."))
-        return assertNotNull(newSession).sessionId
-    }
-
-    /**
-     * Sends a prompt and returns everything the agent sent up to and including its reply.
-     */
-    private suspend fun TestV2Agent.firePrompt(sessionId: SessionId): List<JsonRpcMessage> {
-        val prompt = AcpMethod.AgentMethods.V2.SessionPrompt
-        return transport.fireTestRequest(
-            prompt.methodName,
-            ACPJson.encodeToJsonElement(
-                prompt.requestSerializer,
-                V2PromptRequest(sessionId, listOf(V2ContentBlock.Text("hi"))),
-            ),
-        )
-    }
-
-    private fun List<JsonRpcMessage>.promptReceipt(): MessageId = ACPJson.decodeFromJsonElement(
-        AcpMethod.AgentMethods.V2.SessionPrompt.responseSerializer,
-        assertNotNull(assertIs<JsonRpcSuccessResponse>(last()).result),
-    ).messageId
-
-    @Test
-    fun `a user message chunk is a receipt too`() {
-        val support = scriptedV2Support {
-            flow {
-                emit(V2SessionUpdate.UserMessageChunk(V2ContentChunk(MessageId("user-chunk-1"), V2ContentBlock.Text("hi"))))
-                emit(v2UserMessage("user-chunk-1"))
-                emit(v2Idle(V2StopReason.EndTurn))
-            }
-        }
-        withTestV2Agent(support) { testAgent ->
-            val replies = testAgent.firePrompt(testAgent.openV2Session())
-            assertEquals(MessageId("user-chunk-1"), replies.promptReceipt())
-            assertIs<V2SessionUpdate.UserMessageChunk>(testAgent.receiveSessionUpdate().update)
-
-            // Only the first user message update answers the prompt; a later upsert is an ordinary update.
-            assertIs<V2SessionUpdate.UserMessage>(testAgent.receiveSessionUpdate().update)
-            assertIs<V2StateUpdate.Idle>(assertIs<V2SessionUpdate.StateUpdate>(testAgent.receiveSessionUpdate().update).state)
-        }
-    }
-
-    @Test
-    fun `a turn that ends before inserting the user message fails the prompt without an idle update`() {
-        val support = scriptedV2Support { number ->
-            when (number) {
-                1 -> error("rejected before the turn")
-                2 -> flow { error("could not insert the prompt") }
-                3 -> flow { emit(V2SessionUpdate.StateUpdate(V2StateUpdate.Running())) }
-                else -> flow {
-                    emit(v2UserMessage("user-$number"))
-                    emit(v2Idle(V2StopReason.EndTurn))
-                }
-            }
-        }
-        withTestV2Agent(support) { testAgent ->
-            val sessionId = testAgent.openV2Session()
-
-            for (message in listOf("rejected before the turn", "could not insert the prompt")) {
-                val error = assertIs<JsonRpcErrorResponse>(testAgent.firePrompt(sessionId).single()).error
-                assertEquals(JsonRpcErrorCode.INTERNAL_ERROR.code, error.code)
-                assertEquals(message, error.message)
-            }
-
-            val incomplete = testAgent.firePrompt(sessionId)
-            assertEquals(JsonRpcErrorCode.INTERNAL_ERROR.code, assertIs<JsonRpcErrorResponse>(incomplete.single()).error.code)
-
-            // The next prompt is accepted, and no idle update for an unaccepted turn arrives ahead of it.
-            val accepted = testAgent.firePrompt(sessionId)
-            assertEquals(MessageId("user-4"), accepted.promptReceipt())
-            assertIs<V2SessionUpdate.UserMessage>(testAgent.receiveSessionUpdate().update)
-            assertIs<V2StateUpdate.Idle>(assertIs<V2SessionUpdate.StateUpdate>(testAgent.receiveSessionUpdate().update).state)
-        }
-    }
-
-    @Test
-    fun `a turn that fails after inserting the user message keeps its receipt and is reported idle`() {
-        val support = scriptedV2Support { number ->
-            flow {
-                emit(v2UserMessage("user-$number"))
-                if (number == 1) error("failed mid-turn")
-                emit(v2Idle(V2StopReason.EndTurn))
-            }
-        }
-        withTestV2Agent(support) { testAgent ->
-            val sessionId = testAgent.openV2Session()
-
-            assertEquals(MessageId("user-1"), testAgent.firePrompt(sessionId).promptReceipt())
-            assertIs<V2SessionUpdate.UserMessage>(testAgent.receiveSessionUpdate().update)
-            val idle = assertIs<V2StateUpdate.Idle>(
-                assertIs<V2SessionUpdate.StateUpdate>(testAgent.receiveSessionUpdate().update).state
-            )
-            assertNull(idle.stopReason, "no defined stop reason describes a failure")
-
-            // Exactly one idle update and no error reply came before the next turn's messages.
-            val next = testAgent.firePrompt(sessionId)
-            assertEquals(MessageId("user-2"), next.promptReceipt())
-            assertIs<V2SessionUpdate.UserMessage>(testAgent.receiveSessionUpdate().update)
-        }
-    }
-
-    @Test
-    fun `local cancellation fails a prompt before insertion and closes the turn after it`() {
-        val waiting = Channel<Unit>(Channel.UNLIMITED)
-        val support = scriptedV2Support { number ->
-            flow {
-                if (number == 2) emit(v2UserMessage("user-2"))
-                if (number <= 2) {
-                    waiting.send(Unit)
-                    awaitCancellation()
-                }
-                emit(v2UserMessage("user-$number"))
-                emit(v2Idle(V2StopReason.EndTurn))
-            }
-        }
-        withTestV2Agent(support) { testAgent ->
-            val sessionId = testAgent.openV2Session()
-
-            val beforeInsertion = async { testAgent.firePrompt(sessionId) }
-            waiting.receive()
-            testAgent.agent.protocol.cancelPendingIncomingRequests()
-            val error = assertIs<JsonRpcErrorResponse>(beforeInsertion.await().single()).error
-            assertEquals(JsonRpcErrorCode.CANCELLED.code, error.code)
-
-            assertEquals(MessageId("user-2"), testAgent.firePrompt(sessionId).promptReceipt())
-            assertIs<V2SessionUpdate.UserMessage>(testAgent.receiveSessionUpdate().update)
-            waiting.receive()
-            testAgent.agent.protocol.cancelPendingIncomingRequests()
-            val idle = assertIs<V2StateUpdate.Idle>(
-                assertIs<V2SessionUpdate.StateUpdate>(testAgent.receiveSessionUpdate().update).state
-            )
-            assertEquals(V2StopReason.Cancelled, idle.stopReason)
-
-            val next = testAgent.firePrompt(sessionId)
-            assertEquals(MessageId("user-3"), next.promptReceipt())
-            assertIs<V2SessionUpdate.UserMessage>(testAgent.receiveSessionUpdate().update)
-        }
-    }
-
     @Test
     fun `session new reports the commands the session starts with`() {
         val commands = listOf(V2AvailableCommand("plan", "Make a plan"))
-        withTestV2Agent(scriptedV2Support(commands) { emptyFlow() }) { testAgent ->
+        val support = object : V2AgentSupport {
+            override suspend fun initialize(clientInfo: V2ClientInfo) =
+                V2AgentInfo(implementation = Implementation(name = "test-agent-v2", version = "1.0.0"))
+
+            override suspend fun createSession(
+                parameters: V2SessionCreationParameters,
+                client: V2ClientOperations,
+            ): V2AgentSession = object : V2AgentSession {
+                override val sessionId = SessionId("v2-commands")
+                override val availableCommands = commands
+
+                override fun prompt(content: List<V2ContentBlock>, _meta: JsonElement?) = emptyFlow<V2SessionUpdate>()
+            }
+        }
+        withTestV2Agent(support) { testAgent ->
             testAgent.testInitialize(v2InitializeRequest())
             val (newSession) = testAgent.testRequest(AcpMethod.AgentMethods.V2.SessionNew, V2NewSessionRequest(cwd = "."))
             assertEquals(commands, assertNotNull(newSession).availableCommands)
@@ -1033,6 +872,3 @@ class AgentTest {
 
 @OptIn(UnstableApi::class)
 private fun v2UserMessage(id: String) = V2SessionUpdate.UserMessage(V2UserMessage(MessageId(id)))
-
-@OptIn(UnstableApi::class)
-private fun v2Idle(stopReason: V2StopReason?) = V2SessionUpdate.StateUpdate(V2StateUpdate.Idle(stopReason = stopReason))

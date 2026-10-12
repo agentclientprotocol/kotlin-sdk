@@ -48,8 +48,10 @@ public interface AgentSession {
      * frame is queued. The client may receive updates before or after its `prompt()` call returns.
      *
      * Before insertion, flow failure, cancellation, or completion rejects the request. A [StateUpdate.Idle]
-     * with the `cancelled` stop reason also rejects the request with cancellation. In each case, the SDK
-     * discards buffered updates and sends no idle update. To reject a prompt, throw before insertion.
+     * with the `cancelled` stop reason also rejects the request with cancellation. That `emit` does not
+     * return: it throws [kotlinx.coroutines.CancellationException], so code after it does not run. In each
+     * case, the SDK discards buffered updates and sends no idle update. To reject a prompt, throw before
+     * insertion.
      *
      * If the flow fails after insertion, the SDK closes the turn with a terminal [StateUpdate.Idle]
      * whose `stopReason` is `null`. This keeps the client from waiting on a failed turn, but does not replace
