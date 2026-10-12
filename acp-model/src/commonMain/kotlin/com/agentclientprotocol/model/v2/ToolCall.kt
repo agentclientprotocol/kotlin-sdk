@@ -9,6 +9,7 @@ import com.agentclientprotocol.model.ToolCallId
 import com.agentclientprotocol.model.ToolCallLocation
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
@@ -536,13 +537,15 @@ internal object DiffChangeSerializer : KSerializer<DiffChange> {
 }
 
 /**
- * Renderable patch text.
+ * Renderable patch text and its format.
+ *
+ * @property diff patch text in the format named by [format]; sent on the wire as `text`
  */
 @UnstableApi
 @Serializable
 public data class DiffPatch(
     val format: DiffPatchFormat = DiffPatchFormat.GitPatch,
-    val diff: String,
+    @SerialName("text") val diff: String,
 )
 
 /**
@@ -665,12 +668,17 @@ internal object ToolCallContentSerializer : OpenTaggedUnionSerializer<ToolCallCo
  * [locations] items are skipped.
  *
  * See protocol docs: [Tool Calls](https://agentclientprotocol.com/protocol/tool-calls)
+ *
+ * @property title human-readable title describing what the tool is doing
+ * @property name programmatic name of the tool being invoked; for a tool call the client has
+ * not seen before, omission or `null` means that no tool name is available
  */
 @UnstableApi
 @Serializable(with = ToolCallUpdateSerializer::class)
 public data class ToolCallUpdate(
     val toolCallId: ToolCallId,
     val title: MaybeUndefined<String> = MaybeUndefined.Undefined,
+    val name: MaybeUndefined<String> = MaybeUndefined.Undefined,
     val kind: MaybeUndefined<ToolKind> = MaybeUndefined.Undefined,
     val status: MaybeUndefined<ToolCallStatus> = MaybeUndefined.Undefined,
     val content: MaybeUndefined<List<ToolCallContent>> = MaybeUndefined.Undefined,
@@ -694,6 +702,7 @@ public data class ToolCallUpdate(
         return ToolCallUpdate(
             toolCallId = toolCallId,
             title = update.title.orElse(title),
+            name = update.name.orElse(name),
             kind = update.kind.orElse(kind),
             status = update.status.orElse(status),
             content = update.content.orElse(content),
@@ -717,6 +726,7 @@ internal object ToolCallUpdateSerializer : KSerializer<ToolCallUpdate> {
             buildJsonObject {
                 put("toolCallId", json.encodeToJsonElement(ToolCallId.serializer(), value.toolCallId))
                 putMaybeUndefined(json, "title", value.title, String.serializer())
+                putMaybeUndefined(json, "name", value.name, String.serializer())
                 putMaybeUndefined(json, "kind", value.kind, ToolKind.serializer())
                 putMaybeUndefined(json, "status", value.status, ToolCallStatus.serializer())
                 putMaybeUndefined(json, "content", value.content, ListSerializer(ToolCallContent.serializer()))
@@ -737,6 +747,7 @@ internal object ToolCallUpdateSerializer : KSerializer<ToolCallUpdate> {
         return ToolCallUpdate(
             toolCallId = json.decodeFromJsonElement(ToolCallId.serializer(), toolCallId),
             title = jsonObject.decodeMaybeUndefined(json, "title", String.serializer()),
+            name = jsonObject.decodeMaybeUndefined(json, "name", String.serializer()),
             kind = jsonObject.decodeMaybeUndefined(json, "kind", ToolKind.serializer()),
             status = jsonObject.decodeMaybeUndefined(json, "status", ToolCallStatus.serializer()),
             content = jsonObject.decodeMaybeUndefinedList(json, "content", ToolCallContent.serializer()),

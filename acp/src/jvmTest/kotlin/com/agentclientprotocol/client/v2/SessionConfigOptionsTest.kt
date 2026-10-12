@@ -10,6 +10,7 @@ import com.agentclientprotocol.agent.v2.ClientOperations
 import com.agentclientprotocol.agent.v2.SessionCreationParameters
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.Implementation
+import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
 import com.agentclientprotocol.model.SessionConfigId
 import com.agentclientprotocol.model.SessionConfigSelectOption
@@ -25,6 +26,7 @@ import com.agentclientprotocol.model.v2.SessionConfigOptionCategory
 import com.agentclientprotocol.model.v2.SessionConfigOptionValue
 import com.agentclientprotocol.model.v2.SessionConfigSelectOptions
 import com.agentclientprotocol.model.v2.SessionUpdate
+import com.agentclientprotocol.model.v2.UserMessage
 import com.agentclientprotocol.protocol.AcpExpectedError
 import com.agentclientprotocol.protocol.JsonRpcException
 import com.agentclientprotocol.protocol.Protocol
@@ -40,7 +42,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -201,7 +203,8 @@ private class ConfigSession(
     var onSet: suspend (SessionConfigId, SessionConfigOptionValue, JsonElement?) -> List<SessionConfigOption> =
         { _, _, _ -> configOptions }
 
-    override fun prompt(content: List<ContentBlock>, _meta: JsonElement?) = emptyFlow<SessionUpdate>()
+    override fun prompt(content: List<ContentBlock>, _meta: JsonElement?) =
+        flowOf<SessionUpdate>(SessionUpdate.UserMessage(UserMessage(MessageId("user-1"))))
 
     override suspend fun setConfigOption(
         configId: SessionConfigId,

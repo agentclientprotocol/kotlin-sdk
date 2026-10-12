@@ -126,16 +126,23 @@ internal fun <T> JsonObject.decodeMaybeUndefinedList(
     val element = this[key] ?: return MaybeUndefined.Undefined
     if (element is JsonNull) return MaybeUndefined.Null
     val array = element as? JsonArray ?: return MaybeUndefined.Undefined
-    return MaybeUndefined.Value(
-        array.mapNotNull { item ->
-            try {
-                json.decodeFromJsonElement(itemDeserializer, item)
-            } catch (_: Exception) {
-                // VecSkipError parity; see decodeMaybeUndefined for why the catch is broad.
-                null
-            }
-        }
-    )
+    return MaybeUndefined.Value(array.decodeSkippingInvalid(json, itemDeserializer))
+}
+
+/**
+ * Decodes the items of this array with Rust's `VecSkipError` semantics: an item that fails to decode
+ * is skipped instead of failing the whole list.
+ */
+internal fun <T> JsonArray.decodeSkippingInvalid(
+    json: Json,
+    itemDeserializer: DeserializationStrategy<T>,
+): List<T> = mapNotNull { item ->
+    try {
+        json.decodeFromJsonElement(itemDeserializer, item)
+    } catch (_: Exception) {
+        // See decodeMaybeUndefined for why the catch is broad.
+        null
+    }
 }
 
 /**

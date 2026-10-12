@@ -7,6 +7,7 @@ import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.setNotificationHandler
 import com.agentclientprotocol.rpc.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
@@ -19,8 +20,13 @@ import com.agentclientprotocol.agent.v2.AgentSupport as V2AgentSupport
 import com.agentclientprotocol.agent.v2.ClientOperations as V2ClientOperations
 import com.agentclientprotocol.agent.v2.SessionCreationParameters as V2SessionCreationParameters
 import com.agentclientprotocol.client.v2.ClientInfo as V2ClientInfo
+import com.agentclientprotocol.model.v2.AvailableCommand as V2AvailableCommand
+import com.agentclientprotocol.model.v2.ContentBlock as V2ContentBlock
+import com.agentclientprotocol.model.v2.NewSessionRequest as V2NewSessionRequest
+import com.agentclientprotocol.model.v2.SessionUpdate as V2SessionUpdate
 import com.agentclientprotocol.model.v2.StatusAuthRequest as V2StatusAuthRequest
 import com.agentclientprotocol.model.v2.StatusAuthResponse as V2StatusAuthResponse
+import com.agentclientprotocol.model.v2.UserMessage as V2UserMessage
 
 @OptIn(UnstableApi::class)
 class AgentTest {
@@ -186,9 +192,26 @@ class AgentTest {
 
     /** Reads the next message from the agent as a `session/update`. */
     private suspend fun TestV2Agent.receiveSessionUpdate(): com.agentclientprotocol.model.v2.UpdateSessionNotification =
+        transport.receiveTestMessages(1).single().sessionUpdate()
+
+    /**
+     * Reads [count] updates of a v2 turn, starting with those that arrived ahead of its receipt.
+     *
+     * A v2 turn sends each update as it is made, so the receipt can land anywhere among them.
+     */
+    private suspend fun TestV2Agent.receiveTurnUpdates(
+        beforeReceipt: List<JsonRpcMessage>,
+        count: Int,
+    ): List<V2SessionUpdate> =
+        (beforeReceipt + transport.receiveTestMessages(count - beforeReceipt.size)).map { it.sessionUpdate().update }
+
+    /**
+     * Decodes this message from the agent as a `session/update`.
+     */
+    private fun JsonRpcMessage.sessionUpdate(): com.agentclientprotocol.model.v2.UpdateSessionNotification =
         ACPJson.decodeFromJsonElement(
             AcpMethod.ClientMethods.V2.SessionUpdate.serializer,
-            assertNotNull(assertIs<JsonRpcNotification>(transport.receiveTestMessages(1).single()).params),
+            assertNotNull(assertIs<JsonRpcNotification>(this).params),
         )
 
     /** Completes once every notification fired before this call has been handled. */
@@ -330,6 +353,7 @@ class AgentTest {
             content: List<com.agentclientprotocol.model.v2.ContentBlock>,
             _meta: kotlinx.serialization.json.JsonElement?,
         ) = flow {
+            emit(v2UserMessage("v2-user-1"))
             emit(
                 com.agentclientprotocol.model.v2.SessionUpdate.StateUpdate(
                     com.agentclientprotocol.model.v2.StateUpdate.Running()
@@ -360,7 +384,9 @@ class AgentTest {
         ): V2AgentSession = GatedV2Session(SessionId("v2-gated-${sessions.size + 1}")).also { sessions += it }
     }
 
-    /** A v2 session that streams one agent message and then reports the turn as idle. */
+    /**
+     * A v2 session that inserts the user message, streams one agent message, and reports the turn as idle.
+     */
     private class TestV2Session(override val sessionId: SessionId) : V2AgentSession {
         val cancelled = CompletableDeferred<Unit>()
         var promptSeen: List<com.agentclientprotocol.model.v2.ContentBlock>? = null
@@ -370,6 +396,7 @@ class AgentTest {
             _meta: kotlinx.serialization.json.JsonElement?,
         ) = flow {
             promptSeen = content
+            emit(v2UserMessage("v2-user-1"))
             emit(
                 com.agentclientprotocol.model.v2.SessionUpdate.AgentMessageChunk(
                     com.agentclientprotocol.model.v2.ContentChunk(
@@ -426,24 +453,18 @@ class AgentTest {
                     prompt = listOf(com.agentclientprotocol.model.v2.ContentBlock.Text("hi")),
                 )
             )
-            assertNotNull(promptResponse, "a v2 prompt response is an empty object, but it must arrive")
-            assertEquals(emptyList(), notificationsBeforeResponse, "updates must follow the prompt response")
+            assertEquals(MessageId("v2-user-1"), assertNotNull(promptResponse).messageId)
 
             // The updates went out as v2 `session/update` notifications, in order.
-            val updates = testAgent.transport.receiveTestMessages(2)
-                .filterIsInstance<com.agentclientprotocol.rpc.JsonRpcNotification>()
-                .filter { it.method == AcpMethod.ClientMethods.V2.SessionUpdate.methodName }
-                .mapNotNull { it.params }
-                .map {
-                    ACPJson.decodeFromJsonElement(AcpMethod.ClientMethods.V2.SessionUpdate.serializer, it).update
-                }
-            assertEquals(2, updates.size, "expected a message chunk and the idle state, got $updates")
-            val chunk = assertIs<com.agentclientprotocol.model.v2.SessionUpdate.AgentMessageChunk>(updates[0])
+            val updates = testAgent.receiveTurnUpdates(notificationsBeforeResponse, 3)
+            assertEquals(3, updates.size, "expected the user message, a message chunk and the idle state, got $updates")
+            assertIs<V2SessionUpdate.UserMessage>(updates[0])
+            val chunk = assertIs<com.agentclientprotocol.model.v2.SessionUpdate.AgentMessageChunk>(updates[1])
             assertEquals(
                 "hello from v2",
                 (chunk.chunk.content as com.agentclientprotocol.model.v2.ContentBlock.Text).text,
             )
-            val state = assertIs<com.agentclientprotocol.model.v2.SessionUpdate.StateUpdate>(updates[1])
+            val state = assertIs<com.agentclientprotocol.model.v2.SessionUpdate.StateUpdate>(updates[2])
             val idle = assertIs<com.agentclientprotocol.model.v2.StateUpdate.Idle>(state.state)
             assertEquals(com.agentclientprotocol.model.v2.StopReason.EndTurn, idle.stopReason)
 
@@ -465,6 +486,7 @@ class AgentTest {
                 content: List<com.agentclientprotocol.model.v2.ContentBlock>,
                 _meta: kotlinx.serialization.json.JsonElement?,
             ) = flow {
+                emit(v2UserMessage("v2-user-1"))
                 emit(
                     com.agentclientprotocol.model.v2.SessionUpdate.StateUpdate(
                         com.agentclientprotocol.model.v2.StateUpdate.Running()
@@ -520,7 +542,11 @@ class AgentTest {
                 )
             )
             assertNotNull(promptResponse, "the agent must accept the prompt before the turn finishes")
-            assertEquals(emptyList(), notificationsBeforeResponse, "updates must follow the prompt response")
+            val opening = testAgent.receiveTurnUpdates(notificationsBeforeResponse, 2)
+            assertIs<V2SessionUpdate.UserMessage>(opening[0])
+            assertIs<com.agentclientprotocol.model.v2.StateUpdate.Running>(
+                assertIs<com.agentclientprotocol.model.v2.SessionUpdate.StateUpdate>(opening[1]).state
+            )
 
             // Without waiting the cancel can arrive before the turn registers, and then the test would
             // pass whether or not the SDK cuts the turn short.
@@ -530,17 +556,11 @@ class AgentTest {
                 com.agentclientprotocol.model.v2.CancelSessionNotification(sessionId)
             )
 
-            val updates = testAgent.transport.receiveTestMessages(3)
-                .filterIsInstance<com.agentclientprotocol.rpc.JsonRpcNotification>()
-                .filter { it.method == AcpMethod.ClientMethods.V2.SessionUpdate.methodName }
-                .mapNotNull { it.params }
-                .map {
-                    ACPJson.decodeFromJsonElement(AcpMethod.ClientMethods.V2.SessionUpdate.serializer, it).update
-                }
-            // running -> the post-cancel chunk -> idle(cancelled), in that order.
-            assertEquals(3, updates.size, "expected running, a chunk and the idle report, got $updates")
-            assertIs<com.agentclientprotocol.model.v2.SessionUpdate.AgentMessageChunk>(updates[1])
-            val last = assertIs<com.agentclientprotocol.model.v2.SessionUpdate.StateUpdate>(updates[2])
+            val updates = testAgent.receiveTurnUpdates(emptyList(), 2)
+            // The post-cancel chunk -> idle(cancelled), in that order.
+            assertEquals(2, updates.size, "expected a chunk and the idle report, got $updates")
+            assertIs<com.agentclientprotocol.model.v2.SessionUpdate.AgentMessageChunk>(updates[0])
+            val last = assertIs<com.agentclientprotocol.model.v2.SessionUpdate.StateUpdate>(updates[1])
             val idle = assertIs<com.agentclientprotocol.model.v2.StateUpdate.Idle>(last.state)
             assertEquals(com.agentclientprotocol.model.v2.StopReason.Cancelled, idle.stopReason)
         }
@@ -661,10 +681,12 @@ class AgentTest {
 
     @Test
     fun `a cancel for an already answered prompt leaves the turn running`() {
-        // v2 answers session/prompt before the turn streams, so by the time updates flow the request is
-        // settled and a $/cancel_request for its id can only be redundant. Acting on it would discard the
-        // rest of the turn, including the idle update that MUST end it.
-        // https://agentclientprotocol.com/protocol/v2/draft/cancellation
+        /*
+         * v2 answers session/prompt once the user message is inserted, so by the time the rest of the turn
+         * flows the request is settled and a $/cancel_request for its id can only be redundant. Acting on it
+         * would discard the rest of the turn, including the idle update that MUST end it.
+         * https://agentclientprotocol.com/protocol/v2/draft/cancellation
+         */
         val support = GatedV2Support()
         withTestV2Agent(support) { testAgent ->
             testAgent.testInitialize(v2InitializeRequest())
@@ -690,11 +712,11 @@ class AgentTest {
             )
             assertIs<JsonRpcSuccessResponse>(promptReplies.last())
             withTimeout(5.seconds) { session.turnStarted.await() }
-            // The turn's opening update, consumed here so the tail read after the cancel is unambiguous.
+            // The turn's opening updates, consumed here so the tail read after the cancel is unambiguous.
+            val opening = testAgent.receiveTurnUpdates(promptReplies.dropLast(1), 2)
+            assertIs<V2SessionUpdate.UserMessage>(opening[0])
             assertIs<com.agentclientprotocol.model.v2.StateUpdate.Running>(
-                assertIs<com.agentclientprotocol.model.v2.SessionUpdate.StateUpdate>(
-                    testAgent.receiveSessionUpdate().update
-                ).state
+                assertIs<com.agentclientprotocol.model.v2.SessionUpdate.StateUpdate>(opening[1]).state
             )
 
             testAgent.transport.fireTestNotification(
@@ -715,6 +737,30 @@ class AgentTest {
                 assertIs<com.agentclientprotocol.model.v2.SessionUpdate.StateUpdate>(update.update).state
             )
             assertEquals(com.agentclientprotocol.model.v2.StopReason.EndTurn, idle.stopReason)
+        }
+    }
+
+    @Test
+    fun `session new reports the commands the session starts with`() {
+        val commands = listOf(V2AvailableCommand("plan", "Make a plan"))
+        val support = object : V2AgentSupport {
+            override suspend fun initialize(clientInfo: V2ClientInfo) =
+                V2AgentInfo(implementation = Implementation(name = "test-agent-v2", version = "1.0.0"))
+
+            override suspend fun createSession(
+                parameters: V2SessionCreationParameters,
+                client: V2ClientOperations,
+            ): V2AgentSession = object : V2AgentSession {
+                override val sessionId = SessionId("v2-commands")
+                override val availableCommands = commands
+
+                override fun prompt(content: List<V2ContentBlock>, _meta: JsonElement?) = emptyFlow<V2SessionUpdate>()
+            }
+        }
+        withTestV2Agent(support) { testAgent ->
+            testAgent.testInitialize(v2InitializeRequest())
+            val (newSession) = testAgent.testRequest(AcpMethod.AgentMethods.V2.SessionNew, V2NewSessionRequest(cwd = "."))
+            assertEquals(commands, assertNotNull(newSession).availableCommands)
         }
     }
 
@@ -823,3 +869,6 @@ class AgentTest {
         }
     }
 }
+
+@OptIn(UnstableApi::class)
+private fun v2UserMessage(id: String) = V2SessionUpdate.UserMessage(V2UserMessage(MessageId(id)))

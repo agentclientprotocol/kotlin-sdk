@@ -128,7 +128,8 @@ private fun V1ToolCallContent.toV2OrNull(): ToolCallContent? = when (this) {
  * exception — an explicit clear becomes an empty list, because that is how v1 expresses
  * "no content". Fields whose own conversion fails (such as a [ToolKind.Unknown] kind or
  * [ToolCallStatus.Cancelled] status) are dropped rather than failing the whole update,
- * and content items with no v1 representation are skipped.
+ * and content items with no v1 representation are skipped. v1 has no tool name, so
+ * [ToolCallUpdate.name] is dropped too.
  *
  * Cancellation follows this same skip-on-error policy: mapping it to a failure would
  * misreport why the tool stopped. A v1 client may therefore retain its previous status,

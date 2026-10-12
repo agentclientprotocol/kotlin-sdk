@@ -13,6 +13,7 @@ import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.ElicitationContentValue
 import com.agentclientprotocol.model.ElicitationScope
 import com.agentclientprotocol.model.Implementation
+import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
 import com.agentclientprotocol.model.ToolCallId
 import com.agentclientprotocol.model.v2.*
@@ -163,6 +164,7 @@ private class ConversationScenario(
             ),
             turn.labels,
         )
+        assertEquals(MessageId("user-1"), turn.userMessageId)
         assertEquals("config.toml sets port 8080.", turn.agentText)
         assertEquals(trace, agent.lastPromptMeta)
         assertEquals(trace, turn.meta)
@@ -192,6 +194,7 @@ private class ConversationScenario(
             ),
             turn.labels,
         )
+        assertEquals(MessageId("user-2"), turn.userMessageId)
         assertEquals("config.toml now sets port 9090.", turn.agentText)
         val form = assertIs<ElicitationMode.Form>(assertNotNull(user.elicitations.singleOrNull()).mode)
         assertEquals(ElicitationScope.Session(session.sessionId), form.scope)
@@ -201,7 +204,7 @@ private class ConversationScenario(
 
     suspend fun cancelLogTail() {
         // Arrange
-        conversation.prompt("tail server.log")
+        val receipt = conversation.prompt("tail server.log")
         val updatesBeforeCancellation = conversation.updatesUntil("tool_call:in_progress")
 
         // Act
@@ -213,6 +216,8 @@ private class ConversationScenario(
             listOf("user_message", "state:running", "tool_call:in_progress"),
             updatesBeforeCancellation.labels,
         )
+        assertEquals(MessageId("user-3"), receipt)
+        assertEquals(receipt, updatesBeforeCancellation.userMessageId)
         assertEquals(listOf("tool_call:cancelled", "state:idle(cancelled)"), updatesAfterCancellation.labels)
     }
 
@@ -322,16 +327,19 @@ private class Conversation(scope: CoroutineScope, private val session: ClientSes
     private val received = Channel<ClientSession.UpdateWithMeta>(Channel.UNLIMITED)
     private val collecting: Job = scope.launch { session.updates.collect { received.send(it) } }
 
-    /** Prompts, and returns the whole turn that follows. */
+    /**
+     * Prompts, and returns the whole turn that follows, whose user message the receipt must name.
+     */
     suspend fun turn(text: String, _meta: JsonElement? = null): Turn {
-        prompt(text, _meta)
-        return awaitTurn()
+        val receipt = prompt(text, _meta)
+        return awaitTurn().also { assertEquals(receipt, it.userMessageId, "the receipt names the turn's user message") }
     }
 
-    /** Prompts without waiting for the turn, for the turns that get interrupted halfway. */
-    suspend fun prompt(text: String, _meta: JsonElement? = null) {
+    /**
+     * Prompts without waiting for the turn, for the turns that get interrupted halfway, and returns the receipt.
+     */
+    suspend fun prompt(text: String, _meta: JsonElement? = null): MessageId =
         session.prompt(listOf(ContentBlock.Text(text)), _meta)
-    }
 
     /** Everything up to and including the idle update that ends the turn. */
     suspend fun awaitTurn(): Turn = collectUntil { it.startsWith("state:idle") }
@@ -361,6 +369,12 @@ private class Conversation(scope: CoroutineScope, private val session: ClientSes
 private class Turn(private val updates: List<ClientSession.UpdateWithMeta>) {
     /** The updates in order, by name: the sequence is most of what a turn is. */
     val labels: List<String> = updates.map { it.update.label() }
+
+    /**
+     * The id of the turn's user message.
+     */
+    val userMessageId: MessageId
+        get() = updates.firstNotNullOf { (it.update as? SessionUpdate.UserMessage)?.message?.messageId }
 
     /** The text of the turn's one agent message chunk. */
     val agentText: String

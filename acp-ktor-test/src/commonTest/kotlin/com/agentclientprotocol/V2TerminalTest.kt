@@ -27,9 +27,6 @@ import com.agentclientprotocol.model.v2.TerminalUpdate
 import com.agentclientprotocol.model.v2.ToolCallContent
 import com.agentclientprotocol.model.v2.ToolCallUpdate
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.take
-import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonElement
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -37,7 +34,6 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * The v2 agent-owned terminal display surface end to end, over a real transport.
@@ -67,6 +63,7 @@ abstract class V2TerminalTest(protocolDriver: ProtocolDriver) : ProtocolDriver b
         var emitSnapshotMidStream: Boolean = false
 
         override fun prompt(content: List<ContentBlock>, _meta: JsonElement?) = flow {
+            emit(insertedUserMessage())
             emit(SessionUpdate.StateUpdate(StateUpdate.Running()))
 
             emit(
@@ -150,7 +147,7 @@ abstract class V2TerminalTest(protocolDriver: ProtocolDriver) : ProtocolDriver b
             val session = client.newSession(cwd = ".")
 
             session.prompt(listOf(ContentBlock.Text("run the tests")))
-            val updates = withTimeout(10.seconds) { session.updates.take(7).toList() }.map { it.update }
+            val updates = session.turnUpdates(7)
 
             val toolCall = assertIs<SessionUpdate.ToolCallUpdate>(updates[1])
             val content = assertIs<MaybeUndefined.Value<List<ToolCallContent>>>(toolCall.update.content)
@@ -179,7 +176,7 @@ abstract class V2TerminalTest(protocolDriver: ProtocolDriver) : ProtocolDriver b
             val session = client.newSession(cwd = ".")
 
             session.prompt(listOf(ContentBlock.Text("run the tests")))
-            val updates = withTimeout(10.seconds) { session.updates.take(7).toList() }.map { it.update }
+            val updates = session.turnUpdates(7)
 
             val chunks = updates.filterIsInstance<SessionUpdate.TerminalOutputChunk>().map { it.chunk }
             assertEquals(2, chunks.size)
@@ -204,7 +201,7 @@ abstract class V2TerminalTest(protocolDriver: ProtocolDriver) : ProtocolDriver b
             val session = client.newSession(cwd = ".")
 
             session.prompt(listOf(ContentBlock.Text("run the tests")))
-            val updates = withTimeout(10.seconds) { session.updates.take(8).toList() }.map { it.update }
+            val updates = session.turnUpdates(8)
 
             // Replay the stream the way a client stores it: snapshots replace, chunks append.
             var bytes = byteArrayOf()

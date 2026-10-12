@@ -2,6 +2,7 @@ package com.agentclientprotocol.client.v2
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.AcpMethod
+import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.SessionConfigId
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.v2.CancelSessionNotification
@@ -33,9 +34,10 @@ import kotlinx.serialization.json.JsonElement
  * A v2 session as seen from the client.
  *
  * Separate from [com.agentclientprotocol.client.ClientSession] because a v2 turn is shaped differently:
- * `session/prompt` answers with nothing, and everything the client wants to know — the content, the tool
- * calls, and how the turn ended — arrives as [updates]. The turn is over when an update carrying
- * [com.agentclientprotocol.model.v2.StateUpdate.Idle] shows up, and its `stopReason` says why
+ * `session/prompt` answers only with a receipt for the inserted user message, and everything else the
+ * client wants to know — the content, the tool calls, and how the turn ended — arrives as [updates].
+ * The turn is over when an update carrying [com.agentclientprotocol.model.v2.StateUpdate.Idle] shows
+ * up, and its `stopReason` says why
  * ([prompt lifecycle](https://agentclientprotocol.com/protocol/v2/prompt-lifecycle)).
  */
 @UnstableApi
@@ -66,14 +68,17 @@ public class ClientSession internal constructor(
         get() = updatesFlow
 
     /**
-     * Sends a prompt and returns once the agent has accepted it.
+     * Sends a prompt and returns once the agent has inserted it into the conversation.
      *
      * Returning does **not** mean the turn is done: v2 reports completion through [updates], not here.
+     *
+     * @return the id of the inserted user message. The `user_message` or `user_message_chunk` update
+     * with this id can arrive on [updates] before or after this call returns
      */
-    public suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null) {
+    public suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): MessageId {
         // A fresh signal per turn: a cancel belongs to the turn it interrupted.
         _cancelled.value = CompletableDeferred()
-        AcpMethod.AgentMethods.V2.SessionPrompt(protocol, PromptRequest(sessionId, content, _meta))
+        return AcpMethod.AgentMethods.V2.SessionPrompt(protocol, PromptRequest(sessionId, content, _meta)).messageId
     }
 
     /**

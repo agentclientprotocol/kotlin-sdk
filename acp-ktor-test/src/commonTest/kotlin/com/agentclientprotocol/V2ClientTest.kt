@@ -88,8 +88,8 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -132,6 +132,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         var failure: Throwable? = null
 
         override fun prompt(content: List<ContentBlock>, _meta: JsonElement?) = flow {
+            emit(insertedUserMessage())
             emit(SessionUpdate.StateUpdate(StateUpdate.Running()))
             // The lifecycle says to report that the turn is waiting on the user while the request is out.
             emit(SessionUpdate.StateUpdate(StateUpdate.RequiresAction()))
@@ -208,6 +209,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         private val client: V2ClientOperations,
     ) : V2AgentSession {
         override fun prompt(content: List<ContentBlock>, _meta: JsonElement?) = flow {
+            emit(insertedUserMessage())
             emit(SessionUpdate.StateUpdate(StateUpdate.Running()))
             client.requestPermission(
                 title = "Run read_file?",
@@ -238,11 +240,12 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     /**
      * Fails mid-turn without reporting, the way an implementation bug or a broken tool would.
      *
-     * The failure is not a cancellation, so nothing in the protocol carries it to the client: the turn
-     * would simply stop streaming unless the SDK closes it.
+     * The failure comes after the user message is inserted and is not a cancellation, so nothing in the
+     * protocol carries it to the client: the turn would simply stop streaming unless the SDK closes it.
      */
     private class FailingV2Session(override val sessionId: SessionId) : V2AgentSession {
         override fun prompt(content: List<ContentBlock>, _meta: JsonElement?) = flow<SessionUpdate> {
+            emit(insertedUserMessage())
             emit(SessionUpdate.StateUpdate(StateUpdate.Running()))
             throw IllegalStateException("the turn broke")
         }
@@ -266,6 +269,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
      */
     private class SelfReportingCancelledV2Session(override val sessionId: SessionId) : V2AgentSession {
         override fun prompt(content: List<ContentBlock>, _meta: JsonElement?) = flow<SessionUpdate> {
+            emit(insertedUserMessage())
             emit(SessionUpdate.StateUpdate(StateUpdate.Running()))
             emit(SessionUpdate.StateUpdate(StateUpdate.Idle(stopReason = StopReason.Cancelled)))
             throw CancellationException("the implementation cancelled its own turn")
@@ -306,7 +310,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
                 )
             )
 
-        override fun prompt(content: List<ContentBlock>, _meta: JsonElement?) = flow<SessionUpdate> {}
+        override fun prompt(content: List<ContentBlock>, _meta: JsonElement?) = flow { emit(insertedUserMessage()) }
 
         override suspend fun setConfigOption(
             configId: SessionConfigId,
@@ -326,6 +330,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
 
         override fun prompt(content: List<ContentBlock>, _meta: JsonElement?) = flow {
             val text = (content.first() as ContentBlock.Text).text
+            emit(insertedUserMessage())
             emit(SessionUpdate.StateUpdate(StateUpdate.Running()))
             turnStarted.complete(Unit)
             if (hangUntilCancelled) {
@@ -353,6 +358,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
                 // A hand-rolled Flow, because emitting straight into the collector skips the cancellation
                 // check `flow {}` would make: this turn cannot notice that it has been discarded.
                 override suspend fun collect(collector: FlowCollector<SessionUpdate>) {
+                    collector.emit(insertedUserMessage())
                     collector.emit(SessionUpdate.StateUpdate(StateUpdate.Idle(stopReason = StopReason.EndTurn)))
                 }
             }
@@ -436,7 +442,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     }
 
     @Test
-    fun `discarding a batched prompt before streaming releases active prompt state`() = testWithProtocols { clientProtocol, agentProtocol ->
+    fun `cancelling a batched prompt while its reply waits releases active prompt state`() = testWithProtocols { clientProtocol, agentProtocol ->
         val support = V2Support(hangUntilCancelled = true)
         V2Agent(agentProtocol, support)
         val client = V2Client(clientProtocol)
@@ -456,11 +462,18 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
             ))
         }
         otherRequestStarted.await()
-        assertTrue(!support.sessions.single().turnStarted.isCompleted)
+        assertTrue(support.sessions.single().turnStarted.isCompleted, "the turn is running while its reply waits")
         agentProtocol.cancelPendingIncomingRequests()
-        assertTrue(batch.await()[1].isFailure)
+        val results = batch.await()
+        results.first().getOrThrow()
+        assertTrue(results[1].isFailure)
+        // The running update went out as it was made, without waiting for the batch reply.
+        val updates = session.turnUpdates(2)
+        assertIs<StateUpdate.Running>(assertIs<SessionUpdate.StateUpdate>(updates[0]).state)
+        val idle = assertIs<StateUpdate.Idle>(assertIs<SessionUpdate.StateUpdate>(updates[1]).state)
+        assertEquals(StopReason.Cancelled, idle.stopReason)
 
-        // The first stream never ran; its cleanup must nevertheless allow another prompt.
+        // The first turn was cancelled before its reply was sent; its cleanup must nevertheless allow another prompt.
         withTimeout(10.seconds) { session.prompt(listOf(ContentBlock.Text("retry"))) }
         withTimeout(10.seconds) { support.sessions.single().turnStarted.await() }
         session.cancel()
@@ -478,8 +491,8 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
 
         session.prompt(listOf(ContentBlock.Text("hi")))
 
-        // running -> chunk -> idle(end_turn): the prompt response said nothing about any of it.
-        val updates = withTimeout(10.seconds) { session.updates.take(3).toList() }.map { it.update }
+        // user message, then running -> chunk -> idle(end_turn): the prompt response is only the receipt.
+        val updates = session.turnUpdates(3)
         assertIs<SessionUpdate.StateUpdate>(updates[0]).also { assertIs<StateUpdate.Running>(it.state) }
 
         val chunk = assertIs<SessionUpdate.AgentMessageChunk>(updates[1])
@@ -505,7 +518,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
 
         session.cancel()
 
-        val updates = withTimeout(10.seconds) { session.updates.take(2).toList() }.map { it.update }
+        val updates = session.turnUpdates(2)
         val idle = assertIs<StateUpdate.Idle>(assertIs<SessionUpdate.StateUpdate>(updates[1]).state)
         assertEquals(StopReason.Cancelled, idle.stopReason)
     }
@@ -591,7 +604,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
 
         val session: V2ClientSession = client.newSession(cwd = ".")
         session.prompt(listOf(ContentBlock.Text("hi")))
-        val updates = withTimeout(10.seconds) { session.updates.take(3).toList() }
+        val updates = session.turnUpdates(3)
         assertEquals(3, updates.size)
         assertNull(client.getSession(SessionId("nope")))
         assertEquals(session, client.getSession(session.sessionId))
@@ -610,7 +623,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         val session = client.newSession(cwd = ".", operations = CancellingPermissions())
         session.prompt(listOf(ContentBlock.Text("hi")))
 
-        val updates = withTimeout(10.seconds) { session.updates.take(2).toList() }.map { it.update }
+        val updates = session.turnUpdates(2)
         assertIs<StateUpdate.Running>(assertIs<SessionUpdate.StateUpdate>(updates[0]).state)
         val idle = assertIs<StateUpdate.Idle>(assertIs<SessionUpdate.StateUpdate>(updates[1]).state)
         assertEquals(StopReason.Cancelled, idle.stopReason)
@@ -629,7 +642,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         val session = client.newSession(cwd = ".")
         session.prompt(listOf(ContentBlock.Text("hi")))
 
-        val updates = withTimeout(10.seconds) { session.updates.take(2).toList() }.map { it.update }
+        val updates = session.turnUpdates(2)
         assertIs<StateUpdate.Running>(assertIs<SessionUpdate.StateUpdate>(updates[0]).state)
         val idle = assertIs<StateUpdate.Idle>(assertIs<SessionUpdate.StateUpdate>(updates[1]).state)
         assertNull(idle.stopReason, "the SDK cannot characterise the failure, so it reports no reason")
@@ -654,6 +667,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
             } catch (_: Throwable) {
             }
         }
+        assertIs<SessionUpdate.UserMessage>(withTimeout(100.milliseconds) { seen.receive() })
         assertIs<StateUpdate.Running>(
             assertIs<SessionUpdate.StateUpdate>(withTimeout(100.milliseconds) { seen.receive() }).state
         )
@@ -671,8 +685,8 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     fun `locally cancelling a settled prompt still ends the turn as cancelled`() =
         testWithProtocols { clientProtocol, agentProtocol ->
             // `cancelPendingIncomingRequests` is public and callable on a live protocol, and it reaches a
-            // request whose reply was already collected — which a v2 prompt's is, immediately. The client
-            // keeps its successful `session/prompt` response, so the turn still owes it a terminal update.
+            // request whose reply was already collected — which a v2 prompt's is, once the user message is
+            // inserted. The client keeps its receipt, so the turn still owes it a terminal update.
             val support = V2Support(hangUntilCancelled = true)
             V2Agent(agentProtocol, support)
             val client = V2Client(clientProtocol)
@@ -687,7 +701,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
             // The bulk variant, because the typed client does not expose the prompt's request id.
             agentProtocol.cancelPendingIncomingRequests()
 
-            val updates = withTimeout(10.seconds) { session.updates.take(2).toList() }.map { it.update }
+            val updates = session.turnUpdates(2)
             assertIs<StateUpdate.Running>(assertIs<SessionUpdate.StateUpdate>(updates[0]).state)
             val idle = assertIs<StateUpdate.Idle>(assertIs<SessionUpdate.StateUpdate>(updates[1]).state)
             assertEquals(StopReason.Cancelled, idle.stopReason)
@@ -696,39 +710,53 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     @Test
     fun `cancelling between the prompt reply and the turn still ends the turn as cancelled`() =
         testWithProtocols { clientProtocol, agentProtocol ->
-            // The window the test above cannot reach: the cancel arrives after the prompt's reply but
-            // before the turn starts streaming. The client has its successful `session/prompt`, so it is
-            // still owed the idle update that ends the turn.
+            // The window the test above cannot reach: the cancel arrives after the prompt's receipt is
+            // collected but before afterResponse starts. The client has its receipt, so it is still owed
+            // the idle update that ends the turn.
             val support = V2Support(hangUntilCancelled = true)
             V2Agent(agentProtocol, support)
             val session = cancelBetweenTheReplyAndTheTurn(clientProtocol, agentProtocol)
 
-            val idle = assertIs<StateUpdate.Idle>(assertIsSoleUpdate(session))
+            val updates = session.turnUpdates(2)
+            assertIs<StateUpdate.Running>(assertIs<SessionUpdate.StateUpdate>(updates[0]).state)
+            val idle = assertIs<StateUpdate.Idle>(assertIs<SessionUpdate.StateUpdate>(updates[1]).state)
             assertEquals(StopReason.Cancelled, idle.stopReason)
-            assertFalse(support.sessions.single().turnStarted.isCompleted, "the turn's own flow never ran")
         }
 
     @Test
-    fun `a turn cancelled in that window does not get to report an outcome it never reached`() =
+    fun `a turn that ended before its batch reply is not reported cancelled afterwards`() =
         testWithProtocols { clientProtocol, agentProtocol ->
-            // A flow need not check for cancellation, and this one does not: left to itself it would
-            // report `end_turn` for a turn whose updates were all discarded.
+            /*
+             * This flow completes without suspension, so its end_turn is already sent when local
+             * cancellation reaches the request. The turn really finished; a second idle update would
+             * contradict the one the client already has.
+             */
             V2Agent(agentProtocol, ObliviousSupport())
             val session = cancelBetweenTheReplyAndTheTurn(clientProtocol, agentProtocol)
 
-            val idle = assertIs<StateUpdate.Idle>(assertIsSoleUpdate(session))
-            assertEquals(StopReason.Cancelled, idle.stopReason, "the turn was discarded, not finished")
+            val seen = Channel<SessionUpdate>(Channel.UNLIMITED)
+            val collector = launch { session.updates.collect { seen.send(it.update) } }
+            assertIs<SessionUpdate.UserMessage>(withTimeout(10.seconds) { seen.receive() })
+            val idle = assertIs<StateUpdate.Idle>(
+                assertIs<SessionUpdate.StateUpdate>(withTimeout(10.seconds) { seen.receive() }).state
+            )
+            assertEquals(StopReason.EndTurn, idle.stopReason)
+
+            // The next turn's user message is the next update, so nothing followed the end_turn.
+            withTimeout(10.seconds) { session.prompt(listOf(ContentBlock.Text("again"))) }
+            assertIs<SessionUpdate.UserMessage>(withTimeout(10.seconds) { seen.receive() })
+            collector.cancel()
         }
 
     /**
-     * Prompts, and cancels the prompt after its reply but before its turn starts. Returns the session.
+     * Cancels after the receipt is collected but before the prompt's afterResponse starts.
      *
      * The prompt goes out in a batch with a second request, whose handler does the cancelling. A batch's
      * reply frame is queued only once every entry has a reply, so while that second handler runs the
-     * prompt handler is parked in exactly the window under test: reply collected, turn not started.
+     * receipt is collected but `afterResponse` has not started.
      *
      * The timing is deterministic, not lucky: handlers run in wire order on a single dispatcher, and the
-     * prompt handler reaches its wait without suspending, so it is always parked by then. Cancelling in
+     * these flows reach insertion without suspending, so the receipt is ready by then. Cancelling in
      * bulk because the prompt's request id is not visible here; it takes the second request with it,
      * which only completes the batch sooner.
      */
@@ -762,12 +790,6 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         return session
     }
 
-    /** The only update a cancelled-in-the-window turn sends is the one that ends it. */
-    private suspend fun assertIsSoleUpdate(session: V2ClientSession): StateUpdate =
-        assertIs<SessionUpdate.StateUpdate>(
-            withTimeout(10.seconds) { session.updates.take(1).toList() }.single().update
-        ).state
-
     @Test
     fun `a turn that reported itself cancelled is not given a second idle update`() =
         testWithProtocols { clientProtocol, agentProtocol ->
@@ -782,6 +804,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
             val collector = launch { session.updates.collect { seen.send(it.update) } }
             session.prompt(listOf(ContentBlock.Text("hi")))
 
+            assertIs<SessionUpdate.UserMessage>(withTimeout(10.seconds) { seen.receive() })
             assertIs<StateUpdate.Running>(
                 assertIs<SessionUpdate.StateUpdate>(withTimeout(10.seconds) { seen.receive() }).state
             )
@@ -808,7 +831,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         val session = client.newSession(cwd = ".", operations = permissions)
         session.prompt(listOf(ContentBlock.Text("hi")))
 
-        val updates = withTimeout(10.seconds) { session.updates.take(4).toList() }.map { it.update }
+        val updates = session.turnUpdates(4)
         // running -> requires_action while the user is asked -> running -> idle(end_turn)
         assertIs<StateUpdate.RequiresAction>(assertIs<SessionUpdate.StateUpdate>(updates[1]).state)
         val idle = assertIs<StateUpdate.Idle>(assertIs<SessionUpdate.StateUpdate>(updates[3]).state)
@@ -833,7 +856,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         val session = client.newSession(cwd = ".", operations = ScriptedPermissions("reject"))
         session.prompt(listOf(ContentBlock.Text("hi")))
 
-        val updates = withTimeout(10.seconds) { session.updates.take(4).toList() }.map { it.update }
+        val updates = session.turnUpdates(4)
         val idle = assertIs<StateUpdate.Idle>(assertIs<SessionUpdate.StateUpdate>(updates[3]).state)
         assertEquals(StopReason.Refusal, idle.stopReason)
         assertEquals(
@@ -861,7 +884,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
 
         session.cancel()
 
-        val updates = withTimeout(10.seconds) { session.updates.take(4).toList() }.map { it.update }
+        val updates = session.turnUpdates(4)
         val idle = assertIs<StateUpdate.Idle>(assertIs<SessionUpdate.StateUpdate>(updates[3]).state)
         assertEquals(StopReason.Cancelled, idle.stopReason)
         assertEquals(RequestPermissionOutcome.Cancelled, support.sessions.single().outcome)
@@ -888,7 +911,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         val session = client.newSession(cwd = ".", operations = operations)
         session.prompt(listOf(ContentBlock.Text("hi")))
 
-        val updates = withTimeout(10.seconds) { session.updates.take(4).toList() }.map { it.update }
+        val updates = session.turnUpdates(4)
         val idle = assertIs<StateUpdate.Idle>(assertIs<SessionUpdate.StateUpdate>(updates[3]).state)
         assertEquals(StopReason.Refusal, idle.stopReason, "an unknown outcome must not end the turn as success")
 
@@ -910,7 +933,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         // The prompt itself was accepted; the nested permission request is refused and the agent maps
         // that failure to the terminal v2 update.
         withTimeout(10.seconds) { session.prompt(listOf(ContentBlock.Text("hi"))) }
-        val updates = withTimeout(10.seconds) { session.updates.take(3).toList() }.map { it.update }
+        val updates = session.turnUpdates(3)
         val idle = assertIs<StateUpdate.Idle>(assertIs<SessionUpdate.StateUpdate>(updates[2]).state)
         assertEquals(StopReason.Refusal, idle.stopReason)
         val failure = assertNotNull(support.sessions.single().failure)
@@ -1142,6 +1165,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         var failure: Throwable? = null
 
         override fun prompt(content: List<ContentBlock>, _meta: JsonElement?) = flow {
+            emit(insertedUserMessage())
             emit(SessionUpdate.StateUpdate(StateUpdate.Running()))
             emit(SessionUpdate.StateUpdate(StateUpdate.RequiresAction()))
             val response = try {
@@ -1204,7 +1228,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         val session = client.newSession(cwd = ".")
         session.prompt(listOf(ContentBlock.Text("hi")))
 
-        val updates = withTimeout(10.seconds) { session.updates.take(3).toList() }.map { it.update }
+        val updates = session.turnUpdates(3)
         val idle = assertIs<StateUpdate.Idle>(assertIs<SessionUpdate.StateUpdate>(updates[2]).state)
         assertEquals(StopReason.EndTurn, idle.stopReason)
 
@@ -1233,7 +1257,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         val session = client.newSession(cwd = ".")
         session.prompt(listOf(ContentBlock.Text("hi")))
 
-        val updates = withTimeout(10.seconds) { session.updates.take(3).toList() }.map { it.update }
+        val updates = session.turnUpdates(3)
         val idle = assertIs<StateUpdate.Idle>(assertIs<SessionUpdate.StateUpdate>(updates[2]).state)
         assertEquals(StopReason.Refusal, idle.stopReason)
         assertEquals(ElicitationAction.Decline, support.session.action)
@@ -1272,7 +1296,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
 
         val session = client.newSession(cwd = ".")
         session.prompt(listOf(ContentBlock.Text("hi")))
-        withTimeout(10.seconds) { session.updates.take(3).toList() }
+        session.turnUpdates(3)
 
         assertEquals("https://example.test/form", seenUrl)
         assertEquals(elicitationId, withTimeout(10.seconds) { completed.await() })
@@ -1287,7 +1311,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
 
         val session = client.newSession(cwd = ".")
         withTimeout(10.seconds) { session.prompt(listOf(ContentBlock.Text("hi"))) }
-        val updates = withTimeout(10.seconds) { session.updates.take(3).toList() }.map { it.update }
+        val updates = session.turnUpdates(3)
         val idle = assertIs<StateUpdate.Idle>(assertIs<SessionUpdate.StateUpdate>(updates[2]).state)
         assertEquals(StopReason.Refusal, idle.stopReason)
         val failure = assertNotNull(support.session.failure)
