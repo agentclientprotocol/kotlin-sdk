@@ -442,7 +442,7 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     }
 
     @Test
-    fun `discarding a batched prompt before streaming releases active prompt state`() = testWithProtocols { clientProtocol, agentProtocol ->
+    fun `cancelling a batched prompt while its reply waits releases active prompt state`() = testWithProtocols { clientProtocol, agentProtocol ->
         val support = V2Support(hangUntilCancelled = true)
         V2Agent(agentProtocol, support)
         val client = V2Client(clientProtocol)
@@ -462,15 +462,18 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
             ))
         }
         otherRequestStarted.await()
-        assertTrue(support.sessions.single().turnStarted.isCompleted, "the collector has buffered the running update")
+        assertTrue(support.sessions.single().turnStarted.isCompleted, "the turn is running while its reply waits")
         agentProtocol.cancelPendingIncomingRequests()
         val results = batch.await()
         results.first().getOrThrow()
         assertTrue(results[1].isFailure)
-        val idle = assertIs<StateUpdate.Idle>(assertIsSoleUpdate(session))
+        // The running update went out as it was made, without waiting for the batch reply.
+        val updates = session.turnUpdates(2)
+        assertIs<StateUpdate.Running>(assertIs<SessionUpdate.StateUpdate>(updates[0]).state)
+        val idle = assertIs<StateUpdate.Idle>(assertIs<SessionUpdate.StateUpdate>(updates[1]).state)
         assertEquals(StopReason.Cancelled, idle.stopReason)
 
-        // The first turn was discarded before it streamed; its cleanup must nevertheless allow another prompt.
+        // The first turn was cancelled before its reply was sent; its cleanup must nevertheless allow another prompt.
         withTimeout(10.seconds) { session.prompt(listOf(ContentBlock.Text("retry"))) }
         withTimeout(10.seconds) { support.sessions.single().turnStarted.await() }
         session.cancel()
@@ -708,33 +711,45 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     fun `cancelling between the prompt reply and the turn still ends the turn as cancelled`() =
         testWithProtocols { clientProtocol, agentProtocol ->
             // The window the test above cannot reach: the cancel arrives after the prompt's receipt is
-            // collected but before the rest of the turn streams. The client has its receipt, so it is still
-            // owed the idle update that ends the turn.
+            // collected but before afterResponse starts. The client has its receipt, so it is still owed
+            // the idle update that ends the turn.
             val support = V2Support(hangUntilCancelled = true)
             V2Agent(agentProtocol, support)
             val session = cancelBetweenTheReplyAndTheTurn(clientProtocol, agentProtocol)
 
-            val idle = assertIs<StateUpdate.Idle>(assertIsSoleUpdate(session))
+            val updates = session.turnUpdates(2)
+            assertIs<StateUpdate.Running>(assertIs<SessionUpdate.StateUpdate>(updates[0]).state)
+            val idle = assertIs<StateUpdate.Idle>(assertIs<SessionUpdate.StateUpdate>(updates[1]).state)
             assertEquals(StopReason.Cancelled, idle.stopReason)
-            assertTrue(support.sessions.single().turnStarted.isCompleted, "the buffered running update was discarded")
         }
 
     @Test
-    fun `a turn cancelled before delivery does not publish its buffered end turn`() =
+    fun `a turn that ended before its batch reply is not reported cancelled afterwards`() =
         testWithProtocols { clientProtocol, agentProtocol ->
             /*
-             * This flow completes without suspension. Its buffered end_turn must not escape
-             * when local cancellation discards update delivery before the batch reply is queued.
+             * This flow completes without suspension, so its end_turn is already sent when local
+             * cancellation reaches the request. The turn really finished; a second idle update would
+             * contradict the one the client already has.
              */
             V2Agent(agentProtocol, ObliviousSupport())
             val session = cancelBetweenTheReplyAndTheTurn(clientProtocol, agentProtocol)
 
-            val idle = assertIs<StateUpdate.Idle>(assertIsSoleUpdate(session))
-            assertEquals(StopReason.Cancelled, idle.stopReason, "the turn was discarded, not finished")
+            val seen = Channel<SessionUpdate>(Channel.UNLIMITED)
+            val collector = launch { session.updates.collect { seen.send(it.update) } }
+            assertIs<SessionUpdate.UserMessage>(withTimeout(10.seconds) { seen.receive() })
+            val idle = assertIs<StateUpdate.Idle>(
+                assertIs<SessionUpdate.StateUpdate>(withTimeout(10.seconds) { seen.receive() }).state
+            )
+            assertEquals(StopReason.EndTurn, idle.stopReason)
+
+            // The next turn's user message is the next update, so nothing followed the end_turn.
+            withTimeout(10.seconds) { session.prompt(listOf(ContentBlock.Text("again"))) }
+            assertIs<SessionUpdate.UserMessage>(withTimeout(10.seconds) { seen.receive() })
+            collector.cancel()
         }
 
     /**
-     * Cancels after the receipt is collected but before buffered updates reach the client.
+     * Cancels after the receipt is collected but before the prompt's afterResponse starts.
      *
      * The prompt goes out in a batch with a second request, whose handler does the cancelling. A batch's
      * reply frame is queued only once every entry has a reply, so while that second handler runs the
@@ -774,12 +789,6 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         results.first().getOrThrow()
         return session
     }
-
-    /**
-     * Buffered updates must be discarded, so the first delivered update closes the cancelled turn.
-     */
-    private suspend fun assertIsSoleUpdate(session: V2ClientSession): StateUpdate =
-        assertIs<SessionUpdate.StateUpdate>(withTimeout(10.seconds) { session.updates.first().update }).state
 
     @Test
     fun `a turn that reported itself cancelled is not given a second idle update`() =

@@ -56,10 +56,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -109,69 +106,58 @@ public class Agent(
 
             val insertedMessageId = CompletableDeferred<MessageId>()
             /*
-             * Collection must not wait for the reply frame while user code holds a session lock.
-             * RequestOutcome owns this scope because a child job would delay the reply until the turn ends.
+             * The turn runs beside the handler rather than in afterResponse: the receipt needs the inserted
+             * messageId, and a batched reply waits for its siblings, which must not stall the flow. Its
+             * updates go straight to the protocol, sharing one ordered path with ClientOperations. A child
+             * job would delay the reply until the turn ends, so RequestOutcome owns the turn instead.
              */
-            val updates = Channel<SessionUpdate>(Channel.UNLIMITED)
-            val promptScope = CoroutineScope(currentCoroutineContext().minusKey(Job))
-            val collector = promptScope.launch(start = CoroutineStart.UNDISPATCHED) {
-                try {
-                    session.prompt(content, _meta).collect { update ->
-                        if (!insertedMessageId.isCompleted && update is SessionUpdate.StateUpdate &&
-                            (update.state as? StateUpdate.Idle)?.stopReason == StopReason.Cancelled
-                        ) {
-                            throw CancellationException("Prompt cancelled before user message insertion")
-                        }
-                        updates.send(update)
-                        update.insertedUserMessageId()?.let { insertedMessageId.complete(it) }
-                    }
-                    check(insertedMessageId.isCompleted) { "Prompt completed without inserting a user message" }
-                    updates.close()
-                } catch (t: Throwable) {
-                    insertedMessageId.completeExceptionally(t)
-                    updates.close(t)
-                    if (t is CancellationException) throw t
-                }
+            val turnScope = CoroutineScope(currentCoroutineContext().minusKey(Job))
+            val turn = turnScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                runTurn(protocol, content, _meta, insertedMessageId)
             }
-
-            fun cleanup() {
-                promptScope.cancel()
-                updates.cancel()
-                collector.invokeOnCompletion { _activePrompt.value = false }
-            }
+            turn.invokeOnCompletion { _activePrompt.value = false }
 
             try {
                 return RequestOutcome(
                     response = PromptResponse(insertedMessageId.await()),
-                    afterResponse = { forwardPromptUpdates(protocol, updates, _meta) },
-                    onCompletion = ::cleanup,
+                    afterResponse = {
+                        try {
+                            turn.join()
+                        } catch (e: CancellationException) {
+                            turn.cancel(e)
+                            throw e
+                        }
+                    },
+                    // Stops a turn whose receipt never reached the transport.
+                    onCompletion = { turn.cancel() },
                 )
             } catch (t: Throwable) {
-                cleanup()
+                turn.cancel()
                 throw t
             }
         }
 
-        private suspend fun forwardPromptUpdates(
+        private suspend fun runTurn(
             protocol: Protocol,
-            updates: Channel<SessionUpdate>,
+            content: List<ContentBlock>,
             _meta: JsonElement?,
+            insertedMessageId: CompletableDeferred<MessageId>,
         ) {
             /*
             A turn ends at its idle update, so track whether one has gone out: the branches below owe the
             client a terminal update only if the implementation did not already report one, and sending a
             second one after a turn has ended would be just as wrong as sending none.
              */
-            val terminalIdleSent = atomic(false)
+            var terminalIdleSent = false
 
             fun sendSessionUpdate(update: SessionUpdate) {
-                if (update is SessionUpdate.StateUpdate && update.state is StateUpdate.Idle) {
-                    terminalIdleSent.value = true
-                }
                 AcpMethod.ClientMethods.V2.SessionUpdate(
                     protocol,
                     UpdateSessionNotification(session.sessionId, update, _meta)
                 )
+                if (update is SessionUpdate.StateUpdate && update.state is StateUpdate.Idle) {
+                    terminalIdleSent = true
+                }
             }
 
             /**
@@ -182,7 +168,7 @@ public class Agent(
              * fails here on [Protocol]'s own liveness check, which is what keeps a shutdown silent.
              */
             fun reportIdle(stopReason: StopReason?) {
-                if (terminalIdleSent.value) return
+                if (terminalIdleSent) return
                 runCatching {
                     sendSessionUpdate(SessionUpdate.StateUpdate(StateUpdate.Idle(stopReason = stopReason)))
                 }.onFailure { t ->
@@ -191,40 +177,58 @@ public class Agent(
             }
 
             try {
-                currentCoroutineContext().ensureActive()
-                for (update in updates) {
+                session.prompt(content, _meta).collect { update ->
+                    if (!insertedMessageId.isCompleted && update is SessionUpdate.StateUpdate &&
+                        (update.state as? StateUpdate.Idle)?.stopReason == StopReason.Cancelled
+                    ) {
+                        throw CancellationException("Prompt cancelled before user message insertion")
+                    }
                     sendSessionUpdate(update)
+                    update.insertedUserMessageId()?.let { insertedMessageId.complete(it) }
                 }
-            } catch (e: AcpRequestCancelledException) {
-                /*
-                The turn died because the client answered one of this turn's requests with `-32800`
-                rather than because the implementation finished reporting, so the idle update that
-                MUST end a turn is still owed to the client.
-                 */
-                logger.debug(e) { "Reporting a cancelled turn for session ${session.sessionId}" }
-                reportIdle(StopReason.Cancelled)
-            } catch (e: CancellationException) {
-                /*
-                Local cancellation: `close()` or `cancelPendingIncomingRequest(s)` is deliberately
-                discarding the rest of this turn. On a live protocol the client keeps the receipt and
-                loses everything after it, so the turn is still owed the idle update that ends it — and
-                `cancelled` is honest, because the turn really was cancelled, just locally rather than on
-                the client's asking.
-                 */
-                logger.debug(e) { "Reporting a locally cancelled turn for session ${session.sessionId}" }
-                reportIdle(StopReason.Cancelled)
-                throw e
+                check(insertedMessageId.isCompleted) { "Prompt completed without inserting a user message" }
             } catch (t: Throwable) {
-                /*
-                The turn failed for a reason the SDK cannot characterise, after the receipt was sent.
-                Without a terminal update the client waits forever on a turn that is already dead, so
-                send one here — with no stop reason, because none of the defined ones is honest about a
-                failure. Reporting the real reason stays the implementation's job.
-                 */
-                logger.error(t) {
-                    "Turn for session ${session.sessionId} failed; reporting it idle with no stop reason"
+                // Only this turn completes the deferred, so failing it here means nothing was inserted yet:
+                // the prompt request itself fails and no idle update is owed.
+                if (insertedMessageId.completeExceptionally(t)) {
+                    if (t is CancellationException) throw t
+                    return
                 }
-                reportIdle(stopReason = null)
+                when (t) {
+                    /*
+                    The turn died because the client answered one of this turn's requests with `-32800`
+                    rather than because the implementation finished reporting, so the idle update that
+                    MUST end a turn is still owed to the client.
+                     */
+                    is AcpRequestCancelledException -> {
+                        logger.debug(t) { "Reporting a cancelled turn for session ${session.sessionId}" }
+                        reportIdle(StopReason.Cancelled)
+                    }
+                    /*
+                    Local cancellation: `close()` or `cancelPendingIncomingRequest(s)` is deliberately
+                    discarding the rest of this turn. On a live protocol the client keeps the inserted
+                    message and loses everything after it, so the turn is still owed the idle update that
+                    ends it — and `cancelled` is honest, because the turn really was cancelled, just locally
+                    rather than on the client's asking.
+                     */
+                    is CancellationException -> {
+                        logger.debug(t) { "Reporting a locally cancelled turn for session ${session.sessionId}" }
+                        reportIdle(StopReason.Cancelled)
+                        throw t
+                    }
+                    /*
+                    The turn failed for a reason the SDK cannot characterise after insertion. Without a
+                    terminal update the client waits forever on a turn that is already dead, so send one
+                    here — with no stop reason, because none of the defined ones is honest about a failure.
+                    Reporting the real reason stays the implementation's job.
+                     */
+                    else -> {
+                        logger.error(t) {
+                            "Turn for session ${session.sessionId} failed; reporting it idle with no stop reason"
+                        }
+                        reportIdle(stopReason = null)
+                    }
+                }
             }
         }
 

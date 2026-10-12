@@ -44,14 +44,16 @@ public interface AgentSession {
      * - a final [StateUpdate.Idle] carrying the `stopReason` when the turn's work ends.
      *
      * The first [SessionUpdate.UserMessage] or [SessionUpdate.UserMessageChunk] is the insertion point.
-     * Its `messageId` supplies the `session/prompt` receipt. The SDK buffers flow updates until the response
-     * frame is queued. The client may receive updates before or after its `prompt()` call returns.
+     * Its `messageId` supplies the `session/prompt` receipt. Each update is sent as it is emitted, on the same
+     * ordered path as [ClientOperations] calls, so the client sees them in the order this turn made them.
+     * The receipt is not part of that order: updates, permission requests, and elicitations may reach the
+     * client before or after its `prompt()` call returns, which ACP requires clients to tolerate.
      *
      * Before insertion, flow failure, cancellation, or completion rejects the request. A [StateUpdate.Idle]
      * with the `cancelled` stop reason also rejects the request with cancellation. That `emit` does not
      * return: it throws [kotlinx.coroutines.CancellationException], so code after it does not run. In each
-     * case, the SDK discards buffered updates and sends no idle update. To reject a prompt, throw before
-     * insertion.
+     * case, the SDK sends no idle update. Updates emitted before the rejection have already been sent, so
+     * to reject a prompt, throw before reporting anything.
      *
      * If the flow fails after insertion, the SDK closes the turn with a terminal [StateUpdate.Idle]
      * whose `stopReason` is `null`. This keeps the client from waiting on a failed turn, but does not replace

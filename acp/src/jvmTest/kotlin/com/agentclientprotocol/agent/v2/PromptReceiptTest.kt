@@ -42,17 +42,18 @@ class PromptReceiptTest {
         }
         test(session) { transport, _ ->
             transport.receive(prompt())
-            assertEquals(messageId, transport.nextReceipt())
-            assertIs<SessionUpdate.UserMessageChunk>(transport.nextUpdate())
+            val (receipt, updates) = transport.nextTurn(updates = 3)
+            assertEquals(messageId, receipt)
 
             // Only the first user message update answers the prompt; a later upsert is an ordinary update.
-            assertIs<SessionUpdate.UserMessage>(transport.nextUpdate())
-            assertEquals(idle(StopReason.EndTurn), transport.nextUpdate())
+            assertIs<SessionUpdate.UserMessageChunk>(updates[0])
+            assertIs<SessionUpdate.UserMessage>(updates[1])
+            assertEquals(idle(StopReason.EndTurn), updates[2])
         }
     }
 
     @Test
-    fun `a turn that ends before insertion fails the prompt and publishes nothing`() {
+    fun `a turn that ends before insertion fails the prompt without an idle update`() {
         val failures = listOf(
             IllegalStateException("rejected before the turn"),
             IllegalStateException("insertion failed"),
@@ -72,14 +73,17 @@ class PromptReceiptTest {
             }
         }
         test(session) { transport, _ ->
-            for (failure in failures) {
+            for ((index, failure) in failures.withIndex()) {
                 transport.receive(prompt())
+                // What the turn reported before failing has already been sent.
+                if (index > 0) assertEquals(running(), transport.nextUpdate())
                 val error = transport.nextError()
                 assertEquals(JsonRpcErrorCode.INTERNAL_ERROR.code, error.code)
                 assertEquals(failure.message, error.message)
             }
 
             transport.receive(prompt())
+            assertEquals(running(), transport.nextUpdate())
             assertEquals(JsonRpcErrorCode.INTERNAL_ERROR.code, transport.nextError().code)
 
             transport.assertAcceptsPrompt()
@@ -87,7 +91,7 @@ class PromptReceiptTest {
     }
 
     @Test
-    fun `cancellation before insertion rejects the prompt as cancelled and publishes nothing`() {
+    fun `cancellation before insertion rejects the prompt as cancelled without an idle update`() {
         val started = Channel<Unit>(Channel.UNLIMITED)
         val cancelled = CompletableDeferred<Unit>()
         var returnedFromCancelledIdle = false
@@ -116,6 +120,7 @@ class PromptReceiptTest {
             // Cancelled by the client: the implementation reports the cancelled idle update itself.
             transport.receive(prompt())
             started.receive()
+            assertEquals(running(), transport.nextUpdate())
             transport.receive(TransportFrame.Single(JsonRpcNotification(
                 AcpMethod.AgentMethods.V2.SessionCancel.methodName,
                 ACPJson.encodeToJsonElement(CancelSessionNotification(sessionId)),
@@ -126,6 +131,7 @@ class PromptReceiptTest {
             // Cancelled locally.
             transport.receive(prompt())
             started.receive()
+            assertEquals(running(), transport.nextUpdate())
             protocol.cancelPendingIncomingRequests()
             assertEquals(JsonRpcErrorCode.CANCELLED.code, transport.nextError().code)
 
@@ -144,9 +150,10 @@ class PromptReceiptTest {
         }
         test(session) { transport, _ ->
             transport.receive(prompt())
-            assertEquals(messageId, transport.nextReceipt())
-            assertIs<SessionUpdate.UserMessage>(transport.nextUpdate())
-            assertEquals(idle(stopReason = null), transport.nextUpdate(), "no defined stop reason describes a failure")
+            val (receipt, updates) = transport.nextTurn(updates = 2)
+            assertEquals(messageId, receipt)
+            assertIs<SessionUpdate.UserMessage>(updates[0])
+            assertEquals(idle(stopReason = null), updates[1], "no defined stop reason describes a failure")
 
             transport.assertAcceptsPrompt()
         }
@@ -167,8 +174,9 @@ class PromptReceiptTest {
         }
         test(session) { transport, protocol ->
             transport.receive(prompt())
-            assertEquals(messageId, transport.nextReceipt())
-            assertIs<SessionUpdate.UserMessage>(transport.nextUpdate())
+            val (receipt, updates) = transport.nextTurn(updates = 1)
+            assertEquals(messageId, receipt)
+            assertIs<SessionUpdate.UserMessage>(updates.single())
             inserted.await()
             protocol.cancelPendingIncomingRequests()
             assertEquals(idle(StopReason.Cancelled), transport.nextUpdate())
@@ -178,25 +186,68 @@ class PromptReceiptTest {
     }
 
     @Test
+    fun `turn updates and client operations reach the client in the order the turn made them`() {
+        val session = { client: ClientOperations ->
+            Session {
+                flow {
+                    emit(userMessage())
+                    emit(running())
+                    client.notify(requiresAction())
+                    client.requestPermission("Run the tool?", emptyList())
+                    emit(running())
+                    emit(idle(StopReason.EndTurn))
+                }
+            }
+        }
+        test(session) { transport, _ ->
+            transport.receive(prompt())
+
+            val messages = mutableListOf<JsonRpcMessage>()
+            while (messages.none { it is JsonRpcRequest }) messages += transport.nextMessage()
+            transport.answerPermission(messages.last() as JsonRpcRequest)
+            while (messages.size < 7) messages += transport.nextMessage()
+
+            val receipt = messages.single { it is JsonRpcSuccessResponse }
+            assertEquals(messageId, receipt.receipt())
+            assertEquals(
+                listOf(
+                    userMessage(),
+                    running(),
+                    requiresAction(),
+                    AcpMethod.ClientMethods.V2.SessionRequestPermission.methodName,
+                    running(),
+                    idle(StopReason.EndTurn),
+                ),
+                messages.filter { it !== receipt }.map { it.sessionTraffic() },
+            )
+        }
+    }
+
+    @Test
     fun `a batched prompt does not hold the session lock while waiting for a sibling reply`() {
         val mutex = Mutex()
         val locked = CompletableDeferred<Unit>()
-        val expected = listOf(running(), userMessage(), idle(StopReason.EndTurn))
-        val session = object : Session({
-            flow {
-                mutex.withLock {
-                    locked.complete(Unit)
-                    expected.forEach { emit(it) }
+        val session = { client: ClientOperations ->
+            object : Session({
+                flow {
+                    mutex.withLock {
+                        locked.complete(Unit)
+                        emit(running())
+                        emit(userMessage())
+                        // A round trip to the client while the batch reply is still waiting for its sibling.
+                        client.requestPermission("Run the tool?", emptyList())
+                        emit(idle(StopReason.EndTurn))
+                    }
                 }
-            }
-        }) {
-            override suspend fun setConfigOption(
-                configId: SessionConfigId,
-                value: SessionConfigOptionValue,
-                _meta: JsonElement?,
-            ): List<SessionConfigOption> {
-                locked.await()
-                return mutex.withLock { emptyList() }
+            }) {
+                override suspend fun setConfigOption(
+                    configId: SessionConfigId,
+                    value: SessionConfigOptionValue,
+                    _meta: JsonElement?,
+                ): List<SessionConfigOption> {
+                    locked.await()
+                    return mutex.withLock { emptyList() }
+                }
             }
         }
         test(session) { transport, _ ->
@@ -212,25 +263,32 @@ class PromptReceiptTest {
             ))
             transport.receive(TransportFrame.Batch(listOf(prompt(), setConfigOption)))
 
-            val notifications = mutableListOf<JsonRpcNotification>()
+            val traffic = mutableListOf<Any>()
             var frame = transport.sent.receive()
             while (frame is TransportFrame.Single) {
-                notifications += assertIs<JsonRpcNotification>(frame.message)
+                val message = frame.message
+                if (message is JsonRpcRequest) transport.answerPermission(message)
+                traffic += message.sessionTraffic()
                 frame = transport.sent.receive()
             }
             val response = assertIs<TransportFrame.Batch>(frame)
             val replies = response.entries.map { assertIs<JsonRpcSuccessResponse>(assertIs<TransportFrame.Single>(it).message) }
             assertEquals(listOf(RequestId.create(3), RequestId.create(4)), replies.map { it.id })
-            assertEquals(messageId, ACPJson.decodeFromJsonElement<PromptResponse>(assertNotNull(replies.first().result)).messageId)
-            repeat(expected.size - notifications.size) {
-                notifications += assertIs<JsonRpcNotification>(transport.nextMessage())
-            }
-            assertEquals(expected, notifications.map { it.sessionUpdate() })
+            assertEquals(messageId, replies.first().receipt())
+            assertEquals(
+                listOf(
+                    running(),
+                    userMessage(),
+                    AcpMethod.ClientMethods.V2.SessionRequestPermission.methodName,
+                    idle(StopReason.EndTurn),
+                ),
+                traffic,
+            )
         }
     }
 
     @Test
-    fun `a rejected receipt stops the turn without publishing it and allows the next prompt`() {
+    fun `a rejected receipt stops the turn as cancelled and allows the next prompt`() {
         val stopped = CompletableDeferred<Unit>()
         val session = Session { number ->
             if (number > 1) {
@@ -250,7 +308,8 @@ class PromptReceiptTest {
             transport.rejectReply = true
             transport.receive(prompt())
             stopped.await()
-            assertTrue(transport.sent.tryReceive().isFailure, "A rejected receipt must not publish any turn updates")
+            assertIs<SessionUpdate.UserMessage>(transport.nextUpdate())
+            assertEquals(idle(StopReason.Cancelled), transport.nextUpdate())
             assertEquals(Transport.State.STARTED, transport.state.value)
 
             transport.assertAcceptsPrompt()
@@ -267,13 +326,20 @@ class PromptReceiptTest {
         override fun prompt(content: List<ContentBlock>, _meta: JsonElement?) = turn(turns.incrementAndGet())
     }
 
-    private fun test(session: AgentSession, block: suspend (FrameTransport, Protocol) -> Unit) = runBlocking {
+    private fun test(session: AgentSession, block: suspend (FrameTransport, Protocol) -> Unit) =
+        test({ session }, block)
+
+    private fun test(
+        session: (ClientOperations) -> AgentSession,
+        block: suspend (FrameTransport, Protocol) -> Unit,
+    ) = runBlocking {
         withTimeout(5.seconds) {
             val transport = FrameTransport()
             val protocol = Protocol(this, transport)
             Agent(protocol, object : AgentSupport {
                 override suspend fun initialize(clientInfo: ClientInfo) = AgentInfo(Implementation("test", "1"))
-                override suspend fun createSession(parameters: SessionCreationParameters, client: ClientOperations) = session
+                override suspend fun createSession(parameters: SessionCreationParameters, client: ClientOperations) =
+                    session(client)
             })
             protocol.start()
             try {
@@ -306,25 +372,38 @@ class PromptReceiptTest {
 
         suspend fun nextMessage(): JsonRpcMessage = assertIs<TransportFrame.Single>(sent.receive()).message
 
-        suspend fun nextReceipt(): MessageId = ACPJson.decodeFromJsonElement<PromptResponse>(
-            assertNotNull(assertIs<JsonRpcSuccessResponse>(nextMessage()).result),
-        ).messageId
-
         /**
-         * Reads the next message as an error reply, which fails if any update was published ahead of it.
+         * Reads the next message as an error reply, which fails if any update was sent ahead of it.
          */
         suspend fun nextError(): JsonRpcError = assertIs<JsonRpcErrorResponse>(nextMessage()).error
 
         suspend fun nextUpdate(): SessionUpdate = nextMessage().sessionUpdate()
 
+        fun answerPermission(request: JsonRpcRequest) {
+            assertEquals(AcpMethod.ClientMethods.V2.SessionRequestPermission.methodName, request.method)
+            receive(TransportFrame.Single(JsonRpcSuccessResponse(
+                request.id,
+                ACPJson.encodeToJsonElement(RequestPermissionResponse(RequestPermissionOutcome.Cancelled)),
+            )))
+        }
+
         /**
-         * Checks that a further prompt is accepted and that nothing from an earlier turn arrives ahead of its receipt.
+         * Reads one receipt and [updates] session updates, in whatever order the receipt arrives among them.
+         */
+        suspend fun nextTurn(updates: Int): Pair<MessageId, List<SessionUpdate>> {
+            val messages = List(updates + 1) { nextMessage() }
+            val receipt = messages.single { it is JsonRpcSuccessResponse }
+            return receipt.receipt() to messages.filter { it !== receipt }.map { it.sessionUpdate() }
+        }
+
+        /**
+         * Checks that a further prompt is accepted and that nothing from an earlier turn arrives among its messages.
          */
         suspend fun assertAcceptsPrompt() {
             receive(prompt())
-            assertEquals(messageId, nextReceipt())
-            assertIs<SessionUpdate.UserMessage>(nextUpdate())
-            assertEquals(idle(StopReason.EndTurn), nextUpdate())
+            val (receipt, updates) = nextTurn(updates = 2)
+            assertEquals(messageId, receipt)
+            assertEquals(listOf(userMessage(), idle(StopReason.EndTurn)), updates)
         }
 
         override fun send(frame: TransportFrame) {
@@ -351,6 +430,8 @@ class PromptReceiptTest {
 
         fun running(): SessionUpdate = SessionUpdate.StateUpdate(StateUpdate.Running())
 
+        fun requiresAction(): SessionUpdate = SessionUpdate.StateUpdate(StateUpdate.RequiresAction())
+
         fun idle(stopReason: StopReason?): SessionUpdate = SessionUpdate.StateUpdate(StateUpdate.Idle(stopReason = stopReason))
 
         fun acceptedTurn(): Flow<SessionUpdate> = flow {
@@ -362,6 +443,15 @@ class PromptReceiptTest {
             RequestId.create(3), AcpMethod.AgentMethods.V2.SessionPrompt.methodName,
             ACPJson.encodeToJsonElement(PromptRequest(sessionId, listOf(ContentBlock.Text("hello")))),
         ))
+
+        fun JsonRpcMessage.receipt(): MessageId = ACPJson.decodeFromJsonElement<PromptResponse>(
+            assertNotNull(assertIs<JsonRpcSuccessResponse>(this).result),
+        ).messageId
+
+        /**
+         * A session update, or the method of a request the agent made of the client.
+         */
+        fun JsonRpcMessage.sessionTraffic(): Any = if (this is JsonRpcRequest) method else sessionUpdate()
 
         fun JsonRpcMessage.sessionUpdate(): SessionUpdate = ACPJson.decodeFromJsonElement<UpdateSessionNotification>(
             assertNotNull(assertIs<JsonRpcNotification>(this).params),
