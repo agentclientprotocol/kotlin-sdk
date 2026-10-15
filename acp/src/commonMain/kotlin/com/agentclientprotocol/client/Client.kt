@@ -18,9 +18,7 @@ import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonElement
 
@@ -47,61 +45,6 @@ public class Client(
     @property:UnstableApi
     public val globalSessionUpdateHandler: GlobalSessionUpdateHandler? = null
 ) {
-    private class ClientSessionHolder {
-        private val sessionDeferred: CompletableDeferred<ClientSessionImpl> = CompletableDeferred()
-        // Don't make the channel limited, because it leads to a deadlock also:
-        // when client side makes loadSession/newSession and an agent sends updates more than channel.capacity
-        // the message with call response suspends because protocol thread is suspended in handleNotification
-        // if to address it we have to somehow reorder events, that's not obvious on the protocol level, so we pay with memory right now to handle it
-        private val notifications = Channel<Pair<SessionUpdate, JsonElement?>>(capacity = Channel.UNLIMITED)
-
-        val session: Deferred<ClientSessionImpl> get() = sessionDeferred
-
-        suspend fun drainEventsAndCompleteSession(session: ClientSessionImpl) {
-            @OptIn(ExperimentalCoroutinesApi::class)
-            notifications.close()
-            for ((notification, meta) in notifications) {
-                session.executeWithSession {
-                    session.handleNotification(notification, meta)
-                }
-            }
-
-            sessionDeferred.complete(session)
-        }
-
-        fun completeExceptionally(cause: Throwable) {
-            notifications.close(cause)
-            sessionDeferred.completeExceptionally(cause)
-        }
-
-        /**
-         * Like [completeExceptionally], but also returns whatever was queued before this call - for a holder
-         * that was speculatively created for a session that never actually got claimed (see the
-         * `initializingSessionsCount > 0` branch of [findSessionHolder]), those notifications belong to no live
-         * session and would otherwise be silently discarded.
-         */
-        fun completeExceptionallyAndDrainQueue(cause: Throwable): List<Pair<SessionUpdate, JsonElement?>> {
-            val drained = buildList {
-                while (true) add(notifications.tryReceive().getOrNull() ?: break)
-            }
-            completeExceptionally(cause)
-            return drained
-        }
-
-        suspend fun handleOrQueue(notification: SessionUpdate, _meta: JsonElement?) {
-            val sendResult = notifications.trySend(Pair(notification, _meta))
-
-            // means that `close` was called in drain
-            if (!sendResult.isSuccess) {
-                // probably it will suspend for the period of loop with `handleNotification` above
-                val session = this@ClientSessionHolder.session.await()
-                session.executeWithSession {
-                    session.handleNotification(notification, _meta)
-                }
-            }
-        }
-    }
-
     private data class SessionsStorage(val initializingSessionsCount: Int = 0, val sessions: PersistentMap<SessionId, ClientSessionHolder> = persistentMapOf())
 
     private val _sessions = atomic(SessionsStorage())
@@ -115,7 +58,7 @@ public class Client(
      * callers that need a session to exist (e.g., to service a request against it) should use
      * [getOrCreateSessionHolder] instead.
      */
-    private fun findSessionHolder(sessionId: SessionId): ClientSessionHolder? {
+    private fun getOrCreateSessionHolderOrNull(sessionId: SessionId): ClientSessionHolder? {
         // Fast path for the common case of an already registered session.
         _sessions.value.sessions[sessionId]?.let { return it }
         var clientSessionHolder: ClientSessionHolder? = null
@@ -148,7 +91,7 @@ public class Client(
      * Creates a new entry only if there are some currently initializing sessions. Otherwise, throws in the case of missing session.
      */
     private fun getOrCreateSessionHolder(sessionId: SessionId): ClientSessionHolder =
-        findSessionHolder(sessionId) ?: acpFail("Session $sessionId not found")
+        getOrCreateSessionHolderOrNull(sessionId) ?: acpFail("Session $sessionId not found")
 
     internal fun removeSessionHolder(sessionId: SessionId) {
         _sessions.update { currentMap ->
@@ -243,17 +186,11 @@ public class Client(
             // never called `session/new` / `session/load` / `session/resume` for. It can live on the server,
             // created from another IDE window, the web, or another machine. That's not a protocol violation, so
             // unlike other session-scoped methods, an unknown/unconnected session here must not fail the call.
-            val sessionHolder = findSessionHolder(params.sessionId)
-            if (sessionHolder == null) {
-                val handler = globalSessionUpdateHandler
-                if (handler != null) {
-                    handler.onUnconnectedSessionUpdate(params.sessionId, params.update, params._meta)
-                } else {
-                    logger.debug { "Ignoring session/update for session ${params.sessionId}: client is not connected to it" }
-                }
-                return@setNotificationHandler
+            // A speculative holder can also be reaped by `withInitializingSession` after we found it here.
+            val delivered = getOrCreateSessionHolderOrNull(params.sessionId)?.handleOrQueue(params.update, params._meta) ?: false
+            if (!delivered) {
+                handleUnconnectedSessionUpdate(params.sessionId, params.update, params._meta)
             }
-            sessionHolder.handleOrQueue(params.update, params._meta)
         }
 
         @OptIn(UnstableApi::class)
@@ -700,6 +637,15 @@ public class Client(
         return getOrCreateSessionHolder(sessionId).session.await()
     }
 
+    private suspend fun handleUnconnectedSessionUpdate(sessionId: SessionId, update: SessionUpdate, _meta: JsonElement?) {
+        val handler = globalSessionUpdateHandler
+        if (handler != null) {
+            handler.onUnconnectedSessionUpdate(sessionId, update, _meta)
+        } else {
+            logger.debug { "Ignoring session/update for session $sessionId: client is not connected to it" }
+        }
+    }
+
     @OptIn(UnstableApi::class)
     private fun trackUrlElicitationIfAccepted(mode: ElicitationMode, response: CreateElicitationResponse, sessionId: SessionId) {
         if (mode is ElicitationMode.Url && response.action is ElicitationAction.Accept) {
@@ -740,16 +686,13 @@ public class Client(
             if (hangingSessions != null) {
                 for ((id, holder) in hangingSessions) {
                     logger.trace { "Removing hanging session $id" }
-                    // report it as a non-existent session
-                    val queuedUpdates = holder.completeExceptionallyAndDrainQueue(AcpExpectedError("Session $id not found"))
-                    // These were buffered on the assumption they might belong to this (or another concurrent)
-                    // initialization; since none claimed `id`, it's an unconnected session, same as if no
-                    // initialization had been in progress when its updates arrived.
-                    val handler = globalSessionUpdateHandler
-                    if (handler != null) {
-                        for ((update, meta) in queuedUpdates) {
-                            handler.onUnconnectedSessionUpdate(id, update, meta)
-                        }
+                    /*
+                     * Report it as a non-existent session. Its updates were buffered on the assumption they might
+                     * belong to this (or another concurrent) initialization; since none claimed `id`, it's an
+                     * unconnected session, same as if no initialization had been in progress when they arrived.
+                     */
+                    holder.failAndDrainQueue(AcpExpectedError("Session $id not found")) { update, meta ->
+                        handleUnconnectedSessionUpdate(id, update, meta)
                     }
                 }
             }
