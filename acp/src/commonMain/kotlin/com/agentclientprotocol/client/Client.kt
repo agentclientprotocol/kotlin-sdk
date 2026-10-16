@@ -454,13 +454,11 @@ public class Client(
      *   is opening it
      */
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
-        return withInitializingSession {
-            openSessionWithFactory(sessionId, sessionParameters, operationsFactory) {
-                AcpMethod.AgentMethods.V1.SessionLoad(
-                    protocol,
-                    loadSessionRequest(sessionId, sessionParameters)
-                )
-            }
+        return withFactoryInitializingSession(sessionId, sessionParameters, operationsFactory) {
+            AcpMethod.AgentMethods.V1.SessionLoad(
+                protocol,
+                loadSessionRequest(sessionId, sessionParameters)
+            )
         }
     }
 
@@ -486,13 +484,11 @@ public class Client(
      *   another call is opening it
      */
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operations: ClientSessionOperations): ClientSession {
-        return withInitializingSession {
-            openSessionWithEarlyUpdates(sessionId, sessionParameters, operations) {
-                AcpMethod.AgentMethods.V1.SessionLoad(
-                    protocol,
-                    loadSessionRequest(sessionId, sessionParameters)
-                )
-            }
+        return withEarlyInitializingSession(sessionId, sessionParameters, operations) {
+            AcpMethod.AgentMethods.V1.SessionLoad(
+                protocol,
+                loadSessionRequest(sessionId, sessionParameters)
+            )
         }
     }
 
@@ -589,13 +585,11 @@ public class Client(
      */
     @UnstableApi
     public suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
-        return withInitializingSession {
-            openSessionWithFactory(sessionId, sessionParameters, operationsFactory) {
-                AcpMethod.AgentMethods.V1.SessionResume(
-                    protocol,
-                    resumeSessionRequest(sessionId, sessionParameters)
-                )
-            }
+        return withFactoryInitializingSession(sessionId, sessionParameters, operationsFactory) {
+            AcpMethod.AgentMethods.V1.SessionResume(
+                protocol,
+                resumeSessionRequest(sessionId, sessionParameters)
+            )
         }
     }
 
@@ -619,13 +613,11 @@ public class Client(
      */
     @UnstableApi
     public suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operations: ClientSessionOperations): ClientSession {
-        return withInitializingSession {
-            openSessionWithEarlyUpdates(sessionId, sessionParameters, operations) {
-                AcpMethod.AgentMethods.V1.SessionResume(
-                    protocol,
-                    resumeSessionRequest(sessionId, sessionParameters)
-                )
-            }
+        return withEarlyInitializingSession(sessionId, sessionParameters, operations) {
+            AcpMethod.AgentMethods.V1.SessionResume(
+                protocol,
+                resumeSessionRequest(sessionId, sessionParameters)
+            )
         }
     }
 
@@ -709,19 +701,19 @@ public class Client(
     }
 
     /**
-     * Opens the session [sessionId] with [request], and buffers its updates until [factory] creates the operations
-     * after the answer.
+     * Opens the session [sessionId] with [request] under [withInitializingSession], and buffers its updates until
+     * [factory] creates the operations after the answer.
      *
-     * Must run under [withInitializingSession]. The holder is claimed before [request] sends anything, so a load
-     * with ready operations of the same id fails before its own request. If [request] fails, the holder fails, and
-     * the updates in its queue go to [globalSessionUpdateHandler].
+     * The holder is claimed before [request] sends anything, so a load with ready operations of the same id fails
+     * before its own request. If [request] fails, the holder fails, and the updates in its queue go to
+     * [globalSessionUpdateHandler].
      */
-    private suspend fun openSessionWithFactory(
+    private suspend fun withFactoryInitializingSession(
         sessionId: SessionId,
         sessionParameters: SessionCreationParameters,
         factory: ClientOperationsFactory,
         request: suspend () -> AcpCreatedSessionResponse,
-    ): ClientSession {
+    ): ClientSession = withInitializingSession {
         val sessionHolder = claimFactorySessionHolder(sessionId)
         val sessionResponse = try {
             request()
@@ -729,29 +721,29 @@ public class Client(
             failSessionHolder(sessionId, sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             throw throwable
         }
-        return createSession(sessionHolder, sessionId, sessionParameters, sessionResponse, factory)
+        createSession(sessionHolder, sessionId, sessionParameters, sessionResponse, factory)
     }
 
     /**
-     * Opens the session [sessionId] with [request], and delivers its updates to [operations] before the answer.
+     * Opens the session [sessionId] with [request] under [withInitializingSession], and delivers its updates to
+     * [operations] before the answer.
      *
-     * Must run under [withInitializingSession]. The holder is claimed before [request] sends anything, and one
-     * consumer hands its queue to [operations] until the answer. If the opening fails, also in
-     * [ClientSessionOperations.notify] or by a cancellation, the holder fails, and the updates still in its queue go
-     * to [globalSessionUpdateHandler].
+     * The holder is claimed before [request] sends anything, and one consumer hands its queue to [operations] until
+     * the answer. If the opening fails, also in [ClientSessionOperations.notify] or by a cancellation, the holder
+     * fails, and the updates still in its queue go to [globalSessionUpdateHandler].
      */
-    private suspend fun openSessionWithEarlyUpdates(
+    private suspend fun withEarlyInitializingSession(
         sessionId: SessionId,
         sessionParameters: SessionCreationParameters,
         operations: ClientSessionOperations,
         request: suspend () -> AcpCreatedSessionResponse,
-    ): ClientSession {
-        // doesn't throw if executing under `withInitializingSession` because creates a new entry
+    ): ClientSession = withInitializingSession {
+        // Doesn't throw, because withInitializingSession creates a new entry.
         val sessionHolder = getOrCreateSessionHolder(sessionId)
         check(sessionHolder.claim(ClientSessionHolder.Opener.OPERATIONS)) { "Session $sessionId is already open or being opened" }
 
         try {
-            return coroutineScope {
+            coroutineScope {
                 val earlyDelivery = launch {
                     try {
                         sessionHolder.deliverEarly(operations)
