@@ -319,10 +319,12 @@ public final class com/agentclientprotocol/client/Client {
 	public final fun listSessions (Ljava/lang/String;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;)Lkotlinx/coroutines/flow/Flow;
 	public static synthetic fun listSessions$default (Lcom/agentclientprotocol/client/Client;Ljava/lang/String;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
 	public final fun loadSession-wPMwmcM (Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lcom/agentclientprotocol/client/ClientOperationsFactory;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun loadSession-wPMwmcM (Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lcom/agentclientprotocol/common/ClientSessionOperations;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun logout (Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun logout$default (Lcom/agentclientprotocol/client/Client;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun newSession (Lcom/agentclientprotocol/common/SessionCreationParameters;Lcom/agentclientprotocol/client/ClientOperationsFactory;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun resumeSession-wPMwmcM (Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lcom/agentclientprotocol/client/ClientOperationsFactory;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun resumeSession-wPMwmcM (Ljava/lang/String;Lcom/agentclientprotocol/common/SessionCreationParameters;Lcom/agentclientprotocol/common/ClientSessionOperations;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun setProvider-PcC0lbA (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun setProvider-PcC0lbA$default (Lcom/agentclientprotocol/client/Client;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun startNesSession (Ljava/lang/String;Ljava/util/List;Lcom/agentclientprotocol/model/NesRepository;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;

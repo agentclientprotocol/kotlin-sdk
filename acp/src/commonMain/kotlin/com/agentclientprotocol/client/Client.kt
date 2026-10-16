@@ -4,6 +4,7 @@ package com.agentclientprotocol.client
 
 import com.agentclientprotocol.agent.AgentInfo
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.ElicitationOperations
 import com.agentclientprotocol.common.FileSystemOperations
 import com.agentclientprotocol.common.SessionCreationParameters
@@ -458,6 +459,62 @@ public class Client(
     }
 
     /**
+     * Loads an existing session with specified [sessionId] and [sessionParameters], and delivers its updates to
+     * [operations] while the agent replays the history.
+     *
+     * Use this overload when the client has the operations object before the request. The overload with a
+     * [ClientOperationsFactory] buffers every `session/update` until the agent answers. An agent can replay the
+     * whole history long before it answers `session/load`, so that buffer delays the history.
+     *
+     * This overload registers the session before it sends the request. Each `session/update` for [sessionId]
+     * that arrives before the answer goes to [ClientSessionOperations.notify] of [operations] as it arrives, one
+     * at a time and in arrival order. After the answer, the returned session receives the later updates and
+     * passes them to the same [operations]. Each update goes to [operations] exactly once and in arrival order,
+     * also when it arrives together with the answer.
+     *
+     * An early update has these differences from an update after the answer:
+     * - [kotlin.coroutines.CoroutineContext.clientSession] is not available in [ClientSessionOperations.notify]
+     *   because the session does not exist yet;
+     * - [ClientSessionOperations.notify] must not wait for this call to return, because the call waits for the
+     *   early updates that arrived before the answer.
+     *
+     * The returned session applies the mode and config option updates of the early updates to
+     * [ClientSession.currentMode] and [ClientSession.configOptions] after it reads the answer. The state is thus
+     * the same as with the [ClientOperationsFactory] overload.
+     *
+     * Requests from the agent for [sessionId], such as `session/request_permission`, wait for the answer as with
+     * the [ClientOperationsFactory] overload.
+     *
+     * If the load fails, the updates that [operations] already received belong to the failed load. Later
+     * updates for [sessionId] go to [globalSessionUpdateHandler], as for a session that this client did not load.
+     *
+     * If [sessionId] already has a session in this client, this call does not deliver early. It then behaves as
+     * the [ClientOperationsFactory] overload with a factory that returns [operations].
+     *
+     * @param sessionId the id of the existing session to load
+     * @param sessionParameters parameters for loading the session
+     * @param operations the operations of the session. It must also implement the interfaces for the extra
+     * capabilities that the client declares, like file system or terminal support.
+     * @return a [ClientSession] instance for the loaded session
+     */
+    public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operations: ClientSessionOperations): ClientSession {
+        return withInitializingSession {
+            openSessionWithEarlyUpdates(sessionId, sessionParameters, operations) {
+                AcpMethod.AgentMethods.V1.SessionLoad(
+                    protocol,
+                    LoadSessionRequest(
+                        sessionId,
+                        sessionParameters.cwd,
+                        sessionParameters.mcpServers,
+                        sessionParameters.additionalDirectories,
+                        sessionParameters._meta
+                    )
+                )
+            }
+        }
+    }
+
+    /**
      * Deletes a session from the agent's history.
      *
      * This operation does not modify sessions loaded into this client runtime.
@@ -568,6 +625,42 @@ public class Client(
      *
      * This capability is not part of the spec yet, and may be removed or changed at any point.
      *
+     * Resumes an existing session, and delivers the updates that arrive before the answer to [operations] at once.
+     *
+     * The delivery, the session state, and the failure behavior are the same as for the [loadSession] overload
+     * with a [ClientSessionOperations] argument.
+     *
+     * This method is only available if the agent advertises the `session.resume` capability.
+     *
+     * @param sessionId the id of the session to resume
+     * @param sessionParameters parameters for resuming the session
+     * @param operations the operations of the session. It must also implement the interfaces for the extra
+     * capabilities that the client declares, like file system or terminal support.
+     * @return a [ClientSession] instance for the resumed session
+     */
+    @UnstableApi
+    public suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operations: ClientSessionOperations): ClientSession {
+        return withInitializingSession {
+            openSessionWithEarlyUpdates(sessionId, sessionParameters, operations) {
+                AcpMethod.AgentMethods.V1.SessionResume(
+                    protocol,
+                    ResumeSessionRequest(
+                        sessionId,
+                        sessionParameters.cwd,
+                        sessionParameters.mcpServers,
+                        sessionParameters.additionalDirectories,
+                        sessionParameters._meta
+                    )
+                )
+            }
+        }
+    }
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
      * Starts a new NES (Next Edit Suggestions) session.
      *
      * NES sessions are independent from chat sessions and have their own lifecycle.
@@ -622,6 +715,38 @@ public class Client(
             // throw IllegalStateException to pass it as INTERNAL_ERROR to the other side (see in Protocol)
             sessionHolder.completeExceptionally(IllegalStateException("Failed to create session $sessionId", throwable))
             // cleanup of this sessionId entry will be done in finally of withInitializingSession
+            throw throwable
+        }
+    }
+
+    /**
+     * Opens the session [sessionId] with [request], and delivers its updates to [operations] before the answer.
+     *
+     * Must run under [withInitializingSession]. The holder switches to early delivery before [request] sends
+     * anything, so no update of this session can reach the holder's buffer after the switch.
+     */
+    private suspend fun openSessionWithEarlyUpdates(
+        sessionId: SessionId,
+        sessionParameters: SessionCreationParameters,
+        operations: ClientSessionOperations,
+        request: suspend () -> AcpCreatedSessionResponse,
+    ): ClientSession {
+        val sessionHolder = getOrCreateSessionHolder(sessionId)
+        if (!sessionHolder.startEarlyDelivery(operations)) {
+            return createSession(sessionId, sessionParameters, request()) { _, _ -> operations }
+        }
+
+        return runCatching {
+            val sessionResponse = request()
+            val session = ClientSessionImpl(this, sessionId, sessionParameters, operations, sessionResponse, protocol)
+            sessionHolder.completeEarlySession(session)
+            session
+        }.getOrElse { throwable ->
+            /*
+             * Fail the holder now, so later updates stop going to the operations of the failed load. The cleanup
+             * of this sessionId entry is done in finally of withInitializingSession.
+             */
+            sessionHolder.completeExceptionally(IllegalStateException("Failed to create session $sessionId", throwable))
             throw throwable
         }
     }
