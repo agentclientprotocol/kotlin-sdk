@@ -379,6 +379,57 @@ class ClientEarlySessionUpdatesTest {
     }
 
     @Test
+    fun `a throwing unconnected handler neither replaces the load failure nor stops the drain`() {
+        val unconnected = RecordingOperations()
+        val queued = listOf(text("queued-1"), text("queued-2"))
+        val handler = GlobalSessionUpdateHandler { _, update, meta ->
+            unconnected.notify(update, meta)
+            if (update == queued.first()) error("global boom")
+        }
+        withClient(globalSessionUpdateHandler = handler) { client, agent ->
+            val sessionId = SessionId("throwing-global-handler")
+            val entered = CompletableDeferred<Unit>()
+            val operations = RecordingOperations(beforeEach = {
+                entered.complete(Unit)
+                awaitCancellation()
+            })
+            val load = async { runCatching { client.loadSession(sessionId, parameters, operations) } }
+            val request = agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionLoad.methodName)
+            agent.sendUpdate(sessionId, text("replay"))
+            entered.await()
+            queued.forEach { agent.sendUpdate(sessionId, it) }
+            agent.awaitHandled()
+
+            agent.fail(request)
+            assertEquals("load failed", load.await().exceptionOrNull()?.message)
+            unconnected.awaitCount(queued.size)
+            assertEquals(queued, unconnected.updates.value)
+        }
+    }
+
+    @Test
+    fun `a failed factory hands the queued updates to the unconnected handler at once`() {
+        val unconnected = RecordingOperations()
+        withClient(globalSessionUpdateHandler = { _, update, meta -> unconnected.notify(update, meta) }) { client, agent ->
+            val sessionId = SessionId("failing-factory")
+            // A pending session/new keeps the failed holder registered, so the reap does not drain it.
+            val newSession = async { client.newSession(parameters) { _, _ -> RecordingOperations() } }
+            val newRequest = agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionNew.methodName)
+
+            val load = async { runCatching { client.loadSession(sessionId, parameters) { _, _ -> error("factory failed") } } }
+            val request = agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionLoad.methodName)
+            val replay = text("replay")
+            agent.sendUpdate(sessionId, replay)
+            agent.answer(request, AcpMethod.AgentMethods.V1.SessionLoad.responseSerializer, LoadSessionResponse())
+            assertTrue(load.await().isFailure)
+            unconnected.awaitUpdate(replay)
+
+            agent.answer(newRequest, AcpMethod.AgentMethods.V1.SessionNew.responseSerializer, NewSessionResponse(SessionId("new")))
+            newSession.await()
+        }
+    }
+
+    @Test
     fun `a second load of an open session fails before its request`() = withClient { client, agent ->
         val sessionId = SessionId("open-twice")
         val first = RecordingOperations()

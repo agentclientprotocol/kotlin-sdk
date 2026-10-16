@@ -95,16 +95,9 @@ internal class ClientSessionHolder {
         sessionDeferred.complete(session)
     }
 
-    fun completeExceptionally(cause: Throwable) {
-        notifications.close(cause)
-        sessionDeferred.completeExceptionally(cause)
-    }
-
     /**
-     * Like [completeExceptionally], but also hands whatever was queued to [onQueuedUpdate] - for a holder
-     * that was speculatively created for a session that never actually got claimed (see the
-     * `initializingSessionsCount > 0` branch of `Client.getOrCreateSessionHolderOrNull`), those notifications belong to no live
-     * session and would otherwise be silently discarded.
+     * Fails the holder with [cause] and hands whatever was queued to [onQueuedUpdate]. The queued updates belong
+     * to no live session: either no initialization claimed the holder, or its opening failed.
      *
      * The channel is closed before draining, so an update can't be queued after the drain and get lost.
      * The session is failed only after the drain, so [handleOrQueue] callers that missed the channel see

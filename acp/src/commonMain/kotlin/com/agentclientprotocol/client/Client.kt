@@ -681,7 +681,7 @@ public class Client(
             session
         }.getOrElse { throwable ->
             // throw IllegalStateException to pass it as INTERNAL_ERROR to the other side (see in Protocol)
-            sessionHolder.completeExceptionally(IllegalStateException("Failed to create session $sessionId", throwable))
+            failSessionHolder(sessionId, sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             // cleanup of this sessionId entry will be done in finally of withInitializingSession
             throw throwable
         }
@@ -727,11 +727,7 @@ public class Client(
             }
         } catch (throwable: Throwable) {
             // The cleanup of this sessionId entry is done in finally of withInitializingSession.
-            withContext(NonCancellable) {
-                sessionHolder.failAndDrainQueue(IllegalStateException("Failed to create session $sessionId", throwable)) { update, meta ->
-                    handleUnconnectedSessionUpdate(sessionId, update, meta)
-                }
-            }
+            failSessionHolder(sessionId, sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             throw throwable
         }
     }
@@ -797,6 +793,21 @@ public class Client(
         }
     }
 
+    /**
+     * Fails [holder] with [cause] and hands its queued updates to [globalSessionUpdateHandler] at once.
+     *
+     * Every failure of a holder goes through here, so a failed holder keeps no updates. A failure of the handler is
+     * logged per update, so it neither stops the drain nor replaces the failure that the caller sees.
+     */
+    private suspend fun failSessionHolder(sessionId: SessionId, holder: ClientSessionHolder, cause: Throwable) {
+        withContext(NonCancellable) {
+            holder.failAndDrainQueue(cause) { update, meta ->
+                runCatching { handleUnconnectedSessionUpdate(sessionId, update, meta) }
+                    .onFailure { logger.error(it) { "Unconnected session update handler failed for $sessionId" } }
+            }
+        }
+    }
+
     @OptIn(UnstableApi::class)
     private fun trackUrlElicitationIfAccepted(mode: ElicitationMode, response: CreateElicitationResponse, sessionId: SessionId) {
         if (mode is ElicitationMode.Url && response.action is ElicitationAction.Accept) {
@@ -842,9 +853,7 @@ public class Client(
                      * belong to this (or another concurrent) initialization; since none claimed `id`, it's an
                      * unconnected session, same as if no initialization had been in progress when they arrived.
                      */
-                    holder.failAndDrainQueue(AcpExpectedError("Session $id not found")) { update, meta ->
-                        handleUnconnectedSessionUpdate(id, update, meta)
-                    }
+                    failSessionHolder(id, holder, AcpExpectedError("Session $id not found"))
                 }
             }
         }

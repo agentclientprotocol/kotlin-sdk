@@ -131,7 +131,7 @@ class ClientSessionHolderTest {
         assertFalse(factory.claim(ClientSessionHolder.Opener.OPERATIONS), "an early opening of a factory holder")
 
         val failed = ClientSessionHolder()
-        failed.completeExceptionally(IllegalStateException("load failed"))
+        failed.failAndDrainQueue(IllegalStateException("load failed")) { _, _ -> }
         assertTrue(failed.isFailed)
         assertFalse(failed.claim(ClientSessionHolder.Opener.OPERATIONS), "an early opening of a failed holder")
     }
