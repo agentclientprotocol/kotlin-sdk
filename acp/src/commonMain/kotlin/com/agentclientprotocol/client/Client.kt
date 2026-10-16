@@ -64,17 +64,20 @@ public class Client(
      * sessions. Returns `null` if the session is neither registered nor being initialized, instead of throwing -
      * callers that need a session to exist (e.g., to service a request against it) should use
      * [getOrCreateSessionHolder] instead.
+     *
+     * A failed holder counts as missing and is replaced while sessions initialize, so a retry of a failed opening
+     * gets a fresh holder. Dropping a failed holder loses nothing, because [failSessionHolder] drains it at once.
      */
     private fun getOrCreateSessionHolderOrNull(sessionId: SessionId): ClientSessionHolder? {
         // Fast path for the common case of an already registered session.
-        _sessions.value.sessions[sessionId]?.let { return it }
+        _sessions.value.sessions[sessionId]?.takeUnless { it.isFailed }?.let { return it }
         var clientSessionHolder: ClientSessionHolder? = null
         // Every branch below has to look the session up in `currentStorage` rather than rely on the read above:
         // `_sessions` can change between that read and the CAS, and it can change again between two attempts of
         // the CAS loop. A session that a concurrent newSession/loadSession registers in such a window - together
         // with decrementing `initializingSessionsCount` back to zero - would otherwise be reported as missing.
         _sessions.update { currentStorage ->
-            val existingHolder = currentStorage.sessions[sessionId]
+            val existingHolder = currentStorage.sessions[sessionId]?.takeUnless { it.isFailed }
             when {
                 existingHolder != null -> {
                     clientSessionHolder = existingHolder
@@ -694,7 +697,7 @@ public class Client(
     }
 
     /**
-     * Returns the holder of the session [sessionId] that the agent has just created, claimed by a factory call.
+     * Returns the holder of [sessionId], claimed by a factory call.
      *
      * Must run under [withInitializingSession], which makes sure the holder exists.
      */
@@ -719,9 +722,7 @@ public class Client(
         factory: ClientOperationsFactory,
         request: suspend () -> AcpCreatedSessionResponse,
     ): ClientSession {
-        val sessionHolder = openingSessionHolder(sessionId)
-        check(sessionHolder.claim(ClientSessionHolder.Opener.FACTORY)) { "Session $sessionId is already open or being opened" }
-
+        val sessionHolder = claimFactorySessionHolder(sessionId)
         val sessionResponse = try {
             request()
         } catch (throwable: Throwable) {
@@ -745,7 +746,8 @@ public class Client(
         operations: ClientSessionOperations,
         request: suspend () -> AcpCreatedSessionResponse,
     ): ClientSession {
-        val sessionHolder = openingSessionHolder(sessionId)
+        // doesn't throw if executing under `withInitializingSession` because creates a new entry
+        val sessionHolder = getOrCreateSessionHolder(sessionId)
         check(sessionHolder.claim(ClientSessionHolder.Opener.OPERATIONS)) { "Session $sessionId is already open or being opened" }
 
         try {
@@ -774,29 +776,6 @@ public class Client(
             failSessionHolder(sessionId, sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             throw throwable
         }
-    }
-
-    /**
-     * Returns the holder for a `session/load` or `session/resume` of [sessionId], and puts a new holder in place of
-     * a failed one. A failed holder stays registered while other sessions initialize, and a retry that reused it
-     * would get a session that receives no updates.
-     *
-     * Must run under [withInitializingSession], before the request goes out.
-     */
-    private fun openingSessionHolder(sessionId: SessionId): ClientSessionHolder {
-        var holder: ClientSessionHolder? = null
-        _sessions.update { currentStorage ->
-            val existingHolder = currentStorage.sessions[sessionId]
-            if (existingHolder != null && !existingHolder.isFailed) {
-                holder = existingHolder
-                currentStorage
-            } else {
-                val newHolder = ClientSessionHolder()
-                holder = newHolder
-                currentStorage.copy(sessions = currentStorage.sessions.put(sessionId, newHolder))
-            }
-        }
-        return holder!!
     }
 
     private fun loadSessionRequest(sessionId: SessionId, sessionParameters: SessionCreationParameters): LoadSessionRequest =

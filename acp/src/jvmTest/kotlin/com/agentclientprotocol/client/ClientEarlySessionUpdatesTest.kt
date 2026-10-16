@@ -291,7 +291,7 @@ class ClientEarlySessionUpdatesTest {
         val unconnected = RecordingOperations()
         withClient(globalSessionUpdateHandler = { _, update, meta -> unconnected.notify(update, meta) }) { client, agent ->
             val sessionId = SessionId("failing-notify")
-            // A pending session/new keeps the holder of the failed load registered, so later updates still find it.
+            // A pending session/new makes the client buffer the update for the not yet loaded id.
             val newSession = async { client.newSession(parameters) { _, _ -> RecordingOperations() } }
             val newRequest = agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionNew.methodName)
             val buffered = text("buffered")
@@ -305,13 +305,13 @@ class ClientEarlySessionUpdatesTest {
             // The coroutines debug agent may rethrow a copy of the failure, so compare the message.
             assertEquals(failure.message, load.await().exceptionOrNull()?.message)
 
+            // While session/new runs, a later update waits for a possible retry, then goes to the handler at the reap.
             val afterFailure = text("after-failure")
             agent.sendUpdate(sessionId, afterFailure)
-            unconnected.awaitUpdate(afterFailure)
-            assertTrue(operations.updates.value.isEmpty(), "the operations of the failed load get no update")
-
             agent.answer(newRequest, AcpMethod.AgentMethods.V1.SessionNew.responseSerializer, NewSessionResponse(SessionId("new")))
             newSession.await()
+            unconnected.awaitUpdate(afterFailure)
+            assertTrue(operations.updates.value.isEmpty(), "the operations of the failed load get no update")
         }
     }
 
@@ -338,13 +338,14 @@ class ClientEarlySessionUpdatesTest {
 
             load.cancelAndJoin()
             unconnected.awaitUpdate(queued)
+
+            // While session/new runs, a later update waits for a possible retry, then goes to the handler at the reap.
             val afterCancel = text("after-cancel")
             agent.sendUpdate(sessionId, afterCancel)
-            unconnected.awaitUpdate(afterCancel)
-            assertTrue(operations.updates.value.isEmpty(), "the operations of the cancelled load get no update")
-
             agent.answer(newRequest, AcpMethod.AgentMethods.V1.SessionNew.responseSerializer, NewSessionResponse(SessionId("new")))
             newSession.await()
+            unconnected.awaitUpdate(afterCancel)
+            assertTrue(operations.updates.value.isEmpty(), "the operations of the cancelled load get no update")
         }
     }
 
@@ -412,7 +413,7 @@ class ClientEarlySessionUpdatesTest {
         val unconnected = RecordingOperations()
         withClient(globalSessionUpdateHandler = { _, update, meta -> unconnected.notify(update, meta) }) { client, agent ->
             val sessionId = SessionId("failing-factory")
-            // A pending session/new keeps the failed holder registered, so the reap does not drain it.
+            // A pending session/new delays the reap, so only the failure itself can drain the queue.
             val newSession = async { client.newSession(parameters) { _, _ -> RecordingOperations() } }
             val newRequest = agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionNew.methodName)
 
@@ -473,7 +474,7 @@ class ClientEarlySessionUpdatesTest {
     @Test
     fun `a load with operations after a failed factory load gets only its own updates`() = withClient { client, agent ->
         val sessionId = SessionId("early-after-failed-factory")
-        // A pending session/new keeps the holder of the failed load registered.
+        // A pending session/new delays the reap of the failed holder.
         val newSession = async { client.newSession(parameters) { _, _ -> RecordingOperations() } }
         val newRequest = agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionNew.methodName)
 
