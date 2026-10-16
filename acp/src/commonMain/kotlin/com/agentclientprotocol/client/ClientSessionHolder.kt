@@ -28,10 +28,15 @@ internal class ClientSessionHolder {
      * The kind of call that owns a holder. One holder has at most one kind of owner, see [claim].
      */
     enum class Opener {
-        /** A call with a [ClientOperationsFactory]. It drains the queue after the answer. */
+        /**
+         * A call with a [ClientOperationsFactory]. It drains the queue after the answer.
+         */
         FACTORY,
 
-        /** A `session/load` or `session/resume` with ready [ClientSessionOperations]. It consumes the queue before the answer. */
+        /**
+         * A `session/load` or `session/resume` with ready [ClientSessionOperations]. It consumes the queue before the
+         * answer.
+         */
         OPERATIONS,
     }
 
@@ -55,7 +60,9 @@ internal class ClientSessionHolder {
 
     val session: Deferred<ClientSessionImpl> get() = sessionDeferred
 
-    /** Whether the opening of this holder failed, so a new opening of the session id needs a new holder. */
+    /**
+     * Whether the opening of this holder failed, so a new opening of the session id needs a new holder.
+     */
     val isFailed: Boolean
         @OptIn(ExperimentalCoroutinesApi::class)
         get() = sessionDeferred.isCompleted && sessionDeferred.getCompletionExceptionOrNull() != null
@@ -132,7 +139,9 @@ internal class ClientSessionHolder {
         }
     }
 
-    /** Closes the queue, so [deliverEarly] returns when it has delivered the queued updates. */
+    /**
+     * Closes the queue, so [deliverEarly] returns when it has delivered the queued updates.
+     */
     fun endEarlyDelivery() {
         notifications.close()
     }
