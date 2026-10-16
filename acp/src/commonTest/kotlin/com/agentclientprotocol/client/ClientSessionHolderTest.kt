@@ -25,8 +25,8 @@ import kotlin.test.assertTrue
  * Both steps are non-suspending, so this interleaving needs real parallelism through `Client`;
  * these tests put the holder into the same states directly.
  *
- * The early delivery tests cover the order and the failure of a holder that `Client.loadSession` with a
- * [ClientSessionOperations] argument switches to early delivery.
+ * The early delivery tests cover the order, the failure and the owner of a holder that `Client.loadSession` with a
+ * [ClientSessionOperations] argument opens.
  */
 @OptIn(ExperimentalCoroutinesApi::class, UnstableApi::class)
 class ClientSessionHolderTest {
@@ -69,57 +69,71 @@ class ClientSessionHolderTest {
     }
 
     @Test
-    fun `early delivery hands the buffered updates to the operations before each new update`() = runTest {
+    fun `early delivery hands the queued updates and the arriving updates to the operations in arrival order`() = runTest {
         val holder = ClientSessionHolder()
         assertTrue(holder.handleOrQueue(queuedUpdate, null))
+        assertTrue(holder.claim(ClientSessionHolder.Opener.OPERATIONS))
 
         val operations = RecordingOperations()
-        assertTrue(holder.startEarlyDelivery(operations))
+        val delivery = launch { holder.deliverEarly(operations) }
+        runCurrent()
         assertEquals(listOf<SessionUpdate>(queuedUpdate), operations.updates)
 
         assertTrue(holder.handleOrQueue(lateUpdate, null))
+        holder.endEarlyDelivery()
+        delivery.join()
         assertEquals(listOf<SessionUpdate>(queuedUpdate, lateUpdate), operations.updates)
     }
 
     @Test
-    fun `early delivery waits for an update that the operations still handle`() = runTest {
+    fun `early delivery hands one update at a time to the operations`() = runTest {
         val holder = ClientSessionHolder()
         val releaseFirst = CompletableDeferred<Unit>()
         val operations = RecordingOperations(beforeEach = { update -> if (update == queuedUpdate) releaseFirst.await() })
-        assertTrue(holder.startEarlyDelivery(operations))
+        val delivery = launch { holder.deliverEarly(operations) }
 
-        val first = async { holder.handleOrQueue(queuedUpdate, null) }
+        assertTrue(holder.handleOrQueue(queuedUpdate, null))
+        assertTrue(holder.handleOrQueue(lateUpdate, null))
+        holder.endEarlyDelivery()
         runCurrent()
-        val second = async { holder.handleOrQueue(lateUpdate, null) }
-        runCurrent()
-        assertFalse(second.isCompleted, "the second update must wait until the operations return from the first")
+        assertTrue(operations.updates.isEmpty(), "the second update must wait until the operations return from the first")
 
         releaseFirst.complete(Unit)
-        assertTrue(first.await())
-        assertTrue(second.await())
+        delivery.join()
         assertEquals(listOf<SessionUpdate>(queuedUpdate, lateUpdate), operations.updates)
     }
 
     @Test
-    fun `failed early holder reports later updates as undelivered`() = runTest {
+    fun `updates left by a failed early delivery go to the unconnected handler and later updates are undelivered`() = runTest {
         val holder = ClientSessionHolder()
-        val operations = RecordingOperations()
-        assertTrue(holder.startEarlyDelivery(operations))
-        holder.completeExceptionally(IllegalStateException("load failed"))
+        val failure = IllegalStateException("notify failed")
+        val delivery = async { runCatching { holder.deliverEarly(RecordingOperations(beforeEach = { throw failure })) } }
+        assertTrue(holder.handleOrQueue(queuedUpdate, null))
+        assertTrue(holder.handleOrQueue(lateUpdate, null))
+        assertEquals(failure, delivery.await().exceptionOrNull())
 
-        assertFalse(holder.handleOrQueue(lateUpdate, null))
-        assertTrue(operations.updates.isEmpty())
+        val unconnected = mutableListOf<SessionUpdate>()
+        holder.failAndDrainQueue(IllegalStateException("load failed")) { update, _ -> unconnected += update }
+        assertEquals(listOf<SessionUpdate>(lateUpdate), unconnected)
+        assertFalse(holder.handleOrQueue(SessionUpdate.AgentMessageChunk(ContentBlock.Text("after")), null))
     }
 
     @Test
-    fun `early delivery cannot start on a failed holder or twice`() = runTest {
-        val twice = ClientSessionHolder()
-        assertTrue(twice.startEarlyDelivery(RecordingOperations()))
-        assertFalse(twice.startEarlyDelivery(RecordingOperations()))
+    fun `one kind of opener owns a holder`() = runTest {
+        val early = ClientSessionHolder()
+        assertTrue(early.claim(ClientSessionHolder.Opener.OPERATIONS))
+        assertFalse(early.claim(ClientSessionHolder.Opener.OPERATIONS), "a second early opening")
+        assertFalse(early.claim(ClientSessionHolder.Opener.FACTORY), "a factory opening of an early holder")
+
+        val factory = ClientSessionHolder()
+        assertTrue(factory.claim(ClientSessionHolder.Opener.FACTORY))
+        assertTrue(factory.claim(ClientSessionHolder.Opener.FACTORY), "a second factory opening keeps its old behavior")
+        assertFalse(factory.claim(ClientSessionHolder.Opener.OPERATIONS), "an early opening of a factory holder")
 
         val failed = ClientSessionHolder()
         failed.completeExceptionally(IllegalStateException("load failed"))
-        assertFalse(failed.startEarlyDelivery(RecordingOperations()))
+        assertTrue(failed.isFailed)
+        assertFalse(failed.claim(ClientSessionHolder.Opener.OPERATIONS), "an early opening of a failed holder")
     }
 
     private class RecordingOperations(

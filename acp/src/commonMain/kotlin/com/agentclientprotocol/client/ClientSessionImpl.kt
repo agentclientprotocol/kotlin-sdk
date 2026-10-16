@@ -174,8 +174,6 @@ internal class ClientSessionImpl(
 
     /**
      * Applies the session state that [notification] carries to [currentMode] and [configOptions].
-     *
-     * Only an update for which [changesSessionState] is `true` has an effect.
      */
     internal fun trackState(notification: SessionUpdate) {
         if (notification is SessionUpdate.CurrentModeUpdate) {
@@ -197,13 +195,6 @@ internal class ClientSessionImpl(
         return operations.requestPermissions(toolCall,  permissions, _meta)
     }
 }
-
-/**
- * Tells whether [ClientSessionImpl.trackState] reads this update.
- */
-@OptIn(UnstableApi::class)
-internal fun SessionUpdate.changesSessionState(): Boolean =
-    this is SessionUpdate.CurrentModeUpdate || this is SessionUpdate.ConfigOptionUpdate
 
 internal class ClientSessionContextElement(val session: ClientSessionImpl) : AbstractCoroutineContextElement(Key) {
     object Key : CoroutineContext.Key<ClientSessionContextElement>

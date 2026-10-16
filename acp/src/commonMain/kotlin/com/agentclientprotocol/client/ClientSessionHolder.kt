@@ -1,14 +1,14 @@
 package com.agentclientprotocol.client
 
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.model.SessionUpdate
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonElement
 
 /**
@@ -17,28 +17,62 @@ import kotlinx.serialization.json.JsonElement
  * [Client] creates a holder when it starts initializing a session, and speculatively for an unknown session id that
  * receives an update while some initialization is in progress.
  *
- * A holder can switch to early delivery with [startEarlyDelivery]. Then it hands every update to the given
- * operations as it arrives instead of buffering it, until [completeEarlySession] switches it to the session.
+ * Every update that arrives before the session exists goes into one queue, and the queue has one consumer: the drain
+ * of [drainEventsAndCompleteSession], or [deliverEarly] for a load with ready operations. The consumer closes the
+ * queue to switch to the session. An update that misses the closed queue waits until the consumer finished and
+ * until the update that missed the queue before it is delivered, and then goes to the session. So the updates
+ * keep the order in which their handlers reach the holder.
  */
 internal class ClientSessionHolder {
+    /**
+     * The kind of call that owns a holder. One holder has at most one kind of owner, see [claim].
+     */
+    enum class Opener {
+        /** A call with a [ClientOperationsFactory]. It drains the queue after the answer. */
+        FACTORY,
+
+        /** A `session/load` or `session/resume` with ready [ClientSessionOperations]. It consumes the queue before the answer. */
+        OPERATIONS,
+    }
+
     private val sessionDeferred: CompletableDeferred<ClientSessionImpl> = CompletableDeferred()
     // Don't make the channel limited, because it leads to a deadlock also:
     // when client side makes loadSession/newSession and an agent sends updates more than channel.capacity
     // the message with call response suspends because protocol thread is suspended in handleNotification
     // if to address it we have to somehow reorder events, that's not obvious on the protocol level, so we pay with memory right now to handle it
     private val notifications = Channel<Pair<SessionUpdate, JsonElement?>>(capacity = Channel.UNLIMITED)
+    private val opener = atomic<Opener?>(null)
+    // The delivery of the last update that missed the closed queue, see [handleOrQueue].
+    private val lateDeliveries = atomic<Job>(Job().apply { complete() })
 
     /*
-     * Early delivery state. The lock orders deliveries to the early operations and the switch to the session;
-     * it is fair, so updates pass it in arrival order. The in-flight counter keeps the lock-free path to the
-     * session closed while an update that arrived before the switch still waits for the lock.
+     * The last session state that the updates of an early delivery carried. Only the consumer in [deliverEarly]
+     * writes them, and [completeEarlySession] reads them after that consumer has finished.
      */
-    private val earlyOperations = atomic<ClientSessionOperations?>(null)
-    private val earlyDeliveryLock = Mutex()
-    private val earlyDeliveriesInFlight = atomic(0)
-    private val earlyStateUpdates = mutableListOf<SessionUpdate>()
+    private var earlyMode: SessionUpdate.CurrentModeUpdate? = null
+    @OptIn(UnstableApi::class)
+    private var earlyConfigOptions: SessionUpdate.ConfigOptionUpdate? = null
 
     val session: Deferred<ClientSessionImpl> get() = sessionDeferred
+
+    /** Whether the opening of this holder failed, so a new opening of the session id needs a new holder. */
+    val isFailed: Boolean
+        @OptIn(ExperimentalCoroutinesApi::class)
+        get() = sessionDeferred.isCompleted && sessionDeferred.getCompletionExceptionOrNull() != null
+
+    /**
+     * Makes [kind] the owner of this holder.
+     *
+     * A [Opener.FACTORY] call may claim a holder that a factory call already owns: a second factory load of an open
+     * session keeps its old behavior. A [Opener.OPERATIONS] call needs a holder that has no owner and no session.
+     *
+     * @return `false` if another kind of call owns the holder, or if [kind] is [Opener.OPERATIONS] and the holder
+     *   has an owner or has completed. The holder is then unchanged.
+     */
+    fun claim(kind: Opener): Boolean = when (kind) {
+        Opener.FACTORY -> opener.compareAndSet(null, Opener.FACTORY) || opener.value == Opener.FACTORY
+        Opener.OPERATIONS -> !sessionDeferred.isCompleted && opener.compareAndSet(null, Opener.OPERATIONS)
+    }
 
     suspend fun drainEventsAndCompleteSession(session: ClientSessionImpl) {
         @OptIn(ExperimentalCoroutinesApi::class)
@@ -80,92 +114,68 @@ internal class ClientSessionHolder {
     }
 
     /**
-     * Switches this holder to early delivery: from now on, updates go to [operations] as they arrive.
+     * Hands each queued update and each arriving update to [operations], one at a time and in arrival order, until
+     * [endEarlyDelivery] closes the queue and the queue is empty.
      *
-     * Updates that this holder has already buffered go to [operations] first, in arrival order.
-     *
-     * @return `false` if the holder already has a session, has failed, or delivers early already. The holder is
-     *   then unchanged.
+     * The holder must be claimed for [Opener.OPERATIONS]. If [operations] throws, the remaining updates stay in the
+     * queue for [failAndDrainQueue].
      */
-    suspend fun startEarlyDelivery(operations: ClientSessionOperations): Boolean = earlyDeliveryLock.withLock {
-        if (sessionDeferred.isCompleted) return false
-        if (!earlyOperations.compareAndSet(null, operations)) return false
-
-        /*
-         * An update that missed the channel because of this close sees the early operations and waits for the
-         * lock that this drain holds.
-         */
-        notifications.close()
+    suspend fun deliverEarly(operations: ClientSessionOperations) {
         for ((update, meta) in notifications) {
-            deliverEarly(operations, update, meta)
+            @OptIn(UnstableApi::class)
+            when (update) {
+                is SessionUpdate.CurrentModeUpdate -> earlyMode = update
+                is SessionUpdate.ConfigOptionUpdate -> earlyConfigOptions = update
+                else -> {}
+            }
+            operations.notify(update, meta)
         }
-        true
+    }
+
+    /** Closes the queue, so [deliverEarly] returns when it has delivered the queued updates. */
+    fun endEarlyDelivery() {
+        notifications.close()
     }
 
     /**
-     * Ends early delivery: applies the session state that the early updates carried, then makes [session] the
-     * receiver of all later updates.
-     *
-     * Each update before this call went to the early operations only, and each update after it goes to [session]
-     * only.
+     * Applies the session state that the early updates carried, then makes [session] the receiver of all later
+     * updates. Must run after [deliverEarly] has returned.
      */
-    suspend fun completeEarlySession(session: ClientSessionImpl) {
-        earlyDeliveryLock.withLock {
-            for (update in earlyStateUpdates) {
-                session.trackState(update)
-            }
-            earlyStateUpdates.clear()
-            sessionDeferred.complete(session)
-        }
+    fun completeEarlySession(session: ClientSessionImpl) {
+        earlyMode?.let(session::trackState)
+        earlyConfigOptions?.let(session::trackState)
+        check(sessionDeferred.complete(session)) { "Session ${session.sessionId} is already complete" }
     }
 
     /**
      * Delivers [notification] to the session, or queues it while the session is initializing.
      *
-     * In early delivery, it hands [notification] to the early operations until the session is complete.
-     *
      * @return `false` if the holder ended without a session, so the update belongs to no connected session
      */
     suspend fun handleOrQueue(notification: SessionUpdate, _meta: JsonElement?): Boolean {
-        if (earlyOperations.value == null && notifications.trySend(Pair(notification, _meta)).isSuccess) return true
+        if (notifications.trySend(Pair(notification, _meta)).isSuccess) return true
 
-        val operations = earlyOperations.value
-        if (operations != null) return handleEarly(operations, notification, _meta)
+        // The common case: the session is open and no update before this one still waits for it.
+        if (sessionDeferred.isCompleted && lateDeliveries.value.isCompleted) return deliverToSession(notification, _meta)
 
         /*
          * The channel is closed by a drain. Wait for it to finish instead of awaiting the session: the holder
          * may be failed because no initialization claimed it, and that must not fail the notification.
+         * Also wait for the update that missed the channel before this one. Its waiter can resume after this
+         * update arrives, so without the chain this update could overtake it.
          */
-        sessionDeferred.join()
-        return deliverToCompletedSession(notification, _meta)
-    }
-
-    private suspend fun handleEarly(operations: ClientSessionOperations, notification: SessionUpdate, _meta: JsonElement?): Boolean {
-        if (earlyDeliveriesInFlight.value == 0 && sessionDeferred.isCompleted) {
-            return deliverToCompletedSession(notification, _meta)
-        }
-
-        earlyDeliveriesInFlight.incrementAndGet()
+        val delivered = CompletableDeferred<Unit>()
+        val previous = lateDeliveries.getAndSet(delivered)
         try {
-            earlyDeliveryLock.withLock {
-                if (sessionDeferred.isCompleted) return deliverToCompletedSession(notification, _meta)
-                deliverEarly(operations, notification, _meta)
-            }
+            previous.join()
+            sessionDeferred.join()
+            return deliverToSession(notification, _meta)
         } finally {
-            earlyDeliveriesInFlight.decrementAndGet()
+            delivered.complete(Unit)
         }
-        return true
     }
 
-    /**
-     * Must run under [earlyDeliveryLock].
-     */
-    private suspend fun deliverEarly(operations: ClientSessionOperations, notification: SessionUpdate, _meta: JsonElement?) {
-        if (notification.changesSessionState()) earlyStateUpdates += notification
-        operations.notify(notification, _meta)
-    }
-
-    private suspend fun deliverToCompletedSession(notification: SessionUpdate, _meta: JsonElement?): Boolean {
+    private suspend fun deliverToSession(notification: SessionUpdate, _meta: JsonElement?): Boolean {
         @OptIn(ExperimentalCoroutinesApi::class)
         if (sessionDeferred.getCompletionExceptionOrNull() != null) return false
 

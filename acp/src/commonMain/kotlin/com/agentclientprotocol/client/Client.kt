@@ -20,7 +20,11 @@ import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 
 private val logger = KotlinLogging.logger {}
@@ -444,15 +448,10 @@ public class Client(
      */
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
         return withInitializingSession {
+            openingSessionHolder(sessionId)
             val loadSessionResponse = AcpMethod.AgentMethods.V1.SessionLoad(
                 protocol,
-                LoadSessionRequest(
-                    sessionId,
-                    sessionParameters.cwd,
-                    sessionParameters.mcpServers,
-                    sessionParameters.additionalDirectories,
-                    sessionParameters._meta
-                )
+                loadSessionRequest(sessionId, sessionParameters)
             )
             return@withInitializingSession createSession(sessionId, sessionParameters, loadSessionResponse, operationsFactory)
         }
@@ -485,11 +484,15 @@ public class Client(
      * Requests from the agent for [sessionId], such as `session/request_permission`, wait for the answer as with
      * the [ClientOperationsFactory] overload.
      *
-     * If the load fails, the updates that [operations] already received belong to the failed load. Later
-     * updates for [sessionId] go to [globalSessionUpdateHandler], as for a session that this client did not load.
+     * The load fails if the agent answers with an error, if [ClientSessionOperations.notify] throws, or if the
+     * caller is cancelled. The updates that [operations] already received then belong to the failed load. The
+     * updates that [operations] did not receive yet, and all later updates for [sessionId], go to
+     * [globalSessionUpdateHandler], as for a session that this client did not load. A later load of [sessionId]
+     * starts over.
      *
-     * If [sessionId] already has a session in this client, this call does not deliver early. It then behaves as
-     * the [ClientOperationsFactory] overload with a factory that returns [operations].
+     * The call throws [IllegalStateException] before it sends the request if [sessionId] already has a session in
+     * this client, or if another call with ready operations is opening it. A [ClientOperationsFactory] call that
+     * opens [sessionId] at the same time fails instead of this call.
      *
      * @param sessionId the id of the existing session to load
      * @param sessionParameters parameters for loading the session
@@ -502,13 +505,7 @@ public class Client(
             openSessionWithEarlyUpdates(sessionId, sessionParameters, operations) {
                 AcpMethod.AgentMethods.V1.SessionLoad(
                     protocol,
-                    LoadSessionRequest(
-                        sessionId,
-                        sessionParameters.cwd,
-                        sessionParameters.mcpServers,
-                        sessionParameters.additionalDirectories,
-                        sessionParameters._meta
-                    )
+                    loadSessionRequest(sessionId, sessionParameters)
                 )
             }
         }
@@ -606,15 +603,10 @@ public class Client(
     @UnstableApi
     public suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
         return withInitializingSession {
+            openingSessionHolder(sessionId)
             val resumeSessionResponse = AcpMethod.AgentMethods.V1.SessionResume(
                 protocol,
-                ResumeSessionRequest(
-                    sessionId,
-                    sessionParameters.cwd,
-                    sessionParameters.mcpServers,
-                    sessionParameters.additionalDirectories,
-                    sessionParameters._meta
-                )
+                resumeSessionRequest(sessionId, sessionParameters)
             )
             return@withInitializingSession createSession(sessionId, sessionParameters, resumeSessionResponse, operationsFactory)
         }
@@ -644,13 +636,7 @@ public class Client(
             openSessionWithEarlyUpdates(sessionId, sessionParameters, operations) {
                 AcpMethod.AgentMethods.V1.SessionResume(
                     protocol,
-                    ResumeSessionRequest(
-                        sessionId,
-                        sessionParameters.cwd,
-                        sessionParameters.mcpServers,
-                        sessionParameters.additionalDirectories,
-                        sessionParameters._meta
-                    )
+                    resumeSessionRequest(sessionId, sessionParameters)
                 )
             }
         }
@@ -706,6 +692,8 @@ public class Client(
     private suspend fun createSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, sessionResponse: AcpCreatedSessionResponse, factory: ClientOperationsFactory): ClientSession {
         // doesn't throw if executing under `withInitializingSession` because creates a new entry
         val sessionHolder = getOrCreateSessionHolder(sessionId)
+        // Refuse before the holder is touched: it belongs to the load with ready operations that claimed it.
+        check(sessionHolder.claim(ClientSessionHolder.Opener.FACTORY)) { "Session $sessionId is already open or being opened" }
         return runCatching {
             val operations = factory.createClientOperations(sessionId, sessionResponse)
             val session = ClientSessionImpl(this, sessionId, sessionParameters, operations, sessionResponse, protocol)
@@ -722,8 +710,10 @@ public class Client(
     /**
      * Opens the session [sessionId] with [request], and delivers its updates to [operations] before the answer.
      *
-     * Must run under [withInitializingSession]. The holder switches to early delivery before [request] sends
-     * anything, so no update of this session can reach the holder's buffer after the switch.
+     * Must run under [withInitializingSession]. The holder is claimed before [request] sends anything, and one
+     * consumer hands its queue to [operations] until the answer. If the opening fails, also in
+     * [ClientSessionOperations.notify] or by a cancellation, the holder fails, and the updates still in its queue go
+     * to [globalSessionUpdateHandler].
      */
     private suspend fun openSessionWithEarlyUpdates(
         sessionId: SessionId,
@@ -731,25 +721,70 @@ public class Client(
         operations: ClientSessionOperations,
         request: suspend () -> AcpCreatedSessionResponse,
     ): ClientSession {
-        val sessionHolder = getOrCreateSessionHolder(sessionId)
-        if (!sessionHolder.startEarlyDelivery(operations)) {
-            return createSession(sessionId, sessionParameters, request()) { _, _ -> operations }
-        }
+        val sessionHolder = openingSessionHolder(sessionId)
+        check(sessionHolder.claim(ClientSessionHolder.Opener.OPERATIONS)) { "Session $sessionId is already open or being opened" }
 
-        return runCatching {
-            val sessionResponse = request()
-            val session = ClientSessionImpl(this, sessionId, sessionParameters, operations, sessionResponse, protocol)
-            sessionHolder.completeEarlySession(session)
-            session
-        }.getOrElse { throwable ->
-            /*
-             * Fail the holder now, so later updates stop going to the operations of the failed load. The cleanup
-             * of this sessionId entry is done in finally of withInitializingSession.
-             */
-            sessionHolder.completeExceptionally(IllegalStateException("Failed to create session $sessionId", throwable))
+        try {
+            return coroutineScope {
+                val earlyDelivery = launch { sessionHolder.deliverEarly(operations) }
+                val sessionResponse = request()
+                sessionHolder.endEarlyDelivery()
+                earlyDelivery.join()
+                val session = ClientSessionImpl(this@Client, sessionId, sessionParameters, operations, sessionResponse, protocol)
+                sessionHolder.completeEarlySession(session)
+                session
+            }
+        } catch (throwable: Throwable) {
+            // The cleanup of this sessionId entry is done in finally of withInitializingSession.
+            withContext(NonCancellable) {
+                sessionHolder.failAndDrainQueue(IllegalStateException("Failed to create session $sessionId", throwable)) { update, meta ->
+                    handleUnconnectedSessionUpdate(sessionId, update, meta)
+                }
+            }
             throw throwable
         }
     }
+
+    /**
+     * Returns the holder for a `session/load` or `session/resume` of [sessionId], and puts a new holder in place of
+     * a failed one. A failed holder stays registered while other sessions initialize, and a retry that reused it
+     * would get a session that receives no updates.
+     *
+     * Must run under [withInitializingSession], before the request goes out.
+     */
+    private fun openingSessionHolder(sessionId: SessionId): ClientSessionHolder {
+        var holder: ClientSessionHolder? = null
+        _sessions.update { currentStorage ->
+            val existingHolder = currentStorage.sessions[sessionId]
+            if (existingHolder != null && !existingHolder.isFailed) {
+                holder = existingHolder
+                currentStorage
+            } else {
+                val newHolder = ClientSessionHolder()
+                holder = newHolder
+                currentStorage.copy(sessions = currentStorage.sessions.put(sessionId, newHolder))
+            }
+        }
+        return holder!!
+    }
+
+    private fun loadSessionRequest(sessionId: SessionId, sessionParameters: SessionCreationParameters): LoadSessionRequest =
+        LoadSessionRequest(
+            sessionId,
+            sessionParameters.cwd,
+            sessionParameters.mcpServers,
+            sessionParameters.additionalDirectories,
+            sessionParameters._meta
+        )
+
+    private fun resumeSessionRequest(sessionId: SessionId, sessionParameters: SessionCreationParameters): ResumeSessionRequest =
+        ResumeSessionRequest(
+            sessionId,
+            sessionParameters.cwd,
+            sessionParameters.mcpServers,
+            sessionParameters.additionalDirectories,
+            sessionParameters._meta
+        )
 
     public fun getSession(sessionId: SessionId): ClientSession {
         val sessionHolder = _sessions.value.sessions[sessionId] ?: error("Session $sessionId not found")

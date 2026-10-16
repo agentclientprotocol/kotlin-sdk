@@ -136,7 +136,7 @@ Lifecycle correctness is part of the public behavior. Changes to startup, cancel
 - Do not parent per-request `CompletableDeferred` values casually. Any change to their ownership must account for pending-map cleanup and peer cancellation.
 - Return follow-up work and cleanup through `RequestOutcome` rather than running them inside the handler.
 - Keep normal close, timeout/abort, parent cancellation, and I/O failure paths distinct and testable.
-- The v1 client keeps one `ClientSessionHolder` per session id. With a `ClientOperationsFactory`, the holder buffers the session's updates until the opening call answers. The `loadSession` and `resumeSession` overloads that take `ClientSessionOperations` switch the holder to early delivery before the request goes out. Each update then goes to the operations once, in arrival order, also across the switch to the session.
+- The v1 client keeps one `ClientSessionHolder` per session id. With a `ClientOperationsFactory`, the holder buffers the session's updates until the opening call answers. The `loadSession` and `resumeSession` overloads that take `ClientSessionOperations` claim the holder before the request goes out, and one consumer hands its queue to the operations until the answer. All updates pass one queue with one consumer, so keep the arrival order by construction: do not add a second delivery path, a lock, or a counter to the holder.
 
 For WebSocket shutdown, preserve the established sequence: reject new work, enter closing state, drain accepted frames within the configured timeout, then perform a normal WebSocket close. Reserve cancellation/abort for timeout, cancellation, or writer failure.
 
