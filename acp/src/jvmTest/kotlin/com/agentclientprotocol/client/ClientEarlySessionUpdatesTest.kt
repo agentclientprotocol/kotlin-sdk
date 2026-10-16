@@ -440,6 +440,9 @@ class ClientEarlySessionUpdatesTest {
 
         val second = runCatching { client.loadSession(sessionId, parameters, RecordingOperations()) }
         assertTrue(second.exceptionOrNull() is IllegalStateException)
+        val factory = runCatching { client.loadSession(sessionId, parameters) { _, _ -> RecordingOperations() } }
+        assertTrue(factory.exceptionOrNull() is IllegalStateException)
+        agent.assertNoRequest()
         assertSame(session, client.getSession(sessionId))
 
         val update = text("update")
@@ -448,23 +451,50 @@ class ClientEarlySessionUpdatesTest {
     }
 
     @Test
-    fun `a factory load in flight fails when a load with operations claims the session id`() = withClient { client, agent ->
+    fun `a load with operations fails before its request while a factory load is in flight`() = withClient { client, agent ->
         val sessionId = SessionId("factory-and-early")
-        val factoryLoad = async { runCatching { client.loadSession(sessionId, parameters) { _, _ -> RecordingOperations() } } }
+        val factoryOperations = RecordingOperations()
+        val factoryLoad = async { client.loadSession(sessionId, parameters) { _, _ -> factoryOperations } }
         val factoryRequest = agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionLoad.methodName)
 
         val operations = RecordingOperations()
-        val earlyLoad = async { client.loadSession(sessionId, parameters, operations) }
-        val earlyRequest = agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionLoad.methodName)
+        val earlyLoad = runCatching { client.loadSession(sessionId, parameters, operations) }
+        assertTrue(earlyLoad.exceptionOrNull() is IllegalStateException)
+        agent.assertNoRequest()
+
         val replay = text("replay")
         agent.sendUpdate(sessionId, replay)
-        operations.awaitUpdate(replay)
-
         agent.answer(factoryRequest, AcpMethod.AgentMethods.V1.SessionLoad.responseSerializer, LoadSessionResponse())
-        assertTrue(factoryLoad.await().exceptionOrNull() is IllegalStateException)
+        assertSame(factoryLoad.await(), client.getSession(sessionId))
+        factoryOperations.awaitUpdate(replay)
+        assertTrue(operations.updates.value.isEmpty(), "the refused load gets no update")
+    }
 
-        agent.answer(earlyRequest, AcpMethod.AgentMethods.V1.SessionLoad.responseSerializer, LoadSessionResponse())
-        assertSame(earlyLoad.await(), client.getSession(sessionId))
+    @Test
+    fun `a load with operations after a failed factory load gets only its own updates`() = withClient { client, agent ->
+        val sessionId = SessionId("early-after-failed-factory")
+        // A pending session/new keeps the holder of the failed load registered.
+        val newSession = async { client.newSession(parameters) { _, _ -> RecordingOperations() } }
+        val newRequest = agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionNew.methodName)
+
+        val failedLoad = async { runCatching { client.loadSession(sessionId, parameters) { _, _ -> RecordingOperations() } } }
+        val failedRequest = agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionLoad.methodName)
+        agent.sendUpdate(sessionId, text("replay-of-failed-load"))
+        agent.fail(failedRequest)
+        assertTrue(failedLoad.await().isFailure)
+
+        val operations = RecordingOperations()
+        val retry = async { client.loadSession(sessionId, parameters, operations) }
+        val retryRequest = agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionLoad.methodName)
+        val replay = text("replay-of-retry")
+        agent.sendUpdate(sessionId, replay)
+        agent.answer(retryRequest, AcpMethod.AgentMethods.V1.SessionLoad.responseSerializer, LoadSessionResponse())
+        assertSame(retry.await(), client.getSession(sessionId))
+        operations.awaitUpdate(replay)
+        assertEquals(listOf<SessionUpdate>(replay), operations.updates.value)
+
+        agent.answer(newRequest, AcpMethod.AgentMethods.V1.SessionNew.responseSerializer, NewSessionResponse(SessionId("new")))
+        newSession.await()
     }
 
     @Test
@@ -592,6 +622,10 @@ private class ScriptedAgentTransport : BaseTransport() {
         val request = withTimeout(5.seconds) { requests.receive() }
         assertEquals(method, request.method)
         return request
+    }
+
+    fun assertNoRequest() {
+        assertNull(requests.tryReceive().getOrNull(), "the client must not send a request")
     }
 
     fun sendUpdate(sessionId: SessionId, update: SessionUpdate) {

@@ -434,7 +434,7 @@ public class Client(
                 )
             )
             val sessionId = newSessionResponse.sessionId
-            return@withInitializingSession createSession(sessionId, sessionParameters, newSessionResponse, operationsFactory)
+            return@withInitializingSession createSession(claimFactorySessionHolder(sessionId), sessionId, sessionParameters, newSessionResponse, operationsFactory)
         }
     }
 
@@ -447,15 +447,17 @@ public class Client(
      * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
      * See [ClientOperationsFactory.createClientOperations] for more details.
      * @return a [ClientSession] instance for the new session
+     * @throws IllegalStateException before the request, if a call with ready operations has opened [sessionId] or
+     *   is opening it
      */
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
         return withInitializingSession {
-            openingSessionHolder(sessionId)
-            val loadSessionResponse = AcpMethod.AgentMethods.V1.SessionLoad(
-                protocol,
-                loadSessionRequest(sessionId, sessionParameters)
-            )
-            return@withInitializingSession createSession(sessionId, sessionParameters, loadSessionResponse, operationsFactory)
+            openSessionWithFactory(sessionId, sessionParameters, operationsFactory) {
+                AcpMethod.AgentMethods.V1.SessionLoad(
+                    protocol,
+                    loadSessionRequest(sessionId, sessionParameters)
+                )
+            }
         }
     }
 
@@ -478,7 +480,7 @@ public class Client(
      * capabilities that the client declares, like file system or terminal support.
      * @return a [ClientSession] instance for the loaded session
      * @throws IllegalStateException before the request, if [sessionId] already has a session in this client or
-     *   another call is opening it with ready operations
+     *   another call is opening it
      */
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operations: ClientSessionOperations): ClientSession {
         return withInitializingSession {
@@ -560,7 +562,7 @@ public class Client(
                 )
             )
             val newSessionId = forkSessionResponse.sessionId
-            return@withInitializingSession createSession(newSessionId, sessionParameters, forkSessionResponse, operationsFactory)
+            return@withInitializingSession createSession(claimFactorySessionHolder(newSessionId), newSessionId, sessionParameters, forkSessionResponse, operationsFactory)
         }
     }
 
@@ -579,16 +581,18 @@ public class Client(
      * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
      * See [ClientOperationsFactory.createClientOperations] for more details.
      * @return a [ClientSession] instance for the resumed session
+     * @throws IllegalStateException before the request, if a call with ready operations has opened [sessionId] or
+     *   is opening it
      */
     @UnstableApi
     public suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
         return withInitializingSession {
-            openingSessionHolder(sessionId)
-            val resumeSessionResponse = AcpMethod.AgentMethods.V1.SessionResume(
-                protocol,
-                resumeSessionRequest(sessionId, sessionParameters)
-            )
-            return@withInitializingSession createSession(sessionId, sessionParameters, resumeSessionResponse, operationsFactory)
+            openSessionWithFactory(sessionId, sessionParameters, operationsFactory) {
+                AcpMethod.AgentMethods.V1.SessionResume(
+                    protocol,
+                    resumeSessionRequest(sessionId, sessionParameters)
+                )
+            }
         }
     }
 
@@ -669,11 +673,13 @@ public class Client(
     /**
      * After ClientSessionImpl is created the delayed notifications are drained and pushed into session.notify()
      */
-    private suspend fun createSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, sessionResponse: AcpCreatedSessionResponse, factory: ClientOperationsFactory): ClientSession {
-        // doesn't throw if executing under `withInitializingSession` because creates a new entry
-        val sessionHolder = getOrCreateSessionHolder(sessionId)
-        // Refuse before the holder is touched: it belongs to the load with ready operations that claimed it.
-        check(sessionHolder.claim(ClientSessionHolder.Opener.FACTORY)) { "Session $sessionId is already open or being opened" }
+    private suspend fun createSession(
+        sessionHolder: ClientSessionHolder,
+        sessionId: SessionId,
+        sessionParameters: SessionCreationParameters,
+        sessionResponse: AcpCreatedSessionResponse,
+        factory: ClientOperationsFactory,
+    ): ClientSession {
         return runCatching {
             val operations = factory.createClientOperations(sessionId, sessionResponse)
             val session = ClientSessionImpl(this, sessionId, sessionParameters, operations, sessionResponse, protocol)
@@ -685,6 +691,44 @@ public class Client(
             // cleanup of this sessionId entry will be done in finally of withInitializingSession
             throw throwable
         }
+    }
+
+    /**
+     * Returns the holder of the session [sessionId] that the agent has just created, claimed by a factory call.
+     *
+     * Must run under [withInitializingSession], which makes sure the holder exists.
+     */
+    private fun claimFactorySessionHolder(sessionId: SessionId): ClientSessionHolder {
+        val sessionHolder = getOrCreateSessionHolder(sessionId)
+        // Refuse before the holder is touched: it belongs to the load with ready operations that claimed it.
+        check(sessionHolder.claim(ClientSessionHolder.Opener.FACTORY)) { "Session $sessionId is already open or being opened" }
+        return sessionHolder
+    }
+
+    /**
+     * Opens the session [sessionId] with [request], and buffers its updates until [factory] creates the operations
+     * after the answer.
+     *
+     * Must run under [withInitializingSession]. The holder is claimed before [request] sends anything, so a load
+     * with ready operations of the same id fails before its own request. If [request] fails, the holder fails, and
+     * the updates in its queue go to [globalSessionUpdateHandler].
+     */
+    private suspend fun openSessionWithFactory(
+        sessionId: SessionId,
+        sessionParameters: SessionCreationParameters,
+        factory: ClientOperationsFactory,
+        request: suspend () -> AcpCreatedSessionResponse,
+    ): ClientSession {
+        val sessionHolder = openingSessionHolder(sessionId)
+        check(sessionHolder.claim(ClientSessionHolder.Opener.FACTORY)) { "Session $sessionId is already open or being opened" }
+
+        val sessionResponse = try {
+            request()
+        } catch (throwable: Throwable) {
+            failSessionHolder(sessionId, sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
+            throw throwable
+        }
+        return createSession(sessionHolder, sessionId, sessionParameters, sessionResponse, factory)
     }
 
     /**
