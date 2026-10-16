@@ -52,7 +52,9 @@ internal class ClientSessionHolder {
 
     /*
      * The last session state that the updates of an early delivery carried. Only the consumer in [deliverEarly]
-     * writes them, and [completeEarlySession] reads them after that consumer has finished.
+     * writes them, and [completeEarlySession] reads them after that consumer has finished. Unlike the other fields,
+     * they need no atomic: the join of the consumer orders its writes before the read, and nothing reads them
+     * concurrently.
      */
     private var earlyMode: SessionUpdate.CurrentModeUpdate? = null
     @OptIn(UnstableApi::class)
