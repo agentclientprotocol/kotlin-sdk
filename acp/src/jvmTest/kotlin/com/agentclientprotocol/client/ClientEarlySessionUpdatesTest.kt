@@ -349,6 +349,36 @@ class ClientEarlySessionUpdatesTest {
     }
 
     @Test
+    fun `a notify that times out fails the load and sends the later updates to the unconnected handler`() {
+        val unconnected = RecordingOperations()
+        withClient(globalSessionUpdateHandler = { _, update, meta -> unconnected.notify(update, meta) }) { client, agent ->
+            val sessionId = SessionId("timed-out-notify")
+            val timedOut = CompletableDeferred<Unit>()
+            // A cancellation that is not the caller's own, as from a timeout inside a UI callback.
+            val operations = RecordingOperations(beforeEach = {
+                try {
+                    withTimeout(10.milliseconds) { awaitCancellation() }
+                } finally {
+                    timedOut.complete(Unit)
+                }
+            })
+            val load = async { runCatching { client.loadSession(sessionId, parameters, operations) } }
+            val request = agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionLoad.methodName)
+            agent.sendUpdate(sessionId, text("replay"))
+            timedOut.await()
+
+            val afterTimeout = listOf(text("after-timeout-1"), text("after-timeout-2"))
+            afterTimeout.forEach { agent.sendUpdate(sessionId, it) }
+            agent.answer(request, AcpMethod.AgentMethods.V1.SessionLoad.responseSerializer, LoadSessionResponse())
+
+            assertTrue(load.await().exceptionOrNull() is IllegalStateException, "the load must fail")
+            unconnected.awaitCount(afterTimeout.size)
+            assertEquals(afterTimeout, unconnected.updates.value)
+            assertTrue(operations.updates.value.isEmpty(), "the operations of the failed load get no update")
+        }
+    }
+
+    @Test
     fun `a second load of an open session fails before its request`() = withClient { client, agent ->
         val sessionId = SessionId("open-twice")
         val first = RecordingOperations()

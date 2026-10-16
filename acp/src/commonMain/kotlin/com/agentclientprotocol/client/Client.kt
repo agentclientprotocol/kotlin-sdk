@@ -18,10 +18,12 @@ import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -704,7 +706,18 @@ public class Client(
 
         try {
             return coroutineScope {
-                val earlyDelivery = launch { sessionHolder.deliverEarly(operations) }
+                val earlyDelivery = launch {
+                    try {
+                        sessionHolder.deliverEarly(operations)
+                    } catch (ce: CancellationException) {
+                        /*
+                         * A cancellation that does not come from this call, such as a timeout inside `notify`, would
+                         * end this child without failing the scope and leave the rest of the queue undelivered.
+                         */
+                        ensureActive()
+                        throw IllegalStateException("ClientSessionOperations.notify was cancelled", ce)
+                    }
+                }
                 val sessionResponse = request()
                 sessionHolder.endEarlyDelivery()
                 earlyDelivery.join()
