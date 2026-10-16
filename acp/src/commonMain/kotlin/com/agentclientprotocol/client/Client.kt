@@ -459,46 +459,24 @@ public class Client(
 
     /**
      * Loads an existing session with specified [sessionId] and [sessionParameters], and delivers its updates to
-     * [operations] while the agent replays the history.
+     * [operations] while the agent replays the history, instead of buffering them until the answer as the
+     * [ClientOperationsFactory] overload does.
      *
-     * Use this overload when the client has the operations object before the request. The overload with a
-     * [ClientOperationsFactory] buffers every `session/update` until the agent answers. An agent can replay the
-     * whole history long before it answers `session/load`, so that buffer delays the history.
-     *
-     * This overload registers the session before it sends the request. Each `session/update` for [sessionId]
-     * that arrives before the answer goes to [ClientSessionOperations.notify] of [operations] as it arrives, one
-     * at a time and in arrival order. After the answer, the returned session receives the later updates and
-     * passes them to the same [operations]. Each update goes to [operations] exactly once and in arrival order,
-     * also when it arrives together with the answer.
-     *
-     * An early update has these differences from an update after the answer:
-     * - [kotlin.coroutines.CoroutineContext.clientSession] is not available in [ClientSessionOperations.notify]
-     *   because the session does not exist yet;
-     * - [ClientSessionOperations.notify] must not wait for this call to return, because the call waits for the
-     *   early updates that arrived before the answer.
-     *
-     * The returned session applies the mode and config option updates of the early updates to
-     * [ClientSession.currentMode] and [ClientSession.configOptions] after it reads the answer. The state is thus
+     * Each update reaches [ClientSessionOperations.notify] exactly once and in arrival order, before and after the
+     * answer. Before the answer, [kotlin.coroutines.CoroutineContext.clientSession] is not available in `notify`,
+     * and `notify` must not wait for this call to return. The mode and config options of the returned session are
      * the same as with the [ClientOperationsFactory] overload.
      *
-     * Requests from the agent for [sessionId], such as `session/request_permission`, wait for the answer as with
-     * the [ClientOperationsFactory] overload.
-     *
-     * The load fails if the agent answers with an error, if [ClientSessionOperations.notify] throws, or if the
-     * caller is cancelled. The updates that [operations] already received then belong to the failed load. The
-     * updates that [operations] did not receive yet, and all later updates for [sessionId], go to
-     * [globalSessionUpdateHandler], as for a session that this client did not load. A later load of [sessionId]
-     * starts over.
-     *
-     * The call throws [IllegalStateException] before it sends the request if [sessionId] already has a session in
-     * this client, or if another call with ready operations is opening it. A [ClientOperationsFactory] call that
-     * opens [sessionId] at the same time fails instead of this call.
+     * If the agent answers with an error, `notify` throws, or the caller is cancelled, the load fails. The updates
+     * that [operations] did not receive yet, and all later updates for [sessionId], go to [globalSessionUpdateHandler].
      *
      * @param sessionId the id of the existing session to load
      * @param sessionParameters parameters for loading the session
      * @param operations the operations of the session. It must also implement the interfaces for the extra
      * capabilities that the client declares, like file system or terminal support.
      * @return a [ClientSession] instance for the loaded session
+     * @throws IllegalStateException before the request, if [sessionId] already has a session in this client or
+     *   another call is opening it with ready operations
      */
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operations: ClientSessionOperations): ClientSession {
         return withInitializingSession {
