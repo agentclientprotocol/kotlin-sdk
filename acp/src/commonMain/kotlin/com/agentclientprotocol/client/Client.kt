@@ -4,11 +4,7 @@ package com.agentclientprotocol.client
 
 import com.agentclientprotocol.agent.AgentInfo
 import com.agentclientprotocol.annotations.UnstableApi
-import com.agentclientprotocol.common.ClientSessionOperations
-import com.agentclientprotocol.common.ElicitationOperations
-import com.agentclientprotocol.common.FileSystemOperations
-import com.agentclientprotocol.common.SessionCreationParameters
-import com.agentclientprotocol.common.TerminalOperations
+import com.agentclientprotocol.common.*
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.*
 import com.agentclientprotocol.rpc.ACPJson
@@ -18,15 +14,8 @@ import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 
 private val logger = KotlinLogging.logger {}
@@ -690,13 +679,21 @@ public class Client(
 
     /**
      * Returns the holder of [sessionId], claimed by a factory call.
-     *
      * Must run under [withInitializingSession], which makes sure the holder exists.
      */
     private fun claimFactorySessionHolder(sessionId: SessionId): ClientSessionHolder {
         val sessionHolder = getOrCreateSessionHolder(sessionId)
-        // Refuse before the holder is touched: it belongs to the load with ready operations that claimed it.
         check(sessionHolder.claim(ClientSessionHolder.Opener.FACTORY)) { "Session $sessionId is already open or being opened" }
+        return sessionHolder
+    }
+
+    /**
+     * Returns the holder of [sessionId], claimed by an operations call.
+     * Must run under [withInitializingSession], which makes sure the holder exists.
+     */
+    private fun claimOperationsSessionHolder(sessionId: SessionId): ClientSessionHolder {
+        val sessionHolder = getOrCreateSessionHolder(sessionId)
+        check(sessionHolder.claim(ClientSessionHolder.Opener.OPERATIONS)) { "Session $sessionId is already open or being opened" }
         return sessionHolder
     }
 
@@ -738,9 +735,7 @@ public class Client(
         operations: ClientSessionOperations,
         request: suspend () -> AcpCreatedSessionResponse,
     ): ClientSession = withInitializingSession {
-        // Doesn't throw, because withInitializingSession creates a new entry.
-        val sessionHolder = getOrCreateSessionHolder(sessionId)
-        check(sessionHolder.claim(ClientSessionHolder.Opener.OPERATIONS)) { "Session $sessionId is already open or being opened" }
+        val sessionHolder = claimOperationsSessionHolder(sessionId)
 
         try {
             coroutineScope {
