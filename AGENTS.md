@@ -59,6 +59,10 @@ Cross-transport integration and conformance-style tests. Use this module for beh
 
 Runnable examples for stable ACP, direct v2 use, negotiation, and external-agent integration. Samples should demonstrate supported public APIs, not internal shortcuts.
 
+### `:test-tck:acp-tck-agent-v1` and `:test-tck:acp-tck-agent-v2`
+
+STDIO agents built on the stable and v2 `Agent` runtimes, used as systems under test for the external [acp-tck](https://github.com/agentclientprotocol/acp-tck). `test-tck/setup_tck.sh` clones acp-tck at a pinned commit, and `test-tck/run_tck.sh <v1|v2>` builds the agent and runs the matching suite; see `test-tck/README.md`. The agents advertise every capability the suites check and use only public APIs, so a TCK failure points at SDK behavior. Keep them free of workarounds for SDK defects. They are not published.
+
 ### `buildSrc`
 
 Shared Gradle convention and publishing plugins. `acp.multiplatform.gradle.kts` defines targets, explicit API mode, the JDK toolchain, and generated library-version constants. Changes here affect most modules and are core architectural changes.
