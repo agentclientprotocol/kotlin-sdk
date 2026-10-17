@@ -394,6 +394,7 @@ Contributions are welcome! Please open an issue to discuss significant changes b
 1. Fork and clone the repo.
 2. Run `./gradlew check` to execute the test suite.
 3. Use the supplied GitHub Actions workflows to verify compatibility.
+4. Optionally check protocol conformance with the [ACP Test Compatibility Kit](https://github.com/agentclientprotocol/acp-tck), see [`test-tck/README.md`](test-tck/README.md).
 
 ## Support
 

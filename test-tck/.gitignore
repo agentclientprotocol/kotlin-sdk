@@ -1,0 +1,4 @@
+# ACP TCK, should be cloned locally by using setup_tck.sh
+/acp-tck
+# acp-tck JSON reports
+/reports
