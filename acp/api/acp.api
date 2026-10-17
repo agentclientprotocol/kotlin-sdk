@@ -55,6 +55,8 @@ public abstract interface class com/agentclientprotocol/agent/AgentSession {
 	public static synthetic fun postInitialize$suspendImpl (Lcom/agentclientprotocol/agent/AgentSession;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun prompt (Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun prompt$default (Lcom/agentclientprotocol/agent/AgentSession;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public fun replayHistory (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun replayHistory$suspendImpl (Lcom/agentclientprotocol/agent/AgentSession;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun setConfigOption-A2gp-xI (Ljava/lang/String;Lcom/agentclientprotocol/model/SessionConfigOptionValue;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun setConfigOption-A2gp-xI$suspendImpl (Lcom/agentclientprotocol/agent/AgentSession;Ljava/lang/String;Lcom/agentclientprotocol/model/SessionConfigOptionValue;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun setMode-tFeI3nk (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -73,6 +75,7 @@ public final class com/agentclientprotocol/agent/AgentSession$DefaultImpls {
 	public static fun getDefaultModel-GMZLII8 (Lcom/agentclientprotocol/agent/AgentSession;)Ljava/lang/String;
 	public static fun postInitialize (Lcom/agentclientprotocol/agent/AgentSession;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun prompt$default (Lcom/agentclientprotocol/agent/AgentSession;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static fun replayHistory (Lcom/agentclientprotocol/agent/AgentSession;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun setConfigOption-A2gp-xI (Lcom/agentclientprotocol/agent/AgentSession;Ljava/lang/String;Lcom/agentclientprotocol/model/SessionConfigOptionValue;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun setMode-tFeI3nk (Lcom/agentclientprotocol/agent/AgentSession;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun setModel-BrQ11X8 (Lcom/agentclientprotocol/agent/AgentSession;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;

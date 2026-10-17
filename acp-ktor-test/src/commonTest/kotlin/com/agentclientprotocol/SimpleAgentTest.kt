@@ -1294,6 +1294,120 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
     }
 
     @Test
+    fun `load session sends the replayHistory updates before the agent answers`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val loadedSessionId = SessionId("replay-history-session-id")
+        val replay = listOf("replay-1", "replay-2", "replay-3")
+        val answerGate = CompletableDeferred<Unit>()
+        val received = MutableStateFlow<List<String>>(emptyList())
+
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(clientInfo.protocolVersion)
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession = object : AgentSession {
+                override val sessionId: SessionId = sessionId
+
+                override suspend fun replayHistory() {
+                    val client = currentCoroutineContext().client
+                    for (text in replay) {
+                        client.notify(agentTextChunk(text))
+                    }
+                    answerGate.await()
+                }
+
+                override suspend fun prompt(
+                    content: List<ContentBlock>,
+                    _meta: JsonElement?,
+                ): Flow<Event> = emptyFlow()
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val operations = object : ClientSessionOperations {
+            override suspend fun requestPermissions(
+                toolCall: SessionUpdate.ToolCallUpdate,
+                permissions: List<PermissionOption>,
+                _meta: JsonElement?,
+            ): RequestPermissionResponse {
+                return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+            }
+
+            override suspend fun notify(notification: SessionUpdate, _meta: JsonElement?) {
+                val text = (notification as? SessionUpdate.AgentMessageChunk)?.content as? ContentBlock.Text ?: return
+                received.update { it + text.text }
+            }
+        }
+        val load = async {
+            client.loadSession(loadedSessionId, SessionCreationParameters("/test/path", emptyList()), operations)
+        }
+
+        withTimeout(2000.milliseconds) { received.first { it.size == replay.size } }
+        assertFalse(load.isCompleted, "the agent must not answer session/load before replayHistory returns")
+
+        answerGate.complete(Unit)
+        val session = withTimeout(2000.milliseconds) { load.await() }
+        assertEquals(loadedSessionId, session.sessionId)
+        assertEquals(replay, received.value)
+    }
+
+    @Test
+    fun `load session fails and leaves no session when replayHistory throws`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val loadedSessionId = SessionId("failed-replay-session-id")
+
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(clientInfo.protocolVersion)
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                TODO("Not yet implemented")
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession = object : AgentSession {
+                override val sessionId: SessionId = sessionId
+
+                override suspend fun replayHistory() {
+                    jsonRpcInvalidParams("History is unavailable")
+                }
+
+                override suspend fun prompt(
+                    content: List<ContentBlock>,
+                    _meta: JsonElement?,
+                ): Flow<Event> = emptyFlow()
+            }
+        })
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val loadFailure = assertFailsWith<AcpExpectedError> {
+            AcpMethod.AgentMethods.V1.SessionLoad(
+                clientProtocol,
+                LoadSessionRequest(loadedSessionId, "/test/path", emptyList()),
+            )
+        }
+        assertEquals("History is unavailable", loadFailure.message)
+
+        val promptFailure = assertFailsWith<AcpExpectedError> {
+            AcpMethod.AgentMethods.V1.SessionPrompt(clientProtocol, PromptRequest(loadedSessionId, emptyList()))
+        }
+        assertEquals("Session $loadedSessionId not found", promptFailure.message)
+    }
+
+    @Test
     fun `failed session creation should cleanup holder and allow retry`() = testWithProtocols { clientProtocol, agentProtocol ->
         val sessionId = SessionId("retry-session-id")
         var loadAttempt = 0

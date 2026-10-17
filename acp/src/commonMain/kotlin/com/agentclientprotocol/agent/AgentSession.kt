@@ -20,6 +20,23 @@ public interface AgentSession {
      * This method shouldn't throw exceptions.
      */
     public suspend fun postInitialize() {}
+
+    /**
+     * Replays the conversation history to the client while serving `session/load`.
+     *
+     * Runs after the session is registered and before the `session/load` response is sent, so every update sent here
+     * reaches the client ahead of the response, as the protocol requires. It is not called for other ways to open
+     * a session. To access client operations use:
+     * ```
+     * currentCoroutineContext().client
+     * ```
+     *
+     * If it throws, `session/load` fails with that error and the session is not registered.
+     *
+     * See protocol docs: [Loading Sessions](https://agentclientprotocol.com/protocol/session-setup#loading-sessions)
+     */
+    public suspend fun replayHistory() {}
+
     /**
      * Sends a message to the agent for execution and waits for the whole turn to be completed.
      * During execution, the agent can send notifications or requests to the client.
