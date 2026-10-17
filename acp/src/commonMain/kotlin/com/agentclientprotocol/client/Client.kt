@@ -4,10 +4,7 @@ package com.agentclientprotocol.client
 
 import com.agentclientprotocol.agent.AgentInfo
 import com.agentclientprotocol.annotations.UnstableApi
-import com.agentclientprotocol.common.ElicitationOperations
-import com.agentclientprotocol.common.FileSystemOperations
-import com.agentclientprotocol.common.SessionCreationParameters
-import com.agentclientprotocol.common.TerminalOperations
+import com.agentclientprotocol.common.*
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.*
 import com.agentclientprotocol.rpc.ACPJson
@@ -17,8 +14,7 @@ import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonElement
 
@@ -57,17 +53,20 @@ public class Client(
      * sessions. Returns `null` if the session is neither registered nor being initialized, instead of throwing -
      * callers that need a session to exist (e.g., to service a request against it) should use
      * [getOrCreateSessionHolder] instead.
+     *
+     * A failed holder counts as missing and is replaced while sessions initialize, so a retry of a failed opening
+     * gets a fresh holder. Dropping a failed holder loses nothing, because [failSessionHolder] drains it at once.
      */
     private fun getOrCreateSessionHolderOrNull(sessionId: SessionId): ClientSessionHolder? {
         // Fast path for the common case of an already registered session.
-        _sessions.value.sessions[sessionId]?.let { return it }
+        _sessions.value.sessions[sessionId]?.takeUnless { it.isFailed }?.let { return it }
         var clientSessionHolder: ClientSessionHolder? = null
         // Every branch below has to look the session up in `currentStorage` rather than rely on the read above:
         // `_sessions` can change between that read and the CAS, and it can change again between two attempts of
         // the CAS loop. A session that a concurrent newSession/loadSession registers in such a window - together
         // with decrementing `initializingSessionsCount` back to zero - would otherwise be reported as missing.
         _sessions.update { currentStorage ->
-            val existingHolder = currentStorage.sessions[sessionId]
+            val existingHolder = currentStorage.sessions[sessionId]?.takeUnless { it.isFailed }
             when {
                 existingHolder != null -> {
                     clientSessionHolder = existingHolder
@@ -427,7 +426,7 @@ public class Client(
                 )
             )
             val sessionId = newSessionResponse.sessionId
-            return@withInitializingSession createSession(sessionId, sessionParameters, newSessionResponse, operationsFactory)
+            return@withInitializingSession createSession(claimFactorySessionHolder(sessionId), sessionId, sessionParameters, newSessionResponse, operationsFactory)
         }
     }
 
@@ -440,20 +439,45 @@ public class Client(
      * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
      * See [ClientOperationsFactory.createClientOperations] for more details.
      * @return a [ClientSession] instance for the new session
+     * @throws IllegalStateException before the request, if a call with ready operations has opened [sessionId] or
+     *   is opening it
      */
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
-        return withInitializingSession {
-            val loadSessionResponse = AcpMethod.AgentMethods.V1.SessionLoad(
+        return withFactoryInitializingSession(sessionId, sessionParameters, operationsFactory) {
+            AcpMethod.AgentMethods.V1.SessionLoad(
                 protocol,
-                LoadSessionRequest(
-                    sessionId,
-                    sessionParameters.cwd,
-                    sessionParameters.mcpServers,
-                    sessionParameters.additionalDirectories,
-                    sessionParameters._meta
-                )
+                loadSessionRequest(sessionId, sessionParameters)
             )
-            return@withInitializingSession createSession(sessionId, sessionParameters, loadSessionResponse, operationsFactory)
+        }
+    }
+
+    /**
+     * Loads an existing session with specified [sessionId] and [sessionParameters], and delivers its updates to
+     * [operations] while the agent replays the history, instead of buffering them until the answer as the
+     * [ClientOperationsFactory] overload does.
+     *
+     * Each update reaches [ClientSessionOperations.notify] exactly once and in arrival order, before and after the
+     * answer. Before the answer, [kotlin.coroutines.CoroutineContext.clientSession] is not available in `notify`,
+     * and `notify` must not wait for this call to return. The mode and config options of the returned session are
+     * the same as with the [ClientOperationsFactory] overload.
+     *
+     * If the agent answers with an error, `notify` throws, or the caller is cancelled, the load fails. The updates
+     * that [operations] did not receive yet, and all later updates for [sessionId], go to [globalSessionUpdateHandler].
+     *
+     * @param sessionId the id of the existing session to load
+     * @param sessionParameters parameters for loading the session
+     * @param operations the operations of the session. It must also implement the interfaces for the extra
+     * capabilities that the client declares, like file system or terminal support.
+     * @return a [ClientSession] instance for the loaded session
+     * @throws IllegalStateException before the request, if [sessionId] already has a session in this client or
+     *   another call is opening it
+     */
+    public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operations: ClientSessionOperations): ClientSession {
+        return withEarlyInitializingSession(sessionId, sessionParameters, operations) {
+            AcpMethod.AgentMethods.V1.SessionLoad(
+                protocol,
+                loadSessionRequest(sessionId, sessionParameters)
+            )
         }
     }
 
@@ -526,7 +550,7 @@ public class Client(
                 )
             )
             val newSessionId = forkSessionResponse.sessionId
-            return@withInitializingSession createSession(newSessionId, sessionParameters, forkSessionResponse, operationsFactory)
+            return@withInitializingSession createSession(claimFactorySessionHolder(newSessionId), newSessionId, sessionParameters, forkSessionResponse, operationsFactory)
         }
     }
 
@@ -545,21 +569,44 @@ public class Client(
      * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
      * See [ClientOperationsFactory.createClientOperations] for more details.
      * @return a [ClientSession] instance for the resumed session
+     * @throws IllegalStateException before the request, if a call with ready operations has opened [sessionId] or
+     *   is opening it
      */
     @UnstableApi
     public suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
-        return withInitializingSession {
-            val resumeSessionResponse = AcpMethod.AgentMethods.V1.SessionResume(
+        return withFactoryInitializingSession(sessionId, sessionParameters, operationsFactory) {
+            AcpMethod.AgentMethods.V1.SessionResume(
                 protocol,
-                ResumeSessionRequest(
-                    sessionId,
-                    sessionParameters.cwd,
-                    sessionParameters.mcpServers,
-                    sessionParameters.additionalDirectories,
-                    sessionParameters._meta
-                )
+                resumeSessionRequest(sessionId, sessionParameters)
             )
-            return@withInitializingSession createSession(sessionId, sessionParameters, resumeSessionResponse, operationsFactory)
+        }
+    }
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * Resumes an existing session, and delivers the updates that arrive before the answer to [operations] at once.
+     *
+     * The delivery, the session state, and the failure behavior are the same as for the [loadSession] overload
+     * with a [ClientSessionOperations] argument.
+     *
+     * This method is only available if the agent advertises the `session.resume` capability.
+     *
+     * @param sessionId the id of the session to resume
+     * @param sessionParameters parameters for resuming the session
+     * @param operations the operations of the session. It must also implement the interfaces for the extra
+     * capabilities that the client declares, like file system or terminal support.
+     * @return a [ClientSession] instance for the resumed session
+     */
+    @UnstableApi
+    public suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operations: ClientSessionOperations): ClientSession {
+        return withEarlyInitializingSession(sessionId, sessionParameters, operations) {
+            AcpMethod.AgentMethods.V1.SessionResume(
+                protocol,
+                resumeSessionRequest(sessionId, sessionParameters)
+            )
         }
     }
 
@@ -610,9 +657,13 @@ public class Client(
     /**
      * After ClientSessionImpl is created the delayed notifications are drained and pushed into session.notify()
      */
-    private suspend fun createSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, sessionResponse: AcpCreatedSessionResponse, factory: ClientOperationsFactory): ClientSession {
-        // doesn't throw if executing under `withInitializingSession` because creates a new entry
-        val sessionHolder = getOrCreateSessionHolder(sessionId)
+    private suspend fun createSession(
+        sessionHolder: ClientSessionHolder,
+        sessionId: SessionId,
+        sessionParameters: SessionCreationParameters,
+        sessionResponse: AcpCreatedSessionResponse,
+        factory: ClientOperationsFactory,
+    ): ClientSession {
         return runCatching {
             val operations = factory.createClientOperations(sessionId, sessionResponse)
             val session = ClientSessionImpl(this, sessionId, sessionParameters, operations, sessionResponse, protocol)
@@ -620,11 +671,117 @@ public class Client(
             session
         }.getOrElse { throwable ->
             // throw IllegalStateException to pass it as INTERNAL_ERROR to the other side (see in Protocol)
-            sessionHolder.completeExceptionally(IllegalStateException("Failed to create session $sessionId", throwable))
+            failSessionHolder(sessionId, sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             // cleanup of this sessionId entry will be done in finally of withInitializingSession
             throw throwable
         }
     }
+
+    /**
+     * Returns the holder of [sessionId], claimed by a factory call.
+     * Must run under [withInitializingSession], which makes sure the holder exists.
+     */
+    private fun claimFactorySessionHolder(sessionId: SessionId): ClientSessionHolder {
+        val sessionHolder = getOrCreateSessionHolder(sessionId)
+        check(sessionHolder.claim(ClientSessionHolder.Opener.FACTORY)) { "Session $sessionId is already open or being opened" }
+        return sessionHolder
+    }
+
+    /**
+     * Returns the holder of [sessionId], claimed by an operations call.
+     * Must run under [withInitializingSession], which makes sure the holder exists.
+     */
+    private fun claimOperationsSessionHolder(sessionId: SessionId): ClientSessionHolder {
+        val sessionHolder = getOrCreateSessionHolder(sessionId)
+        check(sessionHolder.claim(ClientSessionHolder.Opener.OPERATIONS)) { "Session $sessionId is already open or being opened" }
+        return sessionHolder
+    }
+
+    /**
+     * Opens the session [sessionId] with [request] under [withInitializingSession], and buffers its updates until
+     * [factory] creates the operations after the answer.
+     *
+     * The holder is claimed before [request] sends anything, so a load with ready operations of the same id fails
+     * before its own request. If [request] fails, the holder fails, and the updates in its queue go to
+     * [globalSessionUpdateHandler].
+     */
+    private suspend fun withFactoryInitializingSession(
+        sessionId: SessionId,
+        sessionParameters: SessionCreationParameters,
+        factory: ClientOperationsFactory,
+        request: suspend () -> AcpCreatedSessionResponse,
+    ): ClientSession = withInitializingSession {
+        val sessionHolder = claimFactorySessionHolder(sessionId)
+        val sessionResponse = try {
+            request()
+        } catch (throwable: Throwable) {
+            failSessionHolder(sessionId, sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
+            throw throwable
+        }
+        createSession(sessionHolder, sessionId, sessionParameters, sessionResponse, factory)
+    }
+
+    /**
+     * Opens the session [sessionId] with [request] under [withInitializingSession], and delivers its updates to
+     * [operations] before the answer.
+     *
+     * The holder is claimed before [request] sends anything, and one consumer hands its queue to [operations] until
+     * the answer. If the opening fails, also in [ClientSessionOperations.notify] or by a cancellation, the holder
+     * fails, and the updates still in its queue go to [globalSessionUpdateHandler].
+     */
+    private suspend fun withEarlyInitializingSession(
+        sessionId: SessionId,
+        sessionParameters: SessionCreationParameters,
+        operations: ClientSessionOperations,
+        request: suspend () -> AcpCreatedSessionResponse,
+    ): ClientSession = withInitializingSession {
+        val sessionHolder = claimOperationsSessionHolder(sessionId)
+
+        try {
+            coroutineScope {
+                val earlyDelivery = launch {
+                    try {
+                        sessionHolder.deliverEarly(operations)
+                    } catch (ce: CancellationException) {
+                        /*
+                         * A cancellation that does not come from this call, such as a timeout inside `notify`, would
+                         * end this child without failing the scope and leave the rest of the queue undelivered.
+                         */
+                        ensureActive()
+                        throw IllegalStateException("ClientSessionOperations.notify was cancelled", ce)
+                    }
+                }
+                val sessionResponse = request()
+                sessionHolder.endEarlyDelivery()
+                earlyDelivery.join()
+                val session = ClientSessionImpl(this@Client, sessionId, sessionParameters, operations, sessionResponse, protocol)
+                sessionHolder.completeEarlySession(session)
+                session
+            }
+        } catch (throwable: Throwable) {
+            // The cleanup of this sessionId entry is done in finally of withInitializingSession.
+            failSessionHolder(sessionId, sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
+            throw throwable
+        }
+    }
+
+    private fun loadSessionRequest(sessionId: SessionId, sessionParameters: SessionCreationParameters): LoadSessionRequest =
+        LoadSessionRequest(
+            sessionId,
+            sessionParameters.cwd,
+            sessionParameters.mcpServers,
+            sessionParameters.additionalDirectories,
+            sessionParameters._meta
+        )
+
+    private fun resumeSessionRequest(sessionId: SessionId, sessionParameters: SessionCreationParameters): ResumeSessionRequest =
+        ResumeSessionRequest(
+            sessionId,
+            sessionParameters.cwd,
+            sessionParameters.mcpServers,
+            sessionParameters.additionalDirectories,
+            sessionParameters._meta
+        )
 
     public fun getSession(sessionId: SessionId): ClientSession {
         val sessionHolder = _sessions.value.sessions[sessionId] ?: error("Session $sessionId not found")
@@ -643,6 +800,21 @@ public class Client(
             handler.onUnconnectedSessionUpdate(sessionId, update, _meta)
         } else {
             logger.debug { "Ignoring session/update for session $sessionId: client is not connected to it" }
+        }
+    }
+
+    /**
+     * Fails [holder] with [cause] and hands its queued updates to [globalSessionUpdateHandler] at once.
+     *
+     * Every failure of a holder goes through here, so a failed holder keeps no updates. A failure of the handler is
+     * logged per update, so it neither stops the drain nor replaces the failure that the caller sees.
+     */
+    private suspend fun failSessionHolder(sessionId: SessionId, holder: ClientSessionHolder, cause: Throwable) {
+        withContext(NonCancellable) {
+            holder.failAndDrainQueue(cause) { update, meta ->
+                runCatching { handleUnconnectedSessionUpdate(sessionId, update, meta) }
+                    .onFailure { logger.error(it) { "Unconnected session update handler failed for $sessionId" } }
+            }
         }
     }
 
@@ -691,9 +863,7 @@ public class Client(
                      * belong to this (or another concurrent) initialization; since none claimed `id`, it's an
                      * unconnected session, same as if no initialization had been in progress when they arrived.
                      */
-                    holder.failAndDrainQueue(AcpExpectedError("Session $id not found")) { update, meta ->
-                        handleUnconnectedSessionUpdate(id, update, meta)
-                    }
+                    failSessionHolder(id, holder, AcpExpectedError("Session $id not found"))
                 }
             }
         }

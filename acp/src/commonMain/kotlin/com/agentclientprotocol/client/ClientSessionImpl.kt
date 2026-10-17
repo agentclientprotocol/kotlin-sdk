@@ -157,17 +157,7 @@ internal class ClientSessionImpl(
         notification: SessionUpdate,
         _meta: JsonElement?,
     ) {
-        if (notification is SessionUpdate.CurrentModeUpdate) {
-            _currentMode.value = notification.currentModeId
-        }
-        // TODO: add support for model updates, there is no type for it
-//        if (notification is SessionUpdate.CurrentModelUpdate) {
-//            _currentModel.value = notification.currentModelId
-//        }
-        @OptIn(UnstableApi::class)
-        if (notification is SessionUpdate.ConfigOptionUpdate && configOptionsSupported) {
-            _configOptions.value = notification.configOptions
-        }
+        trackState(notification)
 
         val promptSession = activePrompt.value
         @OptIn(DelicateCoroutinesApi::class)
@@ -179,6 +169,23 @@ internal class ClientSessionImpl(
         else {
             logger.trace { "Notifying globally: $notification" }
             operations.notify(notification, _meta)
+        }
+    }
+
+    /**
+     * Applies the session state that [notification] carries to [currentMode] and [configOptions].
+     */
+    internal fun trackState(notification: SessionUpdate) {
+        if (notification is SessionUpdate.CurrentModeUpdate) {
+            _currentMode.value = notification.currentModeId
+        }
+        // TODO: add support for model updates, there is no type for it
+//        if (notification is SessionUpdate.CurrentModelUpdate) {
+//            _currentModel.value = notification.currentModelId
+//        }
+        @OptIn(UnstableApi::class)
+        if (notification is SessionUpdate.ConfigOptionUpdate && configOptionsSupported) {
+            _configOptions.value = notification.configOptions
         }
     }
 
