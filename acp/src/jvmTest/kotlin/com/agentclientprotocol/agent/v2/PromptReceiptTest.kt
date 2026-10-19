@@ -41,7 +41,7 @@ class PromptReceiptTest {
             }
         }
         test(session) { transport, _ ->
-            transport.receive(prompt())
+            transport.receive(transport.prompt())
             val (receipt, updates) = transport.nextTurn(updates = 3)
             assertEquals(messageId, receipt)
 
@@ -74,7 +74,7 @@ class PromptReceiptTest {
         }
         test(session) { transport, _ ->
             for ((index, failure) in failures.withIndex()) {
-                transport.receive(prompt())
+                transport.receive(transport.prompt())
                 // What the turn reported before failing has already been sent.
                 if (index > 0) assertEquals(running(), transport.nextUpdate())
                 val error = transport.nextError()
@@ -82,7 +82,7 @@ class PromptReceiptTest {
                 assertEquals(failure.message, error.message)
             }
 
-            transport.receive(prompt())
+            transport.receive(transport.prompt())
             assertEquals(running(), transport.nextUpdate())
             assertEquals(JsonRpcErrorCode.INTERNAL_ERROR.code, transport.nextError().code)
 
@@ -118,7 +118,7 @@ class PromptReceiptTest {
         }
         test(session) { transport, protocol ->
             // Cancelled by the client: the implementation reports the cancelled idle update itself.
-            transport.receive(prompt())
+            transport.receive(transport.prompt())
             started.receive()
             assertEquals(running(), transport.nextUpdate())
             transport.receive(TransportFrame.Single(JsonRpcNotification(
@@ -129,7 +129,7 @@ class PromptReceiptTest {
             assertFalse(returnedFromCancelledIdle, "emitting a cancelled idle update before insertion must not return")
 
             // Cancelled locally.
-            transport.receive(prompt())
+            transport.receive(transport.prompt())
             started.receive()
             assertEquals(running(), transport.nextUpdate())
             protocol.cancelPendingIncomingRequests()
@@ -149,7 +149,7 @@ class PromptReceiptTest {
             }
         }
         test(session) { transport, _ ->
-            transport.receive(prompt())
+            transport.receive(transport.prompt())
             val (receipt, updates) = transport.nextTurn(updates = 2)
             assertEquals(messageId, receipt)
             assertIs<SessionUpdate.UserMessage>(updates[0])
@@ -173,7 +173,7 @@ class PromptReceiptTest {
             }
         }
         test(session) { transport, protocol ->
-            transport.receive(prompt())
+            transport.receive(transport.prompt())
             val (receipt, updates) = transport.nextTurn(updates = 1)
             assertEquals(messageId, receipt)
             assertIs<SessionUpdate.UserMessage>(updates.single())
@@ -200,7 +200,7 @@ class PromptReceiptTest {
             }
         }
         test(session) { transport, _ ->
-            transport.receive(prompt())
+            transport.receive(transport.prompt())
 
             val messages = mutableListOf<JsonRpcMessage>()
             while (messages.none { it is JsonRpcRequest }) messages += transport.nextMessage()
@@ -261,7 +261,7 @@ class PromptReceiptTest {
                     put("value", "ask")
                 },
             ))
-            transport.receive(TransportFrame.Batch(listOf(prompt(), setConfigOption)))
+            transport.receive(TransportFrame.Batch(listOf(transport.prompt(), setConfigOption)))
 
             val traffic = mutableListOf<Any>()
             var frame = transport.sent.receive()
@@ -306,7 +306,7 @@ class PromptReceiptTest {
         }
         test(session) { transport, _ ->
             transport.rejectReply = true
-            transport.receive(prompt())
+            transport.receive(transport.prompt())
             stopped.await()
             assertIs<SessionUpdate.UserMessage>(transport.nextUpdate())
             assertEquals(idle(StopReason.Cancelled), transport.nextUpdate())
@@ -363,12 +363,22 @@ class PromptReceiptTest {
     private class FrameTransport : BaseTransport() {
         val sent = Channel<TransportFrame>(Channel.UNLIMITED)
         var rejectReply = false
+        private var nextPromptId = 3
 
         override fun start() {
             _state.value = Transport.State.STARTED
         }
 
         fun receive(frame: TransportFrame) = fireFrame(frame)
+
+        /**
+         * A prompt with a fresh request id. A reply can reach the client before the agent releases the id
+         * of the request it answers, so reusing an id for the next prompt races against that release.
+         */
+        fun prompt(): TransportFrame.Single = TransportFrame.Single(JsonRpcRequest(
+            RequestId.create(nextPromptId++), AcpMethod.AgentMethods.V2.SessionPrompt.methodName,
+            ACPJson.encodeToJsonElement(PromptRequest(sessionId, listOf(ContentBlock.Text("hello")))),
+        ))
 
         suspend fun nextMessage(): JsonRpcMessage = assertIs<TransportFrame.Single>(sent.receive()).message
 
@@ -438,11 +448,6 @@ class PromptReceiptTest {
             emit(userMessage())
             emit(idle(StopReason.EndTurn))
         }
-
-        fun prompt(): TransportFrame.Single = TransportFrame.Single(JsonRpcRequest(
-            RequestId.create(3), AcpMethod.AgentMethods.V2.SessionPrompt.methodName,
-            ACPJson.encodeToJsonElement(PromptRequest(sessionId, listOf(ContentBlock.Text("hello")))),
-        ))
 
         fun JsonRpcMessage.receipt(): MessageId = ACPJson.decodeFromJsonElement<PromptResponse>(
             assertNotNull(assertIs<JsonRpcSuccessResponse>(this).result),
