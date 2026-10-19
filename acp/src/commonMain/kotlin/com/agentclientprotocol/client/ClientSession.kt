@@ -17,6 +17,12 @@ public interface ClientSession {
     public val operations: ClientSessionOperations
 
     /**
+     * The answer of the request that opened this session: `session/new`, `session/load`, `session/resume`, or
+     * `session/fork`. It carries the modes, the models, the config options, and the `_meta` of that answer.
+     */
+    public val createdResponse: AcpCreatedSessionResponse
+
+    /**
      * Sends a message to the agent for execution and waits for the whole turn to be completed.
      * During execution, the agent can send notifications or requests to the client.
      *

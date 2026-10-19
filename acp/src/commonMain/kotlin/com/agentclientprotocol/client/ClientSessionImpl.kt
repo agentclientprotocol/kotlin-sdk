@@ -28,7 +28,7 @@ internal class ClientSessionImpl(
     override val sessionId: SessionId,
     override val parameters: SessionCreationParameters,
     override val operations: ClientSessionOperations,
-    private val createdResponse: AcpCreatedSessionResponse,
+    override val createdResponse: AcpCreatedSessionResponse,
     private val protocol: Protocol,
 ) : ClientSession {
 

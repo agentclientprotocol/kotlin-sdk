@@ -134,6 +134,11 @@ class ClientSessionHolderTest {
         failed.failAndDrainQueue(IllegalStateException("load failed")) { _, _ -> }
         assertTrue(failed.isFailed)
         assertFalse(failed.claim(ClientSessionHolder.Opener.OPERATIONS), "an early opening of a failed holder")
+
+        val failedEarly = ClientSessionHolder()
+        assertTrue(failedEarly.claim(ClientSessionHolder.Opener.OPERATIONS))
+        failedEarly.failAndDrainQueue(IllegalStateException("load failed")) { _, _ -> }
+        assertFalse(failedEarly.claim(ClientSessionHolder.Opener.FACTORY), "a factory opening of a failed early holder")
     }
 
     private class RecordingOperations(

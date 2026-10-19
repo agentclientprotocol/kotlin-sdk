@@ -411,6 +411,7 @@ public abstract interface class com/agentclientprotocol/client/ClientSession {
 	public abstract fun getClient ()Lcom/agentclientprotocol/client/Client;
 	public abstract fun getConfigOptions ()Lkotlinx/coroutines/flow/StateFlow;
 	public abstract fun getConfigOptionsSupported ()Z
+	public abstract fun getCreatedResponse ()Lcom/agentclientprotocol/model/AcpCreatedSessionResponse;
 	public abstract fun getCurrentMode ()Lkotlinx/coroutines/flow/StateFlow;
 	public abstract fun getCurrentModel ()Lkotlinx/coroutines/flow/StateFlow;
 	public abstract fun getModelsSupported ()Z

@@ -438,9 +438,10 @@ public class Client(
      * @param operationsFactory a factory for creating [com.agentclientprotocol.common.ClientSessionOperations] for the new session.
      * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
      * See [ClientOperationsFactory.createClientOperations] for more details.
-     * @return a [ClientSession] instance for the new session
-     * @throws IllegalStateException before the request, if a call with ready operations has opened [sessionId] or
-     *   is opening it
+     * @return a [ClientSession] instance for the new session. If [sessionId] is already open in this client, the
+     *   returned session is not registered: the open session stays in [getSession] and gets all updates, also those
+     *   of this load
+     * @throws IllegalStateException before the request, if a call with ready operations is opening [sessionId]
      */
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
         return withFactoryInitializingSession(sessionId, sessionParameters, operationsFactory) {
@@ -568,9 +569,10 @@ public class Client(
      * @param operationsFactory a factory for creating [com.agentclientprotocol.common.ClientSessionOperations] for the session.
      * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
      * See [ClientOperationsFactory.createClientOperations] for more details.
-     * @return a [ClientSession] instance for the resumed session
-     * @throws IllegalStateException before the request, if a call with ready operations has opened [sessionId] or
-     *   is opening it
+     * @return a [ClientSession] instance for the resumed session. If [sessionId] is already open in this client, the
+     *   returned session is not registered: the open session stays in [getSession] and gets all updates, also those
+     *   of this resume
+     * @throws IllegalStateException before the request, if a call with ready operations is opening [sessionId]
      */
     @UnstableApi
     public suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
