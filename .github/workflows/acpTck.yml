@@ -2,7 +2,6 @@ name: ACP TCK
 on:
   # TODO Re-enable on pull requests once the SDK passes the TCK; until then it only runs on manual dispatch.
   # pull_request:
-  #   types: [opened, edited, synchronize, reopened]
   workflow_dispatch:
 
 concurrency:
