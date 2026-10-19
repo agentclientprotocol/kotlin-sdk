@@ -95,7 +95,7 @@ internal class ClientSessionImpl(
     @UnstableApi
     override suspend fun close(_meta: JsonElement?): CloseSessionResponse {
         val response = AcpMethod.AgentMethods.V1.SessionClose(protocol, CloseSessionRequest(sessionId, _meta))
-        client.removeSessionHolder(sessionId)
+        client.removeSessionHolder(this)
         return response
     }
 

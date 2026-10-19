@@ -89,6 +89,12 @@ internal class ClientSessionHolder {
     private val isOpen: Boolean
         get() = sessionDeferred.isCompleted && !isFailed
 
+    /**
+     * Whether [session] is the open session of this holder.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun holds(session: ClientSessionImpl): Boolean = isOpen && sessionDeferred.getCompleted() === session
+
     suspend fun drainEventsAndCompleteSession(session: ClientSessionImpl) {
         @OptIn(ExperimentalCoroutinesApi::class)
         notifications.close()

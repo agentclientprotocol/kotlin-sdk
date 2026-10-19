@@ -92,10 +92,20 @@ public class Client(
     private fun getOrCreateSessionHolder(sessionId: SessionId): ClientSessionHolder =
         getOrCreateSessionHolderOrNull(sessionId) ?: acpFail("Session $sessionId not found")
 
-    internal fun removeSessionHolder(sessionId: SessionId) {
+    /**
+     * Removes the holder of [session] after `session/close`.
+     *
+     * A factory reopen of an open session returns a session that is not registered. Its holder holds the open
+     * session, so the close of the unregistered session must leave the holder in place.
+     */
+    internal fun removeSessionHolder(session: ClientSessionImpl) {
+        val sessionId = session.sessionId
+        var removed = false
         _sessions.update { currentMap ->
-            currentMap.copy(sessions = currentMap.sessions.remove(sessionId))
+            removed = currentMap.sessions[sessionId]?.holds(session) == true
+            if (removed) currentMap.copy(sessions = currentMap.sessions.remove(sessionId)) else currentMap
         }
+        if (!removed) return
         @OptIn(UnstableApi::class)
         _elicitationToSession.removeBySession(sessionId)
     }
@@ -440,7 +450,10 @@ public class Client(
      * See [ClientOperationsFactory.createClientOperations] for more details.
      * @return a [ClientSession] instance for the new session. If [sessionId] is already open in this client, the
      *   returned session is not registered: the open session stays in [getSession] and gets all updates, also those
-     *   of this load
+     *   of this load. The load does not change the answer, the capabilities, or the initial state of the open
+     *   session, see [ClientSession.createdResponse]. Only the updates of the replay change its current mode and
+     *   config options. The returned session carries the new answer and gets no updates. Its
+     *   [ClientSession.close] sends `session/close` but leaves the open session registered
      * @throws IllegalStateException before the request, if a call with ready operations is opening [sessionId]
      */
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
@@ -571,7 +584,10 @@ public class Client(
      * See [ClientOperationsFactory.createClientOperations] for more details.
      * @return a [ClientSession] instance for the resumed session. If [sessionId] is already open in this client, the
      *   returned session is not registered: the open session stays in [getSession] and gets all updates, also those
-     *   of this resume
+     *   of this resume. The resume does not change the answer, the capabilities, or the initial state of the open
+     *   session, see [ClientSession.createdResponse]. Only the updates of the replay change its current mode and
+     *   config options. The returned session carries the new answer and gets no updates. Its
+     *   [ClientSession.close] sends `session/close` but leaves the open session registered
      * @throws IllegalStateException before the request, if a call with ready operations is opening [sessionId]
      */
     @UnstableApi
