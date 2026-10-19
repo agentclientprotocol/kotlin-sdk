@@ -663,6 +663,11 @@ internal object ToolCallContentSerializer : OpenTaggedUnionSerializer<ToolCallCo
  * a client receives a tool call ID it has not seen before, omitted fields use client
  * defaults.
  *
+ * Unlike other fields, [_meta] objects patch one top-level key at a time: omitted keys
+ * survive, `null` values remove keys, and other values replace the key's value whole.
+ * Nested objects are not merged, and nested nulls remain data. An empty object changes
+ * no keys; a whole-field `null` clears all metadata.
+ *
  * Deserialization degrades gracefully like the Rust schema: a malformed optional field
  * decodes as [MaybeUndefined.Undefined] instead of failing, and malformed [content] or
  * [locations] items are skipped.
@@ -688,10 +693,15 @@ public data class ToolCallUpdate(
     val _meta: MaybeUndefined<JsonElement> = MaybeUndefined.Undefined,
 ) {
     /**
-     * Applies a later tool-call patch to this stored tool-call state.
+     * Applies a tool-call patch to this stored tool-call state.
      *
      * Fields set to [MaybeUndefined.Null] are preserved as [MaybeUndefined.Null] so callers
      * can decide how to render an explicitly cleared value.
+     *
+     * Apply the first upsert to an empty state too, using
+     * `ToolCallUpdate(toolCallId = update.toolCallId).applyUpdate(update)`, so metadata removals
+     * are consumed even on first receipt. Apply later updates in receive order. The result
+     * is stored state, not a combined patch for forwarding to another retained state.
      *
      * @throws IllegalArgumentException if [update] targets a different [toolCallId]
      */
@@ -709,7 +719,7 @@ public data class ToolCallUpdate(
             locations = update.locations.orElse(locations),
             rawInput = update.rawInput.orElse(rawInput),
             rawOutput = update.rawOutput.orElse(rawOutput),
-            _meta = update._meta.orElse(_meta),
+            _meta = applyMetaUpdate(_meta, update._meta),
         )
     }
 }
