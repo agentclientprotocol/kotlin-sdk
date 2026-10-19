@@ -24,8 +24,12 @@ public interface ClientSession {
      * answer, the supported and available modes, models, and config options, or the initial state of the open
      * session. Only the updates of the replay change its [currentMode] and [configOptions]. The session that the
      * reopen returns is not registered: it carries the new answer and gets no updates.
+     *
+     * The sessions of this SDK keep the answer. The default getter is for an implementation outside the SDK
+     * that does not keep it, and throws [UnsupportedOperationException].
      */
     public val createdResponse: AcpCreatedSessionResponse
+        get() = throw UnsupportedOperationException("${this::class.simpleName} does not keep the answer that opened the session")
 
     /**
      * Sends a message to the agent for execution and waits for the whole turn to be completed.
