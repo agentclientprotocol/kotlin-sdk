@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="${SCRIPT_DIR}/acp-tck"
 REPO_URL="https://github.com/agentclientprotocol/acp-tck.git"
-COMMIT_HASH="fa00ccdc13dfaa4b288a91877c1f3e468af4aa7d"
+COMMIT_HASH="3d46e2168aa3c23fe3853d539141a65a54d6a880"
 
 # 1) Clone the ACP TCK at the pinned commit unless it is already there
 if [ -d "${REPO_DIR}" ]; then
