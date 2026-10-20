@@ -61,7 +61,10 @@ Runnable examples for stable ACP, direct v2 use, negotiation, and external-agent
 
 ### `:test-tck:acp-tck-agent-v1` and `:test-tck:acp-tck-agent-v2`
 
-STDIO agents built on the stable and v2 `Agent` runtimes, used as systems under test for the external [acp-tck](https://github.com/agentclientprotocol/acp-tck). `test-tck/setup_tck.sh` clones acp-tck at a pinned commit, and `test-tck/run_tck.sh <v1|v2>` builds the agent and runs the matching suite; see `test-tck/README.md`. The agents advertise every capability the suites check and use only public APIs, so a TCK failure points at SDK behavior. Keep them free of workarounds for SDK defects. They are not published.
+STDIO agents built on the stable and v2 `Agent` runtimes, used as systems under test for the external [acp-tck](https://github.com/agentclientprotocol/acp-tck).
+The uv project in `test-tck/acp-tck-runner` pins acp-tck to a Git commit, and `test-tck/run_tck.sh <1|2>` builds the agent and runs the matching suite; see `test-tck/README.md`.
+The agents advertise every capability the suites check and use only public APIs, so a TCK failure points at SDK behavior.
+Keep them free of workarounds for SDK defects. They are not published.
 
 ### `buildSrc`
 

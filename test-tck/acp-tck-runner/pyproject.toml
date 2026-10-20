@@ -1,0 +1,9 @@
+[project]
+name = "acp-tck-runner"
+version = "0"
+description = "Pins the acp-tck revision used to check the SDK agents; not a package"
+requires-python = ">=3.14"
+dependencies = ["acp-tck"]
+
+[tool.uv.sources]
+acp-tck = { git = "https://github.com/agentclientprotocol/acp-tck", rev = "3d46e2168aa3c23fe3853d539141a65a54d6a880" }

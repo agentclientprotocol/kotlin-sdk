@@ -4,11 +4,10 @@ set -euo pipefail
 # Always operate relative to this script's directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-REPO_DIR="${SCRIPT_DIR}/acp-tck"
 
 usage() {
-  echo "Usage: $0 <v1|v2> [acp-tck options...]"
-  echo "Example: $0 v2 --report-json reports/v2.json"
+  echo "Usage: $0 <1|2> [acp-tck options...]"
+  echo "Example: $0 2 --report-json reports/v2.json"
 }
 
 if [ $# -lt 1 ]; then
@@ -17,18 +16,11 @@ if [ $# -lt 1 ]; then
 fi
 
 case "$1" in
-  v1) PROTOCOL_VERSION=1 ;;
-  v2) PROTOCOL_VERSION=2 ;;
+  1|2) PROTOCOL_VERSION="$1" ;;
   *) usage; exit 2 ;;
 esac
-AGENT="acp-tck-agent-$1"
+AGENT="acp-tck-agent-v${PROTOCOL_VERSION}"
 shift
-
-if [ ! -d "${REPO_DIR}" ]; then
-  echo "[run_tck] Expected directory not found: ${REPO_DIR}"
-  echo "[run_tck] Please run setup_tck.sh first to clone and prepare the ACP TCK."
-  exit 1
-fi
 
 # acp-tck starts a fresh agent process per test, so build a launcher script once instead of going through Gradle
 echo "[run_tck] Building ${AGENT}..."
@@ -41,7 +33,7 @@ mkdir -p reports
 
 # The agents keep credentials in memory only, so the authentication and logout flows are always safe to exercise.
 # All remaining CLI parameters are delegated to acp-tck.
-exec uv run --project "${REPO_DIR}" acp-tck \
+exec uv run --locked --project "${SCRIPT_DIR}/acp-tck-runner" acp-tck \
   --protocol-version "${PROTOCOL_VERSION}" \
   --auth-method tck \
   --allow-logout \
