@@ -156,7 +156,13 @@ public interface AgentSupport {
         _meta: JsonElement? = null,
     ): DisableProviderResponse = notAdvertised("providers/disable", "AgentCapabilities.providers")
 
-    /** Handles `session/close`: end the session's active work and release it. */
+    /**
+     * Handles `session/close`: release the session.
+     *
+     * If a turn is running, the SDK first cancels it through [AgentSession.cancel], as `session/cancel` would,
+     * and calls this only after the turn has ended. The turn's final updates and its idle update with the
+     * `cancelled` stop reason therefore reach the client before the response, as ACP requires.
+     */
     public suspend fun closeSession(sessionId: SessionId, _meta: JsonElement? = null): CloseSessionResponse =
         notAdvertised("session/close", "AgentCapabilities.session")
 

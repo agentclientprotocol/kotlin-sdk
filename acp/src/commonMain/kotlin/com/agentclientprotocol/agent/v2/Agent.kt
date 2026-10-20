@@ -108,6 +108,7 @@ public class Agent(
      */
     private class SessionWrapper(private val session: AgentSession) {
         private val _activePrompt = atomic(false)
+        private val _turn = atomic<Job?>(null)
 
         suspend fun acceptPrompt(
             protocol: Protocol,
@@ -129,6 +130,7 @@ public class Agent(
             val turn = turnScope.launch(start = CoroutineStart.UNDISPATCHED) {
                 runTurn(protocol, content, _meta, insertedMessageId)
             }
+            _turn.value = turn
             turn.invokeOnCompletion { _activePrompt.value = false }
 
             try {
@@ -257,6 +259,19 @@ public class Agent(
          */
         suspend fun cancel() {
             session.cancel()
+        }
+
+        /**
+         * Cancels the running turn as [cancel] does, and waits until it has ended.
+         *
+         * `session/close` must not answer before the cancelled turn's final updates and its idle update have
+         * gone out ([session setup](https://agentclientprotocol.com/protocol/v2/session-setup#closing-active-sessions)).
+         * Closing an idle session sends nothing.
+         */
+        suspend fun cancelAndJoinTurn() {
+            val turn = _turn.value?.takeIf { it.isActive } ?: return
+            cancel()
+            turn.join()
         }
 
         suspend fun setConfigOption(
@@ -445,6 +460,7 @@ public class Agent(
         }
 
         onRequest(AcpMethod.AgentMethods.V2.SessionClose) { params: CloseSessionRequest ->
+            _sessions.value[params.sessionId]?.cancelAndJoinTurn()
             val response = agentSupport.closeSession(params.sessionId, params._meta)
             // A closed session cannot be prompted again, so stop tracking it here rather than leaving a
             // wrapper around that would accept a turn.
