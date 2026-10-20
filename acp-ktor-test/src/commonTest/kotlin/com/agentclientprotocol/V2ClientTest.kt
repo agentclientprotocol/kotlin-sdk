@@ -96,7 +96,9 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
@@ -551,9 +553,15 @@ abstract class V2ClientTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
 
         val failure = assertFails { client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION)) }
 
-        assertTrue(
-            failure.message!!.contains("Protocol version 1 is not supported by this agent"),
-            "unexpected failure: ${failure.message}",
+        // A v1 client need not know -32022 to see that initialization failed; its data says why.
+        val refusal = assertIs<JsonRpcException>(failure)
+        assertEquals(JsonRpcErrorCode.UNSUPPORTED_PROTOCOL_VERSION.code, refusal.code)
+        assertEquals(
+            buildJsonObject {
+                put("requested", LATEST_PROTOCOL_VERSION)
+                putJsonArray("supported") { add(PROTOCOL_VERSION_V2) }
+            },
+            refusal.data,
         )
         assertEquals(0, support.initializeCalls, "the refusal happens before the implementation is called")
     }
