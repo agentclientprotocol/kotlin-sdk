@@ -7,6 +7,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.runBlocking
+import java.io.FileDescriptor
+import java.io.FileOutputStream
 import kotlin.system.exitProcess
 
 /**
@@ -16,7 +18,8 @@ import kotlin.system.exitProcess
  */
 fun main() {
     runBlocking {
-        val stdout = System.out.bufferedWriter(Charsets.UTF_8)
+        // System.out is a PrintStream that swallows IOException, so a dead stdout would never close the transport.
+        val stdout = FileOutputStream(FileDescriptor.out).bufferedWriter(Charsets.UTF_8)
         // Anything printed by mistake must not corrupt the protocol stream.
         System.setOut(System.err)
 
@@ -40,10 +43,11 @@ fun main() {
 
         closed.await()
         protocol.close()
+
+        /*
+         * A stdin read blocked on another path cannot be interrupted, and runBlocking would wait for it,
+         * so exit from inside the block as soon as the transport is closed.
+         */
+        exitProcess(0)
     }
-    /*
-     * A stdin read blocked on another path cannot be interrupted, so exit explicitly once the
-     * transport is closed instead of waiting for every coroutine to unwind.
-     */
-    exitProcess(0)
 }
