@@ -70,6 +70,12 @@ private class StoredSession(
     var cancelSignal: CompletableDeferred<Unit>? = null
 
     /**
+     * The foreground state last reported, sent again as the current-state snapshot of `session/resume`.
+     */
+    @Volatile
+    var state: StateUpdate = StateUpdate.Idle()
+
+    /**
      * Whole-message history replayed by `session/resume` with `replayFrom: start`.
      */
     val history: MutableList<SessionUpdate> = java.util.Collections.synchronizedList(mutableListOf())
@@ -123,11 +129,15 @@ class TckAgentSupport : AgentSupport {
         replayFrom: ReplayFrom?,
         client: ClientOperations,
     ): AgentSession {
+        if (replayFrom is ReplayFrom.Unknown) {
+            jsonRpcInvalidParams("Unsupported replayFrom cursor type: ${replayFrom.type}")
+        }
         val stored = sessions[sessionId] ?: store(sessionId, parameters)
-        // Replay belongs to the resume call itself: it has to reach the client before the response.
+        // Replay and the current-state snapshot belong to the resume call itself: both precede the response.
         if (replayFrom is ReplayFrom.Start) {
             stored.history.toList().forEach { client.notify(it) }
         }
+        client.notify(SessionUpdate.StateUpdate(stored.state))
         return TckAgentSession(stored, client)
     }
 
@@ -201,7 +211,7 @@ private class TckAgentSession(
         )
         stored.history += userMessage
         emit(userMessage)
-        emit(SessionUpdate.StateUpdate(StateUpdate.Running()))
+        emitState(StateUpdate.Running())
 
         val planId = PlanId("$sessionId-plan-$turn")
         emitPlan(planId, PlanEntryStatus.InProgress)
@@ -218,7 +228,7 @@ private class TckAgentSession(
             )
         )
 
-        emit(SessionUpdate.StateUpdate(StateUpdate.RequiresAction()))
+        emitState(StateUpdate.RequiresAction())
         val permission = client.requestPermission(
             title = "Echo the prompt?",
             options = listOf(ALLOW_OPTION, REJECT_OPTION),
@@ -228,7 +238,7 @@ private class TckAgentSession(
             emitCancelled(toolCallId)
             return@flow
         }
-        emit(SessionUpdate.StateUpdate(StateUpdate.Running()))
+        emitState(StateUpdate.Running())
 
         val messageId = MessageId("$sessionId-agent-$turn")
         val words = listOf("Echo:") + content.joinToString(" ") { it.describe() }.split(' ').filter { it.isNotBlank() }
@@ -258,7 +268,12 @@ private class TckAgentSession(
             )
         )
         emitPlan(planId, PlanEntryStatus.Completed)
-        emit(SessionUpdate.StateUpdate(StateUpdate.Idle(stopReason = StopReason.EndTurn)))
+        emitState(StateUpdate.Idle(stopReason = StopReason.EndTurn))
+    }
+
+    private suspend fun FlowCollector<SessionUpdate>.emitState(state: StateUpdate) {
+        stored.state = state
+        emit(SessionUpdate.StateUpdate(state))
     }
 
     private suspend fun FlowCollector<SessionUpdate>.emitPlan(planId: PlanId, status: PlanEntryStatus) {
@@ -275,7 +290,7 @@ private class TckAgentSession(
                 ToolCallUpdate(toolCallId = toolCallId, status = MaybeUndefined.Value(ToolCallStatus.Cancelled))
             )
         )
-        emit(SessionUpdate.StateUpdate(StateUpdate.Idle(stopReason = StopReason.Cancelled)))
+        emitState(StateUpdate.Idle(stopReason = StopReason.Cancelled))
     }
 }
 
