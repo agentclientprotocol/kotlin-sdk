@@ -32,13 +32,13 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
@@ -629,23 +629,19 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     }
 
     @Test
-    fun `PARSE_ERROR is propagated to client`() = testWithProtocols { clientProtocol, agentProtocol ->
+    fun `params that do not decode are rejected with INVALID_PARAMS`() = testWithProtocols { clientProtocol, agentProtocol ->
         agentProtocol.setRequestHandler(TestMethod) { request ->
             TestResponse("should not reach here")
         }
 
-        try {
-            // Send invalid JSON that cannot be deserialized to TestRequest
-            clientProtocol.sendRequestRaw(TestMethod.methodName, kotlinx.serialization.json.buildJsonObject {
-                put("invalidField", "not a valid TestRequest")
-            })
-            fail("Expected JsonRpcException to be thrown")
-        }
-        catch (e: SerializationException) {
-            // expected
-        }
-        catch (e: Exception) {
-            fail("Unexpected exception: ${e.message}", e)
+        // The message parses, so its params are invalid rather than unparseable: -32602, not -32700.
+        for (params in listOf(
+            buildJsonObject { put("invalidField", "not a valid TestRequest") },
+            buildJsonObject { put("message", buildJsonObject {}) },
+        )) {
+            assertFailsWith<AcpExpectedError>("params $params") {
+                clientProtocol.sendRequestRaw(TestMethod.methodName, params)
+            }
         }
     }
 

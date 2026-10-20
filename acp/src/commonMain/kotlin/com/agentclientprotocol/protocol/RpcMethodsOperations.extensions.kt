@@ -7,6 +7,7 @@ import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.util.PaginatedResponseToFlowAdapter
 import com.agentclientprotocol.util.SequenceToPaginatedResponseAdapter
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -58,8 +59,16 @@ public fun <TNotification: AcpNotification> RpcMethodsOperations.sendNotificatio
 /*
  * JSON-RPC lets a request or notification omit `params`. Decode that as an empty object, so a type whose
  * fields all have defaults is accepted, mirroring how `sendRequest` reads a missing result.
+ *
+ * The message itself was parsed already, so params that do not decode are Invalid params (`-32602`), not a
+ * Parse error. `IllegalArgumentException` covers `SerializationException` as well as the checks a model or
+ * serializer makes on a decoded value.
  */
-private fun JsonElement?.orEmptyParams(): JsonElement = this ?: JsonObject(emptyMap())
+internal fun <T> decodeParams(deserializer: DeserializationStrategy<T>, params: JsonElement?): T = try {
+    ACPJson.decodeFromJsonElement(deserializer, params ?: JsonObject(emptyMap()))
+} catch (e: IllegalArgumentException) {
+    jsonRpcInvalidParams(e.message ?: "Invalid params")
+}
 
 /**
  * Register a handler for incoming requests.
@@ -70,7 +79,7 @@ public fun<TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOperations.
     handler: suspend (TRequest) -> TResponse
 ) {
     this.setRequestHandlerRaw(method, additionalContext) { request ->
-        val requestParams = ACPJson.decodeFromJsonElement(method.requestSerializer, request.params.orEmptyParams())
+        val requestParams = decodeParams(method.requestSerializer, request.params)
         val responseObject = handler(requestParams)
         ACPJson.encodeToJsonElement(method.responseSerializer, responseObject)
     }
@@ -83,7 +92,7 @@ public fun <TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOperations
     handler: suspend (TRequest) -> RequestOutcome<TResponse>,
 ) {
     setRequestOutcomeHandlerRaw(method, additionalContext) { request ->
-        val params = ACPJson.decodeFromJsonElement(method.requestSerializer, request.params.orEmptyParams())
+        val params = decodeParams(method.requestSerializer, request.params)
         handler(params).mapResponse { ACPJson.encodeToJsonElement(method.responseSerializer, it) }
     }
 }
@@ -118,7 +127,7 @@ public fun<TNotification : AcpNotification> RpcMethodsOperations.setNotification
     handler: suspend (TNotification) -> Unit
 ) {
     this.setNotificationHandlerRaw(method, additionalContext) { notification ->
-        val notificationParams = ACPJson.decodeFromJsonElement(method.serializer, notification.params.orEmptyParams())
+        val notificationParams = decodeParams(method.serializer, notification.params)
         handler(notificationParams)
     }
 }
