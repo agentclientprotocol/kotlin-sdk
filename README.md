@@ -1,5 +1,6 @@
 # ACP Kotlin SDK
 
+[![Maven Central](https://img.shields.io/maven-central/v/com.agentclientprotocol/acp)](https://central.sonatype.com/artifact/com.agentclientprotocol/acp)
 [![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-blueviolet?logo=kotlin)](https://kotlinlang.org/docs/multiplatform.html)
 [![JVM](https://img.shields.io/badge/Platform-JVM-orange?logo=kotlin)](https://kotlinlang.org/docs/multiplatform.html)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.txt)
@@ -43,7 +44,7 @@ ACP standardises how AI agents and clients exchange messages, negotiate capabili
 
 ## Installation
 
-Artifacts are published under `com.agentclientprotocol`. The default build version is `0.3.0-SNAPSHOT`; release builds use `0.3.0`.
+Artifacts are published to Maven Central under `com.agentclientprotocol`. Replace `<version>` with the latest release shown by the Maven Central badge above.
 
 ```kotlin
 repositories {
@@ -51,10 +52,10 @@ repositories {
 }
 
 dependencies {
-    implementation("com.agentclientprotocol:acp:0.3.0-SNAPSHOT")
+    implementation("com.agentclientprotocol:acp:<version>")
     // Optional extras:
-    // implementation("com.agentclientprotocol:acp-ktor-client:0.3.0-SNAPSHOT")
-    // implementation("com.agentclientprotocol:acp-ktor-server:0.3.0-SNAPSHOT")
+    // implementation("com.agentclientprotocol:acp-ktor-client:<version>")
+    // implementation("com.agentclientprotocol:acp-ktor-server:<version>")
 }
 ```
 
