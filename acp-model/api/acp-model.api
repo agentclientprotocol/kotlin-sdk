@@ -14210,6 +14210,7 @@ public final class com/agentclientprotocol/rpc/JsonRpcErrorCode : java/lang/Enum
 	public static final field METHOD_NOT_FOUND Lcom/agentclientprotocol/rpc/JsonRpcErrorCode;
 	public static final field PARSE_ERROR Lcom/agentclientprotocol/rpc/JsonRpcErrorCode;
 	public static final field RESOURCE_NOT_FOUND Lcom/agentclientprotocol/rpc/JsonRpcErrorCode;
+	public static final field UNSUPPORTED_PROTOCOL_VERSION Lcom/agentclientprotocol/rpc/JsonRpcErrorCode;
 	public final fun getCode ()I
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun getMessage ()Ljava/lang/String;

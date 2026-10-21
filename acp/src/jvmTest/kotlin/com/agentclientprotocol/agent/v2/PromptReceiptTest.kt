@@ -316,6 +316,50 @@ class PromptReceiptTest {
         }
     }
 
+    @Test
+    fun `closing a session mid-turn answers after the cancelled turn has ended`() {
+        val cancelled = CompletableDeferred<Unit>()
+        val finalUpdate = SessionUpdate.AgentMessageChunk(ContentChunk(MessageId("agent"), ContentBlock.Text("stopped")))
+        val session = object : Session({
+            flow {
+                emit(userMessage())
+                emit(running())
+                cancelled.await()
+                emit(finalUpdate)
+                emit(idle(StopReason.Cancelled))
+            }
+        }) {
+            override suspend fun cancel() {
+                cancelled.complete(Unit)
+            }
+        }
+        test(session) { transport, _ ->
+            transport.receive(transport.prompt())
+            assertEquals(listOf(userMessage(), running()), transport.nextTurn(updates = 2).second)
+
+            transport.receive(transport.closeSession())
+            assertEquals(finalUpdate, transport.nextUpdate())
+            assertEquals(idle(StopReason.Cancelled), transport.nextUpdate())
+            assertIs<JsonRpcSuccessResponse>(transport.nextMessage())
+        }
+    }
+
+    @Test
+    fun `closing an idle session answers without cancelling or reporting anything`() {
+        val session = object : Session({ acceptedTurn() }) {
+            override suspend fun cancel() {
+                fail("an idle session has nothing to cancel")
+            }
+        }
+        test(session) { transport, _ ->
+            transport.receive(transport.prompt())
+            transport.nextTurn(updates = 2)
+
+            transport.receive(transport.closeSession())
+            assertIs<JsonRpcSuccessResponse>(transport.nextMessage())
+        }
+    }
+
     /**
      * A session whose turns come from [turn], called with the 1-based number of each turn.
      */
@@ -340,6 +384,8 @@ class PromptReceiptTest {
                 override suspend fun initialize(clientInfo: ClientInfo) = AgentInfo(Implementation("test", "1"))
                 override suspend fun createSession(parameters: SessionCreationParameters, client: ClientOperations) =
                     session(client)
+
+                override suspend fun closeSession(sessionId: SessionId, _meta: JsonElement?) = CloseSessionResponse()
             })
             protocol.start()
             try {
@@ -378,6 +424,11 @@ class PromptReceiptTest {
         fun prompt(): TransportFrame.Single = TransportFrame.Single(JsonRpcRequest(
             RequestId.create(nextPromptId++), AcpMethod.AgentMethods.V2.SessionPrompt.methodName,
             ACPJson.encodeToJsonElement(PromptRequest(sessionId, listOf(ContentBlock.Text("hello")))),
+        ))
+
+        fun closeSession(): TransportFrame.Single = TransportFrame.Single(JsonRpcRequest(
+            RequestId.create(nextPromptId++), AcpMethod.AgentMethods.V2.SessionClose.methodName,
+            ACPJson.encodeToJsonElement(CloseSessionRequest(sessionId)),
         ))
 
         suspend fun nextMessage(): JsonRpcMessage = assertIs<TransportFrame.Single>(sent.receive()).message

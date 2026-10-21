@@ -32,13 +32,13 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
@@ -51,6 +51,10 @@ data class TestRequest(val message: String, override val _meta: JsonElement? = n
 data class TestResponse(val message: String, override val _meta: JsonElement? = null) : AcpResponse
 @Serializable
 data class TestNotification(val message: String, override val _meta: JsonElement? = null) : AcpNotification
+@Serializable
+data class OptionalTestRequest(val message: String = "default", override val _meta: JsonElement? = null) : AcpRequest
+@Serializable
+data class OptionalTestNotification(val message: String = "default", override val _meta: JsonElement? = null) : AcpNotification
 
 abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by protocolDriver {
     val cancellationMessage = "Cancelled from test"
@@ -64,6 +68,8 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     companion object {
         object TestMethod : AcpMethod.AcpRequestResponseMethod<TestRequest, TestResponse>("test/testRequest", TestRequest.serializer(), TestResponse.serializer())
         object TestNotificationMethod : AcpMethod.AcpNotificationMethod<TestNotification>("test/testNotification", TestNotification.serializer())
+        object OptionalTestMethod : AcpMethod.AcpRequestResponseMethod<OptionalTestRequest, TestResponse>("test/optionalRequest", OptionalTestRequest.serializer(), TestResponse.serializer())
+        object OptionalTestNotificationMethod : AcpMethod.AcpNotificationMethod<OptionalTestNotification>("test/optionalNotification", OptionalTestNotification.serializer())
     }
 
     @Test
@@ -623,24 +629,39 @@ abstract class ProtocolTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
     }
 
     @Test
-    fun `PARSE_ERROR is propagated to client`() = testWithProtocols { clientProtocol, agentProtocol ->
+    fun `params that do not decode are rejected with INVALID_PARAMS`() = testWithProtocols { clientProtocol, agentProtocol ->
         agentProtocol.setRequestHandler(TestMethod) { request ->
             TestResponse("should not reach here")
         }
 
-        try {
-            // Send invalid JSON that cannot be deserialized to TestRequest
-            clientProtocol.sendRequestRaw(TestMethod.methodName, kotlinx.serialization.json.buildJsonObject {
-                put("invalidField", "not a valid TestRequest")
-            })
-            fail("Expected JsonRpcException to be thrown")
+        // The message parses, so its params are invalid rather than unparseable: -32602, not -32700.
+        for (params in listOf(
+            buildJsonObject { put("invalidField", "not a valid TestRequest") },
+            buildJsonObject { put("message", buildJsonObject {}) },
+        )) {
+            assertFailsWith<AcpExpectedError>("params $params") {
+                clientProtocol.sendRequestRaw(TestMethod.methodName, params)
+            }
         }
-        catch (e: SerializationException) {
-            // expected
+    }
+
+    @Test
+    fun `request without params is decoded with the declared defaults`() = testWithProtocols { clientProtocol, agentProtocol ->
+        agentProtocol.setRequestHandler(OptionalTestMethod) { request ->
+            TestResponse(request.message)
         }
-        catch (e: Exception) {
-            fail("Unexpected exception: ${e.message}", e)
-        }
+
+        val response = clientProtocol.sendRequestRaw(OptionalTestMethod.methodName, params = null)
+        assertEquals(buildJsonObject { put("message", "default") }, response)
+    }
+
+    @Test
+    fun `notification without params is decoded with the declared defaults`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val received = CompletableDeferred<OptionalTestNotification>()
+        agentProtocol.setNotificationHandler(OptionalTestNotificationMethod) { received.complete(it) }
+
+        clientProtocol.sendNotificationRaw(OptionalTestNotificationMethod, params = null)
+        assertEquals(OptionalTestNotification(), withTimeout(2000.milliseconds) { received.await() })
     }
 
     @Test

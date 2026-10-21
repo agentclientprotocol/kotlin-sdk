@@ -2,6 +2,7 @@
 
 package com.agentclientprotocol.rpc
 
+import com.agentclientprotocol.annotations.UnstableApi
 import kotlinx.serialization.Required
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
@@ -143,5 +144,14 @@ public enum class JsonRpcErrorCode(public val code: Int, public val message: Str
 
     /** A given resource, such as a file, was not found.
      * This is an ACP-specific error code in the reserved range. */
-    RESOURCE_NOT_FOUND(-32002, "Resource not found")
+    RESOURCE_NOT_FOUND(-32002, "Resource not found"),
+
+    /**
+     * **UNSTABLE**
+     *
+     * No protocol version the agent supports is at or below the version requested in `initialize`.
+     * Defined by protocol v2; the error's `data` holds the `requested` version and the `supported` ones.
+     */
+    @UnstableApi
+    UNSUPPORTED_PROTOCOL_VERSION(-32022, "Unsupported protocol version")
 }

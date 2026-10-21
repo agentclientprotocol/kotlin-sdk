@@ -1020,7 +1020,7 @@ public data class ListSessionsResponse(
 public data class ResumeSessionRequest(
     override val sessionId: SessionId,
     val cwd: String,
-    val mcpServers: List<McpServer>,
+    val mcpServers: List<McpServer> = emptyList(),
     val additionalDirectories: List<String>? = null,
     override val _meta: JsonElement? = null
 ) : AcpRequest, AcpWithSessionId

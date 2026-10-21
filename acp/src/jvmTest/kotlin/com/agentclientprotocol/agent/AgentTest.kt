@@ -255,21 +255,87 @@ class AgentTest {
     }
 
     @Test
-    fun `a v2 agent refuses a v1 request`() {
+    fun `a v2 agent answers a request for a later version with v2`() {
+        for (requested in listOf(PROTOCOL_VERSION_V2 + 1, 65535)) {
+            withTestV2Agent(TestV2Support()) { testAgent ->
+                val (response) = testAgent.testInitialize(v2InitializeRequest().copy(protocolVersion = requested))
+                assertEquals(PROTOCOL_VERSION_V2, assertNotNull(response).protocolVersion, "requested $requested")
+                assertEquals(PROTOCOL_VERSION_V2, testAgent.agent.protocol.negotiatedProtocolVersion)
+                assertEquals(requested, testAgent.agent.clientInfo.await().protocolVersion)
+            }
+        }
+    }
+
+    @Test
+    fun `a v2 agent refuses a lower version as unsupported`() {
+        val v1Shaped = ACPJson.encodeToJsonElement(
+            AcpMethod.AgentMethods.V1.Initialize.requestSerializer,
+            InitializeRequest(LATEST_PROTOCOL_VERSION),
+        )
+        val v2Shaped = ACPJson.encodeToJsonElement(
+            AcpMethod.AgentMethods.V2.Initialize.requestSerializer,
+            v2InitializeRequest().copy(protocolVersion = 0),
+        )
+        for ((requested, params) in listOf(LATEST_PROTOCOL_VERSION to v1Shaped, 0 to v2Shaped)) {
+            withTestV2Agent(TestV2Support()) { testAgent ->
+                val received = testAgent.transport.fireTestRequest(AcpMethod.AgentMethods.V2.Initialize.methodName, params)
+
+                val error = assertNotNull((received.last() as JsonRpcErrorResponse).error)
+                assertEquals(-32022, error.code, "requested $requested")
+                assertEquals(
+                    buildJsonObject {
+                        put("requested", requested)
+                        putJsonArray("supported") { add(PROTOCOL_VERSION_V2) }
+                    },
+                    error.data,
+                )
+                assertFalse(testAgent.agent.clientInfo.isCompleted)
+                assertNull(testAgent.agent.protocol.negotiatedProtocolVersion)
+            }
+        }
+    }
+
+    @Test
+    fun `a v2 agent serves session methods only after a successful initialize`() {
         withTestV2Agent(TestV2Support()) { testAgent ->
-            val received = testAgent.transport.fireTestRequest(
-                AcpMethod.AgentMethods.V1.Initialize.methodName,
+            suspend fun newSession(): JsonRpcMessage = testAgent.transport.fireTestRequest(
+                AcpMethod.AgentMethods.V2.SessionNew.methodName,
                 ACPJson.encodeToJsonElement(
-                    AcpMethod.AgentMethods.V1.Initialize.requestSerializer,
-                    InitializeRequest(LATEST_PROTOCOL_VERSION),
+                    AcpMethod.AgentMethods.V2.SessionNew.requestSerializer,
+                    com.agentclientprotocol.model.v2.NewSessionRequest(cwd = "."),
                 ),
-            )
-            val error = assertNotNull((received.last() as JsonRpcErrorResponse).error)
-            assertTrue(
-                error.message.contains("Protocol version 1 is not supported by this agent"),
-                "unexpected message: ${error.message}",
-            )
-            assertFalse(testAgent.agent.clientInfo.isCompleted)
+            ).last()
+
+            assertEquals(-32600, assertIs<JsonRpcErrorResponse>(newSession()).error.code, "before initialize")
+
+            // A version mismatch does not initialize the connection.
+            val (refused) = testAgent.testInitialize(v2InitializeRequest().copy(protocolVersion = 0))
+            assertNull(refused)
+            assertEquals(-32600, assertIs<JsonRpcErrorResponse>(newSession()).error.code, "after a -32022 refusal")
+
+            testAgent.testInitialize(v2InitializeRequest())
+            assertIs<JsonRpcSuccessResponse>(newSession(), "after initialize")
+        }
+    }
+
+    @Test
+    fun `a v2 agent refuses a malformed version as invalid params`() {
+        val malformed = listOf(null, JsonPrimitive(-1), JsonPrimitive(65536), JsonPrimitive("2"), JsonPrimitive(2.5))
+        for (protocolVersion in malformed) {
+            withTestV2Agent(TestV2Support()) { testAgent ->
+                val params = buildJsonObject {
+                    ACPJson.encodeToJsonElement(
+                        AcpMethod.AgentMethods.V2.Initialize.requestSerializer,
+                        v2InitializeRequest(),
+                    ).jsonObject.forEach { (key, value) -> if (key != "protocolVersion") put(key, value) }
+                    if (protocolVersion != null) put("protocolVersion", protocolVersion)
+                }
+                val received = testAgent.transport.fireTestRequest(AcpMethod.AgentMethods.V2.Initialize.methodName, params)
+
+                val error = assertNotNull((received.last() as JsonRpcErrorResponse).error)
+                assertEquals(-32602, error.code, "protocolVersion $protocolVersion")
+                assertFalse(testAgent.agent.clientInfo.isCompleted)
+            }
         }
     }
 
@@ -788,8 +854,7 @@ class AgentTest {
                 ),
             )
 
-            val error = assertNotNull((received.last() as JsonRpcErrorResponse).error)
-            assertTrue(error.message.contains("Protocol version 1 is not supported by this agent"))
+            assertEquals(-32022, assertNotNull((received.last() as JsonRpcErrorResponse).error).code)
 
             val (newSession) = testAgent.testRequest(
                 AcpMethod.AgentMethods.V2.SessionNew,

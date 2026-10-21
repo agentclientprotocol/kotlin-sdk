@@ -13,6 +13,7 @@ import com.agentclientprotocol.model.v2.LoginAuthResponse
 import com.agentclientprotocol.model.v2.LogoutAuthResponse
 import com.agentclientprotocol.model.v2.ProviderId
 import com.agentclientprotocol.model.v2.ReplayFrom
+import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.model.v2.SetProviderResponse
 import com.agentclientprotocol.model.v2.StatusAuthResponse
 import com.agentclientprotocol.protocol.acpFail
@@ -99,7 +100,14 @@ public interface AgentSupport {
      * v2 has no `session/load`. [replayFrom] says how much history the client wants replayed; `null` means
      * none. Replay by sending each update with [ClientOperations.notify] before returning: the response goes
      * out only after this returns, which keeps the replay ahead of it. A cursor this implementation does not
-     * understand should be rejected rather than guessed at.
+     * understand must be rejected with [com.agentclientprotocol.protocol.jsonRpcInvalidParams] rather than
+     * guessed at.
+     *
+     * After any replay, send the session's current foreground state as a [SessionUpdate.StateUpdate], also when
+     * [replayFrom] is `null`
+     * ([current-state synchronization](https://agentclientprotocol.com/protocol/v2/session-setup#current-state-synchronization)).
+     * Only the implementation knows whether the session is idle, running, or waiting for the user, so the SDK
+     * does not send it.
      *
      * For [ReplayFrom.Start], replay all retained history. What
      * [session setup](https://agentclientprotocol.com/protocol/v2/session-setup#resuming-sessions) requires
@@ -156,7 +164,13 @@ public interface AgentSupport {
         _meta: JsonElement? = null,
     ): DisableProviderResponse = notAdvertised("providers/disable", "AgentCapabilities.providers")
 
-    /** Handles `session/close`: end the session's active work and release it. */
+    /**
+     * Handles `session/close`: release the session.
+     *
+     * If a turn is running, the SDK first cancels it through [AgentSession.cancel], as `session/cancel` would,
+     * and calls this only after the turn has ended. The turn's final updates and its idle update with the
+     * `cancelled` stop reason therefore reach the client before the response, as ACP requires.
+     */
     public suspend fun closeSession(sessionId: SessionId, _meta: JsonElement? = null): CloseSessionResponse =
         notAdvertised("session/close", "AgentCapabilities.session")
 

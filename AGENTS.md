@@ -123,7 +123,8 @@ Use the shared serialization entry points rather than creating module-local `Jso
 The parser deliberately delegates JSON syntax acceptance to kotlinx.serialization, then validates the JSON-RPC envelope. Preserve the distinction between:
 
 - parser rejection: JSON-RPC Parse Error (`-32700`);
-- parsed but invalid JSON-RPC shape: Invalid Request (`-32600`).
+- parsed but invalid JSON-RPC shape: Invalid Request (`-32600`);
+- valid envelope whose `params` do not decode into the method's type: Invalid params (`-32602`), mapped where typed handlers decode them.
 
 Do not add a second custom JSON parser or strict preflight serialization without a protocol-level reason and tests. Document any intentional compatibility limitation.
 

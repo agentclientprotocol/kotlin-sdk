@@ -107,18 +107,18 @@ class TckAgentSupport : AgentSupport {
 
     override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
         val stored = store(SessionId("session-${UUID.randomUUID()}"), sessionParameters)
-        return TckAgentSession(stored, replayHistory = false)
+        return TckAgentSession(stored)
     }
 
     override suspend fun loadSession(
         sessionId: SessionId,
         sessionParameters: SessionCreationParameters,
-    ): AgentSession = TckAgentSession(sessions[sessionId] ?: store(sessionId, sessionParameters), replayHistory = true)
+    ): AgentSession = TckAgentSession(sessions[sessionId] ?: store(sessionId, sessionParameters))
 
     override suspend fun resumeSession(
         sessionId: SessionId,
         sessionParameters: SessionCreationParameters,
-    ): AgentSession = TckAgentSession(sessions[sessionId] ?: store(sessionId, sessionParameters), replayHistory = false)
+    ): AgentSession = TckAgentSession(sessions[sessionId] ?: store(sessionId, sessionParameters))
 
     override suspend fun listSessions(
         cwd: String?,
@@ -143,7 +143,6 @@ class TckAgentSupport : AgentSupport {
 
 private class TckAgentSession(
     private val stored: StoredSession,
-    private val replayHistory: Boolean,
 ) : AgentSession {
     override val sessionId: SessionId
         get() = stored.sessionId
@@ -164,9 +163,7 @@ private class TckAgentSession(
             )
         )
 
-    override suspend fun postInitialize() {
-        if (!replayHistory) return
-
+    override suspend fun replayHistory() {
         val client = currentCoroutineContext().client
         for (update in stored.history.toList()) {
             client.notify(update)

@@ -247,7 +247,10 @@ public class Agent(
 
         protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V1.SessionLoad) { params: LoadSessionRequest ->
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
-            val created = createSession(sessionParameters) { agentSupport.loadSession(params.sessionId, sessionParameters) }
+            val created = createSession(
+                sessionParameters,
+                beforeResponse = { session -> session.replayHistory() },
+            ) { agentSupport.loadSession(params.sessionId, sessionParameters) }
             @OptIn(UnstableApi::class)
             return@setRequestOutcomeHandler created.mapResponse { session ->
                 LoadSessionResponse(
@@ -432,7 +435,11 @@ public class Agent(
         }
     }
 
-    private suspend fun createSession(sessionParameters: SessionCreationParameters, sessionFactory: suspend (SessionCreationParameters) -> AgentSession): RequestOutcome<AgentSession> {
+    private suspend fun createSession(
+        sessionParameters: SessionCreationParameters,
+        beforeResponse: suspend (AgentSession) -> Unit = {},
+        sessionFactory: suspend (SessionCreationParameters) -> AgentSession,
+    ): RequestOutcome<AgentSession> {
         val session = sessionFactory(sessionParameters)
         val clientInfo = getClientInfoOrThrow()
 
@@ -447,6 +454,14 @@ public class Agent(
             it.put(session.sessionId, sessionWrapper)
         }
 
+        try {
+            sessionWrapper.executeWithSession { beforeResponse(session) }
+        } catch (t: Throwable) {
+            _sessions.update { sessions ->
+                if (sessions[session.sessionId] === sessionWrapper) sessions.remove(session.sessionId) else sessions
+            }
+            throw t
+        }
 
         return RequestOutcome(
             response = session,
