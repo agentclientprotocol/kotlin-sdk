@@ -43,7 +43,7 @@ ACP standardises how AI agents and clients exchange messages, negotiate capabili
 
 ## Installation
 
-Artifacts are published under `com.agentclientprotocol`. The default build version is `0.3.0-SNAPSHOT`; release builds use `0.3.0`.
+Artifacts are published to Maven Central under `com.agentclientprotocol`. The latest release is `0.34.0`.
 
 ```kotlin
 repositories {
@@ -51,10 +51,10 @@ repositories {
 }
 
 dependencies {
-    implementation("com.agentclientprotocol:acp:0.3.0-SNAPSHOT")
+    implementation("com.agentclientprotocol:acp:0.34.0")
     // Optional extras:
-    // implementation("com.agentclientprotocol:acp-ktor-client:0.3.0-SNAPSHOT")
-    // implementation("com.agentclientprotocol:acp-ktor-server:0.3.0-SNAPSHOT")
+    // implementation("com.agentclientprotocol:acp-ktor-client:0.34.0")
+    // implementation("com.agentclientprotocol:acp-ktor-server:0.34.0")
 }
 ```
 
