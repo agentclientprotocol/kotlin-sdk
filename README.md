@@ -32,7 +32,7 @@ ACP standardises how AI agents and clients exchange messages, negotiate capabili
 | `:acp-ktor`                         | Shared infrastructure for Ktor-based transports           | `ktor`                                     |
 | `:acp-ktor-client`                  | Ktor HTTP/WebSocket client helper                         | `ktor.client`                              |
 | `:acp-ktor-server`                  | Ktor server-side transport utilities                      | `ktor.server`                              |
-| `:acp-ktor-test`                    | Test fixtures and fake transports for ACP flows           | `ktor.test`                                |
+| `:acp-integration-test`             | Integration tests over STDIO and WebSocket transports     | tests only, not published                  |
 | `:samples:kotlin-acp-client-sample` | Complete runnable client + agent reference implementation | `samples`                                  |
 
 ## Requirements
@@ -395,7 +395,7 @@ Contributions are welcome! Please open an issue to discuss significant changes b
 1. Fork and clone the repo.
 2. Run `./gradlew check` to execute the test suite.
 3. Use the supplied GitHub Actions workflows to verify compatibility.
-4. Optionally check protocol conformance with the [ACP Test Compatibility Kit](https://github.com/agentclientprotocol/acp-tck), see [`test-tck/README.md`](test-tck/README.md).
+4. Optionally check protocol conformance with the [ACP Test Compatibility Kit](https://github.com/agentclientprotocol/acp-tck), see [`e2e/tck/README.md`](e2e/tck/README.md).
 
 ## Support
 

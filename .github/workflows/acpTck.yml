@@ -38,17 +38,17 @@ jobs:
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # tag: v10.3.0
 
       - name: Build TCK agent
-        run: ./gradlew :test-tck:acp-tck-agent-v${{ matrix.protocol }}:installDist
+        run: ./gradlew :e2e:tck:agent-v${{ matrix.protocol }}:installDist
 
       - name: Run ACP TCK
         # TODO Informational until the requirements the SDK currently fails are triaged; the report is the result.
         continue-on-error: true
-        run: ./test-tck/run_tck.sh ${{ matrix.protocol }} --report-json reports/v${{ matrix.protocol }}.json
+        run: ./e2e/tck/run.sh ${{ matrix.protocol }} --report-json reports/v${{ matrix.protocol }}.json
 
       - name: Upload TCK report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # tag: v7.0.2
         with:
           name: acp-tck-report-v${{ matrix.protocol }}
-          path: test-tck/reports/v${{ matrix.protocol }}.json
+          path: e2e/tck/reports/v${{ matrix.protocol }}.json
           if-no-files-found: warn

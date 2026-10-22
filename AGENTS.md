@@ -51,7 +51,7 @@ Shared Ktor transport infrastructure, including `WebSocketTransport`. It builds 
 
 Client-side and server-side Ktor adapters. Keep shared WebSocket behavior in `:acp-ktor`; keep endpoint-specific setup in the corresponding adapter module. Their API dumps are in each module's `api` directory.
 
-### `:acp-ktor-test`
+### `:acp-integration-test`
 
 Cross-transport integration and conformance-style tests. Use this module for behavior that should hold across STDIO/WebSocket or client/server wiring. It is a test module, not a published API module.
 
@@ -59,10 +59,14 @@ Cross-transport integration and conformance-style tests. Use this module for beh
 
 Runnable examples for stable ACP, direct v2 use, negotiation, and external-agent integration. Samples should demonstrate supported public APIs, not internal shortcuts.
 
-### `:test-tck:acp-tck-agent-v1` and `:test-tck:acp-tck-agent-v2`
+### `e2e`
+
+End-to-end suites that check the SDK against external counterparts. Unlike `:acp-integration-test`, they need tools outside the Gradle build, pin an upstream revision, run in their own CI workflow, and are not part of `./gradlew check`. Each suite gets its own subdirectory named after its counterpart, with a `run.sh` entry point and a README; see `e2e/README.md`.
+
+### `:e2e:tck:agent-v1` and `:e2e:tck:agent-v2`
 
 STDIO agents built on the stable and v2 `Agent` runtimes, used as systems under test for the external [acp-tck](https://github.com/agentclientprotocol/acp-tck).
-The uv project in `test-tck/acp-tck-runner` pins acp-tck to a Git commit, and `test-tck/run_tck.sh <1|2>` builds the agent and runs the matching suite; see `test-tck/README.md`.
+The uv project in `e2e/tck/runner` pins acp-tck to a Git commit, and `e2e/tck/run.sh <1|2>` builds the agent and runs the matching suite; see `e2e/tck/README.md`.
 The agents advertise every capability the suites check and use only public APIs, so a TCK failure points at SDK behavior.
 Keep them free of workarounds for SDK defects. They are not published.
 
@@ -285,13 +289,13 @@ Use proportional verification while keeping core changes well covered.
 - Prefer a focused test class while iterating when the test task supports `--tests`.
 - Run serialization tests for model/serializer changes.
 - Run protocol lifecycle and batch tests for correlation, cancellation, framing, or dispatch changes.
-- Run `:acp-ktor-test` coverage for behavior crossing client/server or STDIO/WebSocket boundaries.
+- Run `:acp-integration-test` coverage for behavior crossing client/server or STDIO/WebSocket boundaries.
 
 Example focused commands:
 
 ```bash
 ./gradlew :acp:jvmTest --tests com.agentclientprotocol.protocol.BatchProtocolTest
-./gradlew :acp-ktor-test:jvmTest --tests com.agentclientprotocol.WebSocketTransportTest
+./gradlew :acp-integration-test:jvmTest --tests com.agentclientprotocol.WebSocketTransportTest
 ```
 
 ### Core and public changes
@@ -312,7 +316,7 @@ If a target cannot run in the current environment, report exactly what ran and w
 
 - Put portable unit tests in `commonTest`.
 - Put JVM-only process, filesystem, or transport integration tests in `jvmTest`.
-- Keep tests near their owning module; use `:acp-ktor-test` for cross-module transport scenarios.
+- Keep tests near their owning module; use `:acp-integration-test` for cross-module transport scenarios.
 - Test externally observable behavior and lifecycle outcomes, not private implementation order unless the order is itself contractual.
 - Include failure, cancellation, and cleanup paths for lifecycle code.
 - For configuration or timing behavior, include a control case that differs only in the setting under test.

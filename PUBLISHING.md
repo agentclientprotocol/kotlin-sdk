@@ -12,7 +12,7 @@ Published coordinates use the group `com.agentclientprotocol`. The published Gra
 - `acp-ktor-client`;
 - `acp-ktor-server`.
 
-`:acp-ktor-test` and `:samples:kotlin-acp-client-sample` do not apply the publishing convention and are not release artifacts.
+`:acp-integration-test` and `:samples:kotlin-acp-client-sample` do not apply the publishing convention and are not release artifacts.
 
 ## Versioning
 
