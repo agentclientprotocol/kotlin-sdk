@@ -51,7 +51,7 @@ Shared Ktor transport infrastructure, including `WebSocketTransport`. It builds 
 
 Client-side and server-side Ktor adapters. Keep shared WebSocket behavior in `:acp-ktor`; keep endpoint-specific setup in the corresponding adapter module. Their API dumps are in each module's `api` directory.
 
-### `:acp-ktor-test`
+### `:acp-integration-test`
 
 Cross-transport integration and conformance-style tests. Use this module for behavior that should hold across STDIO/WebSocket or client/server wiring. It is a test module, not a published API module.
 
@@ -285,13 +285,13 @@ Use proportional verification while keeping core changes well covered.
 - Prefer a focused test class while iterating when the test task supports `--tests`.
 - Run serialization tests for model/serializer changes.
 - Run protocol lifecycle and batch tests for correlation, cancellation, framing, or dispatch changes.
-- Run `:acp-ktor-test` coverage for behavior crossing client/server or STDIO/WebSocket boundaries.
+- Run `:acp-integration-test` coverage for behavior crossing client/server or STDIO/WebSocket boundaries.
 
 Example focused commands:
 
 ```bash
 ./gradlew :acp:jvmTest --tests com.agentclientprotocol.protocol.BatchProtocolTest
-./gradlew :acp-ktor-test:jvmTest --tests com.agentclientprotocol.WebSocketTransportTest
+./gradlew :acp-integration-test:jvmTest --tests com.agentclientprotocol.WebSocketTransportTest
 ```
 
 ### Core and public changes
@@ -312,7 +312,7 @@ If a target cannot run in the current environment, report exactly what ran and w
 
 - Put portable unit tests in `commonTest`.
 - Put JVM-only process, filesystem, or transport integration tests in `jvmTest`.
-- Keep tests near their owning module; use `:acp-ktor-test` for cross-module transport scenarios.
+- Keep tests near their owning module; use `:acp-integration-test` for cross-module transport scenarios.
 - Test externally observable behavior and lifecycle outcomes, not private implementation order unless the order is itself contractual.
 - Include failure, cancellation, and cleanup paths for lifecycle code.
 - For configuration or timing behavior, include a control case that differs only in the setting under test.

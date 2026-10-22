@@ -32,7 +32,7 @@ ACP standardises how AI agents and clients exchange messages, negotiate capabili
 | `:acp-ktor`                         | Shared infrastructure for Ktor-based transports           | `ktor`                                     |
 | `:acp-ktor-client`                  | Ktor HTTP/WebSocket client helper                         | `ktor.client`                              |
 | `:acp-ktor-server`                  | Ktor server-side transport utilities                      | `ktor.server`                              |
-| `:acp-ktor-test`                    | Test fixtures and fake transports for ACP flows           | `ktor.test`                                |
+| `:acp-integration-test`             | Integration tests over STDIO and WebSocket transports     | tests only, not published                  |
 | `:samples:kotlin-acp-client-sample` | Complete runnable client + agent reference implementation | `samples`                                  |
 
 ## Requirements
