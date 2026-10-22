@@ -28,5 +28,5 @@ include(":acp-integration-test")
 include(":samples:kotlin-acp-client-sample")
 
 // ACP TCK agents (systems under test for https://github.com/agentclientprotocol/acp-tck)
-include(":test-tck:acp-tck-agent-v1")
-include(":test-tck:acp-tck-agent-v2")
+include(":e2e:tck:agent-v1")
+include(":e2e:tck:agent-v2")

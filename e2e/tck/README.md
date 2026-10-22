@@ -9,10 +9,10 @@ reports which requirements pass, fail, don't apply, or were never exercised.
 
 ## Contents
 
-- **`acp-tck-agent-v1/`**: Stable (protocol v1) agent built with `com.agentclientprotocol.agent.Agent`
-- **`acp-tck-agent-v2/`**: Protocol v2 agent built with `com.agentclientprotocol.agent.v2.Agent`
-- **`acp-tck-runner/`**: A uv project with no code of its own; its `pyproject.toml` and `uv.lock` pin acp-tck to a Git commit
-- **`run_tck.sh`**: Build one of the agents and run the matching acp-tck suite against it
+- **`agent-v1/`**: Stable (protocol v1) agent built with `com.agentclientprotocol.agent.Agent`
+- **`agent-v2/`**: Protocol v2 agent built with `com.agentclientprotocol.agent.v2.Agent`
+- **`runner/`**: A uv project with no code of its own; its `pyproject.toml` and `uv.lock` pin acp-tck to a Git commit
+- **`run.sh`**: Build one of the agents and run the matching acp-tck suite against it
 
 Both agents keep sessions in memory and advertise every capability the suites check, so that capability-gated
 requirements are exercised instead of skipped. Every prompt is answered with a word-by-word echo, slow enough for the
@@ -28,14 +28,14 @@ cancellation tests to land while the turn is still running.
 Run the suite for a protocol version:
 
 ```bash
-./run_tck.sh 1 --report-json reports/v1.json
-./run_tck.sh 2 --report-json reports/v2.json
+./run.sh 1 --report-json reports/v1.json
+./run.sh 2 --report-json reports/v2.json
 ```
 
-Run the scripts from `test-tck/`. uv fetches and builds acp-tck at the pinned commit on first use, so no separate setup step is needed.
+Run the script from `e2e/tck/`. uv fetches and builds acp-tck at the pinned commit on first use, so no separate setup step is needed.
 
-`run_tck.sh` always passes `--protocol-version`, `--auth-method tck`, and `--allow-logout`; any other
+`run.sh` always passes `--protocol-version`, `--auth-method tck`, and `--allow-logout`; any other
 [acp-tck option](https://github.com/agentclientprotocol/acp-tck#options), such as `-k EXPR` or `-v`, is passed through.
 The exit code is acp-tck's verdict: `0` only when the agent is conformant.
 
-To move to a newer acp-tck revision, change `rev` in `acp-tck-runner/pyproject.toml`, run `uv lock` in `acp-tck-runner/`, and commit both files.
+To move to a newer acp-tck revision, change `rev` in `runner/pyproject.toml`, run `uv lock` in `runner/`, and commit both files.

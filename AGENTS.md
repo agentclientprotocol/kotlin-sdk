@@ -59,10 +59,14 @@ Cross-transport integration and conformance-style tests. Use this module for beh
 
 Runnable examples for stable ACP, direct v2 use, negotiation, and external-agent integration. Samples should demonstrate supported public APIs, not internal shortcuts.
 
-### `:test-tck:acp-tck-agent-v1` and `:test-tck:acp-tck-agent-v2`
+### `e2e`
+
+End-to-end suites that check the SDK against external counterparts. Unlike `:acp-integration-test`, they need tools outside the Gradle build, pin an upstream revision, run in their own CI workflow, and are not part of `./gradlew check`. Each suite gets its own subdirectory named after its counterpart, with a `run.sh` entry point and a README; see `e2e/README.md`.
+
+### `:e2e:tck:agent-v1` and `:e2e:tck:agent-v2`
 
 STDIO agents built on the stable and v2 `Agent` runtimes, used as systems under test for the external [acp-tck](https://github.com/agentclientprotocol/acp-tck).
-The uv project in `test-tck/acp-tck-runner` pins acp-tck to a Git commit, and `test-tck/run_tck.sh <1|2>` builds the agent and runs the matching suite; see `test-tck/README.md`.
+The uv project in `e2e/tck/runner` pins acp-tck to a Git commit, and `e2e/tck/run.sh <1|2>` builds the agent and runs the matching suite; see `e2e/tck/README.md`.
 The agents advertise every capability the suites check and use only public APIs, so a TCK failure points at SDK behavior.
 Keep them free of workarounds for SDK defects. They are not published.
 
