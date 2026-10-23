@@ -46,8 +46,8 @@ class SessionLifecycleTest {
     }
 
     /*
-     * A client keeps one session per id, and testy forgets a session once it is closed, so reopening an id
-     * means closing it here first and letting `session/load` (or `session/resume`) bring it back.
+     * A client keeps one session per id, so reopening an id means closing it here first. Testy forgets a closed
+     * session and `session/load` (or `session/resume`) recreates it.
      */
     @Test
     fun loadSessionReopensSession() = runBlocking {

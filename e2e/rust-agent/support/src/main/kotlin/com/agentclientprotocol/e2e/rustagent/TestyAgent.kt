@@ -8,14 +8,6 @@ import org.junit.jupiter.api.extension.ExtensionContext
 import java.nio.file.Path
 import java.nio.file.Paths
 
-internal fun setupScriptFromProperty(): Path {
-    val value = System.getProperty(SETUP_SCRIPT_PROPERTY)
-    if (value.isNullOrBlank()) {
-        throw SetupFailedException("System property $SETUP_SCRIPT_PROPERTY is not set; run the suite through Gradle")
-    }
-    return Paths.get(value)
-}
-
 /**
  * JUnit 5 extension that builds the Rust `testy` agent once per test class and starts a fresh agent
  * process for every [run] call.

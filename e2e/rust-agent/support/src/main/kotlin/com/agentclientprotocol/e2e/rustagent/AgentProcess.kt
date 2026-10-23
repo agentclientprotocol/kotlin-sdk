@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.Paths
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.minutes
 
@@ -43,12 +44,18 @@ public fun runSetup(setupScript: Path, protocolVersion: Int): Path {
     val stdout = StringBuilder()
     val stderr = StringBuilder()
     val readers = listOf(
-        Thread { process.inputStream.bufferedReader().forEachLine { stdout.append(it).append('\n') } },
         Thread {
-            process.errorStream.bufferedReader().forEachLine {
-                System.err.println(it)
-                stderr.append(it).append('\n')
-            }
+            process.inputStream
+                .bufferedReader()
+                .forEachLine { stdout.append(it).append('\n') }
+        },
+        Thread {
+            process.errorStream
+                .bufferedReader()
+                .forEachLine {
+                    System.err.println(it)
+                    stderr.append(it).append('\n')
+                }
         },
     )
     readers.forEach { it.isDaemon = true; it.start() }
@@ -75,9 +82,11 @@ public suspend fun <T> withAgentProcess(
     block: suspend CoroutineScope.(Protocol) -> T,
 ): T {
     stderrLog.parent?.let { Files.createDirectories(it) }
-    val process = ProcessBuilder(binary.toString())
-        .redirectError(stderrLog.toFile())
-        .start()
+    val process = withContext(Dispatchers.IO) {
+        ProcessBuilder(binary.toString())
+            .redirectError(stderrLog.toFile())
+            .start()
+    }
 
     try {
         return coroutineScope {
@@ -86,7 +95,10 @@ public suspend fun <T> withAgentProcess(
                 ioDispatcher = Dispatchers.IO,
                 input = flow {
                     val reader = process.inputStream.bufferedReader()
-                    while (true) emit(reader.readLine() ?: break)
+                    while (true) {
+                        @Suppress("BlockingMethodInNonBlockingContext") // it's collected using ioDispatcher in the transport
+                        emit(reader.readLine() ?: break)
+                    }
                 },
                 output = { line ->
                     process.outputStream.write("$line\n".toByteArray())
@@ -122,3 +134,12 @@ private suspend fun stopAgent(process: Process) {
         }
     }
 }
+
+internal fun setupScriptFromProperty(): Path {
+    val value = System.getProperty(SETUP_SCRIPT_PROPERTY)
+    if (value.isNullOrBlank()) {
+        throw SetupFailedException("System property $SETUP_SCRIPT_PROPERTY is not set; run the suite through Gradle")
+    }
+    return Paths.get(value)
+}
+

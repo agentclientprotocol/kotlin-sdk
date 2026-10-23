@@ -29,10 +29,10 @@ class InitializationTest {
                 assertEquals(PROTOCOL_VERSION_V1, info.protocolVersion)
 
                 val capabilities = info.capabilities
-                assertTrue(capabilities.loadSession)
-                assertTrue(capabilities.promptCapabilities.image)
-                assertTrue(capabilities.promptCapabilities.audio)
-                assertTrue(capabilities.promptCapabilities.embeddedContext)
+                assertTrue(capabilities.loadSession, "capabilities.loadSession")
+                assertTrue(capabilities.promptCapabilities.image, "capabilities.promptCapabilities.image")
+                assertTrue(capabilities.promptCapabilities.audio, "capabilities.promptCapabilities.audio")
+                assertTrue(capabilities.promptCapabilities.embeddedContext, "capabilities.promptCapabilities.embeddedContext")
 
                 val sessions = capabilities.sessionCapabilities
                 assertNotNull(sessions.list, "session.list")
