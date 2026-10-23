@@ -10,7 +10,6 @@ import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlin.io.path.readText
-import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -69,6 +68,36 @@ class ClientCallbacksTest {
         )
     }
 
+    /*
+     * testy reports each callback as `<method>: ok <response>` or `<method>: error <error>` and still completes
+     * the turn, so the report lines show whether the agent accepted each answer. The terminal output depends on
+     * whether `printf` has finished when the agent asks, so only that step's outcome is compared.
+     */
+    private fun assertCallbacksSucceeded(turn: Turn) {
+        val callbackLines = turn.reply.lines().filter {
+            it.startsWith("session/request_permission:") || it.startsWith("fs/") || it.startsWith("terminal/")
+        }
+        assertEquals(
+            listOf(
+                "session/request_permission: ok RequestPermissionResponse { outcome: Selected(SelectedPermissionOutcome " +
+                    "{ option_id: PermissionOptionId(\"allow_once\"), meta: None }), meta: None }",
+                "fs/write_text_file: ok WriteTextFileResponse { meta: None }",
+                "fs/read_text_file: ok ReadTextFileResponse { content: \"written by testy\\n\", meta: None }",
+                "terminal/create: ok CreateTerminalResponse { terminal_id: TerminalId(\"terminal-1\"), meta: None }",
+                "terminal/output: ok",
+                "terminal/wait_for_exit: ok WaitForTerminalExitResponse { exit_status: TerminalExitStatus " +
+                    "{ exit_code: Some(0), signal: None, meta: None }, meta: None }",
+                "terminal/kill: ok KillTerminalResponse { meta: None }",
+                "terminal/release: ok ReleaseTerminalResponse { meta: None }",
+            ),
+            callbackLines.map {
+                if (it.startsWith("terminal/output: ok TerminalOutputResponse {")) "terminal/output: ok" else it
+            },
+            "reply: ${turn.reply}",
+        )
+        assertTrue(turn.reply.lines().none { it.contains(": error") }, "reply: ${turn.reply}")
+    }
+
     @Test
     fun callbacksScenarioExercisesEveryClientMethod() = runBlocking {
         withTimeout(30.seconds) {
@@ -99,7 +128,7 @@ class ClientCallbacksTest {
 
                 assertTrue(writePath.exists())
                 assertEquals("written by testy\n", writePath.readText())
-                assertContains(turn.reply, "terminal/create: ok")
+                assertCallbacksSucceeded(turn)
                 assertElicitationsSucceeded(turn, calls.drop(8), globalHandler)
                 assertEquals(StopReason.END_TURN, turn.stopReason)
             }
