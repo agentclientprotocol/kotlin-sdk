@@ -61,7 +61,7 @@ Runnable examples for stable ACP, direct v2 use, negotiation, and external-agent
 
 ### `e2e`
 
-End-to-end suites that check the SDK against external counterparts. Unlike `:acp-integration-test`, they need tools outside the Gradle build, pin an upstream revision, run in their own CI workflow, and are not part of `./gradlew check`. Each suite gets its own subdirectory named after its counterpart, with a `run.sh` entry point and a README; see `e2e/README.md`.
+End-to-end suites that check the SDK against external counterparts. Unlike `:acp-integration-test`, they need tools outside the Gradle build, pin an upstream revision, run in their own CI workflow, and are not part of `./gradlew check`. Each suite gets its own subdirectory named after its counterpart, with a documented entry point (a `run.sh` or a Gradle task) and a README; see `e2e/README.md`.
 
 ### `:e2e:tck:agent-v1` and `:e2e:tck:agent-v2`
 
@@ -69,6 +69,13 @@ STDIO agents built on the stable and v2 `Agent` runtimes, used as systems under 
 The uv project in `e2e/tck/runner` pins acp-tck to a Git commit, and `e2e/tck/run.sh <1|2>` builds the agent and runs the matching suite; see `e2e/tck/README.md`.
 The agents advertise every capability the suites check and use only public APIs, so a TCK failure points at SDK behavior.
 Keep them free of workarounds for SDK defects. They are not published.
+
+### `:e2e:rust-agent:support`, `:e2e:rust-agent:client-v1`, and `:e2e:rust-agent:client-v2`
+
+Kotlin `Client` runtimes (stable and v2) driven against `testy`, the Rust SDK's test agent, over STDIO. This is an interoperability check, not a conformance suite.
+`e2e/rust-agent/setup_sut.sh <1|2>` builds `testy` at the commit pinned in `e2e/rust-agent/rust-sdk.rev` and prints the binary path on its last stdout line; the `TestyAgent` extension in `support` runs it once per test class and starts a fresh agent per test.
+Each client project holds its tests in an `e2eTest` JVM test suite, run with `./gradlew :e2e:rust-agent:client-v1:e2eTest` (or `client-v2`). These are outside `check`; only the unit tests of `support` run there.
+The tests use only public APIs and keep failing tests red instead of working around SDK defects; failures are recorded in `e2e/rust-agent/README.md`. They are not published.
 
 ### `buildSrc`
 
