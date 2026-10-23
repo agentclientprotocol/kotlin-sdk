@@ -9,4 +9,4 @@ Integration tests that need only the Gradle build live in `:acp-integration-test
 | [`tck`](tck/)  | v1 and v2 SDK agents against the [ACP Test Compatibility Kit](https://github.com/agentclientprotocol/acp-tck) | JDK 21, uv |
 | [`rust-agent`](rust-agent/) | v1 and v2 SDK clients against the [Rust SDK](https://github.com/agentclientprotocol/rust-sdk)'s `testy` agent | JDK 21, git, Rust toolchain |
 
-Each suite has a documented entry point (a `run.sh` or a Gradle task) and a README with its requirements and options.
+Each suite has a documented entry point and a README with its requirements and options.

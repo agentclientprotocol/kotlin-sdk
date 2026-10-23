@@ -61,7 +61,7 @@ Runnable examples for stable ACP, direct v2 use, negotiation, and external-agent
 
 ### `e2e`
 
-End-to-end suites that check the SDK against external counterparts. Unlike `:acp-integration-test`, they need tools outside the Gradle build, pin an upstream revision, run in their own CI workflow, and are not part of `./gradlew check`. Each suite gets its own subdirectory named after its counterpart, with a documented entry point (a `run.sh` or a Gradle task) and a README; see `e2e/README.md`.
+End-to-end suites that check the SDK against external counterparts. Unlike `:acp-integration-test`, they need tools outside the Gradle build, pin an upstream revision, run in their own CI workflow, and are not part of `./gradlew check`. Each suite gets its own subdirectory named after its counterpart, with a documented entry point and a README; see `e2e/README.md`.
 
 ### `:e2e:tck:agent-v1` and `:e2e:tck:agent-v2`
 

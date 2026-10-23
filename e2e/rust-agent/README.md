@@ -17,7 +17,7 @@ either side shows up as an individually runnable, failing JUnit test. For spec c
 - **`setup_sut.sh`**: builds `testy` at the pinned Rust SDK commit.
 - **`rust-sdk.rev`**: the pinned Rust SDK commit.
 
-The suite has no `run.sh`; the Gradle `e2eTest` task is its entry point. `./gradlew check` compiles the `e2eTest`
+The Gradle `e2eTest` task is its entry point. `./gradlew check` compiles the `e2eTest`
 sources, so an SDK API change that breaks them fails the build, but it never runs these tests, and they never appear as
 skipped there.
 
