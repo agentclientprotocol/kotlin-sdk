@@ -163,16 +163,26 @@ class RecordingClientOperations : ClientSessionOperations, FileSystemOperations,
      */
     private class RunningTerminal(val process: Process, private val byteLimit: ULong?) {
         private val buffer = StringBuffer()
-        private val reader = Thread { process.inputStream.bufferedReader().forEachLine { buffer.append(it).append('\n') } }
-            .apply { isDaemon = true; start() }
+        private val reader = Thread {
+            process.inputStream.bufferedReader()
+                .forEachLine { buffer.append(it).append('\n') } }
+                .apply {
+                    isDaemon = true
+                    start()
+                }
 
-        fun output(): Pair<String, Boolean> {
-            if (!process.isAlive) reader.join()
+        suspend fun output(): Pair<String, Boolean> {
+            if (!process.isAlive) runInterruptible { reader.join() }
+
             val text = buffer.toString()
             val limit = byteLimit?.toLong() ?: return text to false
             val bytes = text.toByteArray()
-            if (bytes.size <= limit) return text to false
-            return bytes.copyOfRange((bytes.size - limit).toInt(), bytes.size).decodeToString() to true
+
+            return if (bytes.size <= limit) {
+                text to false
+            } else {
+                bytes.copyOfRange((bytes.size - limit).toInt(), bytes.size).decodeToString() to true
+            }
         }
     }
 }

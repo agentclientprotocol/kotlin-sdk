@@ -71,7 +71,7 @@ class ClientCallbacksTest {
     /*
      * testy reports each callback as `<method>: ok <response>` or `<method>: error <error>` and still completes
      * the turn, so the report lines show whether the agent accepted each answer. The terminal output depends on
-     * whether `printf` has finished when the agent asks, so only that step's outcome is compared.
+     * whether `printf` has finished when the agent asks, so only that step's outcome ("ok"/"error") is compared.
      */
     private fun assertCallbacksSucceeded(turn: Turn) {
         val callbackLines = turn.reply.lines().filter {
