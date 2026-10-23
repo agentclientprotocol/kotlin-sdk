@@ -34,14 +34,11 @@ jobs:
       - name: Set up Gradle
         uses: gradle/gradle-build-action@a8f75513eafdebd8141bd1cd4e30fcd194af8dfa # tag: v2
 
-      - name: Set up Rust toolchain
-        run: rustup toolchain install stable --profile minimal
-
       - name: Cache Rust SDK checkout and build
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # tag: v4
         with:
           path: e2e/rust-agent/.sut
-          key: rust-agent-${{ matrix.client }}-${{ hashFiles('e2e/rust-agent/rust-sdk.rev', 'e2e/rust-agent/setup_sut.sh') }}
+          key: rust-agent-${{ matrix.client }}-${{ hashFiles('e2e/rust-agent/rust-sdk.rev', 'e2e/rust-agent/rust-toolchain.toml', 'e2e/rust-agent/setup_sut.sh') }}
 
       - name: Run Rust agent e2e tests
         continue-on-error: true

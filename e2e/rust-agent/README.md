@@ -16,6 +16,7 @@ either side shows up as an individually runnable, failing JUnit test. For spec c
 - **`client-v2/`** (`:e2e:rust-agent:client-v2`): protocol v2 client tests, in an `e2eTest` JVM test suite.
 - **`setup_sut.sh`**: builds `testy` at the pinned Rust SDK commit.
 - **`rust-sdk.rev`**: the pinned Rust SDK commit.
+- **`rust-toolchain.toml`**: the pinned Rust toolchain `testy` is built with.
 
 The Gradle `e2eTest` task is its entry point. `./gradlew check` compiles the `e2eTest`
 sources, so an SDK API change that breaks them fails the build, but it never runs these tests, and they never appear as
@@ -25,7 +26,8 @@ skipped there.
 
 - JDK 21
 - `git`
-- A Rust toolchain (`cargo` on `PATH`) of at least 1.88.0, the Rust SDK's `rust-version`
+- [rustup](https://rustup.rs). `setup_sut.sh` installs and uses the Rust toolchain pinned in `rust-toolchain.toml`,
+  side by side with any toolchains you already have
 
 ## Running
 
@@ -86,7 +88,8 @@ The script is the single source of truth for building the agent, and it can be r
 
 - fetches the Rust SDK at the commit in `rust-sdk.rev` into `.sut/rust-sdk-v<N>/`, a gitignored directory next to the
   script, reusing an existing checkout that is already at that commit;
-- builds only the requested version's `testy` with `cargo build --locked`: v1 with `--no-default-features`, and v2 with
+- installs the toolchain from `rust-toolchain.toml` with rustup if it is missing;
+- builds only the requested version's `testy` with that toolchain and `cargo build --locked`: v1 with `--no-default-features`, and v2 with
   `--no-default-features --features unstable_protocol_v2` into its own target directory;
 - writes all fetch and build output to stderr;
 - prints the absolute path of the built binary as the last line of stdout;
@@ -105,12 +108,13 @@ If a setup run is killed in the middle of a checkout, it can leave a stale git l
 
 ## Bumping the Rust SDK pin
 
-1. Replace the commit in `rust-sdk.rev` with the new Rust SDK commit SHA.
+1. Replace the commit in `rust-sdk.rev` with the new Rust SDK commit SHA. If the new commit needs a newer compiler
+   (its `rust-version` in `Cargo.toml`), bump `channel` in `rust-toolchain.toml` too.
 2. Run `./gradlew e2eTest` and review any new failures. Check `testy`'s changes upstream first, since a changed
    scenario can need a test update rather than an SDK fix.
 3. If the v2 agent gained support for more flows, add the matching tests to `client-v2`.
 
-CI keys its `.sut` cache on `rust-sdk.rev` and `setup_sut.sh`, so a bump rebuilds `testy` there.
+CI keys its `.sut` cache on `rust-sdk.rev`, `rust-toolchain.toml`, and `setup_sut.sh`, so a bump rebuilds `testy` there.
 
 ## CI
 
