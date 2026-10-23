@@ -99,18 +99,26 @@ public suspend fun <T> withAgentProcess(
                 protocol.start()
                 block(protocol)
             } finally {
-                // The protocol and transport are children of this scope, which cannot complete until they close.
                 protocol.close()
+                /*
+                 * The transport's read job blocks in readLine, which cancellation cannot interrupt, and this scope
+                 * waits for it. Only the agent closing stdout ends that read, so the agent is stopped here.
+                 */
+                stopAgent(process)
             }
         }
     } finally {
-        withContext(NonCancellable + Dispatchers.IO) {
-            // End of stdin is the agent's cue to exit.
-            runCatching { process.outputStream.close() }
-            if (!process.waitFor(AGENT_EXIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-                process.destroyForcibly()
-                process.waitFor()
-            }
+        stopAgent(process)
+    }
+}
+
+private suspend fun stopAgent(process: Process) {
+    withContext(NonCancellable + Dispatchers.IO) {
+        // End of stdin is the agent's cue to exit.
+        runCatching { process.outputStream.close() }
+        if (!process.waitFor(AGENT_EXIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            process.waitFor()
         }
     }
 }
