@@ -23,10 +23,16 @@ import java.nio.file.Path
 
 /**
  * Starts a fresh testy agent, initializes a v1 [Client] against it with every client capability, and runs [block].
+ *
+ * Elicitations that are not scoped to a session go to [elicitations].
  */
-suspend fun TestyAgent.client(block: suspend (Client) -> Unit) {
+suspend fun TestyAgent.client(
+    elicitations: RecordingElicitationHandler = RecordingElicitationHandler(),
+    block: suspend (Client) -> Unit,
+) {
     run { protocol ->
-        val client = Client(protocol)
+        @OptIn(UnstableApi::class)
+        val client = Client(protocol, globalElicitationHandler = elicitations)
         client.initialize(
             @OptIn(UnstableApi::class)
             ClientInfo(

@@ -1,6 +1,7 @@
 package com.agentclientprotocol.e2e.rustagent.v1
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.client.GlobalElicitationHandler
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.ElicitationOperations
 import com.agentclientprotocol.common.FileSystemOperations
@@ -147,11 +148,7 @@ class RecordingClientOperations : ClientSessionOperations, FileSystemOperations,
 
     override suspend fun createElicitation(request: CreateElicitationRequest): CreateElicitationResponse {
         record("createElicitation", request.message)
-        val action = when (val mode = request.mode) {
-            is ElicitationMode.Form -> ElicitationAction.Accept(answerFor(mode.requestedSchema))
-            is ElicitationMode.Url -> ElicitationAction.Accept()
-        }
-        return CreateElicitationResponse(action)
+        return acceptElicitation(request)
     }
 
     override suspend fun completeElicitation(notification: CompleteElicitationNotification) {
@@ -178,6 +175,36 @@ class RecordingClientOperations : ClientSessionOperations, FileSystemOperations,
             return bytes.copyOfRange((bytes.size - limit).toInt(), bytes.size).decodeToString() to true
         }
     }
+}
+
+/**
+ * Answers the elicitations that are not scoped to a session, like [RecordingClientOperations] does, and records them.
+ */
+@OptIn(UnstableApi::class)
+class RecordingElicitationHandler : GlobalElicitationHandler {
+    private val recorded = CopyOnWriteArrayList<RecordedCall>()
+
+    /**
+     * Every recorded elicitation, in arrival order.
+     */
+    val calls: List<RecordedCall> get() = recorded.toList()
+
+    override suspend fun createElicitation(request: CreateElicitationRequest): CreateElicitationResponse {
+        recorded += RecordedCall("createElicitation", listOf(request.message))
+        return acceptElicitation(request)
+    }
+}
+
+/**
+ * Accepts [request]: a form gets an answer that satisfies its schema, and a URL needs no content.
+ */
+@OptIn(UnstableApi::class)
+private fun acceptElicitation(request: CreateElicitationRequest): CreateElicitationResponse {
+    val action = when (val mode = request.mode) {
+        is ElicitationMode.Form -> ElicitationAction.Accept(answerFor(mode.requestedSchema))
+        is ElicitationMode.Url -> ElicitationAction.Accept()
+    }
+    return CreateElicitationResponse(action)
 }
 
 /**

@@ -25,10 +25,55 @@ class ClientCallbacksTest {
     @TempDir
     lateinit var cwd: Path
 
+    /*
+     * testy reports `elicitations: completed` even when steps fail, so every step's report line is checked, as
+     * well as the calls that reached the session operations and the global handler.
+     */
+    private fun assertElicitationsSucceeded(
+        turn: Turn,
+        sessionCalls: List<RecordedCall>,
+        globalHandler: RecordingElicitationHandler,
+    ) {
+        val reportLines = turn.reply.lines()
+        val elicitationLines = reportLines.filter { it.startsWith("elicitation/") || it.startsWith("elicitations:") }
+        assertEquals(
+            listOf(
+                "elicitation/form_session_accept: ok accept content_fields=10",
+                "elicitation/form_session_decline: ok accept content_fields=1",
+                "elicitation/form_request_cancel: ok accept content_fields=1",
+                "elicitation/url_session_accept: ok accept content_fields=0",
+                "elicitation/complete_session_url: sent",
+                "elicitation/url_request_decline: ok accept content_fields=0",
+                "elicitations: completed",
+            ),
+            elicitationLines,
+            "reply: ${turn.reply}",
+        )
+        assertTrue(elicitationLines.none { it.contains(": error") }, "reply: ${turn.reply}")
+
+        assertEquals(
+            listOf(
+                RecordedCall("createElicitation", listOf("Accept the Testy session-scoped form elicitation")),
+                RecordedCall("createElicitation", listOf("Decline the Testy session-scoped form elicitation")),
+                RecordedCall("createElicitation", listOf("Accept the Testy session-scoped URL elicitation")),
+                RecordedCall("completeElicitation", listOf("testy-url-session")),
+            ),
+            sessionCalls,
+        )
+        assertEquals(
+            listOf(
+                RecordedCall("createElicitation", listOf("Cancel the Testy request-scoped form elicitation")),
+                RecordedCall("createElicitation", listOf("Decline the Testy request-scoped URL elicitation")),
+            ),
+            globalHandler.calls,
+        )
+    }
+
     @Test
     fun callbacksScenarioExercisesEveryClientMethod() = runBlocking {
         withTimeout(30.seconds) {
-            agent.client { client ->
+            val globalHandler = RecordingElicitationHandler()
+            agent.client(globalHandler) { client ->
                 val operations = RecordingClientOperations()
                 val turn = client.newSession(cwd, operations).promptTurn(scenario("callbacks"))
 
@@ -55,7 +100,7 @@ class ClientCallbacksTest {
                 assertTrue(writePath.exists())
                 assertEquals("written by testy\n", writePath.readText())
                 assertContains(turn.reply, "terminal/create: ok")
-                assertContains(turn.reply, "elicitations: completed")
+                assertElicitationsSucceeded(turn, calls.drop(8), globalHandler)
                 assertEquals(StopReason.END_TURN, turn.stopReason)
             }
         }
@@ -64,10 +109,12 @@ class ClientCallbacksTest {
     @Test
     fun elicitationsScenarioCompletes() = runBlocking {
         withTimeout(30.seconds) {
-            agent.client { client ->
-                val turn = client.newSession(cwd).promptTurn(scenario("elicitations"))
+            val globalHandler = RecordingElicitationHandler()
+            agent.client(globalHandler) { client ->
+                val operations = RecordingClientOperations()
+                val turn = client.newSession(cwd, operations).promptTurn(scenario("elicitations"))
 
-                assertContains(turn.reply, "elicitations: completed")
+                assertElicitationsSucceeded(turn, operations.calls, globalHandler)
                 assertEquals(StopReason.END_TURN, turn.stopReason)
             }
         }
