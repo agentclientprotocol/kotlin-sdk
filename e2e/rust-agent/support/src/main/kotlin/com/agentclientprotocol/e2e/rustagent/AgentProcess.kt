@@ -6,10 +6,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
-import kotlinx.io.asSink
-import kotlinx.io.asSource
-import kotlinx.io.buffered
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -71,7 +69,6 @@ public fun runSetup(setupScript: Path, protocolVersion: Int): Path {
  * The agent's stderr goes to [stderrLog], whose parent directories are created. On exit the protocol
  * is closed and the process gets a few seconds to stop before it is killed.
  */
-@Suppress("DEPRECATION")
 public suspend fun <T> withAgentProcess(
     binary: Path,
     stderrLog: Path,
@@ -87,8 +84,14 @@ public suspend fun <T> withAgentProcess(
             val transport = StdioTransport(
                 parentScope = this,
                 ioDispatcher = Dispatchers.IO,
-                input = process.inputStream.asSource().buffered(),
-                output = process.outputStream.asSink().buffered(),
+                input = flow {
+                    val reader = process.inputStream.bufferedReader()
+                    while (true) emit(reader.readLine() ?: break)
+                },
+                output = { line ->
+                    process.outputStream.write("$line\n".toByteArray())
+                    process.outputStream.flush()
+                },
             )
             val protocol = Protocol(this, transport)
 
@@ -102,6 +105,8 @@ public suspend fun <T> withAgentProcess(
         }
     } finally {
         withContext(NonCancellable + Dispatchers.IO) {
+            // End of stdin is the agent's cue to exit.
+            runCatching { process.outputStream.close() }
             if (!process.waitFor(AGENT_EXIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
                 process.destroyForcibly()
                 process.waitFor()
