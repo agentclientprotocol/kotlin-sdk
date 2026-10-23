@@ -20,10 +20,7 @@ public interface ClientSession {
      * The answer of the request that opened this session: `session/new`, `session/load`, `session/resume`, or
      * `session/fork`. It carries the modes, the models, the config options, and the `_meta` of that answer.
      *
-     * A factory reopen of an open session with [Client.loadSession] or [Client.resumeSession] does not change this
-     * answer, the supported and available modes, models, and config options, or the initial state of the open
-     * session. Only the updates of the replay change its [currentMode] and [configOptions]. The session that the
-     * reopen returns is not registered: it carries the new answer and gets no updates.
+     * A factory reopen does not change it, see [Client.loadSession].
      *
      * The sessions of this SDK keep the answer. The default getter is for an implementation outside the SDK
      * that does not keep it, and throws [UnsupportedOperationException].

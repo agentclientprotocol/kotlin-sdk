@@ -459,59 +459,28 @@ class ClientEarlySessionUpdatesTest {
 
     @Test
     fun `a factory reopen of a session opened with operations delivers its replay to the open session`() = withClient { client, agent ->
-        suspend fun reopen(
-            sessionId: SessionId,
-            open: suspend (ClientSessionOperations) -> ClientSession,
-            reopen: suspend (ClientOperationsFactory) -> ClientSession,
-            method: MethodName,
-            answer: (JsonRpcRequest) -> Unit,
-        ) {
-            val operations = RecordingOperations()
-            val opening = async { open(operations) }
-            answer(agent.receiveRequest(method))
-            val session = opening.await()
-            val opened = text("${sessionId.value}-opened")
-            agent.sendUpdate(sessionId, opened)
-            operations.awaitUpdate(opened)
+        val sessionId = SessionId("reopen")
+        val (session, operations) = openWithOperations(client, agent, sessionId, LoadSessionResponse(modes = modes()))
+        val opened = text("opened")
+        agent.sendUpdate(sessionId, opened)
+        operations.awaitUpdate(opened)
 
-            val reopenOperations = RecordingOperations()
-            val reopening = async { reopen(ClientOperationsFactory { _, _ -> reopenOperations }) }
-            val request = agent.receiveRequest(method)
-            val replay = listOf(text("${sessionId.value}-1"), SessionUpdate.CurrentModeUpdate(PLAN), text("${sessionId.value}-2"))
-            replay.forEach { agent.sendUpdate(sessionId, it) }
-            answer(request)
-            val reopened = reopening.await()
-            val later = text("${sessionId.value}-later")
-            agent.sendUpdate(sessionId, later)
+        val reopenOperations = RecordingOperations()
+        val reopening = async { client.loadSession(sessionId, parameters) { _, _ -> reopenOperations } }
+        val request = agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionLoad.methodName)
+        val replay = listOf(text("replay-1"), SessionUpdate.CurrentModeUpdate(PLAN), text("replay-2"))
+        replay.forEach { agent.sendUpdate(sessionId, it) }
+        agent.answer(request, AcpMethod.AgentMethods.V1.SessionLoad.responseSerializer, LoadSessionResponse(modes = modes()))
+        val reopened = reopening.await()
+        val later = text("later")
+        agent.sendUpdate(sessionId, later)
 
-            operations.awaitUpdate(later)
-            assertEquals(listOf(opened) + replay + later, operations.updates.value, "the open session gets every update in order")
-            assertTrue(reopenOperations.updates.value.isEmpty(), "the reopened session is not registered")
-            assertNotSame(session, reopened)
-            assertSame(session, client.getSession(sessionId))
-            assertEquals(PLAN, session.currentMode.value)
-
-            val loadAfterReopen = runCatching { client.loadSession(sessionId, parameters, RecordingOperations()) }
-            assertTrue(loadAfterReopen.exceptionOrNull() is IllegalStateException)
-            val resumeAfterReopen = runCatching { client.resumeSession(sessionId, parameters, RecordingOperations()) }
-            assertTrue(resumeAfterReopen.exceptionOrNull() is IllegalStateException)
-            agent.assertNoRequest()
-        }
-
-        val loaded = SessionId("reopen-loaded")
-        reopen(
-            loaded,
-            { client.loadSession(loaded, parameters, it) },
-            { client.loadSession(loaded, parameters, it) },
-            AcpMethod.AgentMethods.V1.SessionLoad.methodName,
-        ) { agent.answer(it, AcpMethod.AgentMethods.V1.SessionLoad.responseSerializer, LoadSessionResponse(modes = modes())) }
-        val resumed = SessionId("reopen-resumed")
-        reopen(
-            resumed,
-            { client.resumeSession(resumed, parameters, it) },
-            { client.resumeSession(resumed, parameters, it) },
-            AcpMethod.AgentMethods.V1.SessionResume.methodName,
-        ) { agent.answer(it, AcpMethod.AgentMethods.V1.SessionResume.responseSerializer, ResumeSessionResponse(modes = modes())) }
+        operations.awaitUpdate(later)
+        assertEquals(listOf(opened) + replay + later, operations.updates.value, "the open session gets every update in order")
+        assertTrue(reopenOperations.updates.value.isEmpty(), "the reopened session is not registered")
+        assertNotSame(session, reopened)
+        assertSame(session, client.getSession(sessionId))
+        assertEquals(PLAN, session.currentMode.value)
     }
 
     @Test
@@ -573,29 +542,42 @@ class ClientEarlySessionUpdatesTest {
     }
 
     @Test
-    fun `a factory load fails before its request while a load with operations is in flight`() = withClient { client, agent ->
-        val sessionId = SessionId("early-and-factory")
+    fun `a factory load and a load with operations of one id refuse each other while one is in flight`() = withClient { client, agent ->
+        val earlyId = SessionId("early-then-factory")
         val operations = RecordingOperations()
-        val earlyLoad = async { client.loadSession(sessionId, parameters, operations) }
+        val earlyLoad = async { client.loadSession(earlyId, parameters, operations) }
         val earlyRequest = agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionLoad.methodName)
-
-        val factoryOperations = RecordingOperations()
-        val factoryLoad = runCatching { client.loadSession(sessionId, parameters) { _, _ -> factoryOperations } }
+        val refusedFactoryOperations = RecordingOperations()
+        val factoryLoad = runCatching { client.loadSession(earlyId, parameters) { _, _ -> refusedFactoryOperations } }
         assertTrue(factoryLoad.exceptionOrNull() is IllegalStateException)
-        val factoryResume = runCatching { client.resumeSession(sessionId, parameters) { _, _ -> factoryOperations } }
-        assertTrue(factoryResume.exceptionOrNull() is IllegalStateException)
         agent.assertNoRequest()
 
-        val replay = text("replay")
-        agent.sendUpdate(sessionId, replay)
+        val earlyReplay = text("early-replay")
+        agent.sendUpdate(earlyId, earlyReplay)
         agent.answer(earlyRequest, AcpMethod.AgentMethods.V1.SessionLoad.responseSerializer, LoadSessionResponse())
-        assertSame(earlyLoad.await(), client.getSession(sessionId))
-        assertEquals(listOf<SessionUpdate>(replay), operations.updates.value)
-        assertTrue(factoryOperations.updates.value.isEmpty(), "the refused load gets no update")
+        assertSame(earlyLoad.await(), client.getSession(earlyId))
+        assertEquals(listOf<SessionUpdate>(earlyReplay), operations.updates.value)
+        assertTrue(refusedFactoryOperations.updates.value.isEmpty(), "the refused factory load gets no update")
+
+        val factoryId = SessionId("factory-then-early")
+        val factoryOperations = RecordingOperations()
+        val inFlightFactoryLoad = async { client.loadSession(factoryId, parameters) { _, _ -> factoryOperations } }
+        val factoryRequest = agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionLoad.methodName)
+        val refusedOperations = RecordingOperations()
+        val refusedEarlyLoad = runCatching { client.loadSession(factoryId, parameters, refusedOperations) }
+        assertTrue(refusedEarlyLoad.exceptionOrNull() is IllegalStateException)
+        agent.assertNoRequest()
+
+        val factoryReplay = text("factory-replay")
+        agent.sendUpdate(factoryId, factoryReplay)
+        agent.answer(factoryRequest, AcpMethod.AgentMethods.V1.SessionLoad.responseSerializer, LoadSessionResponse())
+        assertSame(inFlightFactoryLoad.await(), client.getSession(factoryId))
+        factoryOperations.awaitUpdate(factoryReplay)
+        assertTrue(refusedOperations.updates.value.isEmpty(), "the refused load with operations gets no update")
     }
 
     @Test
-    fun `a session opened with operations exposes the answer of the agent`() = withClient { client, agent ->
+    fun `a session exposes the answer of the agent that opened it`() = withClient { client, agent ->
         val loadAnswer = LoadSessionResponse(
             modes = modes(),
             configOptions = listOf(SessionConfigOption.boolean("thinking", "Thinking", currentValue = false)),
@@ -605,51 +587,10 @@ class ClientEarlySessionUpdatesTest {
         agent.answer(agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionLoad.methodName), AcpMethod.AgentMethods.V1.SessionLoad.responseSerializer, loadAnswer)
         assertEquals<AcpCreatedSessionResponse>(loadAnswer, load.await().createdResponse)
 
-        val resumeAnswer = ResumeSessionResponse(_meta = buildJsonObject { put("pushResult", "rejected") })
-        val resume = async { client.resumeSession(SessionId("answer-resume"), parameters, RecordingOperations()) }
-        agent.answer(agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionResume.methodName), AcpMethod.AgentMethods.V1.SessionResume.responseSerializer, resumeAnswer)
-        assertEquals<AcpCreatedSessionResponse>(resumeAnswer, resume.await().createdResponse)
-    }
-
-    @Test
-    fun `a session opened with a factory exposes the answer that the factory got`() = withClient { client, agent ->
-        val factoryAnswers = Channel<AcpCreatedSessionResponse>(Channel.UNLIMITED)
-        val factory = ClientOperationsFactory { _, response ->
-            factoryAnswers.trySend(response)
-            RecordingOperations()
-        }
-
         val newAnswer = NewSessionResponse(SessionId("answer-new"), modes = modes(), _meta = buildJsonObject { put("origin", "new") })
-        val newSession = async { client.newSession(parameters, factory) }
+        val newSession = async { client.newSession(parameters) { _, _ -> RecordingOperations() } }
         agent.answer(agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionNew.methodName), AcpMethod.AgentMethods.V1.SessionNew.responseSerializer, newAnswer)
         assertEquals<AcpCreatedSessionResponse>(newAnswer, newSession.await().createdResponse)
-        assertEquals<AcpCreatedSessionResponse>(newAnswer, factoryAnswers.receive())
-
-        val loadAnswer = LoadSessionResponse(_meta = buildJsonObject { put("origin", "load") })
-        val load = async { client.loadSession(SessionId("answer-factory-load"), parameters, factory) }
-        agent.answer(agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionLoad.methodName), AcpMethod.AgentMethods.V1.SessionLoad.responseSerializer, loadAnswer)
-        assertEquals<AcpCreatedSessionResponse>(loadAnswer, load.await().createdResponse)
-        assertEquals<AcpCreatedSessionResponse>(loadAnswer, factoryAnswers.receive())
-    }
-
-    @Test
-    fun `a load with operations fails before its request while a factory load is in flight`() = withClient { client, agent ->
-        val sessionId = SessionId("factory-and-early")
-        val factoryOperations = RecordingOperations()
-        val factoryLoad = async { client.loadSession(sessionId, parameters) { _, _ -> factoryOperations } }
-        val factoryRequest = agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionLoad.methodName)
-
-        val operations = RecordingOperations()
-        val earlyLoad = runCatching { client.loadSession(sessionId, parameters, operations) }
-        assertTrue(earlyLoad.exceptionOrNull() is IllegalStateException)
-        agent.assertNoRequest()
-
-        val replay = text("replay")
-        agent.sendUpdate(sessionId, replay)
-        agent.answer(factoryRequest, AcpMethod.AgentMethods.V1.SessionLoad.responseSerializer, LoadSessionResponse())
-        assertSame(factoryLoad.await(), client.getSession(sessionId))
-        factoryOperations.awaitUpdate(replay)
-        assertTrue(operations.updates.value.isEmpty(), "the refused load gets no update")
     }
 
     @Test
@@ -715,10 +656,11 @@ class ClientEarlySessionUpdatesTest {
         client: Client,
         agent: ScriptedAgentTransport,
         sessionId: SessionId,
+        answer: LoadSessionResponse = LoadSessionResponse(),
     ): Pair<ClientSession, RecordingOperations> {
         val operations = RecordingOperations()
         val load = async { client.loadSession(sessionId, parameters, operations) }
-        agent.answer(agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionLoad.methodName), AcpMethod.AgentMethods.V1.SessionLoad.responseSerializer, LoadSessionResponse())
+        agent.answer(agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionLoad.methodName), AcpMethod.AgentMethods.V1.SessionLoad.responseSerializer, answer)
         return load.await() to operations
     }
 

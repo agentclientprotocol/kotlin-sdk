@@ -443,17 +443,31 @@ public class Client(
     /**
      * Load an existing session with specified [sessionId] and [sessionParameters].
      *
+     * **Reopen of an open session.** If [sessionId] is already open in this client, the call is a reopen. The open
+     * session and its holder stay as they are:
+     * - The agent's replay goes to the operations of the open session as ordinary updates, with no marker. If a
+     *   prompt of the open session runs, the replay goes into its flow.
+     * - The reopen does not change the answer, the capabilities, or the initial state of the open session. Only the
+     *   updates of the replay change its current mode and config options.
+     * - The returned session is not registered, and [getSession] keeps returning the open session. The operations of
+     *   the returned session get no updates and no agent requests. Its mode, model, and config options come from
+     *   the new answer and never change.
+     * - A prompt on the returned session sends `session/prompt`, but the updates of that turn go to the open session.
+     * - A close of the returned session sends `session/close` for the same id. That closes the agent's session behind
+     *   the open session.
+     * - If the agent answers with an error or [operationsFactory] throws, the call throws, and the open session
+     *   stays as it is.
+     *
+     * Use the returned session only to read the answer of the reopen, see [ClientSession.createdResponse], and keep
+     * using [getSession] for everything else. The reopen is for a client whose factory returns the operations of
+     * the open session, so that one session id has one operations object.
+     *
      * @param sessionId the id of the existing session to load
      * @param sessionParameters parameters for creating a new session
      * @param operationsFactory a factory for creating [com.agentclientprotocol.common.ClientSessionOperations] for the new session.
      * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
      * See [ClientOperationsFactory.createClientOperations] for more details.
-     * @return a [ClientSession] instance for the new session. If [sessionId] is already open in this client, the
-     *   returned session is not registered: the open session stays in [getSession] and gets all updates, also those
-     *   of this load. The load does not change the answer, the capabilities, or the initial state of the open
-     *   session, see [ClientSession.createdResponse]. Only the updates of the replay change its current mode and
-     *   config options. The returned session carries the new answer and gets no updates. Its
-     *   [ClientSession.close] sends `session/close` but leaves the open session registered
+     * @return a [ClientSession] instance for the loaded session
      * @throws IllegalStateException before the request, if a call with ready operations is opening [sessionId]
      */
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
@@ -583,11 +597,7 @@ public class Client(
      * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
      * See [ClientOperationsFactory.createClientOperations] for more details.
      * @return a [ClientSession] instance for the resumed session. If [sessionId] is already open in this client, the
-     *   returned session is not registered: the open session stays in [getSession] and gets all updates, also those
-     *   of this resume. The resume does not change the answer, the capabilities, or the initial state of the open
-     *   session, see [ClientSession.createdResponse]. Only the updates of the replay change its current mode and
-     *   config options. The returned session carries the new answer and gets no updates. Its
-     *   [ClientSession.close] sends `session/close` but leaves the open session registered
+     *   call is a reopen with the same rules as for [loadSession] with a [ClientOperationsFactory]
      * @throws IllegalStateException before the request, if a call with ready operations is opening [sessionId]
      */
     @UnstableApi
@@ -722,6 +732,8 @@ public class Client(
      * The holder is claimed before [request] sends anything, so a load with ready operations of the same id fails
      * before its own request. If [request] fails, the holder fails, and the updates in its queue go to
      * [globalSessionUpdateHandler].
+     *
+     * If the holder already has an open session, the call is a reopen, see [reopenSession].
      */
     private suspend fun withFactoryInitializingSession(
         sessionId: SessionId,
@@ -729,7 +741,18 @@ public class Client(
         factory: ClientOperationsFactory,
         request: suspend () -> AcpCreatedSessionResponse,
     ): ClientSession = withInitializingSession {
-        val sessionHolder = claimFactorySessionHolder(sessionId)
+        val sessionHolder = getOrCreateSessionHolder(sessionId)
+        /*
+         * A holder only moves forward: from no session to an open or a failed session, and an open holder stays open.
+         * So a reopen that sees an open holder needs no lock. The second check catches a call with ready operations
+         * that opened the holder between the first check and the claim.
+         */
+        if (sessionHolder.isOpen) return@withInitializingSession reopenSession(sessionId, sessionParameters, factory, request)
+        if (!sessionHolder.claim(ClientSessionHolder.Opener.FACTORY)) {
+            if (sessionHolder.isOpen) return@withInitializingSession reopenSession(sessionId, sessionParameters, factory, request)
+            error("Session $sessionId is already being opened")
+        }
+
         val sessionResponse = try {
             request()
         } catch (throwable: Throwable) {
@@ -737,6 +760,23 @@ public class Client(
             throw throwable
         }
         createSession(sessionHolder, sessionId, sessionParameters, sessionResponse, factory)
+    }
+
+    /**
+     * Reopens the open session [sessionId] with [request], and returns a session that is not registered.
+     *
+     * The holder of the open session stays untouched: it keeps the open session and delivers the updates of the
+     * replay to it. A failed [request] or a throwing [factory] only throws to the caller.
+     */
+    private suspend fun reopenSession(
+        sessionId: SessionId,
+        sessionParameters: SessionCreationParameters,
+        factory: ClientOperationsFactory,
+        request: suspend () -> AcpCreatedSessionResponse,
+    ): ClientSession {
+        val sessionResponse = request()
+        val operations = factory.createClientOperations(sessionId, sessionResponse)
+        return ClientSessionImpl(this, sessionId, sessionParameters, operations, sessionResponse, protocol)
     }
 
     /**
