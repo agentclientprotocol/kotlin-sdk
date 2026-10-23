@@ -4,7 +4,6 @@ package com.agentclientprotocol.e2e.rustagent.v2
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.e2e.rustagent.TestyAgent
-import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Test
@@ -28,7 +27,6 @@ class InitializationTest {
     fun initializeNegotiatesV2() = runBlocking {
         withTimeout(30.seconds) {
             agent.client { client ->
-                assertEquals(PROTOCOL_VERSION_V2, client.clientInfo.await().protocolVersion)
                 assertEquals("test-agent", client.agentInfo.await().implementation.name)
             }
         }

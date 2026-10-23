@@ -37,11 +37,13 @@ fi
 # --locked keeps the build on the dependency versions pinned by the SDK's Cargo.lock
 CARGO_ARGS=(build --locked -p agent-client-protocol-test --bin testy --no-default-features)
 if [ "${PROTOCOL_VERSION}" = "2" ]; then
-  CARGO_ARGS+=(--features unstable_protocol_v2 --target-dir "${CHECKOUT}/target-v2")
+  CARGO_ARGS+=(--features unstable_protocol_v2)
   TARGET_DIR="${CHECKOUT}/target-v2"
 else
   TARGET_DIR="${CHECKOUT}/target"
 fi
+# An explicit target dir keeps a global CARGO_TARGET_DIR from redirecting the build or returning a stale binary
+CARGO_ARGS+=(--target-dir "${TARGET_DIR}")
 
 echo "[rust-agent] Building testy for protocol v${PROTOCOL_VERSION}..." >&2
 (cd "${CHECKOUT}" && cargo "${CARGO_ARGS[@]}" >&2)

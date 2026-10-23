@@ -17,8 +17,9 @@ either side shows up as an individually runnable, failing JUnit test. For spec c
 - **`setup_sut.sh`**: builds `testy` at the pinned Rust SDK commit.
 - **`rust-sdk.rev`**: the pinned Rust SDK commit.
 
-The suite has no `run.sh`; the Gradle `e2eTest` task is its entry point. These tests are not part of `./gradlew check`
-and never appear as skipped there.
+The suite has no `run.sh`; the Gradle `e2eTest` task is its entry point. `./gradlew check` compiles the `e2eTest`
+sources, so an SDK API change that breaks them fails the build, but it never runs these tests, and they never appear as
+skipped there.
 
 ## Requirements
 
@@ -45,17 +46,17 @@ client project, which is the first place to look when a test fails.
 
 Both suites mirror each other's structure and test names where a flow exists for both versions.
 
-**v1** (21 tests):
+**v1**:
 
 - initialize: negotiated version, agent capabilities, and auth methods;
 - authenticate with the agent auth method and log out;
 - sessions: new, load, list, resume, close, delete, and additional directories;
 - modes and config options, including the resulting updates;
-- prompts: `greet`, `echo`, and the `content`, `tool_calls`, `callbacks`, and `elicitations` scenarios, with the client
-  implementing the permission, file system, terminal, and elicitation callbacks;
+- prompts: `greet`, `echo`, and the `content`, `tool_calls`, `session_updates`, `callbacks`, and `elicitations`
+  scenarios, with the client implementing the permission, file system, terminal, and elicitation callbacks;
 - cancellation: `wait_for_cancel` ends with `Cancelled`, and `cancel_status` reports the state.
 
-**v2** (8 tests): initialize; sessions new, list, resume, and close; `greet` and `echo` prompts with their streamed
+**v2**: initialize; sessions new, list, resume, and close; `greet` and `echo` prompts with their streamed
 updates; cancellation through `wait_for_cancel` and `cancel_status`.
 
 ### v2 coverage is thinner
@@ -119,7 +120,7 @@ Each job uploads the HTML report, the JUnit XML results, and the agent logs as t
 
 ## Known failures
 
-None. At the pinned commit both suites pass fully (v1 21/21, v2 8/8), and this pass found no Kotlin SDK defects.
+None. At the pinned commit both suites pass fully, and no Kotlin SDK defects are known.
 
 A test that fails because of a real SDK defect stays enabled and red; do not weaken its assertions to make it pass.
 Before recording a failure here, rule out a defect in the test itself. Add one entry per failure in this format:
