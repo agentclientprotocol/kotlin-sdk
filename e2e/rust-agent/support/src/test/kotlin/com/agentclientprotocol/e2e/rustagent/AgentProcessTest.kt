@@ -1,15 +1,19 @@
 package com.agentclientprotocol.e2e.rustagent
 
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.Assertions.assertTimeoutPreemptively
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.measureTime
 
@@ -64,5 +68,29 @@ class AgentProcessTest {
         handle.ifPresent { it.onExit().get(5, TimeUnit.SECONDS) }
         assertFalse(handle.map { it.isAlive }.orElse(false), "Agent process $pid is still alive")
         assertTrue(Files.exists(stderrLog.parent))
+    }
+
+    /*
+     * Regression test for a teardown deadlock: the transport's read job blocks in readLine, which cancellation
+     * cannot interrupt, so teardown hung unless it closed the agent's stdin before waiting for that job. The fake
+     * agent keeps stdout open until stdin reaches EOF. A coroutine timeout cannot interrupt the blocked teardown,
+     * hence the preemptive JUnit timeout.
+     */
+    @Test
+    fun teardownEndsAgentThatKeepsStdoutOpenUntilStdinEof() {
+        val agent = script("agent.sh", "echo agent-ready >&2\ncat > /dev/null")
+        val stderrLog = tempDir.resolve("logs/agent.log")
+
+        assertTimeoutPreemptively(Duration.ofSeconds(15)) {
+            runBlocking {
+                withAgentProcess(agent, stderrLog) {
+                    while (!Files.exists(stderrLog) || "agent-ready" !in Files.readString(stderrLog)) delay(10.milliseconds)
+                    // Gives the read job time to block in readLine before the block returns.
+                    delay(300.milliseconds)
+                }
+            }
+        }
+
+        assertTrue("agent-ready" in Files.readString(stderrLog))
     }
 }
