@@ -414,6 +414,7 @@ public abstract interface class com/agentclientprotocol/client/ClientSession {
 	public abstract fun getClient ()Lcom/agentclientprotocol/client/Client;
 	public abstract fun getConfigOptions ()Lkotlinx/coroutines/flow/StateFlow;
 	public abstract fun getConfigOptionsSupported ()Z
+	public fun getCreatedResponse ()Lcom/agentclientprotocol/model/AcpCreatedSessionResponse;
 	public abstract fun getCurrentMode ()Lkotlinx/coroutines/flow/StateFlow;
 	public abstract fun getCurrentModel ()Lkotlinx/coroutines/flow/StateFlow;
 	public abstract fun getModelsSupported ()Z
@@ -433,6 +434,7 @@ public abstract interface class com/agentclientprotocol/client/ClientSession {
 
 public final class com/agentclientprotocol/client/ClientSession$DefaultImpls {
 	public static synthetic fun close$default (Lcom/agentclientprotocol/client/ClientSession;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static fun getCreatedResponse (Lcom/agentclientprotocol/client/ClientSession;)Lcom/agentclientprotocol/model/AcpCreatedSessionResponse;
 	public static synthetic fun prompt$default (Lcom/agentclientprotocol/client/ClientSession;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun setConfigOption-A2gp-xI$default (Lcom/agentclientprotocol/client/ClientSession;Ljava/lang/String;Lcom/agentclientprotocol/model/SessionConfigOptionValue;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun setMode-tFeI3nk$default (Lcom/agentclientprotocol/client/ClientSession;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;

@@ -72,8 +72,9 @@ internal class ClientSessionHolder {
     /**
      * Makes [kind] the owner of this holder.
      *
-     * A [Opener.FACTORY] call may claim a holder that a factory call already owns: a second factory load of an open
-     * session keeps its old behavior. A [Opener.OPERATIONS] call needs a holder that has no owner and no session.
+     * A [Opener.FACTORY] call may claim a holder that another factory call owns: two factory openings of one id keep
+     * their old behavior. A [Opener.OPERATIONS] call needs a holder that has no owner and no session. A reopen of an
+     * open session claims nothing, see [isOpen].
      *
      * @return `false` if another kind of call owns the holder, or if [kind] is [Opener.OPERATIONS] and the holder
      *   has an owner or has completed. The holder is then unchanged.
@@ -82,6 +83,18 @@ internal class ClientSessionHolder {
         Opener.FACTORY -> opener.compareAndSet(null, Opener.FACTORY) || opener.value == Opener.FACTORY
         Opener.OPERATIONS -> !sessionDeferred.isCompleted && opener.compareAndSet(null, Opener.OPERATIONS)
     }
+
+    /**
+     * Whether the holder has an open session. Once `true`, it stays `true`.
+     */
+    val isOpen: Boolean
+        get() = sessionDeferred.isCompleted && !isFailed
+
+    /**
+     * Whether [session] is the open session of this holder.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun holds(session: ClientSessionImpl): Boolean = isOpen && sessionDeferred.getCompleted() === session
 
     suspend fun drainEventsAndCompleteSession(session: ClientSessionImpl) {
         @OptIn(ExperimentalCoroutinesApi::class)
