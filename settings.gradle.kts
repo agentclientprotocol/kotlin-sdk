@@ -34,3 +34,4 @@ include(":e2e:tck:agent-v2")
 // Informational e2e suite: Kotlin SDK clients driving the Rust SDK testy agent
 include(":e2e:rust-agent:support")
 include(":e2e:rust-agent:client-v1")
+include(":e2e:rust-agent:client-v2")
