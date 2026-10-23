@@ -8,7 +8,7 @@ interoperability with the Rust reference SDK.
 
 - **`support/`**: the `TestyAgent` JUnit extension, agent launcher, and `setup_sut.sh`
   output validation. Its unit tests need no Rust toolchain and run in `./gradlew check`.
-- **`client-v1/`**, **`client-v2/`**: stable and protocol v2 client tests, each in an `e2eTest` JVM test suite.
+- **`client-v1/`**, **`client-v2/`**: stable and protocol v2 client tests, each in an `e2eTest` JVM test suite. 
 - **`setup_sut.sh`**: builds `testy` at the pinned commit.
 - **`rust-sdk.rev`**, **`rust-toolchain.toml`**: the pinned Rust SDK commit and Rust toolchain.
 

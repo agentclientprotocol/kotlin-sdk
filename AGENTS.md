@@ -65,7 +65,7 @@ End-to-end suites that check the SDK against external counterparts, such as the 
 
 ### `buildSrc`
 
-Shared Gradle convention and publishing plugins. `acp.multiplatform.gradle.kts` defines targets, explicit API mode, the JDK toolchain, and generated library-version constants. Changes here affect most modules and are core architectural changes.
+Shared Gradle convention and publishing plugins. Changes here affect most modules and are core architectural changes.
 
 ## Architecture and Dependency Direction
 
