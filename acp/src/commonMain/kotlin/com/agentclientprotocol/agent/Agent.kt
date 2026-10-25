@@ -67,6 +67,7 @@ public class Agent(
 
         suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): PromptResponse {
             var response: PromptResponse? = null
+            var registeredPrompt: PromptSession? = null
             return coroutineScope {
                 try {
                     val promptJob = launch(start = CoroutineStart.LAZY) {
@@ -90,12 +91,18 @@ public class Agent(
                     if (!_activePrompt.compareAndSet(null, promptSession)) {
                         error("There is already active prompt execution")
                     }
+                    registeredPrompt = promptSession
                     promptJob.join()
                     response ?: PromptResponse(
                         stopReason = if (promptJob.isCancelled) StopReason.CANCELLED else StopReason.END_TURN
                     )
                 } finally {
-                    _activePrompt.getAndSet(null)
+                    /*
+                     * A rejected prompt never owned the slot, and cancel() frees it early so the next prompt can
+                     * start while this turn winds down. Clear only this turn's own registration, or another turn
+                     * would become impossible to cancel.
+                     */
+                    registeredPrompt?.let { _activePrompt.compareAndSet(it, null) }
                 }
             }
         }

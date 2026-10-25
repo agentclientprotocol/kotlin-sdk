@@ -7,6 +7,7 @@ import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.setNotificationHandler
 import com.agentclientprotocol.rpc.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.Serializable
@@ -932,6 +933,89 @@ class AgentTest {
             val response = deferredResponse.await()
             assertEquals(StopReason.CANCELLED, response.stopReason)
         }
+    }
+
+    @Test
+    fun `a cancel stops a prompt sent right after the previous turn was cancelled`() {
+        /*
+         * A client may send the next prompt as soon as it has cancelled the previous one, so the cancelled
+         * turn can still be winding down while the next one runs. Ending the old turn must not unregister
+         * the new one: a cancelled prompt MUST answer with the `cancelled` stop reason.
+         * https://agentclientprotocol.com/protocol/prompt-turn#cancellation
+         */
+        val started = Channel<String>(Channel.UNLIMITED)
+        val firstCancelled = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        val promptHandler: PromptHandler = { content ->
+            val text = assertIs<ContentBlock.Text>(content.single()).text
+            started.send(text)
+            try {
+                awaitCancellation()
+            } catch (e: CancellationException) {
+                if (text == "first") {
+                    // Holds the cancelled turn open until the next prompt has been registered.
+                    firstCancelled.complete(Unit)
+                    withContext(NonCancellable) { releaseFirst.await() }
+                }
+                throw e
+            }
+        }
+        withTestAgentSession(promptHandler = promptHandler) { testAgent, session ->
+            testAgent.firePrompt(session.sessionId, "first", RequestId.create(101))
+            assertEquals("first", withTimeout(5.seconds) { started.receive() })
+            testAgent.testCancel(CancelNotification(session.sessionId))
+            withTimeout(5.seconds) { firstCancelled.await() }
+
+            testAgent.firePrompt(session.sessionId, "second", RequestId.create(102))
+            assertEquals("second", withTimeout(5.seconds) { started.receive() })
+            releaseFirst.complete(Unit)
+            assertEquals(StopReason.CANCELLED, testAgent.receivePromptResponse(RequestId.create(101)).stopReason)
+
+            testAgent.testCancel(CancelNotification(session.sessionId))
+            assertEquals(StopReason.CANCELLED, testAgent.receivePromptResponse(RequestId.create(102)).stopReason)
+        }
+    }
+
+    @Test
+    fun `a rejected overlapping prompt leaves the running turn cancellable`() {
+        val started = CompletableDeferred<Unit>()
+        val promptHandler: PromptHandler = {
+            started.complete(Unit)
+            awaitCancellation()
+        }
+        withTestAgentSession(promptHandler = promptHandler) { testAgent, session ->
+            testAgent.firePrompt(session.sessionId, "first", RequestId.create(201))
+            withTimeout(5.seconds) { started.await() }
+
+            testAgent.firePrompt(session.sessionId, "overlapping", RequestId.create(202))
+            val rejection = assertIs<JsonRpcErrorResponse>(testAgent.transport.receiveTestMessages(1).single())
+            assertEquals(RequestId.create(202), rejection.id)
+
+            testAgent.testCancel(CancelNotification(session.sessionId))
+            assertEquals(StopReason.CANCELLED, testAgent.receivePromptResponse(RequestId.create(201)).stopReason)
+        }
+    }
+
+    /**
+     * Sends a `session/prompt` without waiting for its reply, so that several turns can be in flight.
+     */
+    private fun TestAgent.firePrompt(sessionId: SessionId, text: String, id: RequestId) {
+        val prompt = AcpMethod.AgentMethods.V1.SessionPrompt
+        transport.fireTestRequestWithoutReply(
+            prompt.methodName,
+            ACPJson.encodeToJsonElement(prompt.requestSerializer, PromptRequest(sessionId, listOf(ContentBlock.Text(text)))),
+            id,
+        )
+    }
+
+    /**
+     * Reads the next message from the agent as the successful reply to the prompt [id].
+     */
+    private suspend fun TestAgent.receivePromptResponse(id: RequestId): PromptResponse {
+        val message = assertNotNull(transport.receiveTestMessages(1).singleOrNull(), "No reply to prompt $id")
+        val reply = assertIs<JsonRpcSuccessResponse>(message)
+        assertEquals(id, reply.id)
+        return ACPJson.decodeFromJsonElement(AcpMethod.AgentMethods.V1.SessionPrompt.responseSerializer, reply.result)
     }
 }
 
