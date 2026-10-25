@@ -1,6 +1,7 @@
 package com.agentclientprotocol.agent
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
@@ -988,11 +989,58 @@ class AgentTest {
             withTimeout(5.seconds) { started.await() }
 
             testAgent.firePrompt(session.sessionId, "overlapping", RequestId.create(202))
-            val rejection = assertIs<JsonRpcErrorResponse>(testAgent.transport.receiveTestMessages(1).single())
+            val message = assertNotNull(testAgent.transport.receiveTestMessages(1).singleOrNull(), "No reply to prompt 202")
+            val rejection = assertIs<JsonRpcErrorResponse>(message)
             assertEquals(RequestId.create(202), rejection.id)
+            assertEquals(JsonRpcErrorCode.INTERNAL_ERROR.code, rejection.error.code)
+            assertEquals("There is already active prompt execution", rejection.error.message)
 
             testAgent.testCancel(CancelNotification(session.sessionId))
             assertEquals(StopReason.CANCELLED, testAgent.receivePromptResponse(RequestId.create(201)).stopReason)
+        }
+    }
+
+    @Test
+    fun `a slow session cancel leaves the next prompt running`() {
+        /*
+         * AgentSession.cancel() may suspend until the turn's activities are cancelled, and the cancelled turn
+         * can answer meanwhile. The client may then start the next turn before the session's cancel returns,
+         * and that turn was never asked to stop: it must not be cancelled.
+         */
+        val started = Channel<String>(Channel.UNLIMITED)
+        val stopFirst = CompletableDeferred<Unit>()
+        val releaseCancel = CompletableDeferred<Unit>()
+        val cancelReturned = CompletableDeferred<Unit>()
+        val promptHandler: PromptHandler = { content ->
+            val text = assertIs<ContentBlock.Text>(content.single()).text
+            started.send(text)
+            if (text == "first") {
+                stopFirst.await()
+                emit(Event.PromptResponseEvent(PromptResponse(StopReason.CANCELLED)))
+            } else {
+                /*
+                 * Completed by the session's cancel() on the single handler thread, so this turn resumes only
+                 * after the SDK's cancel() has finished with the active-prompt slot.
+                 */
+                cancelReturned.await()
+                emit(Event.PromptResponseEvent(PromptResponse(StopReason.END_TURN)))
+            }
+        }
+        val cancelHandler: CancelHandler = {
+            stopFirst.complete(Unit)
+            releaseCancel.await()
+            cancelReturned.complete(Unit)
+        }
+        withTestAgentSession(promptHandler = promptHandler, cancelHandler = cancelHandler) { testAgent, session ->
+            testAgent.firePrompt(session.sessionId, "first", RequestId.create(301))
+            assertEquals("first", withTimeout(5.seconds) { started.receive() })
+            testAgent.testCancel(CancelNotification(session.sessionId))
+            assertEquals(StopReason.CANCELLED, testAgent.receivePromptResponse(RequestId.create(301)).stopReason)
+
+            testAgent.firePrompt(session.sessionId, "second", RequestId.create(302))
+            assertEquals("second", withTimeout(5.seconds) { started.receive() })
+            releaseCancel.complete(Unit)
+            assertEquals(StopReason.END_TURN, testAgent.receivePromptResponse(RequestId.create(302)).stopReason)
         }
     }
 

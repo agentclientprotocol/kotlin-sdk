@@ -67,52 +67,54 @@ public class Agent(
 
         suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): PromptResponse {
             var response: PromptResponse? = null
-            var registeredPrompt: PromptSession? = null
             return coroutineScope {
-                try {
-                    val promptJob = launch(start = CoroutineStart.LAZY) {
-                        agentSession.prompt(content, _meta).collect { event ->
-                            when (event) {
-                                is Event.PromptResponseEvent -> {
-                                    if (response != null) {
-                                        logger.error { "Received repeated prompt response: ${event.response} (previous: $response). The last is used" }
-                                    }
-                                    response = event.response
+                val promptJob = launch(start = CoroutineStart.LAZY) {
+                    agentSession.prompt(content, _meta).collect { event ->
+                        when (event) {
+                            is Event.PromptResponseEvent -> {
+                                if (response != null) {
+                                    logger.error { "Received repeated prompt response: ${event.response} (previous: $response). The last is used" }
                                 }
+                                response = event.response
+                            }
 
-                                is Event.SessionUpdateEvent -> {
-                                    clientOperations.notify(event.update, _meta)
-                                }
+                            is Event.SessionUpdateEvent -> {
+                                clientOperations.notify(event.update, _meta)
                             }
                         }
                     }
+                }
 
-                    val promptSession = PromptSession(promptJob)
-                    if (!_activePrompt.compareAndSet(null, promptSession)) {
-                        error("There is already active prompt execution")
-                    }
-                    registeredPrompt = promptSession
+                val promptSession = PromptSession(promptJob)
+                if (!_activePrompt.compareAndSet(null, promptSession)) {
+                    error("There is already active prompt execution")
+                }
+                try {
                     promptJob.join()
                     response ?: PromptResponse(
                         stopReason = if (promptJob.isCancelled) StopReason.CANCELLED else StopReason.END_TURN
                     )
                 } finally {
                     /*
-                     * A rejected prompt never owned the slot, and cancel() frees it early so the next prompt can
-                     * start while this turn winds down. Clear only this turn's own registration, or another turn
-                     * would become impossible to cancel.
+                     * cancel() frees the slot early so the next prompt can start while this turn winds down.
+                     * Clear only this turn's own registration, or the next turn would become impossible to cancel.
                      */
-                    registeredPrompt?.let { _activePrompt.compareAndSet(it, null) }
+                    _activePrompt.compareAndSet(promptSession, null)
                 }
             }
         }
 
         suspend fun cancel() {
+            /*
+             * Take the turn to cancel before notifying the session: its cancel() may suspend while the turn
+             * answers and the client starts the next one, which was never asked to stop.
+             */
+            val activePrompt = _activePrompt.value
             // notify AgentSession about upcoming cancellation, this way implementations can gracefully stop ongoing requests
             agentSession.cancel()
 
-            val activePrompt = _activePrompt.getAndSet(null)
             if (activePrompt != null) {
+                _activePrompt.compareAndSet(activePrompt, null)
                 logger.trace { "Cancelling prompt" }
                 // we expect that all nested outgoing jobs will be cancelled automatically due to structured concurrency
                 // -> prompt task
