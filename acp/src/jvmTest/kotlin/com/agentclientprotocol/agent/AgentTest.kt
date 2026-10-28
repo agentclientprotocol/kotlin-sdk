@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import kotlin.test.*
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import com.agentclientprotocol.agent.v2.Agent as V2Agent
 import com.agentclientprotocol.agent.v2.AgentInfo as V2AgentInfo
@@ -937,13 +938,12 @@ class AgentTest {
     }
 
     /*
-     * A client may send the next prompt as soon as it has cancelled the previous one, so the cancelled
-     * turn can still be winding down while the next one runs. Ending the old turn must not unregister
-     * the new one: a cancelled prompt MUST answer with the `cancelled` stop reason.
-     * https://agentclientprotocol.com/protocol/prompt-turn#cancellation
+     * The SDK runs one turn at a time per session, and a cancelled turn still runs until it answers. A prompt sent
+     * while the cancelled turn winds down is rejected, and the next prompt after the answer runs and can be
+     * cancelled.
      */
     @Test
-    fun `a cancel stops a prompt sent right after the previous turn was cancelled`() {
+    fun `a prompt sent before the cancelled turn answers is rejected`() {
         val started = Channel<String>(Channel.UNLIMITED)
         val firstCancelled = CompletableDeferred<Unit>()
         val releaseFirst = CompletableDeferred<Unit>()
@@ -954,7 +954,7 @@ class AgentTest {
                 awaitCancellation()
             } catch (e: CancellationException) {
                 if (text == "first") {
-                    // Holds the cancelled turn open until the next prompt has been registered.
+                    // Holds the cancelled turn open after the SDK's cancel() has returned.
                     firstCancelled.complete(Unit)
                     withContext(NonCancellable) { releaseFirst.await() }
                 }
@@ -967,13 +967,18 @@ class AgentTest {
             testAgent.testCancel(CancelNotification(session.sessionId))
             withTimeout(5.seconds) { firstCancelled.await() }
 
-            testAgent.firePrompt(session.sessionId, "second", RequestId.create(102))
-            assertEquals("second", withTimeout(5.seconds) { started.receive() })
-            releaseFirst.complete(Unit)
+            try {
+                testAgent.firePrompt(session.sessionId, "early", RequestId.create(102))
+                testAgent.receivePromptRejection(RequestId.create(102))
+            } finally {
+                releaseFirst.complete(Unit)
+            }
             assertEquals(StopReason.CANCELLED, testAgent.receivePromptResponse(RequestId.create(101)).stopReason)
 
+            testAgent.firePrompt(session.sessionId, "next", RequestId.create(103))
+            assertEquals("next", withTimeout(5.seconds) { started.receive() })
             testAgent.testCancel(CancelNotification(session.sessionId))
-            assertEquals(StopReason.CANCELLED, testAgent.receivePromptResponse(RequestId.create(102)).stopReason)
+            assertEquals(StopReason.CANCELLED, testAgent.receivePromptResponse(RequestId.create(103)).stopReason)
         }
     }
 
@@ -989,11 +994,7 @@ class AgentTest {
             withTimeout(5.seconds) { started.await() }
 
             testAgent.firePrompt(session.sessionId, "overlapping", RequestId.create(202))
-            val message = assertNotNull(testAgent.transport.receiveTestMessages(1).singleOrNull(), "No reply to prompt 202")
-            val rejection = assertIs<JsonRpcErrorResponse>(message)
-            assertEquals(RequestId.create(202), rejection.id)
-            assertEquals(JsonRpcErrorCode.INTERNAL_ERROR.code, rejection.error.code)
-            assertEquals("There is already active prompt execution", rejection.error.message)
+            testAgent.receivePromptRejection(RequestId.create(202))
 
             testAgent.testCancel(CancelNotification(session.sessionId))
             assertEquals(StopReason.CANCELLED, testAgent.receivePromptResponse(RequestId.create(201)).stopReason)
@@ -1001,49 +1002,96 @@ class AgentTest {
     }
 
     /*
-     * AgentSession.cancel() may suspend until the turn's activities are cancelled, and the cancelled turn
-     * can answer meanwhile. The client may then start the next turn before the session's cancel returns,
-     * and that turn was never asked to stop: it must not be cancelled.
+     * AgentSession.cancel() returns after the turn's activities are cancelled, and the turn's flow may end before
+     * that. The agent MUST answer the cancelled prompt only after all ongoing operations are aborted and pending
+     * updates are sent, so updates sent from the session's cancel() precede the response.
+     * https://agentclientprotocol.com/protocol/prompt-turn#cancellation
      */
     @Test
-    fun `a slow session cancel leaves the next prompt running`() {
+    fun `a cancelled turn answers only after the session's cancel returns`() {
+        val started = CompletableDeferred<Unit>()
+        val stopTurn = CompletableDeferred<Unit>()
+        val turnEnded = CompletableDeferred<Unit>()
+        val releaseCancel = CompletableDeferred<Unit>()
+
+        val promptHandler: PromptHandler = {
+            started.complete(Unit)
+            try {
+                stopTurn.await()
+                emit(Event.PromptResponseEvent(PromptResponse(StopReason.CANCELLED)))
+            } finally {
+                turnEnded.complete(Unit)
+            }
+        }
+
+        val cancelHandler: CancelHandler = {
+            stopTurn.complete(Unit)
+            releaseCancel.await()
+            currentCoroutineContext().client.notify(SessionUpdate.AgentMessageChunk(ContentBlock.Text("cleanup")))
+        }
+
+        withTestAgentSession(promptHandler = promptHandler, cancelHandler = cancelHandler) { testAgent, session ->
+            testAgent.firePrompt(session.sessionId, "first", RequestId.create(301))
+            withTimeout(5.seconds) { started.await() }
+            testAgent.testCancel(CancelNotification(session.sessionId))
+            withTimeout(5.seconds) { turnEnded.await() }
+
+            /*
+             * The absence of a reply can only be observed for a while: the turn has ended, so without the fix
+             * the reply is sent right away.
+             */
+            val early = withTimeoutOrNull(300.milliseconds) { testAgent.transport.receiveTestMessages(1) }
+            assertNull(early, "The cancelled turn answered before the session's cancel returned")
+
+            releaseCancel.complete(Unit)
+            val update = assertIs<JsonRpcNotification>(testAgent.transport.receiveTestMessages(1).singleOrNull())
+            assertEquals(AcpMethod.ClientMethods.V1.SessionUpdate.methodName, update.method)
+            assertEquals(StopReason.CANCELLED, testAgent.receivePromptResponse(RequestId.create(301)).stopReason)
+        }
+    }
+
+    /*
+     * A session/cancel can arrive just after the turn has answered, and AgentSession.cancel() may still suspend.
+     * The client may start the next turn meanwhile, and that turn was never asked to stop: it must not be
+     * cancelled.
+     */
+    @Test
+    fun `a cancel that arrives after the turn answered leaves the next prompt running`() {
         val started = Channel<String>(Channel.UNLIMITED)
-        val stopFirst = CompletableDeferred<Unit>()
+        val cancelStarted = CompletableDeferred<Unit>()
         val releaseCancel = CompletableDeferred<Unit>()
         val cancelReturned = CompletableDeferred<Unit>()
 
         val promptHandler: PromptHandler = { content ->
             val text = assertIs<ContentBlock.Text>(content.single()).text
             started.send(text)
-            if (text == "first") {
-                stopFirst.await()
-                emit(Event.PromptResponseEvent(PromptResponse(StopReason.CANCELLED)))
-            } else {
+            if (text == "second") {
                 /*
                  * Completed by the session's cancel() on the single handler thread, so this turn resumes only
                  * after the SDK's cancel() has finished with the active-prompt slot.
                  */
                 cancelReturned.await()
-                emit(Event.PromptResponseEvent(PromptResponse(StopReason.END_TURN)))
             }
+            emit(Event.PromptResponseEvent(PromptResponse(StopReason.END_TURN)))
         }
 
         val cancelHandler: CancelHandler = {
-            stopFirst.complete(Unit)
+            cancelStarted.complete(Unit)
             releaseCancel.await()
             cancelReturned.complete(Unit)
         }
-        
-        withTestAgentSession(promptHandler = promptHandler, cancelHandler = cancelHandler) { testAgent, session ->
-            testAgent.firePrompt(session.sessionId, "first", RequestId.create(301))
-            assertEquals("first", withTimeout(5.seconds) { started.receive() })
-            testAgent.testCancel(CancelNotification(session.sessionId))
-            assertEquals(StopReason.CANCELLED, testAgent.receivePromptResponse(RequestId.create(301)).stopReason)
 
-            testAgent.firePrompt(session.sessionId, "second", RequestId.create(302))
+        withTestAgentSession(promptHandler = promptHandler, cancelHandler = cancelHandler) { testAgent, session ->
+            testAgent.firePrompt(session.sessionId, "first", RequestId.create(311))
+            assertEquals(StopReason.END_TURN, testAgent.receivePromptResponse(RequestId.create(311)).stopReason)
+            testAgent.testCancel(CancelNotification(session.sessionId))
+            withTimeout(5.seconds) { cancelStarted.await() }
+
+            testAgent.firePrompt(session.sessionId, "second", RequestId.create(312))
+            assertEquals("first", withTimeout(5.seconds) { started.receive() })
             assertEquals("second", withTimeout(5.seconds) { started.receive() })
             releaseCancel.complete(Unit)
-            assertEquals(StopReason.END_TURN, testAgent.receivePromptResponse(RequestId.create(302)).stopReason)
+            assertEquals(StopReason.END_TURN, testAgent.receivePromptResponse(RequestId.create(312)).stopReason)
         }
     }
 
@@ -1057,6 +1105,17 @@ class AgentTest {
             ACPJson.encodeToJsonElement(prompt.requestSerializer, PromptRequest(sessionId, listOf(ContentBlock.Text(text)))),
             id,
         )
+    }
+
+    /**
+     * Reads the next message from the agent as the rejection of the prompt [id] that overlapped a running turn.
+     */
+    private suspend fun TestAgent.receivePromptRejection(id: RequestId) {
+        val message = assertNotNull(transport.receiveTestMessages(1).singleOrNull(), "No reply to prompt $id")
+        val rejection = assertIs<JsonRpcErrorResponse>(message)
+        assertEquals(id, rejection.id)
+        assertEquals(JsonRpcErrorCode.INTERNAL_ERROR.code, rejection.error.code)
+        assertEquals("There is already active prompt execution", rejection.error.message)
     }
 
     /**

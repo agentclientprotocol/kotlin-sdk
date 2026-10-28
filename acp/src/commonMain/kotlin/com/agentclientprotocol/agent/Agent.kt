@@ -17,6 +17,10 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.getAndUpdate
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
@@ -62,7 +66,37 @@ public class Agent(
         val clientOperations: ClientSessionOperations,
         protocol: Protocol
     ) : BaseSessionWrapper(agent, protocol) {
-        private class PromptSession(val promptJob: Job)
+        private class PromptSession(val promptJob: Job) {
+            /**
+             * The number of cancels still running for this turn, or [ANSWERING] once the turn has passed the wait for
+             * them and is about to answer.
+             */
+            private val runningCancels = MutableStateFlow(0)
+
+            /**
+             * Registers a cancel for this turn. Returns `false` if the turn is already answering.
+             */
+            fun startCancel(): Boolean =
+                runningCancels.getAndUpdate { if (it == ANSWERING) it else it + 1 } != ANSWERING
+
+            fun finishCancel() {
+                runningCancels.update { it - 1 }
+            }
+
+            /**
+             * Suspends until no cancel is running for this turn, then marks the turn as answering.
+             */
+            suspend fun awaitCancels() {
+                while (!runningCancels.compareAndSet(0, ANSWERING)) {
+                    runningCancels.first { it == 0 }
+                }
+            }
+
+            private companion object {
+                const val ANSWERING = -1
+            }
+        }
+
         private val _activePrompt = atomic<PromptSession?>(null)
 
         @OptIn(UnstableApi::class)
@@ -92,39 +126,44 @@ public class Agent(
                 }
                 try {
                     promptJob.join()
+                    /*
+                     * A cancelled turn answers only after the session's cancel() returns: the response must follow
+                     * every aborted operation and every update, including those sent from cancel().
+                     */
+                    promptSession.awaitCancels()
                     response ?: PromptResponse(
                         stopReason = if (promptJob.isCancelled) StopReason.CANCELLED else StopReason.END_TURN
                     )
                 } finally {
-                    /*
-                     * cancel() frees the slot early so the next prompt can start while this turn winds down.
-                     * Clear only this turn's own registration, or the next turn would become impossible to cancel.
-                     */
-                    _activePrompt.compareAndSet(promptSession, null)
+                    // Only the turn frees its slot, so the next prompt can start only after this one has answered.
+                    _activePrompt.value = null
                 }
             }
         }
 
         suspend fun cancel() {
             /*
-             * Take the turn to cancel before notifying the session: session's cancel() may suspend while the turn
-             * answers and the client can already start the next turn.
+             * Take the turn to cancel before notifying the session: the session's cancel() may suspend, and a turn
+             * that has already answered may be followed by the next one meanwhile, which this cancel must not touch.
              */
-            val promptToCancel = _activePrompt.value
-            // notify AgentSession about upcoming cancellation, this way implementations can gracefully stop ongoing requests
-            agentSession.cancel()
+            val promptToCancel = _activePrompt.value?.takeIf { it.startCancel() }
+            try {
+                // notify AgentSession about upcoming cancellation, this way implementations can gracefully stop ongoing requests
+                agentSession.cancel()
 
-            if (promptToCancel != null) {
-                _activePrompt.compareAndSet(promptToCancel, null)
-                logger.trace { "Cancelling prompt" }
-                // we expect that all nested outgoing jobs will be cancelled automatically due to structured concurrency
-                // -> prompt task
-                //   <- [request] read file
-                //   -> [response] read file
-                //   <- [request] permissions
-                //   |suspended|
-                // cancelling the whole prompt should cancel all nested outgoing requests. These requests on CE will propagate cancellation to the other side
-                promptToCancel.promptJob.cancel()
+                if (promptToCancel != null) {
+                    logger.trace { "Cancelling prompt" }
+                    // we expect that all nested outgoing jobs will be cancelled automatically due to structured concurrency
+                    // -> prompt task
+                    //   <- [request] read file
+                    //   -> [response] read file
+                    //   <- [request] permissions
+                    //   |suspended|
+                    // cancelling the whole prompt should cancel all nested outgoing requests. These requests on CE will propagate cancellation to the other side
+                    promptToCancel.promptJob.cancel()
+                }
+            } finally {
+                promptToCancel?.finishCancel()
             }
         }
     }
