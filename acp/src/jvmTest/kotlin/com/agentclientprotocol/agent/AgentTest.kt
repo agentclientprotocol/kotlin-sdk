@@ -936,14 +936,14 @@ class AgentTest {
         }
     }
 
+    /*
+     * A client may send the next prompt as soon as it has cancelled the previous one, so the cancelled
+     * turn can still be winding down while the next one runs. Ending the old turn must not unregister
+     * the new one: a cancelled prompt MUST answer with the `cancelled` stop reason.
+     * https://agentclientprotocol.com/protocol/prompt-turn#cancellation
+     */
     @Test
     fun `a cancel stops a prompt sent right after the previous turn was cancelled`() {
-        /*
-         * A client may send the next prompt as soon as it has cancelled the previous one, so the cancelled
-         * turn can still be winding down while the next one runs. Ending the old turn must not unregister
-         * the new one: a cancelled prompt MUST answer with the `cancelled` stop reason.
-         * https://agentclientprotocol.com/protocol/prompt-turn#cancellation
-         */
         val started = Channel<String>(Channel.UNLIMITED)
         val firstCancelled = CompletableDeferred<Unit>()
         val releaseFirst = CompletableDeferred<Unit>()
@@ -1000,17 +1000,18 @@ class AgentTest {
         }
     }
 
+    /*
+     * AgentSession.cancel() may suspend until the turn's activities are cancelled, and the cancelled turn
+     * can answer meanwhile. The client may then start the next turn before the session's cancel returns,
+     * and that turn was never asked to stop: it must not be cancelled.
+     */
     @Test
     fun `a slow session cancel leaves the next prompt running`() {
-        /*
-         * AgentSession.cancel() may suspend until the turn's activities are cancelled, and the cancelled turn
-         * can answer meanwhile. The client may then start the next turn before the session's cancel returns,
-         * and that turn was never asked to stop: it must not be cancelled.
-         */
         val started = Channel<String>(Channel.UNLIMITED)
         val stopFirst = CompletableDeferred<Unit>()
         val releaseCancel = CompletableDeferred<Unit>()
         val cancelReturned = CompletableDeferred<Unit>()
+
         val promptHandler: PromptHandler = { content ->
             val text = assertIs<ContentBlock.Text>(content.single()).text
             started.send(text)
@@ -1026,11 +1027,13 @@ class AgentTest {
                 emit(Event.PromptResponseEvent(PromptResponse(StopReason.END_TURN)))
             }
         }
+
         val cancelHandler: CancelHandler = {
             stopFirst.complete(Unit)
             releaseCancel.await()
             cancelReturned.complete(Unit)
         }
+        
         withTestAgentSession(promptHandler = promptHandler, cancelHandler = cancelHandler) { testAgent, session ->
             testAgent.firePrompt(session.sessionId, "first", RequestId.create(301))
             assertEquals("first", withTimeout(5.seconds) { started.receive() })

@@ -65,6 +65,7 @@ public class Agent(
         private class PromptSession(val promptJob: Job)
         private val _activePrompt = atomic<PromptSession?>(null)
 
+        @OptIn(UnstableApi::class)
         suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): PromptResponse {
             var response: PromptResponse? = null
             return coroutineScope {
@@ -106,15 +107,15 @@ public class Agent(
 
         suspend fun cancel() {
             /*
-             * Take the turn to cancel before notifying the session: its cancel() may suspend while the turn
-             * answers and the client starts the next one, which was never asked to stop.
+             * Take the turn to cancel before notifying the session: session's cancel() may suspend while the turn
+             * answers and the client can already start the next turn.
              */
-            val activePrompt = _activePrompt.value
+            val promptToCancel = _activePrompt.value
             // notify AgentSession about upcoming cancellation, this way implementations can gracefully stop ongoing requests
             agentSession.cancel()
 
-            if (activePrompt != null) {
-                _activePrompt.compareAndSet(activePrompt, null)
+            if (promptToCancel != null) {
+                _activePrompt.compareAndSet(promptToCancel, null)
                 logger.trace { "Cancelling prompt" }
                 // we expect that all nested outgoing jobs will be cancelled automatically due to structured concurrency
                 // -> prompt task
@@ -123,7 +124,7 @@ public class Agent(
                 //   <- [request] permissions
                 //   |suspended|
                 // cancelling the whole prompt should cancel all nested outgoing requests. These requests on CE will propagate cancellation to the other side
-                activePrompt.promptJob.cancel()
+                promptToCancel.promptJob.cancel()
             }
         }
     }
