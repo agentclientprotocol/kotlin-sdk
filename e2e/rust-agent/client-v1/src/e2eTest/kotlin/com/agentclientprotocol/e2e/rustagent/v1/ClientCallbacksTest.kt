@@ -70,31 +70,36 @@ class ClientCallbacksTest {
 
     /*
      * testy reports each callback as `<method>: ok <response>` or `<method>: error <error>` and still completes
-     * the turn, so the report lines show whether the agent accepted each answer. The terminal output depends on
-     * whether `printf` has finished when the agent asks, so only that step's outcome ("ok"/"error") is compared.
+     * the turn. `<response>` is the Rust `Debug` output of the response the agent decoded, whose layout changes
+     * when upstream adds fields, so only the fields that show our answers arrived intact are checked. serde
+     * decodes a misnamed optional field as `None` without an error, which only these values reveal. The terminal
+     * output depends on whether `printf` has finished when the agent asks, so that step only has to succeed.
      */
     private fun assertCallbacksSucceeded(turn: Turn) {
+        val expectedFields = listOf(
+            "session/request_permission" to listOf("option_id: PermissionOptionId(\"allow_once\")"),
+            "fs/write_text_file" to emptyList(),
+            "fs/read_text_file" to listOf("content: \"written by testy\\n\""),
+            "terminal/create" to listOf("terminal_id: TerminalId(\"terminal-1\")"),
+            "terminal/output" to emptyList(),
+            "terminal/wait_for_exit" to listOf("exit_code: Some(0)"),
+            "terminal/kill" to emptyList(),
+            "terminal/release" to emptyList(),
+        )
         val callbackLines = turn.reply.lines().filter {
             it.startsWith("session/request_permission:") || it.startsWith("fs/") || it.startsWith("terminal/")
         }
         assertEquals(
-            listOf(
-                "session/request_permission: ok RequestPermissionResponse { outcome: Selected(SelectedPermissionOutcome " +
-                    "{ option_id: PermissionOptionId(\"allow_once\"), meta: None }), meta: None }",
-                "fs/write_text_file: ok WriteTextFileResponse { meta: None }",
-                "fs/read_text_file: ok ReadTextFileResponse { content: \"written by testy\\n\", meta: None }",
-                "terminal/create: ok CreateTerminalResponse { terminal_id: TerminalId(\"terminal-1\"), meta: None }",
-                "terminal/output: ok",
-                "terminal/wait_for_exit: ok WaitForTerminalExitResponse { exit_status: TerminalExitStatus " +
-                    "{ exit_code: Some(0), signal: None, meta: None }, meta: None }",
-                "terminal/kill: ok KillTerminalResponse { meta: None }",
-                "terminal/release: ok ReleaseTerminalResponse { meta: None }",
-            ),
-            callbackLines.map {
-                if (it.startsWith("terminal/output: ok TerminalOutputResponse {")) "terminal/output: ok" else it
-            },
+            expectedFields.map { it.first },
+            callbackLines.map { it.substringBefore(':') },
             "reply: ${turn.reply}",
         )
+
+        callbackLines.zip(expectedFields).forEach { (line, expected) ->
+            val (method, fields) = expected
+            assertTrue(line.startsWith("$method: ok"), "expected `$method` to succeed: $line")
+            fields.forEach { assertTrue(it in line, "expected `$it` in: $line") }
+        }
         assertTrue(turn.reply.lines().none { it.contains(": error") }, "reply: ${turn.reply}")
     }
 
