@@ -41,7 +41,6 @@ jobs:
           key: rust-agent-${{ matrix.client }}-${{ hashFiles('e2e/rust-agent/rust-sdk.rev', 'e2e/rust-agent/rust-toolchain.toml', 'e2e/rust-agent/setup_sut.sh') }}
 
       - name: Run Rust agent e2e tests
-        continue-on-error: true
         run: ./gradlew :e2e:rust-agent:${{ matrix.client }}:e2eTest
 
       - name: Upload test reports

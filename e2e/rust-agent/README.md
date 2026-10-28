@@ -84,8 +84,8 @@ The CI `.sut` cache is keyed on `rust-sdk.rev`, `rust-toolchain.toml`, and `setu
 ## CI
 
 The `Rust Agent E2E` workflow (`.github/workflows/rustAgentE2e.yml`) runs on pull requests and manual dispatch, one job
-per client. It is informational (`continue-on-error`), so failures don't block PRs. Each job uploads the HTML report,
-JUnit XML, and agent logs as the `rust-agent-e2e-<client>` artifact.
+per client. A failing test fails its job, so the check turns red and no failure goes unnoticed. Each job uploads the
+HTML report, JUnit XML, and agent logs as the `rust-agent-e2e-<client>` artifact.
 
 ## Known failures
 
