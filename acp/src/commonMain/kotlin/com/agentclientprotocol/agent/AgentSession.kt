@@ -41,12 +41,27 @@ public interface AgentSession {
      * Sends a message to the agent for execution and waits for the whole turn to be completed.
      * During execution, the agent can send notifications or requests to the client.
      *
+     * The SDK runs at most one turn per session: this method is not called again until the previous turn's
+     * `session/prompt` has been answered, including a cancelled turn that is still winding down. A `session/prompt`
+     * that arrives earlier is rejected with an internal error (`-32603`). The protocol does not define overlapping
+     * prompts; this is an SDK guarantee.
+     *
      * Corresponds to the [AcpMethod.AgentMethods.V1.SessionPrompt]
      */
     public suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): Flow<Event>
 
     /**
      * Cancels the current agent turn and returns after the agent canceled all activities of the current turn.
+     *
+     * The cancelled turn's `session/prompt` is answered only after this method returns, even if the [prompt] flow
+     * ends earlier, so updates sent from here through `currentCoroutineContext().client` reach the client before the
+     * response. This method must therefore not wait for that response. A turn that starts after this call began is
+     * not cancelled by it.
+     *
+     * The cancelled turn is answered with [StopReason.CANCELLED] unless its [prompt] flow emitted a
+     * [Event.PromptResponseEvent], even if this method stops the flow cooperatively and it completes normally.
+     *
+     * Each `session/cancel` calls this method, so a call may start while a previous one is still running.
      *
      * Corresponds to the [AcpMethod.AgentMethods.V1.SessionCancel]
      */

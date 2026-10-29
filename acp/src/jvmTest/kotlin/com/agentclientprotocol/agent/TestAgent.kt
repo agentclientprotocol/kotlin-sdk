@@ -99,6 +99,7 @@ suspend fun TestAgent.simplePrompt(prompt: String): Pair<PromptResponse, List<Se
 
 class TestAgentSupport(
     val promptHandler: PromptHandler,
+    val cancelHandler: CancelHandler = {},
 ) : AgentSupport {
     var isInitialized = false
     var initializedWith: ClientInfo? = null
@@ -112,7 +113,7 @@ class TestAgentSupport(
 
     override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
         val sessionId = SessionId("test-agent-session-${sessionId.incrementAndGet()}")
-        val session = TestAgentSession(sessionId, promptHandler)
+        val session = TestAgentSession(sessionId, promptHandler, cancelHandler)
         createdSessions[sessionId] = session
         return session
     }
@@ -123,24 +124,31 @@ class TestAgentSupport(
 }
 
 typealias PromptHandler = suspend FlowCollector<Event>.(List<ContentBlock>) -> Unit
+typealias CancelHandler = suspend () -> Unit
 
 class TestAgentSession(
     override val sessionId: SessionId,
-    val promptHandler: PromptHandler
+    val promptHandler: PromptHandler,
+    val cancelHandler: CancelHandler = {},
 ) : AgentSession {
     override suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement?): Flow<Event> = flow {
         promptHandler(content)
+    }
+
+    override suspend fun cancel() {
+        cancelHandler()
     }
 }
 
 fun withTestAgent(
     timeout: Duration = 5.seconds,
     promptHandler: PromptHandler = echoPromptHandler,
+    cancelHandler: CancelHandler = {},
     block: suspend CoroutineScope.(TestAgent) -> Unit
 ) = runBlocking {
     val transport = TestTransport(timeout)
     val protocol = Protocol(this, transport)
-    val agentSupport = TestAgentSupport(promptHandler)
+    val agentSupport = TestAgentSupport(promptHandler, cancelHandler)
     val agent = Agent(protocol, agentSupport)
     protocol.start()
     val testAgent = TestAgent(agent, agentSupport, transport)
@@ -187,10 +195,12 @@ fun withTestV2Agent(
 fun withInitializedTestAgent(
     timeout: Duration = 5.seconds,
     promptHandler: PromptHandler = echoPromptHandler,
+    cancelHandler: CancelHandler = {},
     block: suspend CoroutineScope.(TestAgent) -> Unit
 ) = withTestAgent(
     timeout = timeout,
     promptHandler = promptHandler,
+    cancelHandler = cancelHandler,
 ) { testAgent ->
     testAgent.testInitialize(InitializeRequest(LATEST_PROTOCOL_VERSION))
     check(testAgent.agentSupport.isInitialized)
@@ -200,12 +210,14 @@ fun withInitializedTestAgent(
 fun withTestAgentSession(
     timeout: Duration = 5.seconds,
     promptHandler: PromptHandler = echoPromptHandler,
+    cancelHandler: CancelHandler = {},
     cwd: String = ".",
     mcpServers: List<McpServer> = emptyList(),
     block: suspend CoroutineScope.(TestAgent, TestAgentSession) -> Unit
 ) = withInitializedTestAgent(
     timeout = timeout,
     promptHandler = promptHandler,
+    cancelHandler = cancelHandler,
 ) { testAgent ->
     val (newSessionResponse) = testAgent.testNewSession(NewSessionRequest(cwd, mcpServers))
     checkNotNull(newSessionResponse)
