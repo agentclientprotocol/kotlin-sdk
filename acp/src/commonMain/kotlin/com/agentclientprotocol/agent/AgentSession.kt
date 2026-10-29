@@ -58,6 +58,9 @@ public interface AgentSession {
      * response. This method must therefore not wait for that response. A turn that starts after this call began is
      * not cancelled by it.
      *
+     * The cancelled turn is answered with [StopReason.CANCELLED] unless its [prompt] flow emitted a
+     * [Event.PromptResponseEvent], even if this method stops the flow cooperatively and it completes normally.
+     *
      * Each `session/cancel` calls this method, so a call may start while a previous one is still running.
      *
      * Corresponds to the [AcpMethod.AgentMethods.V1.SessionCancel]

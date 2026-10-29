@@ -1051,6 +1051,65 @@ class AgentTest {
     }
 
     /*
+     * The session's cancel() may stop the turn cooperatively, so its flow ends normally before the SDK cancels the
+     * job. The client cancelled the turn, so the agent MUST answer with the `cancelled` stop reason.
+     * https://agentclientprotocol.com/protocol/prompt-turn#cancellation
+     */
+    @Test
+    fun `a turn stopped cooperatively by the session's cancel answers cancelled`() {
+        val started = CompletableDeferred<Unit>()
+        val stopTurn = CompletableDeferred<Unit>()
+        val turnEnded = CompletableDeferred<Unit>()
+
+        val promptHandler: PromptHandler = {
+            started.complete(Unit)
+            stopTurn.await()
+            turnEnded.complete(Unit)
+        }
+
+        val cancelHandler: CancelHandler = {
+            stopTurn.complete(Unit)
+            turnEnded.await()
+        }
+
+        withTestAgentSession(promptHandler = promptHandler, cancelHandler = cancelHandler) { testAgent, session ->
+            testAgent.firePrompt(session.sessionId, "first", RequestId.create(321))
+            withTimeout(5.seconds) { started.await() }
+            testAgent.testCancel(CancelNotification(session.sessionId))
+            assertEquals(StopReason.CANCELLED, testAgent.receivePromptResponse(RequestId.create(321)).stopReason)
+        }
+    }
+
+    /*
+     * Control for the cooperative stop: a response the turn emits itself is kept, even after a cancel.
+     */
+    @Test
+    fun `a turn stopped cooperatively keeps the response it emitted`() {
+        val started = CompletableDeferred<Unit>()
+        val stopTurn = CompletableDeferred<Unit>()
+        val turnEnded = CompletableDeferred<Unit>()
+
+        val promptHandler: PromptHandler = {
+            started.complete(Unit)
+            stopTurn.await()
+            emit(Event.PromptResponseEvent(PromptResponse(StopReason.MAX_TOKENS)))
+            turnEnded.complete(Unit)
+        }
+
+        val cancelHandler: CancelHandler = {
+            stopTurn.complete(Unit)
+            turnEnded.await()
+        }
+
+        withTestAgentSession(promptHandler = promptHandler, cancelHandler = cancelHandler) { testAgent, session ->
+            testAgent.firePrompt(session.sessionId, "first", RequestId.create(331))
+            withTimeout(5.seconds) { started.await() }
+            testAgent.testCancel(CancelNotification(session.sessionId))
+            assertEquals(StopReason.MAX_TOKENS, testAgent.receivePromptResponse(RequestId.create(331)).stopReason)
+        }
+    }
+
+    /*
      * A session/cancel can arrive just after the turn has answered, and AgentSession.cancel() may still suspend.
      * The client may start the next turn meanwhile, and that turn was never asked to stop: it must not be
      * cancelled.

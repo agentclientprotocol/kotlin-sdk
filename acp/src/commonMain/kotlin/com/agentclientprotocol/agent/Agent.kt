@@ -73,11 +73,21 @@ public class Agent(
              */
             private val runningCancels = MutableStateFlow(0)
 
+            private val _isCancelRequested = atomic(false)
+
+            /**
+             * Whether a `session/cancel` targeted this turn before it started answering.
+             */
+            val isCancelRequested: Boolean get() = _isCancelRequested.value
+
             /**
              * Registers a cancel for this turn. Returns `false` if the turn is already answering.
              */
-            fun startCancel(): Boolean =
-                runningCancels.getAndUpdate { if (it == ANSWERING) it else it + 1 } != ANSWERING
+            fun startCancel(): Boolean {
+                val started = runningCancels.getAndUpdate { if (it == ANSWERING) it else it + 1 } != ANSWERING
+                if (started) _isCancelRequested.value = true
+                return started
+            }
 
             fun finishCancel() {
                 runningCancels.update { it - 1 }
@@ -131,8 +141,13 @@ public class Agent(
                      * every aborted operation and every update, including those sent from cancel().
                      */
                     promptSession.awaitCancels()
+                    /*
+                     * The session's cancel() may stop the turn cooperatively, so its flow ends normally before the
+                     * SDK cancels the job. The client still cancelled the turn and must get the `cancelled` reason.
+                     */
+                    val isCancelled = promptJob.isCancelled || promptSession.isCancelRequested
                     response ?: PromptResponse(
-                        stopReason = if (promptJob.isCancelled) StopReason.CANCELLED else StopReason.END_TURN
+                        stopReason = if (isCancelled) StopReason.CANCELLED else StopReason.END_TURN
                     )
                 } finally {
                     // Only the turn frees its slot, so the next prompt can start only after this one has answered.
