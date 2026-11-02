@@ -1,0 +1,4 @@
+# The Rust toolchain setup_sut.sh builds testy with. Bump it together with rust-sdk.rev.
+[toolchain]
+channel = "1.97.1"
+profile = "minimal"

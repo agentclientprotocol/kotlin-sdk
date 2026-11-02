@@ -61,18 +61,11 @@ Runnable examples for stable ACP, direct v2 use, negotiation, and external-agent
 
 ### `e2e`
 
-End-to-end suites that check the SDK against external counterparts. Unlike `:acp-integration-test`, they need tools outside the Gradle build, pin an upstream revision, run in their own CI workflow, and are not part of `./gradlew check`. Each suite gets its own subdirectory named after its counterpart, with a `run.sh` entry point and a README; see `e2e/README.md`.
-
-### `:e2e:tck:agent-v1` and `:e2e:tck:agent-v2`
-
-STDIO agents built on the stable and v2 `Agent` runtimes, used as systems under test for the external [acp-tck](https://github.com/agentclientprotocol/acp-tck).
-The uv project in `e2e/tck/runner` pins acp-tck to a Git commit, and `e2e/tck/run.sh <1|2>` builds the agent and runs the matching suite; see `e2e/tck/README.md`.
-The agents advertise every capability the suites check and use only public APIs, so a TCK failure points at SDK behavior.
-Keep them free of workarounds for SDK defects. They are not published.
+End-to-end suites that check the SDK against external counterparts, such as the ACP TCK and the Rust SDK. They need tools outside the Gradle build, and `./gradlew check` does not run their tests. Before changing anything under `e2e/`, read `e2e/README.md` and the README of the suite you touch.
 
 ### `buildSrc`
 
-Shared Gradle convention and publishing plugins. `acp.multiplatform.gradle.kts` defines targets, explicit API mode, the JDK toolchain, and generated library-version constants. Changes here affect most modules and are core architectural changes.
+Shared Gradle convention and publishing plugins. Changes here affect most modules and are core architectural changes.
 
 ## Architecture and Dependency Direction
 
