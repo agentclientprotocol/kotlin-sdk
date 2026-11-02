@@ -17,6 +17,18 @@ public interface ClientSession {
     public val operations: ClientSessionOperations
 
     /**
+     * The answer of the request that opened this session: `session/new`, `session/load`, `session/resume`, or
+     * `session/fork`. It carries the modes, the models, the config options, and the `_meta` of that answer.
+     *
+     * A factory reopen does not change it, see [Client.loadSession].
+     *
+     * The sessions of this SDK keep the answer. The default getter is for an implementation outside the SDK
+     * that does not keep it, and throws [UnsupportedOperationException].
+     */
+    public val createdResponse: AcpCreatedSessionResponse
+        get() = throw UnsupportedOperationException("${this::class.simpleName} does not keep the answer that opened the session")
+
+    /**
      * Sends a message to the agent for execution and waits for the whole turn to be completed.
      * During execution, the agent can send notifications or requests to the client.
      *
