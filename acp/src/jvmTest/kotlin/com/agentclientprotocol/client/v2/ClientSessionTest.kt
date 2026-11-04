@@ -6,10 +6,13 @@ import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.Implementation
 import com.agentclientprotocol.model.MessageId
+import com.agentclientprotocol.model.PermissionOptionId
 import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
 import com.agentclientprotocol.model.SessionAdditionalDirectoriesCapabilities
 import com.agentclientprotocol.model.SessionId
+import com.agentclientprotocol.model.CancelRequestNotification
 import com.agentclientprotocol.model.v2.AgentCapabilities
+import com.agentclientprotocol.model.v2.CloseSessionResponse
 import com.agentclientprotocol.model.v2.ContentBlock
 import com.agentclientprotocol.model.v2.ContentChunk
 import com.agentclientprotocol.model.v2.ForkSessionResponse
@@ -25,6 +28,7 @@ import com.agentclientprotocol.model.v2.SessionCapabilities
 import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.model.v2.UpdateSessionNotification
 import com.agentclientprotocol.protocol.AcpExpectedError
+import com.agentclientprotocol.protocol.JsonRpcException
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.TransportFrame
@@ -34,19 +38,22 @@ import com.agentclientprotocol.rpc.JsonRpcErrorResponse
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.rpc.JsonRpcRequest
+import com.agentclientprotocol.rpc.JsonRpcResponse
+import com.agentclientprotocol.rpc.RequestId
 import com.agentclientprotocol.rpc.JsonRpcSuccessResponse
 import com.agentclientprotocol.transport.BaseTransport
 import com.agentclientprotocol.transport.Transport
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -55,6 +62,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
@@ -66,35 +75,147 @@ import kotlin.time.Duration.Companion.seconds
 class ClientSessionTest {
 
     @Test
-    fun `cancel releases pending permission when notification send fails`() = withV2Client { client, agent, scope ->
-        val permissionStarted = CompletableDeferred<Unit>()
-        val permissionCleanedUp = CompletableDeferred<Unit>()
+    fun `cancel releases pending permission when notification send fails`() = withV2Client { client, agent, _ ->
+        val user = WaitingUser()
         val sessionId = SessionId("session")
         agent.onNewSession(sessionId) { }
-        val session = client.newSession(
-            cwd = ".",
-            operations = object : ClientSessionOperations {
-                override suspend fun requestPermission(request: RequestPermissionRequest): RequestPermissionResponse {
-                    permissionStarted.complete(Unit)
-                    try {
-                        awaitCancellation()
-                    } finally {
-                        permissionCleanedUp.complete(Unit)
-                    }
-                }
-            },
-        )
-        val permission = scope.async {
-            session.handlePermissionRequest(RequestPermissionRequest(sessionId, "Allow?", emptyList()))
-        }
-        permissionStarted.await()
-        agent.sendFailure = ClosedSendChannelException("Writer queue closed")
+        val session = client.newSession(cwd = ".", operations = user)
+        val permission = agent.requestPermission(sessionId)
+        user.started.await()
+        agent.cancelFailure = ClosedSendChannelException("Writer queue closed")
 
         assertFailsWith<ClosedSendChannelException> { session.cancel() }
 
-        assertEquals(RequestPermissionOutcome.Cancelled, permission.await().outcome)
-        assertTrue(permissionCleanedUp.isCompleted)
+        assertEquals(RequestPermissionOutcome.Cancelled, agent.permissionOutcome(permission))
+        assertTrue(user.cleanedUp.isCompleted)
     }
+
+    @Test
+    fun `without cancel or close the app's answer is the response`() = withV2Client { client, agent, _ ->
+        val user = WaitingUser()
+        val sessionId = SessionId("session")
+        agent.onNewSession(sessionId) { }
+        client.newSession(cwd = ".", operations = user)
+        val permission = agent.requestPermission(sessionId)
+        user.started.await()
+
+        user.answer.complete(ALLOWED)
+
+        assertEquals(ALLOWED.outcome, agent.permissionOutcome(permission))
+    }
+
+    @Test
+    fun `close answers a pending permission request when the agent does not cancel it`() =
+        withV2Client { client, agent, scope ->
+            val user = WaitingUser()
+            val sessionId = SessionId("session")
+            agent.onNewSession(sessionId) { }
+            val session = client.newSession(cwd = ".", operations = user)
+            val permission = agent.requestPermission(sessionId)
+            user.started.await()
+
+            val closing = scope.async { session.close() }
+            val closeRequest = agent.nextRequest(AcpMethod.AgentMethods.V2.SessionClose)
+
+            // This agent never sends `$/cancel_request`, and answers the close only after the permission answer.
+            assertEquals(RequestPermissionOutcome.Cancelled, agent.permissionOutcome(permission))
+            assertTrue(user.cleanedUp.isCompleted)
+            agent.respond(closeRequest, AcpMethod.AgentMethods.V2.SessionClose.responseSerializer, CloseSessionResponse())
+            closing.await()
+        }
+
+    @Test
+    fun `close sends one response when the agent cancels a permission request the client already answered`() =
+        withV2Client { client, agent, scope ->
+            val user = WaitingUser()
+            val sessionId = SessionId("session")
+            agent.onNewSession(sessionId) { }
+            val session = client.newSession(cwd = ".", operations = user)
+            val permission = agent.requestPermission(sessionId)
+            user.started.await()
+
+            val closing = scope.async { session.close() }
+            val closeRequest = agent.nextRequest(AcpMethod.AgentMethods.V2.SessionClose)
+            assertEquals(RequestPermissionOutcome.Cancelled, agent.permissionOutcome(permission))
+
+            // A compliant agent cancels its pending requests before answering the close; this one is redundant.
+            agent.cancelRequest(permission)
+            agent.respond(closeRequest, AcpMethod.AgentMethods.V2.SessionClose.responseSerializer, CloseSessionResponse())
+            closing.await()
+
+            // A later round trip gives a stray second response the chance to show up.
+            agent.responsesTo(agent.requestPermission(sessionId)).receive()
+            assertTrue(agent.responsesTo(permission).isEmpty, "a second response to $permission")
+        }
+
+    @Test
+    fun `close sends one response when the agent cancels a permission request first`() =
+        withV2Client { client, agent, scope ->
+            val cleanupGate = CompletableDeferred<Unit>()
+            val user = WaitingUser(cleanupGate)
+            val sessionId = SessionId("session")
+            agent.onNewSession(sessionId) { }
+            val session = client.newSession(cwd = ".", operations = user)
+            val permission = agent.requestPermission(sessionId)
+            user.started.await()
+
+            /*
+             * The agent's `$/cancel_request` reaches the handler first. Its cleanup is held open, so the close below
+             * completes the session's signal while the request is still unanswered.
+             */
+            agent.cancelRequest(permission)
+            user.cleanupStarted.await()
+            val closing = scope.async { session.close() }
+            val closeRequest = agent.nextRequest(AcpMethod.AgentMethods.V2.SessionClose)
+            cleanupGate.complete(Unit)
+
+            val first = assertIs<JsonRpcErrorResponse>(agent.responsesTo(permission).receive())
+            assertEquals(JsonRpcErrorCode.CANCELLED.code, first.error.code)
+            agent.respond(closeRequest, AcpMethod.AgentMethods.V2.SessionClose.responseSerializer, CloseSessionResponse())
+            closing.await()
+
+            // A later round trip gives a stray second response the chance to show up.
+            agent.responsesTo(agent.requestPermission(sessionId)).receive()
+            assertTrue(agent.responsesTo(permission).isEmpty, "a second response to $permission")
+        }
+
+    @Test
+    fun `close answers a pending permission request even if the close fails`() = withV2Client { client, agent, scope ->
+        val user = WaitingUser()
+        val sessionId = SessionId("session")
+        agent.onNewSession(sessionId) { }
+        val session = client.newSession(cwd = ".", operations = user)
+        val permission = agent.requestPermission(sessionId)
+        user.started.await()
+
+        val closing = scope.async { assertFailsWith<JsonRpcException> { session.close() } }
+        agent.fail(agent.nextRequest(AcpMethod.AgentMethods.V2.SessionClose))
+
+        assertEquals(RequestPermissionOutcome.Cancelled, agent.permissionOutcome(permission))
+        assertTrue(user.cleanedUp.isCompleted)
+        val failure = closing.await()
+        assertEquals(JsonRpcErrorCode.INTERNAL_ERROR.code, failure.code)
+        assertEquals(ScriptedAgent.FAILURE_MESSAGE, failure.message)
+    }
+
+    @Test
+    fun `a closed session stays cancelled when a prompt starts after the close`() =
+        withV2Client { client, agent, scope ->
+            val user = WaitingUser()
+            val sessionId = SessionId("session")
+            agent.onNewSession(sessionId) { }
+            agent.onPrompt(MessageId("user-1")) { }
+            val session = client.newSession(cwd = ".", operations = user)
+
+            // A failed close keeps the session known, so its later requests reach it rather than failing as unknown.
+            val closing = scope.async { runCatching { session.close() } }
+            agent.fail(agent.nextRequest(AcpMethod.AgentMethods.V2.SessionClose))
+            closing.await()
+            session.prompt(listOf(ContentBlock.Text("after close")))
+
+            assertEquals(RequestPermissionOutcome.Cancelled, agent.permissionOutcome(agent.requestPermission(sessionId)))
+            assertEquals(0, user.calls.get())
+        }
 
     /**
      * The user message arrives before the receipt that names it, so the session must still deliver it.
@@ -360,6 +481,33 @@ private fun withV2Client(
     }
 }
 
+private val ALLOWED = RequestPermissionResponse(RequestPermissionOutcome.Selected(PermissionOptionId("allow")))
+
+/**
+ * Stands in for a user who answers a permission question whenever the test completes [answer].
+ *
+ * @param cleanupGate when set, the handler's cleanup waits for it even when cancelled, holding back the reply
+ */
+private class WaitingUser(private val cleanupGate: CompletableDeferred<Unit>? = null) : ClientSessionOperations {
+    val calls = AtomicInteger()
+    val started = CompletableDeferred<Unit>()
+    val answer = CompletableDeferred<RequestPermissionResponse>()
+    val cleanupStarted = CompletableDeferred<Unit>()
+    val cleanedUp = CompletableDeferred<Unit>()
+
+    override suspend fun requestPermission(request: RequestPermissionRequest): RequestPermissionResponse {
+        calls.incrementAndGet()
+        started.complete(Unit)
+        try {
+            return answer.await()
+        } finally {
+            cleanupStarted.complete(Unit)
+            cleanupGate?.let { withContext(NonCancellable) { it.await() } }
+            cleanedUp.complete(Unit)
+        }
+    }
+}
+
 /** Starts reading [session], from the buffered updates onwards. */
 private fun CoroutineScope.read(session: ClientSession) = SessionReader(this, session)
 
@@ -400,12 +548,17 @@ private class SessionReader(scope: CoroutineScope, session: ClientSession) {
  * opens a session only after sending the updates the test asked for.
  */
 private class ScriptedAgent(private val capabilities: AgentCapabilities) : BaseTransport() {
-    var sendFailure: Throwable? = null
+    /**
+     * Thrown when the client sends `session/cancel`; other frames, such as permission replies, still go through.
+     */
+    var cancelFailure: Throwable? = null
 
     /**
      * Every request received after `initialize`, in arrival order.
      */
     val requests = Channel<JsonRpcRequest>(Channel.UNLIMITED)
+    private val responses = ConcurrentHashMap<RequestId, Channel<JsonRpcResponse>>()
+    private val agentRequestIds = AtomicInteger()
     private var newSession: (JsonRpcRequest) -> Unit = { error("no answer scripted for session/new") }
     private var resumeSession: (JsonRpcRequest) -> Unit = { error("no answer scripted for session/resume") }
     private var forkSession: (JsonRpcRequest) -> Unit = { error("no answer scripted for session/fork") }
@@ -476,6 +629,58 @@ private class ScriptedAgent(private val capabilities: AgentCapabilities) : BaseT
         )
     }
 
+    /**
+     * Sends `session/request_permission` for [sessionId] and returns its id.
+     */
+    fun requestPermission(sessionId: SessionId): RequestId {
+        val id = RequestId.create("agent-${agentRequestIds.incrementAndGet()}")
+        val method = AcpMethod.ClientMethods.V2.SessionRequestPermission
+        val request = RequestPermissionRequest(sessionId, "Allow?", emptyList())
+        fireMessage(JsonRpcRequest(id, method.methodName, ACPJson.encodeToJsonElement(method.requestSerializer, request)))
+        return id
+    }
+
+    /**
+     * The next request for [method], skipping the requests for other methods.
+     */
+    suspend fun nextRequest(method: AcpMethod): JsonRpcRequest {
+        while (true) {
+            val request = requests.receive()
+            if (request.method == method.methodName) return request
+        }
+    }
+
+    fun fail(request: JsonRpcRequest) {
+        fireMessage(
+            JsonRpcErrorResponse(request.id, JsonRpcError(JsonRpcErrorCode.INTERNAL_ERROR.code, FAILURE_MESSAGE))
+        )
+    }
+
+    fun cancelRequest(id: RequestId) {
+        val method = AcpMethod.MetaMethods.CancelRequest
+        fireMessage(
+            JsonRpcNotification(method.methodName, ACPJson.encodeToJsonElement(method.serializer, CancelRequestNotification(id)))
+        )
+    }
+
+    /**
+     * Every response the client sent to the agent's request [id], in send order.
+     */
+    fun responsesTo(id: RequestId): Channel<JsonRpcResponse> =
+        responses.computeIfAbsent(id) { Channel(Channel.UNLIMITED) }
+
+    suspend fun permissionOutcome(id: RequestId): RequestPermissionOutcome {
+        val response = assertIs<JsonRpcSuccessResponse>(responsesTo(id).receive())
+        return ACPJson.decodeFromJsonElement(
+            AcpMethod.ClientMethods.V2.SessionRequestPermission.responseSerializer,
+            response.result,
+        ).outcome
+    }
+
+    companion object {
+        const val FAILURE_MESSAGE = "failed"
+    }
+
     override fun start() {
         _state.value = Transport.State.STARTED
     }
@@ -489,11 +694,14 @@ private class ScriptedAgent(private val capabilities: AgentCapabilities) : BaseT
     private fun fireMessage(message: JsonRpcMessage) = fireFrame(TransportFrame.Single(message))
 
     override fun send(frame: TransportFrame) {
-        sendFailure?.let { throw it }
+        val message = (frame as TransportFrame.Single).message
+        if (message is JsonRpcNotification && message.method == AcpMethod.AgentMethods.V2.SessionCancel.methodName) {
+            cancelFailure?.let { throw it }
+        }
         if (state.value == Transport.State.CLOSING || state.value == Transport.State.CLOSED) {
             throw ClosedSendChannelException("Transport is closed")
         }
-        val message = (frame as TransportFrame.Single).message
+        if (message is JsonRpcResponse) responsesTo(message.id).trySend(message)
         if (message !is JsonRpcRequest) return
         if (message.method != AcpMethod.AgentMethods.V2.Initialize.methodName) requests.trySend(message)
         when (message.method) {
@@ -510,7 +718,7 @@ private class ScriptedAgent(private val capabilities: AgentCapabilities) : BaseT
         }
     }
 
-    private fun <T> respond(request: JsonRpcRequest, serializer: kotlinx.serialization.KSerializer<T>, response: T) {
+    fun <T> respond(request: JsonRpcRequest, serializer: kotlinx.serialization.KSerializer<T>, response: T) {
         fireMessage(JsonRpcSuccessResponse(id = request.id, result = ACPJson.encodeToJsonElement(serializer, response)))
     }
 }
