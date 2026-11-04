@@ -12,6 +12,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -112,21 +113,32 @@ public class Agent(
         @OptIn(UnstableApi::class)
         suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): PromptResponse {
             var response: PromptResponse? = null
+            var failure: Throwable? = null
             return coroutineScope {
                 val promptJob = launch(start = CoroutineStart.LAZY) {
-                    agentSession.prompt(content, _meta).collect { event ->
-                        when (event) {
-                            is Event.PromptResponseEvent -> {
-                                if (response != null) {
-                                    logger.error { "Received repeated prompt response: ${event.response} (previous: $response). The last is used" }
+                    /*
+                     * Keep a failure inside the turn's job, so a failed turn still waits for running cancels and a
+                     * cancel can still decide its answer.
+                     */
+                    try {
+                        agentSession.prompt(content, _meta).collect { event ->
+                            when (event) {
+                                is Event.PromptResponseEvent -> {
+                                    if (response != null) {
+                                        logger.error { "Received repeated prompt response: ${event.response} (previous: $response). The last is used" }
+                                    }
+                                    response = event.response
                                 }
-                                response = event.response
-                            }
 
-                            is Event.SessionUpdateEvent -> {
-                                clientOperations.notify(event.update, _meta)
+                                is Event.SessionUpdateEvent -> {
+                                    clientOperations.notify(event.update, _meta)
+                                }
                             }
                         }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        failure = e
                     }
                 }
 
@@ -146,6 +158,10 @@ public class Agent(
                      * SDK cancels the job. The client still cancelled the turn and must get the `cancelled` reason.
                      */
                     val isCancelled = promptJob.isCancelled || promptSession.isCancelRequested
+                    failure?.let { e ->
+                        if (!isCancelled) throw e
+                        logger.debug(e) { "Prompt turn failed after a cancel; answering as cancelled" }
+                    }
                     response ?: PromptResponse(
                         stopReason = if (isCancelled) StopReason.CANCELLED else StopReason.END_TURN
                     )

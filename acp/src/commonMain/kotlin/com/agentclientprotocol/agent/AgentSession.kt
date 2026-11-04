@@ -54,12 +54,15 @@ public interface AgentSession {
      * Cancels the current agent turn and returns after the agent canceled all activities of the current turn.
      *
      * The cancelled turn's `session/prompt` is answered only after this method returns, even if the [prompt] flow
-     * ends earlier, so updates sent from here through `currentCoroutineContext().client` reach the client before the
-     * response. This method must therefore not wait for that response. A turn that starts after this call began is
-     * not cancelled by it.
+     * ends or throws earlier, so updates sent from here through `currentCoroutineContext().client` reach the client
+     * before the response. This method must therefore not wait for that response. A turn that starts after this call
+     * began is not cancelled by it.
      *
      * The cancelled turn is answered with [StopReason.CANCELLED] unless its [prompt] flow emitted a
-     * [Event.PromptResponseEvent], even if this method stops the flow cooperatively and it completes normally.
+     * [Event.PromptResponseEvent], even if this method stops the flow cooperatively and it completes normally. An
+     * exception the flow throws after the cancel, such as an aborted call's error, does not fail the turn: it is
+     * logged at debug level and the turn is answered the same way. A turn that fails without a cancel is answered
+     * with the error.
      *
      * Each `session/cancel` calls this method, so a call may start while a previous one is still running.
      *

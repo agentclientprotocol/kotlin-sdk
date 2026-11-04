@@ -1110,6 +1110,74 @@ class AgentTest {
     }
 
     /*
+     * Aborting an operation from the session's cancel() often makes it throw, for example an HTTP client's
+     * IOException("Canceled"). The agent MUST catch such errors and answer with the `cancelled` stop reason, and
+     * still only after the session's cancel() returns.
+     * https://agentclientprotocol.com/protocol/prompt-turn#cancellation
+     */
+    @Test
+    fun `a turn that fails after the session's cancel answers cancelled after the cancel returns`() {
+        val started = CompletableDeferred<Unit>()
+        val stopTurn = CompletableDeferred<Unit>()
+        val turnEnded = CompletableDeferred<Unit>()
+        val releaseCancel = CompletableDeferred<Unit>()
+
+        val promptHandler: PromptHandler = {
+            started.complete(Unit)
+            try {
+                stopTurn.await()
+                throw IllegalStateException("Canceled")
+            } finally {
+                turnEnded.complete(Unit)
+            }
+        }
+
+        val cancelHandler: CancelHandler = {
+            stopTurn.complete(Unit)
+            releaseCancel.await()
+            currentCoroutineContext().client.notify(SessionUpdate.AgentMessageChunk(ContentBlock.Text("cleanup")))
+        }
+
+        withTestAgentSession(promptHandler = promptHandler, cancelHandler = cancelHandler) { testAgent, session ->
+            testAgent.firePrompt(session.sessionId, "first", RequestId.create(341))
+            withTimeout(5.seconds) { started.await() }
+            testAgent.testCancel(CancelNotification(session.sessionId))
+            withTimeout(5.seconds) { turnEnded.await() }
+
+            /*
+             * The absence of a reply can only be observed for a while: the turn has failed, so without the fix
+             * the error reply is sent right away.
+             */
+            val early = withTimeoutOrNull(300.milliseconds) { testAgent.transport.receiveTestMessages(1) }
+            assertNull(early, "The failed cancelled turn answered before the session's cancel returned")
+
+            releaseCancel.complete(Unit)
+            val update = assertIs<JsonRpcNotification>(testAgent.transport.receiveTestMessages(1).singleOrNull())
+            assertEquals(AcpMethod.ClientMethods.V1.SessionUpdate.methodName, update.method)
+            assertEquals(StopReason.CANCELLED, testAgent.receivePromptResponse(RequestId.create(341)).stopReason)
+        }
+    }
+
+    /*
+     * Control for the failed cancelled turn: a turn that fails without a cancel still answers with the error.
+     */
+    @Test
+    fun `a turn that fails without a cancel answers with the error`() {
+        val promptHandler: PromptHandler = {
+            throw IllegalStateException("Turn failed")
+        }
+
+        withTestAgentSession(promptHandler = promptHandler) { testAgent, session ->
+            testAgent.firePrompt(session.sessionId, "first", RequestId.create(351))
+            val message = assertNotNull(testAgent.transport.receiveTestMessages(1).singleOrNull(), "No reply to the prompt")
+            val error = assertIs<JsonRpcErrorResponse>(message)
+            assertEquals(RequestId.create(351), error.id)
+            assertEquals(JsonRpcErrorCode.INTERNAL_ERROR.code, error.error.code)
+            assertEquals("Turn failed", error.error.message)
+        }
+    }
+
+    /*
      * A session/cancel can arrive just after the turn has answered, and AgentSession.cancel() may still suspend.
      * The client may start the next turn meanwhile, and that turn was never asked to stop: it must not be
      * cancelled.
