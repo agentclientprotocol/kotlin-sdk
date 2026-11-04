@@ -42,6 +42,11 @@ public value class TerminalId(public val value: String) {
  * an omitted field leaves the stored value unchanged, `null` clears it, and a concrete
  * value replaces it. On a first-seen terminal, omitted fields start unknown or empty.
  *
+ * Unlike other fields, [_meta] objects patch one top-level key at a time: omitted keys
+ * survive, `null` values remove keys, and other values replace the key's value whole.
+ * Nested objects are not merged, and nested nulls remain data. An empty object changes
+ * no keys; a whole-field `null` clears all metadata.
+ *
  * A concrete [output] is a replacement snapshot rather than an append, which is what makes
  * session replay possible without resending every historical [TerminalOutputChunk].
  *
@@ -64,13 +69,18 @@ public data class TerminalUpdate(
     val _meta: MaybeUndefined<JsonElement> = MaybeUndefined.Undefined,
 ) {
     /**
-     * Applies a later terminal patch to this stored terminal state.
+     * Applies a terminal patch to this stored terminal state.
      *
      * Fields set to [MaybeUndefined.Null] are preserved as [MaybeUndefined.Null] so callers
      * can decide how to render an explicitly cleared value.
      *
      * A concrete [output] in [update] replaces this snapshot outright; it is never merged
      * with the bytes it supersedes.
+     *
+     * Apply the first upsert to an empty state too, using
+     * `TerminalUpdate(terminalId = update.terminalId).applyUpdate(update)`, so metadata removals
+     * are consumed even on first receipt. Apply later updates in receive order. The result
+     * is stored state, not a combined patch for forwarding to another retained state.
      *
      * @throws IllegalArgumentException if [update] targets a different [terminalId]
      */
@@ -84,7 +94,7 @@ public data class TerminalUpdate(
             cwd = update.cwd.orElse(cwd),
             output = update.output.orElse(output),
             exitStatus = update.exitStatus.orElse(exitStatus),
-            _meta = update._meta.orElse(_meta),
+            _meta = applyMetaUpdate(_meta, update._meta),
         )
     }
 }
