@@ -64,6 +64,14 @@ class TestTransport(val timeout: Duration) : BaseTransport() {
         }
     }
 
+    /**
+     * Fires a request without reading its reply, for tests that keep several requests in flight and read
+     * the replies with [receiveTestMessages].
+     */
+    fun fireTestRequestWithoutReply(methodName: MethodName, params: JsonElement, reqId: RequestId) {
+        fireMessage(JsonRpcRequest(reqId, methodName, params))
+    }
+
     fun fireTestNotification(methodName: MethodName, params: JsonElement) {
         fireMessage(JsonRpcNotification(methodName, params))
     }
