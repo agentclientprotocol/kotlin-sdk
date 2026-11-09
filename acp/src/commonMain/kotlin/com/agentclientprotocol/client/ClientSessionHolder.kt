@@ -56,7 +56,9 @@ internal class ClientSessionHolder {
      * they need no atomic: the join of the consumer orders its writes before the read, and nothing reads them
      * concurrently.
      */
+    // TODO remove together with the deprecated ClientSession.currentMode.
     private var earlyMode: SessionUpdate.CurrentModeUpdate? = null
+    // TODO remove together with the deprecated ClientSession.configOptions.
     @OptIn(UnstableApi::class)
     private var earlyConfigOptions: SessionUpdate.ConfigOptionUpdate? = null
 
@@ -126,7 +128,9 @@ internal class ClientSessionHolder {
         for ((update, meta) in notifications) {
             @OptIn(UnstableApi::class)
             when (update) {
+                // TODO remove together with the deprecated ClientSession.currentMode.
                 is SessionUpdate.CurrentModeUpdate -> earlyMode = update
+                // TODO remove together with the deprecated ClientSession.configOptions.
                 is SessionUpdate.ConfigOptionUpdate -> earlyConfigOptions = update
                 else -> {}
             }
@@ -146,7 +150,9 @@ internal class ClientSessionHolder {
      * updates. Must run after [deliverEarly] has returned.
      */
     fun completeEarlySession(session: ClientSessionImpl) {
+        // TODO remove together with the deprecated ClientSession.currentMode.
         earlyMode?.let(session::trackState)
+        // TODO remove together with the deprecated ClientSession.configOptions.
         earlyConfigOptions?.let(session::trackState)
         check(sessionDeferred.complete(session)) { "Session ${session.sessionId} is already complete" }
     }

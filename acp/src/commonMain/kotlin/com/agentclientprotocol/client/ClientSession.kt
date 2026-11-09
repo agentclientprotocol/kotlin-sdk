@@ -70,11 +70,23 @@ public interface ClientSession {
 
     /**
      * Returns the current mode for the session. Check for [modelsSupported] before calling this method.
+     *
+     * Unreliable after `session/load`, and therefore deprecated for removal. The agent replays the history before it
+     * answers, so the mode in the response is newer than every replayed `current_mode_update`. This flow starts from
+     * the response and then applies the replayed updates on top of it, so it can end up with an older mode than the
+     * response reported.
+     *
      * @throws IllegalStateException if the mode changing is not supported.
      */
+    @Deprecated(
+        message = "Unreliable after session/load: older replayed current_mode_update notifications overwrite the " +
+                "mode from the response. Will be removed. Track current_mode_update in " +
+                "ClientSessionOperations.notify instead.",
+        level = DeprecationLevel.WARNING,
+    )
     public val currentMode: StateFlow<SessionModeId>
     /**
-     * Changes the session mode to the specified mode. The real change will be reported by an agent via [currentMode] and [ClientSessionOperations.notify].
+     * Changes the session mode to the specified mode. The real change will be reported by an agent via [ClientSessionOperations.notify].
      */
     public suspend fun setMode(modeId: SessionModeId, _meta: JsonElement? = null): SetSessionModeResponse
 
@@ -122,9 +134,20 @@ public interface ClientSession {
      * Returns the current configuration options for the session.
      * Check for [configOptionsSupported] before calling this method.
      *
+     * Unreliable after `session/load`, and therefore deprecated for removal. The agent replays the history before it
+     * answers, so the options in the response are newer than every replayed `config_option_update`. This flow starts
+     * from the response and then applies the replayed updates on top of it, so it can end up with older options than
+     * the response reported.
+     *
      * @throws IllegalStateException if configuration options are not supported.
      */
     @UnstableApi
+    @Deprecated(
+        message = "Unreliable after session/load: older replayed config_option_update notifications overwrite the " +
+                "options from the response. Will be removed. Track config_option_update in " +
+                "ClientSessionOperations.notify and the setConfigOption response instead.",
+        level = DeprecationLevel.WARNING,
+    )
     public val configOptions: StateFlow<List<SessionConfigOption>>
 
     /**
