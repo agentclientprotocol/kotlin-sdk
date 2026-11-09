@@ -1,7 +1,8 @@
 # v1 subagents: architecture
 
-Status: every question under "Open questions" at the end is decided, and the decisions are written into the
-sections above. It supersedes the agent-side sections of `2026-11-05-v1-subagents-design.md`, which records the
+Status: every question in the "Decision log" at the end is decided, and the decisions are written into the
+sections above. "Open questions (from the implementer review)" lists gaps that still need decisions before
+implementation. It supersedes the agent-side sections of `2026-11-05-v1-subagents-design.md`, which records the
 earlier discussion. Where the two disagree, this file wins.
 
 ## Sources
@@ -26,6 +27,21 @@ earlier discussion. Where the two disagree, this file wins.
 - #156 is based on master with PR #155 (`f858693`: one v1 turn at a time, cancel targets its own turn), so this
   branch includes #155. If #156 changes again, rebase onto its new head.
 - Scope: protocol v1 only. v2 follows separately (see "Looking ahead to v2"). Do not change v2 runtimes.
+
+## Implementation order
+
+Read `CLAUDE.md` and this file first. Resolve "Open questions (from the implementer review)" with the user before
+starting the parts they affect: questions 12-17 block the agent side, and 18-25 block the client side. Then:
+
+1. **Model layer** and its serialization tests. Re-read the RFD and the Rust models with `check-specification` first.
+   Run `:acp-model:apiDump` and review the diff.
+2. **Agent side:** `announce`, routing, per-child tracking, incoming requests on child ids, feed end, lifetimes and
+   replay, with the agent tests.
+3. **Client side:** types, registration, setup and delivery, effective grants and pending permissions, with the
+   client tests.
+4. **End-to-end** tests in `:acp-integration-test`.
+5. **Docs and checks:** the `Protocol` KDoc and `CLAUDE.md` updates, `:acp:apiDump` with a reviewed diff, then
+   `./gradlew check` (see "Deliverables").
 
 ## What the spec requires (v1)
 
@@ -67,19 +83,35 @@ earlier discussion. Where the two disagree, this file wins.
 
 ## Model layer (`:acp-model`, all `@UnstableApi`)
 
-- **Move `MaybeUndefined`** from `model.v2` (`acp-model/.../model/v2/MaybeUndefined.kt`) to a package shared by v1
-  and v2. v1 models must not import a v2 type.
-  - Keep v2 source compatibility if practical: a deprecated typealias is fine. Otherwise update all v2 usages in the
-    same change.
+- **Move `MaybeUndefined`** from `model.v2` (`acp-model/.../model/v2/MaybeUndefined.kt`) to
+  `com.agentclientprotocol.model`, which v2 models already import from (for example `Usage`). v1 models must not
+  import a v2 type.
+  - Update every v2 usage in the same change. A deprecated typealias wouldn't keep v2 source-compatible, because
+    Kotlin doesn't reach nested classes (`MaybeUndefined.Value`, `.Undefined`) through a typealias, and it wouldn't
+    cover top-level extensions either.
   - Regenerate the API dump and review it.
-- **New capability:** `ClientCapabilities.subagents: SubagentCapabilities?` in `model/Capabilities.kt`.
-  `SubagentCapabilities` is an empty marker with `_meta`.
-- **New `SessionUpdate` variants** in `model/SessionUpdate.kt`:
+- **New capability:** `ClientCapabilities.subagents: SubagentCapabilities? = null` in `model/Capabilities.kt`,
+  appended as the last constructor parameter. `ClientCapabilities` is a data class, so this changes its constructor
+  and `copy`; that's accepted for an `@UnstableApi` member. `SubagentCapabilities` is an empty marker with `_meta`.
+- **New `SessionUpdate` variants** in `model/SessionUpdate.kt`, with the discriminators `subagent_update`,
+  `session_message` and `session_message_chunk`. Add them to the hand-written `SessionUpdateSerializer`, which today
+  decodes unknown discriminators as `UnknownSessionUpdate`.
   - `SubagentUpdate`: `sessionId`, then `MaybeUndefined` `title`, `description`, `capabilities`, `state`, `cwd`,
     `additionalDirectories` and `_meta`;
-  - `SessionMessage`: an upsert with `messageId`, `MaybeUndefined` `content`, participant ids, message references and
-    `_meta`;
-  - `SessionMessageChunk`: `messageId`, one `ContentBlock` and chunk-scoped `_meta`.
+  - `SessionMessage`: `messageId` (the existing v1 `MessageId`), then `MaybeUndefined` `senderSessionId`,
+    `recipientSessionId`, `senderMessageId`, `recipientMessageId`, `content: List<ContentBlock>` and `_meta`. For
+    `content`, `null` **or `[]`** clears it, and an unparseable block is skipped, not fatal (Rust `VecSkipError`);
+  - `SessionMessageChunk`: `messageId`, one `ContentBlock` and `_meta: JsonElement?` (plain optional, not
+    `MaybeUndefined`).
+- **Lenient decoding (Rust `DefaultOnError`).** A malformed value becomes its default instead of failing the whole
+  update:
+  - `SubagentUpdate`: `title`, `description`, `capabilities`, `state` and `_meta` become absent. **`cwd` and
+    `additionalDirectories` are strict**: a malformed value fails the update.
+  - `SessionMessage`: every `MaybeUndefined` field becomes absent. `SessionMessageChunk._meta` becomes `null`.
+  - Every field of `SubagentSessionCapabilities`, `SessionCancelCapabilities` and `SubagentCapabilities`, each
+    state's `_meta`, `ErrorStopReason.error`, `Idle.usage`, and `ClientCapabilities.subagents` itself.
+  - Check what the existing `MaybeUndefined` decoding helper does with errors before reusing it: the strict fields
+    must not be swallowed. Re-check each field against `client.rs` with `check-specification`.
 - **Capabilities and state types:**
   - `SubagentSessionCapabilities(cancel: SessionCancelCapabilities?, _meta)` and `SessionCancelCapabilities(_meta)`;
   - open unions `StateUpdate` (Rust `v1::client::StateUpdate`, `client.rs:1234`) and `IdleStopReason` (Rust
@@ -99,6 +131,13 @@ earlier discussion. Where the two disagree, this file wins.
       `IdleStopReason` too.
     - A version-neutral shared type (like `MaybeUndefined`) was rejected: it would tie two separate schemas together,
       unlike `MaybeUndefined`, which is a serialization helper with no protocol meaning.
+  - Kotlin shape: `StateUpdate.Idle(stopReason: IdleStopReason? = null, usage: Usage? = null, _meta: JsonElement? =
+    null)`; `IdleStopReason` is a sealed class with `EndTurn`, `MaxTokens`, `MaxTurnRequests`, `Refusal`,
+    `Cancelled`, `Error(error: JsonRpcError? = null)` and `Other`.
+  - Decoding edge cases, all from Rust: a malformed or known-but-invalid `stopReason` decodes as no stop reason.
+    `Other` only takes unrecognized discriminators, so a malformed *known* state is not `Other`: through
+    `DefaultOnError` on `SubagentUpdate.state` it becomes an absent `state`. `IdleStopReason.Other` keeps its fields
+    except `stopReason`, `usage` and `_meta`. Test each case.
   - `Idle` (Rust `IdleStateUpdate`, `client.rs:1298`) has the flattened stop reason, `usage: Usage?` (the existing v1
     `Usage` model; omitted or `null` means not reported) and `_meta`. In Rust, `usage` sits behind
     `unstable_end_turn_token_usage` and is deserialized with `DefaultOnError`, so a malformed `usage` becomes
@@ -131,8 +170,9 @@ The shape follows v2's agent API, because the RFD models v1 and v2 subagents on 
 both versions. "One shape" means similar structure, not shared types. The v2 types will most likely be separate
 declarations in `agent.v2`, because `SessionUpdate` and the client operations differ between versions. Keep the two
 shapes as close as reasonably possible without contradicting the established patterns of each version. The SDK hands
-the child's operations to an app factory, as v2's `AgentSupport.createSession(parameters, client)` does. During the parent's replay, the factory replays the child's history through those operations before it
-returns, as v2's `resumeSession` does.
+the child's operations to an app factory, as v2's `AgentSupport.createSession(parameters, client)` does. During the
+parent's replay, the factory replays the child's history through those operations before it returns, as v2's
+`resumeSession` does.
 
 ```kotlin
 /**
@@ -239,7 +279,11 @@ public val CoroutineContext.subagents: AgentSubagents?
 1. No capability check: without `subagents` the accessor is `null`, so `announce` can't be reached.
 2. Resolve the parent:
    - `parent == null`: the bound session;
-   - otherwise it must be the bound session or a live, announced descendant of it, or `IllegalArgumentException`.
+   - otherwise it must be the bound session or a registered, announced descendant of it, or
+     `IllegalArgumentException`. "Registered" means not yet removed by subtree cleanup; a child whose feed has ended
+     still counts.
+   - If the bound session is itself a child, it must already be announced, or `IllegalStateException`. Otherwise a
+     factory could announce a grandchild before its own announcement and put traffic on an unannounced stream.
 3. Check that `sessionId` is not registered on the connection, root sessions included, or
    `IllegalArgumentException`.
 4. Register a `SubagentWrapper` (below) under the parent, and call `factory.createSubagent(context)` in the child's
@@ -249,9 +293,10 @@ public val CoroutineContext.subagents: AgentSubagents?
    first item of `events`. Both paths go through the child's operations, so it's one check in one place.
    - Until the announcement has been sent, the child's client operations (permission, fs, terminal, elicitation,
      `notify` of anything else) fail with `IllegalStateException`, so nothing about the child can overtake it.
-   - If the factory throws, or if nothing was sent and `events` completes or throws before emitting, or if its first
-     item isn't the child's `SubagentUpdate`: stop, unregister the child, send nothing more, and make `announce`
-     throw `IllegalStateException`.
+   - If **nothing has been sent yet** and the factory throws, or `events` completes or throws before emitting, or the
+     first item of `events` isn't the child's `SubagentUpdate`: stop, unregister the child, send nothing more, and
+     make `announce` throw `IllegalStateException`. The first-item check applies only when the factory sent nothing.
+   - A failure **after** the announcement went out is open question 12.
    - **During the parent's replay window, the factory must send the announcement itself.** If it returns without
      sending one, `announce` throws `IllegalStateException` right away and unregisters the child. Waiting for
      `events` would deadlock: its collection starts only after the load response, which waits for `replayHistory()`,
@@ -293,6 +338,9 @@ collector sends through the same path:
   - `capabilities` `null`, or `cancel` null/absent: no grant;
   - `cancel` non-null: granted.
 
+  The grant is recorded **before** the update is sent, so a `session/cancel` that the client sends right after
+  receiving the grant is routed.
+
   The initial value is no grant. Only live updates count; see "Replay" for history. Updates from every path count
   (`events`, `context.client.notify`, the context's `client`), because the grant decides which `session/cancel`
   the client may send.
@@ -301,28 +349,34 @@ collector sends through the same path:
   runtimes: v1's `SessionWrapper.prompt` and v2's `runTurn` (`terminalIdleSent`) inspect only the flow they collect,
   and `client.notify` goes straight to the wire.
 - **Its parent and children,** for nesting checks and subtree cleanup (see "Lifetimes").
-- **The child's context.** `SubagentWrapper` extends `Agent.BaseSessionWrapper`, so `currentCoroutineContext().client`,
-  `.agent` and `.subagents` work in the child's context. `client` is a `RemoteClientSessionOperations` for the child's
-  id, gated until the announcement is sent, and applies the routing rule.
+- **The child's context.** `SubagentWrapper` extends `Agent.BaseSessionWrapper`, so `.agent` works in the child's
+  context. `CoroutineContext.client` doesn't work yet: today it casts to `Agent.SessionWrapper` and reads its
+  `clientOperations` (`agent/Agent.kt:582`), and `BaseSessionWrapper` has no `clientOperations`. Make the accessor
+  resolve a `SubagentWrapper` too, for example by moving the operations to a shared supertype that NES sessions
+  don't implement. `.subagents` needs the same. The child's `client` is a `RemoteClientSessionOperations` for the
+  child's id, gated until the announcement is sent, and applies the routing rule.
 
 `Agent` keeps one table per connection, from the child id to its `SubagentWrapper`, next to `_sessions`.
 
 ### Incoming requests on a child id
 
 - **`session/cancel`:**
-  - If the id is a child whose `grant` is in effect, call `AgentSubagentSession.cancel()` in the child's context.
+  - If the id is a child whose `grant` is in effect, call `AgentSubagentSession.cancel()` in the child's context,
+    inline in the notification handler as the root's `cancel()` is. If it throws, log the exception; a notification
+    has no response to fail.
   - Otherwise log and ignore, since a notification can't get an error.
   - The SDK doesn't stop the collection, and doesn't report `cancelled` itself. The app reports the actual outcome
     (`:1007-1013`).
   - Cancel is still routed after the feed has ended, because `unknown` doesn't revoke a grant (`:780-783`).
 - **Every other session method on a child id** fails with an explicit "session X is a subagent" error through
-  `acpFail`. That covers `session/prompt`, `set_mode`, `set_model`, `set_config_option`, `close`, `fork`, `load` and
-  `resume`. Today, `getSessionOrThrow` answers "not found" for these.
+  `acpFail`. That covers `session/prompt`, `set_mode`, `set_model`, `set_config_option`, `close`, `delete`, `fork`,
+  `load` and `resume` (the RFD's mutations, `:954-958`). Today, `getSessionOrThrow` answers "not found" for these.
 
 ### Feed end and failure
 
-- If the collection **completes or throws** while the last `state` is `running`, `requires_action` or an unrecognized
-  state, send `SubagentUpdate(sessionId = child, state = Unknown)`. Log the exception at `warn`: the SDK is
+- If the collection **completes or throws** while the last `state` is `StateUpdate.Running`,
+  `StateUpdate.RequiresAction` or `StateUpdate.Other` (an unrecognized state), send
+  `SubagentUpdate(sessionId = child, state = StateUpdate.Unknown)`. Log the exception at `warn`: the SDK is
   recovering as the spec intends, and the app's work didn't necessarily fail.
   - Use `runCatching` around the send, as `reportIdle` does in `v2/Agent.kt`: a dead protocol must stay silent.
   - A thrown flow means the SDK lost its view of the child, not that the work failed. In a relay the native child
@@ -333,7 +387,7 @@ collector sends through the same path:
     flow is the turn, so a throw proves the turn ended. Here `events` only observes work that runs elsewhere.
   - When the app knows its own work failed, it catches the failure and emits `idle(error)` through `events` before
     the flow ends. The last state is then `idle`, so the SDK sends nothing. Document this in the KDoc.
-- If the last `state` is `idle`, `unknown`, none or cleared, send nothing.
+- If the last `state` is `StateUpdate.Idle`, `StateUpdate.Unknown`, none or cleared, send nothing.
 - If the collection is **cancelled** because the parent closed or the connection ended, send nothing (`:1029-1033`).
 - After the feed ends, the child stays registered: its id stays unique, cancel routing still works, and it can still
   be named as a parent. It's removed only by subtree cleanup.
@@ -349,7 +403,7 @@ collector sends through the same path:
      work. For a relay it only stops forwarding;
   2. removes it from the child table: its id is free, `session/cancel` for it is ignored, and it can't be named as
      a `parent`;
-  3. makes its `AgentSubagents` and client operations fail.
+  3. makes its `AgentSubagents` and client operations fail with `IllegalStateException`.
 
   The SDK calls no app code for the children: not `cancel()`, and there is no per-child close hook. Stopping the
   descendants' work, background children included (`:1030-1034`), and freeing their resources belongs to the app's
@@ -404,7 +458,8 @@ class Reviewer(private val ctx: AgentSubagentContext, private val work: ReceiveC
         for (task in work) {
             send(SessionUpdate.SubagentUpdate(ctx.sessionId, state = MaybeUndefined.Value(StateUpdate.Running())))
             // ... the child's own updates via send(...); requests via ctx.client
-            send(SessionUpdate.SubagentUpdate(ctx.sessionId, state = MaybeUndefined.Value(StateUpdate.Idle(EndTurn))))
+            val idle = StateUpdate.Idle(IdleStopReason.EndTurn)
+            send(SessionUpdate.SubagentUpdate(ctx.sessionId, state = MaybeUndefined.Value(idle)))
         }
     }
     override suspend fun cancel() { /* stop the current task; the loop reports idle(cancelled) */ }
@@ -461,7 +516,7 @@ or `client.notify`), plus the child's incoming view in the child's `events`. The
 ## Client side
 
 The client side is carried over from the earlier notes. The user decided its type structure, and confirmed the
-delivery and routing details below (open question 7).
+delivery and routing details below (decision log, question 7).
 
 ### Operations
 
@@ -477,7 +532,8 @@ delivery and routing details below (open question 7).
 
 ### Types
 
-- `BaseClientSession` is a sealed v1 interface. The name follows the `Base` prefix of `Agent.BaseSessionWrapper`. Its direct subtypes are `ClientSession` and `ClientSubagentSession`.
+- `BaseClientSession` is a sealed v1 interface. The name follows the `Base` prefix of `Agent.BaseSessionWrapper`.
+  Its direct subtypes are `ClientSession` and `ClientSubagentSession`.
   - Members: `sessionId`, `client`, `operations`, `subagents` (the children, named the same on both), and the
     effective `cwd`/`additionalDirectories` (inherited from the parent unless set).
   - Shared KDoc lives on `BaseClientSession` and its members. Overrides add KDoc only where their behaviour differs
@@ -486,8 +542,8 @@ delivery and routing details below (open question 7).
     (`client/ClientSessionImpl.kt:230`) stays as it is.
   - Adding `subagents` to `ClientSession` breaks external implementations of that interface. This is accepted
     because the member is `@UnstableApi`.
-- `ClientSubagentSession` has no prompt, mode, model, config or close, and no config or mode state either (open
-  question 8). A child's `config_option_update` and `current_mode_update` (RFD `:381-415`, `:274-276`) reach its
+- `ClientSubagentSession` has no prompt, mode, model, config or close, and no config or mode state either (decision
+  log, question 8). A child's `config_option_update` and `current_mode_update` (RFD `:381-415`, `:274-276`) reach its
   `notify` like any other update, as in v2, where the client keeps no config flow and reports changes as updates.
   `ClientSessionImpl.trackState` is root-only: a child's update must never touch a root's `currentMode` or
   `configOptions`. Its members:
@@ -515,7 +571,9 @@ delivery and routing details below (open question 7).
   - **Guards:**
     - a comment at the registration saying why it must come before anything that suspends;
     - a regression test (see "Tests");
-    - the ordering guarantee written into `Protocol`'s KDoc for `setNotificationHandler`, so it's a stated contract
+    - the ordering guarantee written into the KDoc of `RpcMethodsOperations.setNotificationHandlerRaw`
+      (implemented at `Protocol.kt:321`) and of the `setNotificationHandler` extension
+      (`RpcMethodsOperations.extensions.kt:124`), so it's a stated contract
       rather than a comment in the read loop. Note there that an `additionalContext` with a dispatcher would break
       it, because `withContext` dispatches before the handler runs.
 - **Setup.**
@@ -574,6 +632,8 @@ cover externally observable behaviour.
 
 **Model**
 - Serialization of every new type: absent versus `null`, unrecognized values, `idle` with `error`.
+- `StateUpdate.Unknown` (`{"state": "unknown"}`) versus `StateUpdate.Other` (any unrecognized state).
+- `idle` with `usage`, and a malformed `usage` that decodes as `null` without failing the snapshot.
 
 **Agent**
 - Capability gate: `CoroutineContext.subagents` is `null` without `subagents`, and non-null with it.
@@ -601,7 +661,7 @@ cover externally observable behaviour.
   - still routed after the feed ends;
   - `cancel()` runs in the child's context.
 - Feed end:
-  - `unknown` after completion or failure while `running`/`requires_action`;
+  - `unknown` after completion or failure while `running`, `requires_action` or an unrecognized state;
   - nothing when the active state was sent only through `client.notify`;
   - nothing when `idle`, including an `idle(error)` the app emitted before the flow threw;
   - nothing on parent close.
@@ -633,8 +693,13 @@ cover externally observable behaviour.
 - An update to `CLAUDE.md` ("Runtime and Lifecycle Rules") covering:
   - subagents are announced through `AgentSubagents.announce`, and the first event is the announcement;
   - the routing rule;
-  - the SDK reports only `unknown`;
-  - the client's per-child holder and grant reset.
+  - the SDK reports only `unknown`, and only from state sent through `events`;
+  - subtree cleanup and its order on `session/close`;
+  - the client's per-child holder, its synchronous registration and grant reset;
+  - `Protocol`'s ordering guarantee for notification handlers, which the registration relies on.
+- KDoc for `setNotificationHandlerRaw` and the `setNotificationHandler` extension stating that ordering guarantee
+  (see "Routing and delivery").
+- Run the `check-specification` skill before writing the models (see "Sources").
 - A sample in `:samples:kotlin-acp-client-sample` is optional. If you add one, use only public APIs.
 
 ## Looking ahead to v2 (do not implement now)
@@ -688,12 +753,96 @@ cover externally observable behaviour.
     (`ClientSessionImpl.kt:42`), and `trackState` writes to it on every `current_mode_update` without a guard. Config
     options are guarded by `configOptionsSupported`.
 
-## Open questions
+## Open questions (from the implementer review)
 
-### Context for resuming the discussion
+A review of this spec as a fresh implementer found these gaps. They are not decided yet. Each has a recommendation to
+start the discussion from. Resolve them one by one, write the answers into the sections above, and move each to the
+decision log.
 
-The design moved through several shapes before landing on the factory-based `announce` above. A new session should
-not reopen these without a new reason:
+### Agent side
+
+12. **A failure after the announcement went out.** A live factory sends the announcement through
+    `context.client.notify` and then throws. Step 5 says to unregister on failure, but the child already exists on
+    the wire (the same reasoning as the cancelled wait in step 7). *Recommendation:* once the announcement has been
+    sent, the id stays registered for good: `announce` rethrows, no collection starts, and `session/cancel` for it is
+    ignored because there is no session to call. Add a test.
+13. **How the agent learns that the connection ended.** Subtree cleanup runs then, but `Agent` has no hook for it,
+    and `Protocol`'s `scope` and `protocolJob` are private. *Recommendation:* parent each root's supervisor scope on
+    an internal job that `Protocol` exposes to the runtimes (for example its handler scope), so the connection's end
+    cancels it, rather than adding a callback.
+14. **`events` throws `CancellationException` itself** while the SDK's scope is still active (for example a
+    `withTimeout` inside the flow). *Recommendation:* treat it as a failure, so `unknown` if the child is active. Only
+    a cancellation of the SDK's own scope counts as "cancelled, send nothing".
+15. **`session_message`/`session_message_chunk` without the capability.** The RFD says the agent MUST NOT send them
+    (`:59-75`), but nothing on a root's `notify` or prompt flow stops it. *Recommendation:* reject them with
+    `IllegalStateException` when the client didn't advertise `subagents`, as the fs/terminal operations do for their
+    capabilities.
+16. **The order of `afterResponse` work** after a `session/load`: starting the replayed children's collections and
+    `postInitialize`. *Recommendation:* start the collections first, so a replayed child's fresh snapshots aren't
+    delayed by `postInitialize`.
+17. **Forking a parent that has children.** *Recommendation:* no SDK work. A fork is a new root, and the app
+    announces whatever children it gives it. Check the RFD for what it says about forks and id remapping first.
+
+### Client side
+
+18. **History versus fresh updates with a `ClientOperationsFactory` load.** The holder's single queue mixes updates
+    received before and after the parent's response, so the client can't tell which grants and state snapshots are
+    history (see "Effective cancel grant"). The same problem is behind the deprecations in "Side findings". It's also
+    open whether `ClientSubagentSession` state is applied when an update arrives (synchronously, in the handler) or
+    when it's drained to the parent. *Recommendation:* apply child state synchronously in the `session/update`
+    handler, where the read-loop order is still known, and record in the parent's holder whether its opening
+    response has been received yet. That needs a way to observe the response's arrival in read-loop order, which
+    must be designed without moving ACP knowledge into `Protocol`.
+19. **Holder lifecycle for children.** `getOrCreateSessionHolderOrNull` returns `null` when no session is
+    initializing, so a live announcement needs its own creation path. When `initializingSessionsCount` drops to 0,
+    `Client` fails every holder whose session isn't completed (`Client.kt:845-866`), which would reap a child
+    waiting for its parent or for `createSubagentOperations`. `ClientSessionHolder` is also typed to
+    `ClientSessionImpl`. *Recommendation:* generalise the holder over `BaseClientSession`, create child holders
+    through a separate path that doesn't depend on `initializingSessionsCount`, and exempt holders that belong to a
+    known parent from reaping.
+20. **`createSubagentOperations` signature.** The sketch is a plain `fun`, but "Setup" says requests wait while it
+    runs, and `ClientOperationsFactory.createClientOperations` is `suspend`. It also lands on the agent side through
+    `common.ClientSessionOperations`, where the default throw is never called. And what does
+    `ClientSubagentSession.operations` return while it's still running? *Recommendation:* make it `suspend`; note in
+    the KDoc that the agent side never calls it; make `operations` available only after setup, as for roots.
+21. **Types of the client members.** `subagents` (a `StateFlow<List<ClientSubagentSession>>`? in announcement order?
+    what happens to entries on load and close?), `title`, `description` and `state` (`StateFlow`s?), how "state
+    unconfirmed" is represented, and the types of `cwd` and `additionalDirectories`. *Recommendation:* `StateFlow`
+    for all of them, `subagents` in announcement order, and an explicit confirmed/unconfirmed wrapper for `state`.
+22. **Malformed or abusive announcements.** A `subagent_update` for an unconnected parent, one that tries to move a
+    known child to another parent, one whose child id is a root session's id, or one that names its own parent.
+    *Recommendation:* deliver the update to its parent (or to `globalSessionUpdateHandler` if the parent is
+    unconnected), register nothing, and log it.
+23. **Ordering between the parent's `notify` and the child's state.** Does the parent's `notify` see the child's
+    patch already applied? "Setup" says the child's operations are created "as soon as the announcement is
+    delivered": delivered to the parent's operations, or registered? And are `ClientSubagentSession` objects reused
+    or recreated when the parent is loaded again? *Recommendation:* apply the patch before delivering it to the
+    parent, create the child's operations right after registration, and recreate the objects on each load.
+24. **Pending permissions for children** (the #156 table in "Client side"):
+    - Should every live `idle(cancelled)` call `cancelPending()`, or only one that follows an ancestor's cancel? The
+      client can't tell which is which.
+    - Should a replayed `running` call `startTurn()`?
+    - After `cancel()`, the cancel signal stays completed until the next `running`, so a child that keeps working
+      without a new snapshot gets every later permission request answered `cancelled`.
+
+    *Recommendation:* any live `idle(cancelled)` calls `cancelPending()`; replayed snapshots never touch pending
+    permissions; start a new turn on any live `running` or `requires_action`.
+25. **Close order on the client.** When the root closes, in what order do descendant `close()` calls and holder
+    removal happen relative to the close response, and what happens to the children when the connection ends?
+    *Recommendation:* close descendants bottom-up and remove their holders before `close()` returns; on connection
+    end, close every session the same way.
+
+After these are decided, expand the **Client** list under "Tests": grant reset on load and resume, history versus
+fresh state, holder reaping, a nested child queued behind a pending parent, and each case above.
+
+## Decision log
+
+Every question below is decided. The sections above already reflect the decisions; this log records what was chosen
+and why, so that a new session doesn't reopen them without a new reason.
+
+### Rejected shapes
+
+The design moved through several shapes before landing on the factory-based `announce` above:
 
 - **No SDK-run turns.** The SDK doesn't start or run a child's work (no `send`, `runTurn` or `PromptResponse` for
   children). A child's work may run inside a native agent process the SDK only wraps. In v1, a child has no prompt and
@@ -723,9 +872,7 @@ not reopen these without a new reason:
   `register`/`start` were rejected: the first is a round trip the SDK never triggers, and the second leaves
   half-registered children after failures.
 
-### Questions (verbatim from the last session)
-
-Yes. These are the questions still open, roughly in order of how much they affect the design. Once you've answered them, I'll update the doc with the factory approach and these answers in one pass.
+### Decided questions
 
 #### Agent API
 
@@ -748,16 +895,20 @@ Yes. These are the questions still open, roughly in order of how much they affec
 6. **Closing a parent. Decided:** subtree cleanup cancels collections, frees ids and disables operations. It calls no app code for the children. Order: the app's `close()`, then cleanup, then the response. No cleanup if `close()` throws. On connection end, cleanup runs without `close()` (see "Lifetimes").
 7. **The client side. Decided:** synchronous registration of a new child in the client's `session/update` handler, with the three guards; a child's holder waiting for its parent's holder; a throwing `createSubagentOperations` failing only that child (and its descendants); the name `BaseClientSession` (see "Client side").
 
-#### Not designed yet
+#### Client state and usage
 
 8. **Read-only config for children on the client. Decided:** no config state at all, only notifications, as in v2. A child's `config_option_update` and `current_mode_update` reach its `notify` like any other update (see "Client side", "Types").
-9. **Usage and cost.**
-   - A child reports `usage` in its `idle` snapshot, and the client must not add up the tree (`:1071-1101`).
-   - I'd expect no SDK work beyond the models. Should `ClientSubagentSession` expose the last reported `usage`?
-   - **Decided:** no tracking. The only work is the model field `StateUpdate.Idle.usage` (see "Model layer"). The
-     `idle` snapshot with its `usage` is already visible through `ClientSubagentSession.state`, a child's
-     `usage_update` reaches its `notify` like any other update, and the SDK never adds up usage across the tree.
+9. **Usage and cost. Decided:** no tracking. A child reports `usage` in its `idle` snapshot, and the client must
+   not add up the tree (`:1071-1101`). The only work is the model field `StateUpdate.Idle.usage` (see "Model
+   layer"). The `idle` snapshot with its `usage` is already visible through `ClientSubagentSession.state`, a child's
+   `usage_update` reaches its `notify` like any other update, and the SDK never adds up usage across the tree.
 
 #### Process
 
-10. **Rebase. Done:** this branch is rebased onto the current #156 head (`9941000`), which includes #155 (see "Prerequisites").
+10. **Rebase. Done:** this branch is rebased onto the current #156 head (`9941000`), which includes #155 (see
+    "Prerequisites").
+
+#### Model names
+
+11. **State types. Decided:** `StateUpdate` and `IdleStopReason`, as in Rust v1, with `Other` for unrecognized values
+    (see "Model layer").
