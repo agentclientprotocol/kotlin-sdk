@@ -111,7 +111,9 @@ class ClientEarlySessionUpdatesTest {
         assertEquals(listOf<SessionUpdate>(early), operations.updates.value)
     }
 
+    // TODO remove the currentMode assertion together with the deprecated ClientSession.currentMode.
     @Test
+    @Suppress("DEPRECATION")
     fun `updates racing the answer keep their order and arrive once`() = withClient { client, agent ->
         /*
          * The answer and the updates after it are put on the wire back to back, so the client switches from
@@ -136,7 +138,12 @@ class ClientEarlySessionUpdatesTest {
         }
     }
 
+    /*
+     * TODO remove the currentMode assertion together with the deprecated ClientSession.currentMode. It pins the
+     *  replayed mode over the newer one from the response, which is the reason for the deprecation.
+     */
     @Test
+    @Suppress("DEPRECATION")
     fun `the answer waits for an early update that the operations still handle`() = withClient { client, agent ->
         val sessionId = SessionId("slow-early-update")
         val releaseModeUpdate = CompletableDeferred<Unit>()
@@ -165,7 +172,13 @@ class ClientEarlySessionUpdatesTest {
         assertEquals(PLAN, session.currentMode.value, "the session applies the mode of the early update")
     }
 
+    /*
+     * TODO remove the currentMode and configOptions assertions together with the deprecated ClientSession.currentMode
+     *  and ClientSession.configOptions. They pin the replayed state over the newer state from the response, which is
+     *  the reason for the deprecation.
+     */
     @Test
+    @Suppress("DEPRECATION")
     fun `mode and config options after an early load equal those after a buffered load`() = withClient { client, agent ->
         val replay = listOf(
             SessionUpdate.CurrentModeUpdate(PLAN),

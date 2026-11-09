@@ -38,6 +38,7 @@ internal class ClientSessionImpl(
     private val activePrompt = atomic<PromptSession?>(null)
     private val pendingPermissions = PendingPermissionCancellation()
 
+    // TODO remove together with the deprecated ClientSession.currentMode.
     private val _currentMode by lazy {
         val modes = createdResponse.modes ?: error("Modes are not provided by the agent")
         MutableStateFlow(modes.currentModeId)
@@ -49,6 +50,7 @@ internal class ClientSessionImpl(
         MutableStateFlow(models.currentModelId)
     }
 
+    // TODO remove together with the deprecated ClientSession.configOptions.
     @UnstableApi
     private val _configOptions by lazy {
         val configOptions = createdResponse.configOptions ?: error("Config options are not provided by the agent")
@@ -116,6 +118,8 @@ internal class ClientSessionImpl(
     override val availableModes: List<SessionMode>
         get() = createdResponse.modes?.availableModes ?: emptyList()
 
+    // TODO remove together with the deprecated ClientSession.currentMode.
+    @Suppress("OVERRIDE_DEPRECATION")
     override val currentMode: StateFlow<SessionModeId>
         get() = _currentMode
 
@@ -145,13 +149,16 @@ internal class ClientSessionImpl(
     override val configOptionsSupported: Boolean
         get() = createdResponse.configOptions != null
 
+    // TODO remove together with the deprecated ClientSession.configOptions.
     @UnstableApi
+    @Suppress("OVERRIDE_DEPRECATION")
     override val configOptions: StateFlow<List<SessionConfigOption>>
         get() = _configOptions
 
     @UnstableApi
     override suspend fun setConfigOption(configId: SessionConfigId, value: SessionConfigOptionValue, _meta: JsonElement?): SetSessionConfigOptionResponse {
         val response = AcpMethod.AgentMethods.V1.SessionSetConfigOption(protocol, SetSessionConfigOptionRequest(sessionId, configId, value, _meta))
+        // TODO remove together with the deprecated ClientSession.configOptions.
         _configOptions.value = response.configOptions
         return response
     }
@@ -183,10 +190,12 @@ internal class ClientSessionImpl(
         }
     }
 
+    // TODO remove together with the deprecated ClientSession.currentMode and ClientSession.configOptions.
     /**
      * Applies the session state that [notification] carries to [currentMode] and [configOptions].
      */
     internal fun trackState(notification: SessionUpdate) {
+        // TODO remove together with the deprecated ClientSession.currentMode.
         if (notification is SessionUpdate.CurrentModeUpdate) {
             _currentMode.value = notification.currentModeId
         }
@@ -194,6 +203,7 @@ internal class ClientSessionImpl(
 //        if (notification is SessionUpdate.CurrentModelUpdate) {
 //            _currentModel.value = notification.currentModelId
 //        }
+        // TODO remove together with the deprecated ClientSession.configOptions.
         @OptIn(UnstableApi::class)
         if (notification is SessionUpdate.ConfigOptionUpdate && configOptionsSupported) {
             _configOptions.value = notification.configOptions

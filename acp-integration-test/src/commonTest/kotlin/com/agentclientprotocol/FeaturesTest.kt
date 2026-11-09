@@ -121,7 +121,9 @@ abstract class FeaturesTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         assertContentEquals(listOf("Hello", "File content: test", "END_TURN"), result)
     }
 
+    // TODO assert the current_mode_update in notify instead, together with removing the deprecated ClientSession.currentMode.
     @Test
+    @Suppress("DEPRECATION")
     fun `change mode from client`() = testWithProtocols { clientProtocol, agentProtocol ->
         val client = Client(protocol = clientProtocol)
 
