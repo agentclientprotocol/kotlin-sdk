@@ -136,6 +136,40 @@ public class Agent(
                             }
                         }
                     } catch (e: CancellationException) {
+                        /*
+                         * FIXME: a CancellationException that the app's own flow throws is treated as a client
+                         *  cancel. Example: an uncaught `withTimeout` inside `AgentSession.prompt()`, with no
+                         *  `session/cancel` from the client. Rethrowing it here cancels `promptJob`, so
+                         *  `isCancelled` below is true, the failure is never recorded, and `session/prompt`
+                         *  answers `stopReason: cancelled`. The v1 schema defines `cancelled` as "The turn was
+                         *  cancelled by the client via `session/cancel`" (`StopReason` in `schema/v1/schema.json`),
+                         *  so the client sees a cancel it never sent and the real failure isn't reported.
+                         *
+                         *  #131 fixed only the SDK-made case: a peer's `-32800` response is now
+                         *  `AcpRequestCancelledException`, not a `CancellationException`. A CancellationException
+                         *  the app throws itself still lands here.
+                         *
+                         *  Suggested fix: tell an app CE from a real cancellation by whether this job is still
+                         *  active. `SessionWrapper.cancel()` and the handler's own cancellation (protocol close,
+                         *  the peer's `$/cancel_request`) cancel `promptJob`, so `isActive` is false for them and
+                         *  the CE must still be rethrown. If `currentCoroutineContext().isActive` is still true,
+                         *  the CE came from the app: record it as `failure` instead. The code after `join()`
+                         *  then does the right thing on its own: after a client cancel (`isCancelRequested`) it
+                         *  still answers `cancelled`, which the schema requires "even if the cancellation causes
+                         *  exceptions in underlying operations", and otherwise it rethrows the failure as an
+                         *  error response. Wrap the CE in a non-cancellation exception first (for example
+                         *  `IllegalStateException("Prompt flow threw CancellationException", e)`): `Protocol`
+                         *  maps any CancellationException thrown from a handler to `-32800 Cancelled`
+                         *  (`toJsonRpcError` in `protocol/Exceptions.kt`), which would mislabel the turn again,
+                         *  this time as a cancelled request. Wrapped, it becomes `-32603`.
+                         *
+                         *  This changes stable v1 behaviour. Cover it with lifecycle tests: an app CE without a
+                         *  cancel answers with an error; an app CE after `session/cancel` answers `cancelled`;
+                         *  `SessionWrapper.cancel()` and protocol close still answer or stop as today. The v2
+                         *  counterpart is the FIXME in `agent/v2/Agent.kt` `runTurn`. Subagent feeds use the
+                         *  same `isActive` rule ("Feed end and failure" in
+                         *  `docs/superpowers/specs/2026-11-07-v1-subagents-architecture.md`).
+                         */
                         throw e
                     } catch (e: Throwable) {
                         failure = e
