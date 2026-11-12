@@ -145,6 +145,10 @@ internal class ClientSessionHolder {
         notifications.close()
     }
 
+    /*
+     * TODO after removing the deprecated ClientSession.currentMode and configOptions, this method only completes the
+     *  session. Merge it with the completion in drainEventsAndCompleteSession then.
+     */
     /**
      * Applies the session state that the early updates carried, then makes [session] the receiver of all later
      * updates. Must run after [deliverEarly] has returned.

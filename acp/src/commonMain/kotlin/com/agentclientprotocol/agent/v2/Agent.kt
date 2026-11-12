@@ -227,6 +227,40 @@ public class Agent(
                     ends it — and `cancelled` is honest, because the turn really was cancelled, just locally
                     rather than on the client's asking.
                      */
+                    /*
+                    FIXME: this branch assumes every CancellationException is a local cancellation, but the
+                     app's own flow can throw one too. Example: an uncaught `withTimeout` inside
+                     `AgentSession.prompt()`, with no `session/cancel` from the client. The client then gets
+                     `idle(cancelled)` for a turn nobody cancelled, and the real failure isn't reported. The
+                     same happens before insertion: the `completeExceptionally` path above rethrows the CE, the
+                     prompt handler's `insertedMessageId.await()` throws it, and `Protocol` answers `-32800
+                     Cancelled` (`toJsonRpcError` in `protocol/Exceptions.kt`) to a prompt the client never
+                     cancelled. #131 fixed only the SDK-made case: a peer's `-32800` response is now
+                     `AcpRequestCancelledException`, handled above.
+
+                     Suggested fix: classify a CE by two facts, whether the turn's job is still active and
+                     whether a `session/cancel` arrived during this turn.
+                     - Job cancelled (`close()`, `cancelPendingIncomingRequest(s)`, `turn.cancel()` from the
+                       prompt handler's `afterResponse`/`onCompletion`): keep this branch as it is.
+                     - Job active and a cancel was requested: still `idle(cancelled)`. The app aborted its
+                       work in response to the client's cancel, and aborted calls often throw.
+                     - Job active and no cancel was requested: treat it like the `else` branch below, an
+                       error log and `idle(stopReason = null)`, and don't rethrow.
+                     A job-state check alone is not enough, and it would regress the second case.
+                     `cancel()` here only calls `session.cancel()` and never cancels the turn's job, so after
+                     a real client cancel the job is still active. The turn needs a cancel-requested flag,
+                     like v1's `PromptSession.isCancelRequested` in `agent/Agent.kt`, set by `cancel()` for
+                     the turn registered when the cancel arrives.
+
+                     Apply the same split before insertion: answer `-32800` only after a cancel, otherwise
+                     fail the receipt with a non-cancellation exception so it becomes `-32603`. Keep the SDK's
+                     own `CancellationException("Prompt cancelled before user message insertion")` thrown in
+                     `collect` above out of the "app CE" case: it runs in an active job too, so it needs its
+                     own exception type or an explicit branch.
+
+                     Cover it with lifecycle tests for each case above, using a client cancel as the control.
+                     The v1 counterpart is the FIXME in `SessionWrapper.prompt` in `agent/Agent.kt`.
+                     */
                     is CancellationException -> {
                         logger.debug(t) { "Reporting a locally cancelled turn for session ${session.sessionId}" }
                         reportIdle(StopReason.Cancelled)
