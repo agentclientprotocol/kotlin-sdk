@@ -113,14 +113,21 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   `answerPermissionRequest`, `executeWithSession`, `asContextElement`); holder has `subagents`, `rootParameters`,
   `claimForOpening(replayRequested, parameters)`; 25 tests; `check` green; `:acp` dump reviewed. TODO seams left
   for `SubagentPendingPermissions` in the child constructor, `cancel()` and the child permission branch.
+- M4.3a `SubagentPendingPermissions` — `c03d9df` — class + 19 unit tests; `ClientSubagentSession` takes
+  `pendingPermissions` (last constructor parameter), `cancel()` calls `cancelByClient()` in `finally`; child branch
+  of `answerPermissionRequest` races through it; `check` green (after one flaky Kotlin/JS internal compiler error,
+  second occurrence); no API change. Caller contract for M4.2:
+  `if (update.state != MaybeUndefined.Undefined) onState(update.state.valueOrNull(), live)` with `live` = the
+  root's `answered` flag at arrival; `onOpened(promote = !replayRequested)` from `markOpened` on each descendant;
+  `close()` on descendants at root close (M4.4). Deviation: `onState` sets `activeWork` before
+  `clearCancellation()` (race-safe order).
 
 ## Next
-- M4.3a programmer running (reordered ahead of M4.2, which waits on the `NonCancellable` answer):
-  `SubagentPendingPermissions` class with unit tests, hooked into `ClientSubagentSession.cancel()` and the child
-  branch of `answerPermissionRequest`. Its calls from the sorting (`onState` at arrival) and from `markOpened`
-  (`onOpened`) are wired in M4.2.
-- M4.2 (opus) registration, sorting, setup, delivery, child consumers, `Opened(null)`, wiring of
-  `SubagentPendingPermissions`; M4.4 (opus) close and subtree removal; M4 review (include `5bca6d3`).
+- M6a docs programmer running: `AGENTS.md` agent-side subagent lifecycle rules (review N7), both internal
+  `Protocol` hooks, block-comment nit in `ClientSessionRegistry.kt`.
+- BLOCKED on the user's `NonCancellable` answer: M3.6 fix slice, then M4.2 (opus) registration, sorting, setup,
+  delivery, child consumers, `Opened(null)`, wiring of `SubagentPendingPermissions`; M4.4 (opus) close and subtree
+  removal; M4 review (include `5bca6d3`).
 - M3.6 fix slice after the user answers the `NonCancellable` question: should-fix 1-3, release-note wording,
   block comments. Must land before M4.2, which builds on `completeOpening`.
 - Agent S3 fix slice after the user answers the reopen question.
