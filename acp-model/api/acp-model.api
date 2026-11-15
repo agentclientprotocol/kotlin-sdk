@@ -1069,8 +1069,8 @@ public final class com/agentclientprotocol/model/CancelRequestNotification$Compa
 public final class com/agentclientprotocol/model/ClientCapabilities : com/agentclientprotocol/model/AcpCapabilities, com/agentclientprotocol/model/AcpWithMeta {
 	public static final field Companion Lcom/agentclientprotocol/model/ClientCapabilities$Companion;
 	public fun <init> ()V
-	public fun <init> (Lcom/agentclientprotocol/model/FileSystemCapability;ZLcom/agentclientprotocol/model/PlanCapabilities;Lcom/agentclientprotocol/model/AuthCapabilities;Lcom/agentclientprotocol/model/ClientNesCapabilities;Ljava/util/List;Lcom/agentclientprotocol/model/ElicitationCapabilities;Lkotlinx/serialization/json/JsonElement;)V
-	public synthetic fun <init> (Lcom/agentclientprotocol/model/FileSystemCapability;ZLcom/agentclientprotocol/model/PlanCapabilities;Lcom/agentclientprotocol/model/AuthCapabilities;Lcom/agentclientprotocol/model/ClientNesCapabilities;Ljava/util/List;Lcom/agentclientprotocol/model/ElicitationCapabilities;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/agentclientprotocol/model/FileSystemCapability;ZLcom/agentclientprotocol/model/PlanCapabilities;Lcom/agentclientprotocol/model/AuthCapabilities;Lcom/agentclientprotocol/model/ClientNesCapabilities;Ljava/util/List;Lcom/agentclientprotocol/model/ElicitationCapabilities;Lkotlinx/serialization/json/JsonElement;Lcom/agentclientprotocol/model/SubagentCapabilities;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/FileSystemCapability;ZLcom/agentclientprotocol/model/PlanCapabilities;Lcom/agentclientprotocol/model/AuthCapabilities;Lcom/agentclientprotocol/model/ClientNesCapabilities;Ljava/util/List;Lcom/agentclientprotocol/model/ElicitationCapabilities;Lkotlinx/serialization/json/JsonElement;Lcom/agentclientprotocol/model/SubagentCapabilities;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lcom/agentclientprotocol/model/FileSystemCapability;
 	public final fun component2 ()Z
 	public final fun component3 ()Lcom/agentclientprotocol/model/PlanCapabilities;
@@ -1079,8 +1079,9 @@ public final class com/agentclientprotocol/model/ClientCapabilities : com/agentc
 	public final fun component6 ()Ljava/util/List;
 	public final fun component7 ()Lcom/agentclientprotocol/model/ElicitationCapabilities;
 	public final fun component8 ()Lkotlinx/serialization/json/JsonElement;
-	public final fun copy (Lcom/agentclientprotocol/model/FileSystemCapability;ZLcom/agentclientprotocol/model/PlanCapabilities;Lcom/agentclientprotocol/model/AuthCapabilities;Lcom/agentclientprotocol/model/ClientNesCapabilities;Ljava/util/List;Lcom/agentclientprotocol/model/ElicitationCapabilities;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/ClientCapabilities;
-	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/ClientCapabilities;Lcom/agentclientprotocol/model/FileSystemCapability;ZLcom/agentclientprotocol/model/PlanCapabilities;Lcom/agentclientprotocol/model/AuthCapabilities;Lcom/agentclientprotocol/model/ClientNesCapabilities;Ljava/util/List;Lcom/agentclientprotocol/model/ElicitationCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/ClientCapabilities;
+	public final fun component9 ()Lcom/agentclientprotocol/model/SubagentCapabilities;
+	public final fun copy (Lcom/agentclientprotocol/model/FileSystemCapability;ZLcom/agentclientprotocol/model/PlanCapabilities;Lcom/agentclientprotocol/model/AuthCapabilities;Lcom/agentclientprotocol/model/ClientNesCapabilities;Ljava/util/List;Lcom/agentclientprotocol/model/ElicitationCapabilities;Lkotlinx/serialization/json/JsonElement;Lcom/agentclientprotocol/model/SubagentCapabilities;)Lcom/agentclientprotocol/model/ClientCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/ClientCapabilities;Lcom/agentclientprotocol/model/FileSystemCapability;ZLcom/agentclientprotocol/model/PlanCapabilities;Lcom/agentclientprotocol/model/AuthCapabilities;Lcom/agentclientprotocol/model/ClientNesCapabilities;Ljava/util/List;Lcom/agentclientprotocol/model/ElicitationCapabilities;Lkotlinx/serialization/json/JsonElement;Lcom/agentclientprotocol/model/SubagentCapabilities;ILjava/lang/Object;)Lcom/agentclientprotocol/model/ClientCapabilities;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getAuth ()Lcom/agentclientprotocol/model/AuthCapabilities;
 	public final fun getElicitation ()Lcom/agentclientprotocol/model/ElicitationCapabilities;
@@ -1088,6 +1089,7 @@ public final class com/agentclientprotocol/model/ClientCapabilities : com/agentc
 	public final fun getNes ()Lcom/agentclientprotocol/model/ClientNesCapabilities;
 	public final fun getPlanCapabilities ()Lcom/agentclientprotocol/model/PlanCapabilities;
 	public final fun getPositionEncodings ()Ljava/util/List;
+	public final fun getSubagents ()Lcom/agentclientprotocol/model/SubagentCapabilities;
 	public final fun getTerminal ()Z
 	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
 	public fun hashCode ()I
@@ -2853,6 +2855,71 @@ public final synthetic class com/agentclientprotocol/model/HttpHeader$$serialize
 
 public final class com/agentclientprotocol/model/HttpHeader$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public abstract class com/agentclientprotocol/model/IdleStopReason {
+}
+
+public final class com/agentclientprotocol/model/IdleStopReason$Cancelled : com/agentclientprotocol/model/IdleStopReason {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/IdleStopReason$Cancelled;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/IdleStopReason$EndTurn : com/agentclientprotocol/model/IdleStopReason {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/IdleStopReason$EndTurn;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/IdleStopReason$Error : com/agentclientprotocol/model/IdleStopReason {
+	public fun <init> ()V
+	public fun <init> (Lcom/agentclientprotocol/rpc/JsonRpcError;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/rpc/JsonRpcError;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/agentclientprotocol/rpc/JsonRpcError;
+	public final fun copy (Lcom/agentclientprotocol/rpc/JsonRpcError;)Lcom/agentclientprotocol/model/IdleStopReason$Error;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/IdleStopReason$Error;Lcom/agentclientprotocol/rpc/JsonRpcError;ILjava/lang/Object;)Lcom/agentclientprotocol/model/IdleStopReason$Error;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getError ()Lcom/agentclientprotocol/rpc/JsonRpcError;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/IdleStopReason$MaxTokens : com/agentclientprotocol/model/IdleStopReason {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/IdleStopReason$MaxTokens;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/IdleStopReason$MaxTurnRequests : com/agentclientprotocol/model/IdleStopReason {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/IdleStopReason$MaxTurnRequests;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/IdleStopReason$Other : com/agentclientprotocol/model/IdleStopReason {
+	public fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)V
+	public synthetic fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonObject;
+	public final fun copy (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)Lcom/agentclientprotocol/model/IdleStopReason$Other;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/IdleStopReason$Other;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)Lcom/agentclientprotocol/model/IdleStopReason$Other;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFields ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getStopReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/IdleStopReason$Refusal : com/agentclientprotocol/model/IdleStopReason {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/IdleStopReason$Refusal;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class com/agentclientprotocol/model/Implementation : com/agentclientprotocol/model/AcpWithMeta {
@@ -5886,6 +5953,24 @@ public final class com/agentclientprotocol/model/SessionAdditionalDirectoriesCap
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class com/agentclientprotocol/model/SessionCancelCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/SessionCancelCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/SessionCancelCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/SessionCancelCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionCancelCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/SessionCancelCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class com/agentclientprotocol/model/SessionCapabilities : com/agentclientprotocol/model/AcpWithMeta {
 	public static final field Companion Lcom/agentclientprotocol/model/SessionCapabilities$Companion;
 	public fun <init> ()V
@@ -7462,6 +7547,84 @@ public final class com/agentclientprotocol/model/StartNesResponse$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public abstract class com/agentclientprotocol/model/StateUpdate {
+	public static final field Companion Lcom/agentclientprotocol/model/StateUpdate$Companion;
+}
+
+public final class com/agentclientprotocol/model/StateUpdate$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/StateUpdate$Idle : com/agentclientprotocol/model/StateUpdate, com/agentclientprotocol/model/AcpWithMeta {
+	public fun <init> ()V
+	public fun <init> (Lcom/agentclientprotocol/model/IdleStopReason;Lcom/agentclientprotocol/model/Usage;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/IdleStopReason;Lcom/agentclientprotocol/model/Usage;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/IdleStopReason;
+	public final fun component2 ()Lcom/agentclientprotocol/model/Usage;
+	public final fun component3 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lcom/agentclientprotocol/model/IdleStopReason;Lcom/agentclientprotocol/model/Usage;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/StateUpdate$Idle;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/StateUpdate$Idle;Lcom/agentclientprotocol/model/IdleStopReason;Lcom/agentclientprotocol/model/Usage;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/StateUpdate$Idle;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getStopReason ()Lcom/agentclientprotocol/model/IdleStopReason;
+	public final fun getUsage ()Lcom/agentclientprotocol/model/Usage;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/StateUpdate$Other : com/agentclientprotocol/model/StateUpdate {
+	public fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)V
+	public synthetic fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonObject;
+	public final fun copy (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)Lcom/agentclientprotocol/model/StateUpdate$Other;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/StateUpdate$Other;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)Lcom/agentclientprotocol/model/StateUpdate$Other;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFields ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getState ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/StateUpdate$RequiresAction : com/agentclientprotocol/model/StateUpdate, com/agentclientprotocol/model/AcpWithMeta {
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/StateUpdate$RequiresAction;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/StateUpdate$RequiresAction;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/StateUpdate$RequiresAction;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/StateUpdate$Running : com/agentclientprotocol/model/StateUpdate, com/agentclientprotocol/model/AcpWithMeta {
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/StateUpdate$Running;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/StateUpdate$Running;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/StateUpdate$Running;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/StateUpdate$Unknown : com/agentclientprotocol/model/StateUpdate, com/agentclientprotocol/model/AcpWithMeta {
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/StateUpdate$Unknown;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/StateUpdate$Unknown;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/StateUpdate$Unknown;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/agentclientprotocol/model/StopReason : java/lang/Enum {
 	public static final field CANCELLED Lcom/agentclientprotocol/model/StopReason;
 	public static final field Companion Lcom/agentclientprotocol/model/StopReason$Companion;
@@ -7535,6 +7698,44 @@ public final synthetic class com/agentclientprotocol/model/StringPropertySchema$
 }
 
 public final class com/agentclientprotocol/model/StringPropertySchema$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/SubagentCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/SubagentCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/SubagentCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/SubagentCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SubagentCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/SubagentCapabilities$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/SubagentSessionCapabilities : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/SubagentSessionCapabilities$Companion;
+	public fun <init> ()V
+	public fun <init> (Lcom/agentclientprotocol/model/SessionCancelCapabilities;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/SessionCancelCapabilities;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/SessionCancelCapabilities;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lcom/agentclientprotocol/model/SessionCancelCapabilities;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/SubagentSessionCapabilities;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/SubagentSessionCapabilities;Lcom/agentclientprotocol/model/SessionCancelCapabilities;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SubagentSessionCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCancel ()Lcom/agentclientprotocol/model/SessionCancelCapabilities;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/SubagentSessionCapabilities$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 

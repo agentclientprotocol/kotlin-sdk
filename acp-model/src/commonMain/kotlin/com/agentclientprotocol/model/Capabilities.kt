@@ -94,7 +94,10 @@ public data class ClientCapabilities(
     val positionEncodings: List<PositionEncodingKind>? = null,
     @property:UnstableApi
     val elicitation: ElicitationCapabilities? = null,
-    override val _meta: JsonElement? = null
+    override val _meta: JsonElement? = null,
+    @property:UnstableApi
+    @Serializable(with = LenientSubagentCapabilitiesSerializer::class)
+    val subagents: SubagentCapabilities? = null,
 ) : AcpCapabilities, AcpWithMeta
 
 /**
