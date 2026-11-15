@@ -257,7 +257,13 @@ internal class SubagentWrapper(
         return collection
     }
 
-    private fun onFeedEnd(failure: Throwable?) {
+    /**
+     * The events completed, or failed with [failure].
+     *
+     * A feed that ends while the last state it sent is active owes `unknown`: the client can no longer observe the
+     * child, and the SDK doesn't invent an outcome. The child stays registered.
+     */
+    private suspend fun onFeedEnd(failure: Throwable?) {
         if (dropUnlessAnnounced()) {
             val reason = if (failure == null) "completed" else "failed"
             announcement.completeExceptionally(
@@ -269,6 +275,34 @@ internal class SubagentWrapper(
             logger.warn(failure) { "Events of subagent $sessionId failed" }
         } else {
             logger.debug { "Events of subagent $sessionId completed" }
+        }
+
+        // A collection the SDK cancelled is torn down with its parent or the connection, and owes nothing.
+        if (!currentCoroutineContext().isActive || !eventsState.isActiveState()) return
+        runCatching { subagentOperations.sendUnknownState() }
+            .onFailure { logger.debug(it) { "Could not report subagent $sessionId unknown after its events ended" } }
+    }
+
+    /**
+     * Serves `session/cancel` for this child: calls the session's [AgentSubagentSession.cancel] while the cancel
+     * grant is in effect, and otherwise ignores it, because a notification can't get an error. The SDK neither stops
+     * the collection nor reports an outcome: the app reports it through the events.
+     */
+    suspend fun cancel() {
+        val session = session
+        if (!isCancelGranted || session == null) {
+            logger.info {
+                if (session == null) "Ignoring session/cancel for subagent $sessionId: it has no session"
+                else "Ignoring session/cancel for subagent $sessionId: cancel is not granted"
+            }
+            return
+        }
+        try {
+            executeWithSession { session.cancel() }
+        } catch (e: Throwable) {
+            // Only this handler's own cancellation passes: a notification has no response to fail.
+            if (e is CancellationException && !currentCoroutineContext().isActive) throw e
+            logger.warn(e) { "Cancel of subagent $sessionId failed" }
         }
     }
 
@@ -302,10 +336,7 @@ internal class SubagentWrapper(
         fun sendFactoryFailureCorrection() {
             synchronized(lock) {
                 val revokeGrant = _cancelGranted.value
-                val reportUnknown = when (factoryState) {
-                    is StateUpdate.Running, is StateUpdate.RequiresAction, is StateUpdate.Other -> true
-                    else -> false
-                }
+                val reportUnknown = factoryState.isActiveState()
                 if (!revokeGrant && !reportUnknown) return
 
                 val correction = SessionUpdate.SubagentUpdate(
@@ -315,6 +346,11 @@ internal class SubagentWrapper(
                 )
                 sendOwnUpdateLocked(correction, null)
             }
+        }
+
+        fun sendUnknownState() {
+            val update = SessionUpdate.SubagentUpdate(sessionId, state = MaybeUndefined.Value(StateUpdate.Unknown()))
+            synchronized(lock) { sendOwnUpdateLocked(update, null) }
         }
 
         /**
@@ -340,4 +376,13 @@ internal class SubagentWrapper(
             _phase.value = Phase.ANNOUNCED
         }
     }
+}
+
+/**
+ * Whether this last known state shows the child working, so a feed that can no longer report on it owes `unknown`.
+ * An unrecognized state counts as active.
+ */
+private fun StateUpdate?.isActiveState(): Boolean = when (this) {
+    is StateUpdate.Running, is StateUpdate.RequiresAction, is StateUpdate.Other -> true
+    is StateUpdate.Idle, is StateUpdate.Unknown, null -> false
 }

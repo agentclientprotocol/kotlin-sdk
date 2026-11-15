@@ -384,6 +384,7 @@ public class Agent(
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.V1.SessionDelete) { params: DeleteSessionRequest ->
+            checkNotSubagent(params.sessionId)
             return@setRequestHandler agentSupport.deleteSession(params.sessionId, params._meta)
         }
 
@@ -403,6 +404,7 @@ public class Agent(
         }
 
         protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V1.SessionLoad) { params: LoadSessionRequest ->
+            checkNotSubagent(params.sessionId)
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val created = createSession(
                 sessionParameters,
@@ -421,6 +423,7 @@ public class Agent(
         }
 
         protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V1.SessionResume) { params: ResumeSessionRequest ->
+            checkNotSubagent(params.sessionId)
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val created = createSession(sessionParameters) { agentSupport.resumeSession(params.sessionId, sessionParameters) }
             return@setRequestOutcomeHandler created.mapResponse { session ->
@@ -453,6 +456,11 @@ public class Agent(
         }
 
         protocol.setNotificationHandler(AcpMethod.AgentMethods.V1.SessionCancel) { params: CancelNotification ->
+            val child = subagentOrNull(params.sessionId)
+            if (child != null) {
+                child.cancel()
+                return@setNotificationHandler
+            }
             val session = getSessionOrThrow(params.sessionId)
             session.executeWithSession {
                 session.cancel()
@@ -471,6 +479,7 @@ public class Agent(
 
         @OptIn(UnstableApi::class)
         protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V1.SessionFork) { params: ForkSessionRequest ->
+            checkNotSubagent(params.sessionId)
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val created = createSession(sessionParameters) { agentSupport.forkSession(params.sessionId, sessionParameters) }
             return@setRequestOutcomeHandler created.mapResponse { session ->
@@ -485,6 +494,7 @@ public class Agent(
 
         @OptIn(UnstableApi::class)
         protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V1.SessionResume) { params: ResumeSessionRequest ->
+            checkNotSubagent(params.sessionId)
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val created = createSession(sessionParameters) { agentSupport.resumeSession(params.sessionId, sessionParameters) }
             return@setRequestOutcomeHandler created.mapResponse { session ->
@@ -628,7 +638,19 @@ public class Agent(
         )
     }
 
-    private fun getSessionOrThrow(sessionId: SessionId): SessionWrapper = _sessions.value[sessionId] ?: acpFail("Session $sessionId not found")
+    private fun getSessionOrThrow(sessionId: SessionId): SessionWrapper {
+        _sessions.value[sessionId]?.let { return it }
+        checkNotSubagent(sessionId)
+        acpFail("Session $sessionId not found")
+    }
+
+    /**
+     * Rejects a session method on a subagent's id. The client may only cancel a subagent: every other method is
+     * reserved for root sessions.
+     */
+    private fun checkNotSubagent(sessionId: SessionId) {
+        if (sessionId in _subagents.value) acpFail("Session $sessionId is a subagent")
+    }
 
     internal fun subagentOrNull(sessionId: SessionId): SubagentWrapper? = _subagents.value[sessionId]
 

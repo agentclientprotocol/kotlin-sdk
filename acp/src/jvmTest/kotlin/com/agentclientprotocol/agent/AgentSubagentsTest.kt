@@ -4,22 +4,37 @@ package com.agentclientprotocol.agent
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.ClientInfo
+import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.AcpMethod
+import com.agentclientprotocol.model.AcpRequest
+import com.agentclientprotocol.model.CancelNotification
 import com.agentclientprotocol.model.ClientCapabilities
+import com.agentclientprotocol.model.CloseSessionRequest
 import com.agentclientprotocol.model.ContentBlock
+import com.agentclientprotocol.model.DeleteSessionRequest
+import com.agentclientprotocol.model.ForkSessionRequest
 import com.agentclientprotocol.model.IdleStopReason
 import com.agentclientprotocol.model.InitializeRequest
 import com.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
+import com.agentclientprotocol.model.LoadSessionRequest
 import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.MessageId
+import com.agentclientprotocol.model.ModelId
 import com.agentclientprotocol.model.NewSessionRequest
 import com.agentclientprotocol.model.PromptRequest
+import com.agentclientprotocol.model.ResumeSessionRequest
 import com.agentclientprotocol.model.SessionCancelCapabilities
+import com.agentclientprotocol.model.SessionConfigId
+import com.agentclientprotocol.model.SessionConfigOptionValue
 import com.agentclientprotocol.model.SessionId
+import com.agentclientprotocol.model.SessionModeId
 import com.agentclientprotocol.model.SessionNotification
 import com.agentclientprotocol.model.SessionUpdate
+import com.agentclientprotocol.model.SetSessionConfigOptionRequest
+import com.agentclientprotocol.model.SetSessionModeRequest
+import com.agentclientprotocol.model.SetSessionModelRequest
 import com.agentclientprotocol.model.StateUpdate
 import com.agentclientprotocol.model.StopReason
 import com.agentclientprotocol.model.SubagentCapabilities
@@ -31,30 +46,6 @@ import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.JsonRpcErrorResponse
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcNotification
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CopyableThrowable
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.consumeAsFlow
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.onCompletion
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
-import kotlinx.serialization.json.JsonElement
 import kotlin.coroutines.CoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -66,6 +57,32 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CopyableThrowable
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.consumeAsFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonElement
 
 class AgentSubagentsTest {
 
@@ -89,7 +106,12 @@ class AgentSubagentsTest {
         }
     }
 
-    private class TestSubagent(override val events: Flow<SessionUpdate> = emptyFlow()) : AgentSubagentSession
+    private class TestSubagent(
+        override val events: Flow<SessionUpdate> = emptyFlow(),
+        private val onCancel: suspend () -> Unit = {},
+    ) : AgentSubagentSession {
+        override suspend fun cancel() = onCancel()
+    }
 
     /**
      * An initialized agent with one root session. [rootContext] holds only the root's session element, so
@@ -104,6 +126,25 @@ class AgentSubagentsTest {
     ) {
         val rootSubagents: AgentSubagents get() = assertNotNull(rootContext.subagents)
         val rootClient get() = rootContext.client
+        val rootWrapper get() = rootContext[SessionWrapperContextElement.Key]!!.sessionWrapper as Agent.SessionWrapper
+
+        /**
+         * Waits until every collection of the root's subtree has ended, including the SDK's feed-end handling.
+         */
+        suspend fun awaitCollectionsEnded() {
+            withTimeout(5.seconds) { rootWrapper.subtreeScope.coroutineContext.job.children.forEach { it.join() } }
+        }
+
+        fun fireCancel(sessionId: SessionId) {
+            transport.fireTestNotification(
+                AcpMethod.AgentMethods.V1.SessionCancel.methodName,
+                ACPJson.encodeToJsonElement(AcpMethod.AgentMethods.V1.SessionCancel.serializer, CancelNotification(sessionId)),
+            )
+        }
+
+        suspend fun <T : AcpRequest> request(method: AcpMethod.AcpRequestResponseMethod<T, *>, params: T): JsonRpcMessage? =
+            transport.fireTestRequest(method.methodName, ACPJson.encodeToJsonElement(method.requestSerializer, params))
+                .lastOrNull()
 
         suspend fun <T> inRoot(block: suspend () -> T): T = withContext(rootContext) { block() }
 
@@ -702,7 +743,410 @@ class AgentSubagentsTest {
         withTimeout(5.seconds) { stopped.await() }
     }
 
+    // session/cancel on a child id
+
+    @Test
+    fun `session cancel on a granted child calls its cancel in the child's context`() = withSubagents { f ->
+        val cancelClients = Channel<ClientSessionOperations>(Channel.UNLIMITED)
+        val events = Channel<SessionUpdate>(Channel.UNLIMITED)
+        lateinit var context: AgentSubagentContext
+        f.rootSubagents.announce(childId, {
+            context = it
+            it.client.notify(announcement(childId, granted = true))
+            TestSubagent(events.consumeAsFlow(), onCancel = { cancelClients.send(currentCoroutineContext().client) })
+        })
+        f.nextNotification()
+
+        f.fireCancel(childId)
+
+        assertSame(context.client, withTimeout(5.seconds) { cancelClients.receive() })
+        events.send(text("still collected"))
+        assertEquals(SessionNotification(childId, text("still collected")), f.nextNotification())
+        f.assertNothingMoreSent()
+        events.close()
+    }
+
+    @Test
+    fun `session cancel on a child without a grant is ignored`() = withSubagents { f ->
+        val cancels = Channel<SessionId>(Channel.UNLIMITED)
+        f.rootSubagents.announce(childId, {
+            it.client.notify(announcement(childId))
+            TestSubagent(onCancel = { cancels.send(childId) })
+        })
+        f.nextNotification()
+        announceProbe(f, cancels)
+
+        assertCancelIgnored(f, childId, cancels)
+    }
+
+    @Test
+    fun `session cancel after the grant is revoked is ignored`() {
+        val revocations = listOf(
+            SessionUpdate.SubagentUpdate(childId, capabilities = MaybeUndefined.Null),
+            SessionUpdate.SubagentUpdate(childId, capabilities = MaybeUndefined.Value(SubagentSessionCapabilities())),
+        )
+        for (revocation in revocations) {
+            withSubagents { f ->
+                val cancels = Channel<SessionId>(Channel.UNLIMITED)
+                val events = Channel<SessionUpdate>(Channel.UNLIMITED)
+                events.send(announcement(childId, granted = true))
+                events.send(revocation)
+                f.rootSubagents.announce(childId, {
+                    TestSubagent(events.consumeAsFlow(), onCancel = { cancels.send(childId) })
+                })
+                repeat(2) { f.nextNotification() }
+                announceProbe(f, cancels)
+
+                assertCancelIgnored(f, childId, cancels)
+                events.close()
+            }
+        }
+    }
+
+    @Test
+    fun `session cancel sent right after the grant goes out is routed`() = withSubagents { f ->
+        val cancels = Channel<SessionId>(Channel.UNLIMITED)
+        val grantUpdate = SessionUpdate.SubagentUpdate(childId, capabilities = MaybeUndefined.Value(grant()))
+        f.transport.onSend = { message ->
+            if (message.sessionNotificationOrNull()?.update == grantUpdate) f.fireCancel(childId)
+        }
+        val events = Channel<SessionUpdate>(Channel.UNLIMITED)
+        events.send(announcement(childId))
+        f.rootSubagents.announce(childId, {
+            TestSubagent(events.consumeAsFlow(), onCancel = { cancels.send(childId) })
+        })
+        f.nextNotification()
+
+        events.send(grantUpdate)
+
+        assertEquals(SessionNotification(rootId, grantUpdate), f.nextNotification())
+        assertEquals(childId, withTimeout(5.seconds) { cancels.receive() })
+        events.close()
+    }
+
+    @Test
+    fun `a throwing cancel does not break the connection`() = withSubagents { f ->
+        val cancels = Channel<SessionId>(Channel.UNLIMITED)
+        f.rootSubagents.announce(childId, {
+            it.client.notify(announcement(childId, granted = true))
+            TestSubagent(onCancel = {
+                cancels.send(childId)
+                throw RuntimeException("cancel failed")
+            })
+        })
+        f.nextNotification()
+        announceProbe(f, cancels)
+
+        repeat(2) {
+            f.fireCancel(childId)
+            assertEquals(childId, withTimeout(5.seconds) { cancels.receive() })
+        }
+        f.fireCancel(probeId)
+        assertEquals(probeId, withTimeout(5.seconds) { cancels.receive() })
+        val (response, _) = f.transport.testRequest(
+            AcpMethod.AgentMethods.V1.SessionPrompt,
+            PromptRequest(rootId, listOf(ContentBlock.Text("go"))),
+        )
+        assertEquals(StopReason.END_TURN, response?.stopReason)
+    }
+
+    @Test
+    fun `session cancel for a child whose factory threw after announcing is ignored`() = withSubagents { f ->
+        val cancels = Channel<SessionId>(Channel.UNLIMITED)
+        assertFailsWith<RuntimeException> {
+            f.rootSubagents.announce(childId, {
+                it.client.notify(announcement(childId, granted = true))
+                throw RuntimeException("factory failed late")
+            })
+        }
+        repeat(2) { f.nextNotification() }
+        announceProbe(f, cancels)
+
+        assertCancelIgnored(f, childId, cancels)
+        assertNotNull(f.agent.subagentOrNull(childId))
+    }
+
+    @Test
+    fun `session cancel while the factory runs is ignored, not deferred`() = withSubagents { f ->
+        val cancels = Channel<SessionId>(Channel.UNLIMITED)
+        announceProbe(f, cancels)
+        val announced = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val announcing = async {
+            f.rootSubagents.announce(childId, {
+                it.client.notify(announcement(childId, granted = true))
+                announced.complete(Unit)
+                release.await()
+                TestSubagent(onCancel = { cancels.send(childId) })
+            })
+        }
+        withTimeout(5.seconds) { announced.await() }
+        f.nextNotification()
+
+        assertCancelIgnored(f, childId, cancels)
+        release.complete(Unit)
+        withTimeout(5.seconds) { announcing.await() }
+
+        f.fireCancel(childId)
+        assertEquals(childId, withTimeout(5.seconds) { cancels.receive() })
+    }
+
+    @Test
+    fun `session cancel is still routed after the feed ended`() = withSubagents { f ->
+        val cancels = Channel<SessionId>(Channel.UNLIMITED)
+        val running = stateUpdate(childId, StateUpdate.Running())
+        f.rootSubagents.announce(childId, {
+            TestSubagent(flowOf(announcement(childId, granted = true), running), onCancel = { cancels.send(childId) })
+        })
+        repeat(2) { f.nextNotification() }
+        assertEquals(SessionNotification(rootId, stateUpdate(childId, StateUpdate.Unknown())), f.nextNotification())
+        f.awaitCollectionsEnded()
+
+        f.fireCancel(childId)
+
+        assertEquals(childId, withTimeout(5.seconds) { cancels.receive() })
+        assertTrue(assertNotNull(f.agent.subagentOrNull(childId)).isCancelGranted)
+    }
+
+    // Other session methods on a child id
+
+    @Test
+    fun `session methods on a child id fail because it is a subagent`() = withSubagents { f ->
+        announceChild(f, childId)
+        val unknownId = SessionId("unknown")
+
+        for (id in listOf(childId, unknownId)) {
+            for ((name, request) in sessionRequests(f, id)) {
+                val response = assertIs<JsonRpcErrorResponse>(request(), "$name on $id")
+                val isSubagentError = response.error.message == "Session $id is a subagent"
+                assertEquals(id == childId, isSubagentError, "$name on $id: ${response.error}")
+            }
+        }
+        assertNotNull(f.agent.subagentOrNull(childId))
+        f.assertNothingMoreSent()
+    }
+
+    @Test
+    fun `session methods that look sessions up keep answering not found for an unknown id`() = withSubagents { f ->
+        val unknownId = SessionId("unknown")
+        val lookups = setOf("prompt", "set_mode", "set_model", "set_config_option", "close")
+
+        for ((name, request) in sessionRequests(f, unknownId).filter { it.first in lookups }) {
+            val response = assertIs<JsonRpcErrorResponse>(request(), name)
+            assertEquals("Session $unknownId not found", response.error.message, name)
+        }
+    }
+
+    // Feed end
+
+    @Test
+    fun `a feed that ends while the child is active reports unknown`() = withSubagents { f ->
+        val activeStates = listOf(StateUpdate.Running(), StateUpdate.RequiresAction(), StateUpdate.Other("paused"))
+        for ((index, state) in activeStates.withIndex()) {
+            for (fails in listOf(false, true)) {
+                val id = SessionId("child-$index-$fails")
+                f.rootSubagents.announce(id, {
+                    TestSubagent(flow {
+                        emit(announcement(id))
+                        emit(stateUpdate(id, state))
+                        if (fails) throw RuntimeException("feed down")
+                    })
+                })
+
+                assertEquals(SessionNotification(rootId, announcement(id)), f.nextNotification())
+                assertEquals(SessionNotification(rootId, stateUpdate(id, state)), f.nextNotification())
+                assertEquals(SessionNotification(rootId, stateUpdate(id, StateUpdate.Unknown())), f.nextNotification())
+                f.awaitCollectionsEnded()
+                f.assertNothingMoreSent()
+                assertNotNull(f.agent.subagentOrNull(id))
+            }
+        }
+    }
+
+    @Test
+    fun `a feed that ends while the child is not active sends nothing`() = withSubagents { f ->
+        val endings = listOf(
+            "idle" to listOf(StateUpdate.Running(), StateUpdate.Idle(IdleStopReason.EndTurn)),
+            "unknown" to listOf(StateUpdate.Running(), StateUpdate.Unknown()),
+            "none" to emptyList(),
+            "cleared" to listOf(StateUpdate.Running(), null),
+        )
+        for ((name, states) in endings) {
+            for (fails in listOf(false, true)) {
+                val id = SessionId("child-$name-$fails")
+                val updates = states.map { state ->
+                    SessionUpdate.SubagentUpdate(id, state = state?.let { MaybeUndefined.Value(it) } ?: MaybeUndefined.Null)
+                }
+                f.rootSubagents.announce(id, {
+                    TestSubagent(flow {
+                        emit(announcement(id))
+                        updates.forEach { emit(it) }
+                        if (fails) throw RuntimeException("feed down")
+                    })
+                })
+
+                assertEquals(SessionNotification(rootId, announcement(id)), f.nextNotification())
+                for (update in updates) assertEquals(SessionNotification(rootId, update), f.nextNotification())
+                f.awaitCollectionsEnded()
+                f.assertNothingMoreSent()
+                assertNotNull(f.agent.subagentOrNull(id))
+            }
+        }
+    }
+
+    @Test
+    fun `a cancellation thrown by the app's feed reports unknown and completes the collection`() = withSubagents { f ->
+        val collectionJob = CompletableDeferred<Job>()
+        f.rootSubagents.announce(childId, {
+            TestSubagent(flow {
+                collectionJob.complete(currentCoroutineContext().job)
+                emit(announcement(childId))
+                emit(stateUpdate(childId, StateUpdate.Running()))
+                throw CancellationException("app timeout")
+            })
+        })
+
+        repeat(2) { f.nextNotification() }
+        assertEquals(SessionNotification(rootId, stateUpdate(childId, StateUpdate.Unknown())), f.nextNotification())
+        val collection = withTimeout(5.seconds) { collectionJob.await() }
+        withTimeout(5.seconds) { collection.join() }
+        assertFalse(collection.isCancelled)
+        f.assertNothingMoreSent()
+    }
+
+    @Test
+    fun `a collection the SDK cancels sends nothing, however the feed ends`() {
+        val endings: List<suspend () -> Unit> = listOf(
+            { awaitCancellation() },
+            { runCatching { awaitCancellation() } },
+            { runCatching { awaitCancellation() }; throw RuntimeException("feed down on cancel") },
+        )
+        for (ending in endings) {
+            withSubagents { f ->
+                val waiting = CompletableDeferred<Unit>()
+                f.rootSubagents.announce(childId, {
+                    TestSubagent(flow {
+                        emit(announcement(childId))
+                        emit(stateUpdate(childId, StateUpdate.Running()))
+                        waiting.complete(Unit)
+                        ending()
+                    })
+                })
+                repeat(2) { f.nextNotification() }
+                withTimeout(5.seconds) { waiting.await() }
+
+                f.rootWrapper.subtreeScope.cancel()
+
+                f.awaitCollectionsEnded()
+                f.assertNothingMoreSent()
+            }
+        }
+    }
+
+    @Test
+    fun `state sent through the child's client operations does not make a feed owe unknown`() = withSubagents { f ->
+        val running = stateUpdate(childId, StateUpdate.Running())
+        f.rootSubagents.announce(childId, {
+            it.client.notify(announcement(childId, state = StateUpdate.Running()))
+            TestSubagent(flow { currentCoroutineContext().client.notify(running) })
+        })
+
+        assertEquals(SessionNotification(rootId, announcement(childId, state = StateUpdate.Running())), f.nextNotification())
+        assertEquals(SessionNotification(rootId, running), f.nextNotification())
+        f.awaitCollectionsEnded()
+        f.assertNothingMoreSent()
+    }
+
+    @Test
+    fun `a child whose feed ended keeps its id and can be named as a parent`() = withSubagents { f ->
+        f.rootSubagents.announce(childId, { TestSubagent(flowOf(announcement(childId))) })
+        f.nextNotification()
+        f.awaitCollectionsEnded()
+
+        assertFailsWith<IllegalArgumentException> { f.rootSubagents.announce(childId, { TestSubagent() }) }
+        f.rootSubagents.announce(grandchildId, { TestSubagent(flowOf(announcement(grandchildId))) }, parent = childId)
+
+        assertEquals(SessionNotification(childId, announcement(grandchildId)), f.nextNotification())
+    }
+
+    @Test
+    fun `a feed that ends while active does not affect a sibling's collection`() = withSubagents { f ->
+        val release = CompletableDeferred<Unit>()
+        f.rootSubagents.announce(childId, {
+            TestSubagent(flow {
+                emit(announcement(childId))
+                emit(stateUpdate(childId, StateUpdate.Running()))
+                release.await()
+                throw RuntimeException("child feed down")
+            })
+        })
+        val siblingEvents = Channel<SessionUpdate>(Channel.UNLIMITED)
+        f.rootSubagents.announce(siblingId, {
+            TestSubagent(flow {
+                emit(announcement(siblingId))
+                emit(stateUpdate(siblingId, StateUpdate.Running()))
+                emitAll(siblingEvents)
+            })
+        })
+        repeat(4) { f.nextNotification() }
+
+        release.complete(Unit)
+        assertEquals(SessionNotification(rootId, stateUpdate(childId, StateUpdate.Unknown())), f.nextNotification())
+        siblingEvents.send(text("sibling alive"))
+
+        assertEquals(SessionNotification(siblingId, text("sibling alive")), f.nextNotification())
+        f.assertNothingMoreSent()
+        siblingEvents.close()
+    }
+
     // Helpers
+
+    private val probeId = SessionId("probe")
+
+    /**
+     * Announces a granted child whose cancel sends [probeId] to [cancels], for proving that an earlier
+     * `session/cancel` was handled: notifications are handled in wire order.
+     */
+    private suspend fun announceProbe(f: Fixture, cancels: Channel<SessionId>) {
+        f.rootSubagents.announce(probeId, {
+            it.client.notify(announcement(probeId, granted = true))
+            TestSubagent(onCancel = { cancels.send(probeId) })
+        })
+        f.nextNotification()
+    }
+
+    /**
+     * Sends `session/cancel` for [sessionId] and then for the probe, and asserts that only the probe's cancel ran.
+     */
+    private suspend fun assertCancelIgnored(f: Fixture, sessionId: SessionId, cancels: Channel<SessionId>) {
+        f.fireCancel(sessionId)
+        f.fireCancel(probeId)
+        assertEquals(probeId, withTimeout(5.seconds) { cancels.receive() })
+        assertTrue(cancels.isEmpty)
+    }
+
+    /**
+     * Every session method other than `session/cancel` on [sessionId], by name.
+     */
+    private fun sessionRequests(f: Fixture, sessionId: SessionId): List<Pair<String, suspend () -> JsonRpcMessage?>> {
+        return listOf(
+            "prompt" to { f.request(AcpMethod.AgentMethods.V1.SessionPrompt, PromptRequest(sessionId, listOf(ContentBlock.Text("go")))) },
+            "set_mode" to { f.request(AcpMethod.AgentMethods.V1.SessionSetMode, SetSessionModeRequest(sessionId, SessionModeId("m"))) },
+            "set_model" to { f.request(AcpMethod.AgentMethods.V1.SessionSetModel, SetSessionModelRequest(sessionId, ModelId("m"))) },
+            "set_config_option" to {
+                f.request(
+                    AcpMethod.AgentMethods.V1.SessionSetConfigOption,
+                    SetSessionConfigOptionRequest(sessionId, SessionConfigId("c"), SessionConfigOptionValue.of(true)),
+                )
+            },
+            "close" to { f.request(AcpMethod.AgentMethods.V1.SessionClose, CloseSessionRequest(sessionId)) },
+            "delete" to { f.request(AcpMethod.AgentMethods.V1.SessionDelete, DeleteSessionRequest(sessionId)) },
+            "fork" to { f.request(AcpMethod.AgentMethods.V1.SessionFork, ForkSessionRequest(sessionId, ".", emptyList())) },
+            "load" to { f.request(AcpMethod.AgentMethods.V1.SessionLoad, LoadSessionRequest(sessionId, ".", emptyList())) },
+            "resume" to { f.request(AcpMethod.AgentMethods.V1.SessionResume, ResumeSessionRequest(sessionId, ".")) },
+        )
+    }
+
 
     private suspend fun announceChild(f: Fixture, sessionId: SessionId): AgentSubagentContext {
         lateinit var context: AgentSubagentContext
@@ -774,6 +1218,9 @@ private fun announcement(
     capabilities = if (granted) MaybeUndefined.Value(grant()) else MaybeUndefined.Undefined,
     state = state?.let { MaybeUndefined.Value(it) } ?: MaybeUndefined.Undefined,
 )
+
+private fun stateUpdate(sessionId: SessionId, state: StateUpdate) =
+    SessionUpdate.SubagentUpdate(sessionId, state = MaybeUndefined.Value(state))
 
 private fun text(value: String) = SessionUpdate.AgentMessageChunk(ContentBlock.Text(value))
 
