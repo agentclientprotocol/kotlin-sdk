@@ -36,6 +36,11 @@ public interface SubagentOperations {
      * The operations do not hold their session: inside every call of the returned operations,
      * [kotlin.coroutines.CoroutineContext.baseClientSession] names the subagent session.
      *
+     * This call itself runs with the parent session in the coroutine context, with one exception. When
+     * [Client.loadSession] or [Client.resumeSession] gets ready [ClientSessionOperations], the subagents announced in
+     * the root's stream before the answer are set up before the root's [ClientSession] exists, so the context has no
+     * session then, as for the root's own `notify` calls at that point.
+     *
      * The parent's updates wait while this call runs, in the order they arrived. So it must not wait for a later
      * event of the parent's stream, such as [ClientSessionOperations.notify], or it never returns.
      *

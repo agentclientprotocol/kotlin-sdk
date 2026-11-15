@@ -14,14 +14,23 @@ import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.rpc.TransportFrame
 import com.agentclientprotocol.transport.BaseTransport
 import com.agentclientprotocol.transport.Transport
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -227,6 +236,107 @@ class ClientSessionRegistryTest {
         assertEquals(listOf<Pair<SessionId, SessionUpdate>>(speculative to text("speculative")), unconnected)
         registry.deliverSessionUpdate(speculative, text("after"), null)
         assertEquals<Pair<SessionId, SessionUpdate>>(speculative to text("after"), unconnected.last())
+    }
+
+    @Test
+    fun `the subagents of a failed root leave the session map when the root is reaped`() = runTest {
+        for (attempt in 1..3) {
+            val attemptChild = SessionId("child-$attempt")
+            val attemptGrandchild = SessionId("grandchild-$attempt")
+            registry.withInitializingSession {
+                val rootHolder = registry.claimSessionHolder(root, replayRequested = true, parameters)
+                registry.deliverSessionUpdate(root, announce(attemptChild), null)
+                registry.deliverSessionUpdate(attemptChild, announce(attemptGrandchild), null)
+                assertNotNull(rootHolder.childOrNull(attemptChild)?.childOrNull(attemptGrandchild))
+                registry.failSessionHolder(rootHolder, IllegalStateException("load failed"))
+            }
+            for (id in listOf(root, attemptChild, attemptGrandchild)) {
+                assertFalse(registry.isSessionCompleted(id), "$id is still in the map after attempt $attempt")
+            }
+        }
+
+        registry.withInitializingSession {
+            val rootHolder = registry.claimSessionHolder(root, replayRequested = true, parameters)
+            for (attempt in 1..3) {
+                registry.deliverSessionUpdate(root, announce(SessionId("child-$attempt")), null)
+                assertNotNull(rootHolder.childOrNull(SessionId("child-$attempt")), "a later load registers child-$attempt again")
+            }
+        }
+    }
+
+    @Test
+    fun `the subagents of a failed root leave the session map when a new opening replaces the root`() = runTest {
+        registry.withInitializingSession {
+            // The outer opening keeps the failed root from being reaped.
+            val failed = registry.withInitializingSession {
+                val rootHolder = registry.claimSessionHolder(root, replayRequested = true, parameters)
+                registry.deliverSessionUpdate(root, announce(child), null)
+                registry.deliverSessionUpdate(child, announce(grandchild), null)
+                registry.failSessionHolder(rootHolder, IllegalStateException("load failed"))
+                rootHolder
+            }
+            assertTrue(registry.isSessionCompleted(child), "the failed subagent stays while its root isn't replaced")
+
+            val retried = registry.claimSessionHolder(root, replayRequested = true, parameters)
+            assertTrue(retried !== failed)
+            for (id in listOf(child, grandchild)) assertFalse(registry.isSessionCompleted(id), "$id is still in the map")
+
+            registry.deliverSessionUpdate(root, announce(child), null)
+            registry.deliverSessionUpdate(child, announce(grandchild), null)
+            assertNotNull(retried.childOrNull(child)?.childOrNull(grandchild), "the retry registers the same ids again")
+        }
+    }
+
+    @Test
+    fun `a subagent consumer that the failure cascade stops takes no item once its notify returns`() = runTest {
+        val handedOn = mutableListOf<SessionUpdate>()
+        val drainEntered = CompletableDeferred<Unit>()
+        val releaseDrain = CompletableDeferred<Unit>()
+        val drainingRegistry = ClientSessionRegistry({ _, update, _ ->
+            handedOn += update
+            if (update == text("second")) {
+                drainEntered.complete(Unit)
+                releaseDrain.await()
+            }
+        }, protocol, scope)
+
+        val notifyEntered = CompletableDeferred<Job>()
+        val releaseNotify = CompletableDeferred<Unit>()
+        val childUpdates = MutableStateFlow<List<SessionUpdate>>(emptyList())
+        val childOperations = object : ClientSessionOperations by Recorder() {
+            override suspend fun notify(event: SessionEvent) {
+                if (event !is SessionEvent.Update) return
+                if (event.update == text("first")) {
+                    notifyEntered.complete(currentCoroutineContext().job)
+                    // Ignores the cancellation, like an app call that doesn't suspend.
+                    withContext(NonCancellable) { releaseNotify.await() }
+                }
+                childUpdates.update { it + event.update }
+            }
+        }
+        val rootOperations = object : ClientSessionOperations by Recorder(), SubagentOperations {
+            override suspend fun createSubagentOperations(sessionId: SessionId): ClientSessionOperations = childOperations
+        }
+
+        drainingRegistry.withInitializingSession {
+            val rootHolder = drainingRegistry.claimSessionHolder(root, replayRequested = true, parameters)
+            drainingRegistry.deliverSessionUpdate(root, announce(child), null)
+            for (name in listOf("first", "second", "third")) drainingRegistry.deliverSessionUpdate(child, text(name), null)
+            assertTrue(rootHolder.markOpened(LoadSessionResponse()))
+            assertNotNull(rootHolder.deliverEarly(rootOperations))
+            val consumer = notifyEntered.await()
+
+            val failing = launch { drainingRegistry.failSessionHolder(rootHolder, IllegalStateException("load failed")) }
+            // The cascade has cancelled the consumer, and hands the queue on while the consumer is still in notify.
+            drainEntered.await()
+            releaseNotify.complete(Unit)
+            consumer.join()
+            releaseDrain.complete(Unit)
+            failing.join()
+
+            assertEquals(listOf<SessionUpdate>(text("first")), childUpdates.value)
+            assertEquals(listOf<SessionUpdate>(text("second"), text("third")), handedOn)
+        }
     }
 
     private class Recorder : ClientSessionOperations {

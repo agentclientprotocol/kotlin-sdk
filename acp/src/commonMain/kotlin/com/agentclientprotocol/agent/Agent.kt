@@ -767,24 +767,30 @@ public class Agent(
     /**
      * Registers [child] under its own id.
      *
+     * A subagent whose root's subtree is closed is about to be removed by that subtree's cleanup, so its id counts as
+     * free: [child] replaces it, and it is removed here.
+     *
      * @throws IllegalArgumentException if the id is already registered on this connection, as a root session or a
      * subagent
+     * @throws IllegalStateException if the subtree of [child]'s root is closed
      */
     internal fun registerSubagent(child: SubagentWrapper) {
+        var replaced: SubagentWrapper? = null
         _subagents.update { subagents ->
-            require(child.sessionId !in subagents && child.sessionId !in _sessions.value) {
+            val registered = subagents[child.sessionId]
+            replaced = registered?.takeIf { it.root.isSubtreeClosed }
+            require((registered == null || replaced != null) && child.sessionId !in _sessions.value) {
                 "Session ${child.sessionId} is already registered on this connection"
             }
+            /*
+             * The root's subtree may have been closed after the caller checked it. The cleanup marks it closed before
+             * its own update of the table, so either the cleanup sees this entry, or this check sees the closed
+             * subtree.
+             */
+            check(!child.root.isSubtreeClosed) { "Session ${child.root.sessionId} is closed" }
             subagents.put(child.sessionId, child)
         }
-        /*
-         * The root's subtree may have been closed after the caller checked it. Either the cleanup sees this entry, or
-         * this check sees the closed subtree.
-         */
-        if (child.root.isSubtreeClosed) {
-            unregisterSubagent(child)
-            error("Session ${child.root.sessionId} is closed")
-        }
+        replaced?.remove()
     }
 
     internal fun unregisterSubagent(child: SubagentWrapper) {

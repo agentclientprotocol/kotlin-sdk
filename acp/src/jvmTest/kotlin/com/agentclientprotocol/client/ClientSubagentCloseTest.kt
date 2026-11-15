@@ -46,6 +46,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -311,6 +312,62 @@ class ClientSubagentCloseTest {
         awaitUnconnected(c, duringRequest, text("after"))
 
         assertReloadRegisters(c, root to child, root to duringRequest, root to lateChild, child to lateGrandchild)
+    }
+
+    @Test
+    fun `the removal answers the permission requests of a subagent announced after the close started`() = withConnection { c ->
+        val world = SubagentWorld()
+        val late = SessionId("late")
+        world.configure = { operations -> if (operations.id == late) operations.answerPermission = { awaitCancellation() } }
+        val session = openLive(c, root, world)
+
+        val closing = async { session.close() }
+        val request = c.agent.receiveRequest(CLOSE.methodName)
+        // Announced after the close started, so the start of the close didn't answer its requests.
+        c.agent.sendUpdate(root, announce(late))
+        val permission = c.agent.sendRequest(PERMISSION, permissionRequest(late, "late"))
+        world.awaitOperations(late).awaitPermissionRequests(1)
+
+        c.agent.answer(request, CLOSE.responseSerializer, CloseSessionResponse())
+        closing.await()
+        assertEquals(CANCELLED, decodePermission(c.agent.awaitResponse(permission)))
+    }
+
+    @Test
+    fun `a close from a coroutine that copied a subagent's notify context still waits for that subagent`() = withConnection { c ->
+        val world = SubagentWorld()
+        val rootSession = CompletableDeferred<ClientSession>()
+        val closed = CompletableDeferred<Result<CloseSessionResponse>>()
+        val treeRegisteredAtCancel = CompletableDeferred<Boolean>()
+        val releaseNotify = CompletableDeferred<Unit>()
+        val appScope: CoroutineScope = this
+        world.configure = { operations ->
+            if (operations.id == child) operations.onNotify = { event, _ ->
+                if (event is SessionEvent.Opened) {
+                    // Like an app that hands the close to a scope of its own, keeping the elements of the call's context.
+                    appScope.launch(currentCoroutineContext().minusKey(Job)) {
+                        closed.complete(runCatching { rootSession.await().close() })
+                    }
+                    try {
+                        awaitCancellation()
+                    } catch (ce: CancellationException) {
+                        treeRegisteredAtCancel.complete(runCatching { c.client.getSession(root) }.isSuccess)
+                        withContext(NonCancellable) { releaseNotify.await() }
+                        throw ce
+                    }
+                }
+            }
+        }
+        rootSession.complete(openLive(c, root, world))
+        c.agent.sendUpdate(root, announce(child))
+        c.agent.answer(c.agent.receiveRequest(CLOSE.methodName), CLOSE.responseSerializer, CloseSessionResponse())
+
+        // A close that took the coroutine for the consumer itself would cancel it only after removing the tree.
+        assertTrue(treeRegisteredAtCancel.await(), "the close cancels the consumer to join it, before it removes the tree")
+        assertFalse(closed.isCompleted, "the close waits for the subagent's notify")
+        releaseNotify.complete(Unit)
+        assertEquals(CloseSessionResponse(), withTimeout(5.seconds) { closed.await() }.getOrThrow())
+        assertFailsWith<IllegalStateException> { c.client.getSession(root) }
     }
 
     @Test

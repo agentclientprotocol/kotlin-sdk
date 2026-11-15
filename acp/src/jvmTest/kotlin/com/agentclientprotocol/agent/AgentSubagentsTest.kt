@@ -82,6 +82,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CopyableThrowable
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -102,6 +103,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonElement
@@ -2099,6 +2101,45 @@ class AgentSubagentsTest {
 
         assertNotNull(second.wrapper().subagents).announce(childId, { TestSubagent(flowOf(announcement(childId))) })
         assertEquals(SessionNotification(loadedId, announcement(childId)), f.nextNotification())
+    }
+
+    @Test
+    fun `an id whose subagent's root is being cleaned up is free for another root`() = withSubagents { f ->
+        val first = RootSession(loadedId)
+        assertIs<JsonRpcSuccessResponse>(f.resume(first))
+        val testScope: CoroutineScope = this
+        val suspended = CompletableDeferred<Unit>()
+        val reannounced = CompletableDeferred<Result<AgentSubagentSession>>()
+        lateinit var oldChild: AgentSubagentContext
+        assertNotNull(first.wrapper().subagents).announce(childId, { context ->
+            oldChild = context
+            context.client.notify(announcement(childId))
+            TestSubagent(flow {
+                suspendCancellableCoroutine<Unit> { continuation ->
+                    /*
+                     * Runs synchronously while the re-opening's cleanup cancels the old root's collections: after it
+                     * marked the old subtree closed, and before it removes the old subagents from the table.
+                     */
+                    continuation.invokeOnCancellation {
+                        testScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                            reannounced.complete(runCatching { f.rootSubagents.announce(childId, { TestSubagent(flowOf(announcement(childId))) }) })
+                        }
+                    }
+                    suspended.complete(Unit)
+                }
+            })
+        })
+        assertEquals(SessionNotification(loadedId, announcement(childId)), f.nextNotification())
+        withTimeout(5.seconds) { suspended.await() }
+
+        assertIs<JsonRpcSuccessResponse>(f.resume(RootSession(loadedId)))
+
+        val announced = withTimeout(5.seconds) { reannounced.await() }
+        assertTrue(announced.isSuccess, "the id is free once the old subtree is closed: ${announced.exceptionOrNull()}")
+        assertSame(f.rootWrapper, assertNotNull(f.agent.subagentOrNull(childId)).root)
+        assertFailsWith<IllegalStateException> { oldChild.client.notify(text("late")) }
+        f.awaitCollectionsEnded(first.wrapper())
+        assertSame(f.rootWrapper, assertNotNull(f.agent.subagentOrNull(childId)).root, "the old root's cleanup keeps the new entry")
     }
 
     /*

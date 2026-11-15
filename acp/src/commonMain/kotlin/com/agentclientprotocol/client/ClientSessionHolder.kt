@@ -28,8 +28,6 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
-import kotlin.coroutines.AbstractCoroutineContextElement
-import kotlin.coroutines.CoroutineContext
 
 private val logger = KotlinLogging.logger {}
 
@@ -63,14 +61,6 @@ internal sealed class QueuedItem {
      * @property response the answer, for a root; `null` for a subagent
      */
     class Opened(val response: AcpCreatedSessionResponse?) : QueuedItem()
-}
-
-/**
- * Marks the coroutine of the consumer of [holder]'s queue. A close of the root that the subagent's own operations
- * start inside that consumer must not join it, because the join would wait for itself.
- */
-internal class SubagentConsumer(val holder: ClientSessionHolder) : AbstractCoroutineContextElement(Key) {
-    companion object Key : CoroutineContext.Key<SubagentConsumer>
 }
 
 /**
@@ -311,10 +301,10 @@ internal class ClientSessionHolder(
 
     /**
      * Starts the consumer [block] of this subagent's queue in [scope], unless [stopConsumer] has run: a holder that
-     * failed or closed gets no consumer. The consumer's context has a [SubagentConsumer] of this holder.
+     * failed or closed gets no consumer.
      */
     fun startConsumer(scope: CoroutineScope, block: suspend CoroutineScope.() -> Unit) {
-        val job = scope.launch(SubagentConsumer(this), start = CoroutineStart.LAZY, block = block)
+        val job = scope.launch(start = CoroutineStart.LAZY, block = block)
         if (consumer.compareAndSet(ConsumerState.NotStarted, ConsumerState.Running(job))) job.start() else job.cancel()
     }
 
@@ -328,13 +318,15 @@ internal class ClientSessionHolder(
      * delivering it. Pass the marker to [completeOpening].
      *
      * Must run after the opening call was answered, so the marker is in the queue. A failure of the session's
-     * operations fails this call, and the remaining items stay in the queue for [failAndDrainQueue].
+     * operations fails this call, and the remaining items stay in the queue for [failAndDrainQueue]. As in
+     * [completeOpening], a cancellation that the operations throw while the caller is active becomes an
+     * [IllegalStateException].
      */
     suspend fun drainHistory(session: ClientSessionImpl): QueuedItem.Opened {
         while (true) {
             when (val item = queue.receive()) {
                 is QueuedItem.Opened -> return item
-                else -> session.executeWithSession {
+                else -> deliverOpening(session) {
                     deliverItem(item, session.operations, opened = false) { update, meta -> session.deliverUpdate(update, meta) }
                 }
             }
@@ -463,6 +455,11 @@ internal class ClientSessionHolder(
 
         val opened = session.executeWithSession {
             while (true) {
+                /*
+                 * A receive that finds an item doesn't check for cancellation, and the failure cascade doesn't join
+                 * this consumer, so check before each item.
+                 */
+                currentCoroutineContext().ensureActive()
                 when (val item = queue.receiveCatching().getOrNull() ?: return@executeWithSession false) {
                     is QueuedItem.Opened -> break
                     else -> deliverItem(item, session.operations, opened = false, deliver)

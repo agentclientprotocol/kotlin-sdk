@@ -22,6 +22,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
@@ -33,6 +34,7 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
@@ -469,6 +471,7 @@ class ClientSessionOpenedTest {
         }
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun `a caller that times out while the marker is delivered fails the opening`() = withUnconnectedRecorder { client, agent, unconnected ->
         for (opening in allOpenings) {
@@ -479,13 +482,25 @@ class ClientSessionOpenedTest {
                 entered.complete(Unit)
                 release.await()
             })
-            val open = async { runCatching { withTimeout(OPENING_TIMEOUT) { opening.open(client, sessionId, parameters, operations) } } }
+            /*
+             * The caller's timeout runs on virtual time, so it fires only when the test advances that time, once the
+             * marker is being delivered. The opening itself runs on real threads.
+             */
+            val callerTime = UnconfinedTestDispatcher()
+            val open = async(callerTime) {
+                runCatching {
+                    withTimeout(OPENING_TIMEOUT) {
+                        withContext(Dispatchers.Default) { opening.open(client, sessionId, parameters, operations) }
+                    }
+                }
+            }
             opening.answer(agent, agent.receiveRequest(opening.method), sessionId, "$opening")
             select {
                 entered.onAwait {}
                 open.onAwait {}
             }
-            assertTrue(entered.isCompleted, "$opening: the timeout must fire while the marker is delivered, not before")
+            assertTrue(entered.isCompleted, "$opening: the opening must reach the marker before the timeout fires")
+            callerTime.scheduler.advanceUntilIdle()
 
             // Only the timeout ends the delivery. The bound and the release keep a regression from hanging the test.
             withTimeoutOrNull(5.seconds) { open.join() }
@@ -579,6 +594,29 @@ class ClientSessionOpenedTest {
             // The coroutines debug agent may rethrow a copy of the failure, so compare the message.
             assertEquals("notify failed for the marker", open.await().exceptionOrNull()?.message, "$opening")
             unconnected.awaitUpdate(queued)
+            assertTrue(operations.events.value.isEmpty(), "$opening: the operations of the failed opening get no event")
+
+            assertHolderFailed(opening, client, agent, unconnected, sessionId)
+        }
+    }
+
+    @Test
+    fun `a notify that throws a cancellation for a history update fails the opening`() = withUnconnectedRecorder { client, agent, unconnected ->
+        for (opening in allOpenings) {
+            val sessionId = SessionId("cancelling-history-$opening")
+            val history = text("history-$opening")
+            val operations = RecordingOperations(beforeEach = { update ->
+                if (update == history) throw CancellationException("notify cancelled itself")
+            })
+            val open = async { runCatching { opening.open(client, sessionId, parameters, operations) } }
+            val request = agent.receiveRequest(opening.method)
+            agent.sendUpdate(sessionId, history)
+            opening.answer(agent, request, sessionId, "$opening")
+
+            // On the JVM a CancellationException is an IllegalStateException too, so the message tells them apart.
+            val failure = open.await().exceptionOrNull()
+            assertTrue(failure is IllegalStateException && failure !is CancellationException, "$opening: the opening must fail, got $failure")
+            assertEquals("ClientSessionOperations.notify was cancelled", failure.message, "$opening")
             assertTrue(operations.events.value.isEmpty(), "$opening: the operations of the failed opening get no event")
 
             assertHolderFailed(opening, client, agent, unconnected, sessionId)
