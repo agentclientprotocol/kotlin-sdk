@@ -151,14 +151,19 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   joining; late-path announcements go through `lateDeliveries`; `createSubagentOperations` runs with no session
   context on the early path. Gaps: no test for connection end during a factory; root `configOptions` not checked
   against a child's `config_option_update`.
+- M4.4 client close — `ced95e7` — `closeDescendantPermissions` in `onClosing`; `removeSessionTree` (replaces
+  `removeSessionHolder`); closable `SubagentList`; `SubagentConsumer` context element so a close started from a
+  child's own consumer does not join itself; `ClientSubagentCloseTest` (9) + registry test; mutation-checked;
+  `check` green (JS flake, fourth occurrence); no API change. M4 (client side) complete. Residual risks for the
+  reviewer: deliveries already under way when `close()` runs can still reach a closed child's operations once; a
+  child announced after `onClosing` but before the close response gets fresh (open) permissions.
 
 ## Next
-- M4.4 (opus) programmer running: root close: `closeDescendantPermissions` in `onClosing`, `removeSessionTree`
-  (replaces `removeSessionHolder`), `markClosed`, elicitation entries of removed ids. Then the M4 review over
-  `c88eba8..HEAD` (client: `57b948c`, `c03d9df`, `d18dc66`, M4.4; plus unreviewed fixes `5bca6d3`, `2f35a77`,
-  `38a25dc`, docs `9ce0d52`).
-- Then M5 (integration tests in `:acp-integration-test`), M6b (client-side `AGENTS.md` rules, final `apiDump`
-  review, `check`), final `.agents/` reference grep.
+- M4 review running (reviewer) → `.agents/research/review-m4-client.md`: client commits `57b948c`, `c03d9df`,
+  `d18dc66`, `ced95e7`, plus unreviewed fixes `5bca6d3`, `2f35a77`, `38a25dc` and docs `9ce0d52`.
+- M5 programmer running: end-to-end subagent tests in `:acp-integration-test` (STDIO and WebSocket).
+- Then M4/M5 fix slices from the review, M6b (client-side `AGENTS.md` rules, final `apiDump` review, `check`),
+  final `.agents/` reference grep.
 - PR description (when the user asks for a PR): release-note text from the commit body of `2f35a77` (replaces `d505b25`'s),
   plus the reminder to delete `.agents/prompt.md`, `.agents/state.md`, `.agents/research/` before merge.
 - Flaky: Kotlin/JS "Internal compiler error" in `:acp:compileTestDevelopmentExecutableKotlinJs`, twice, passes
