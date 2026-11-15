@@ -13,6 +13,14 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   caller is converted to `IllegalStateException` (cause kept); S2 a `session/cancel` arriving while the factory
   runs with a grant in effect is latched and delivered to `cancel()` once the factory returns (dropped if it
   throws); N1 late child requests / `$/cancel_request` after the close response are accepted and documented.
+- User answers 2026-11-15 (later round): (a) client opening: restore cancellable delivery: a cancellation or
+  `notify` failure while delivering `Opened` and the queued updates fails the opening as before `d505b25` (holder
+  fails, id free, retry works); the rule becomes "an opening that fails before its answer gets no `Opened`".
+  (b) agent re-open of an open root via `session/load`/`session/resume`: keep accepting; run subtree cleanup for the
+  old root's children when the root is replaced; the old root's running turn stays untouched. (c) the release note
+  lives in the PR description only (text in commit bodies); no changelog file.
+- `SubagentPendingPermissions.onState` sets `activeWork` before `clearCancellation()`; "cancel racing a state"
+  means: state then cancel blocks until a further state; cancel then state blocks only between the two.
 
 ## Plan
 - M0 research: wire shapes of the RFD and Rust v1 models at current upstream vs the spec's pinned `c392d7e9`
@@ -121,30 +129,31 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   root's `answered` flag at arrival; `onOpened(promote = !replayRequested)` from `markOpened` on each descendant;
   `close()` on descendants at root close (M4.4). Deviation: `onState` sets `activeWork` before
   `clearCancellation()` (race-safe order).
+- M6a agent-side docs — `9ce0d52` — nine `AGENTS.md` lifecycle bullets (notification ordering,
+  `invokeOnResponseQueued`, `newConnectionScope`, announcement/routing, cancel grant, `unknown`, close cleanup,
+  replay window, per-child lock); block comments in `ClientSessionRegistry.kt`; `check` green.
 
 ## Next
-- M6a docs programmer running: `AGENTS.md` agent-side subagent lifecycle rules (review N7), both internal
-  `Protocol` hooks, block-comment nit in `ClientSessionRegistry.kt`.
-- BLOCKED on the user's `NonCancellable` answer: M3.6 fix slice, then M4.2 (opus) registration, sorting, setup,
-  delivery, child consumers, `Opened(null)`, wiring of `SubagentPendingPermissions`; M4.4 (opus) close and subtree
-  removal; M4 review (include `5bca6d3`).
-- M3.6 fix slice after the user answers the `NonCancellable` question: should-fix 1-3, release-note wording,
-  block comments. Must land before M4.2, which builds on `completeOpening`.
-- Agent S3 fix slice after the user answers the reopen question.
-- Then M5 (integration tests), M6 (docs: `AGENTS.md` subagent rules incl. `invokeOnResponseQueued` and the replay
-  window ending when the transport accepts the response; final `apiDump` review; `check`).
-- Release note text exists in the body of `d505b25` (no changelog file in the repo); ask the user where it goes.
-- Owed in M6: `CLAUDE.md` rules (nothing updated yet).
-- Follow-ups outside this goal: `session/new`/`resume`/`fork` leave the root registered if building the response
-  fails; `Agent.kt` registers a `session/resume` handler twice (about lines 425 and 496); `V1ClientCapabilities.toV2()` and `subagents`; `PromptResponse.usage` failing the
-  whole response on one bad field; v2 string patch fields under lenient `ACPJson`.
+- M3.6 (opus) programmer running: restore cancellable delivery in `completeOpening` (user decision a), tests for
+  M3 review findings 1-3, KDoc/`AGENTS.md`/release-note wording; corrected release note in the commit body.
+- Then M2.5 (opus): agent S3 fix (user decision b) with tests and the `AGENTS.md` bullet.
+- Then M4.2 (opus): registration, sorting (`QueuedItem.Announcement`/`Patch`), setup via
+  `createSubagentOperations`, child holders/tree, child consumers, `Opened(null)`, `markOpened` walk, applying
+  child state, wiring `SubagentPendingPermissions` (`onState` at arrival, `onOpened`), failed setup, malformed
+  announcements, reaping exemption. Then M4.4 (opus): close, `removeSessionTree`, `closeDescendantPermissions`.
+  Then the M4 review (include `5bca6d3`, `c03d9df`, M3.6, M2.5).
+- Then M5 (integration tests in `:acp-integration-test`), M6b (client-side `AGENTS.md` rules, final `apiDump`
+  review, `check`), final `.agents/` reference grep.
+- PR description (when the user asks for a PR): release-note text from the commit bodies of `d505b25` and M3.6,
+  plus the reminder to delete `.agents/prompt.md`, `.agents/state.md`, `.agents/research/` before merge.
+- Flaky: Kotlin/JS "Internal compiler error" in `:acp:compileTestDevelopmentExecutableKotlinJs`, twice, passes
+  on rerun.
+- Follow-ups outside this goal: `Agent.kt` registers `session/resume` twice; `session/new`/`resume`/`fork` leave
+  the root registered if building the response fails; `V1ClientCapabilities.toV2()` drops `subagents`;
+  `PromptResponse.usage` fails the whole response on one bad field; v2 string patch fields under lenient
+  `ACPJson`; client `close()` removes the holder by id not identity; a failed `session/close` leaves the id
+  taken; `elicitation/complete` failed-holder quirk; a re-opened root's old turn keeps running.
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
-- S3 (agent): `session/load`/`session/resume` for a root already open on the connection: clean up the old subtree
-  on replace, reject on the agent too, or leave and document. The user expected a refusal; explained that only the
-  client refuses and the agent replaces (`Agent.kt` `createSession`). Awaiting the choice.
-- M3 `NonCancellable`: A restore cancellable delivery (a cancellation or `notify` failure during the drain fails
-  the opening as before `d505b25`; orchestrator recommends) or B keep "once `Opened` is delivered the opening
-  cannot fail" and document `Client.getSession`.
-- Where the release note should live (no changelog file in the repo).
+(none)
