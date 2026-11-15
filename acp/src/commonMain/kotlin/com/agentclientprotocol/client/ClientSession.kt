@@ -9,8 +9,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.json.JsonElement
 
-public interface ClientSession {
-    public val sessionId: SessionId
+@OptIn(UnstableApi::class)
+public interface ClientSession : BaseClientSession {
+    override val sessionId: SessionId
     public val parameters: SessionCreationParameters
 
     /**
@@ -25,7 +26,7 @@ public interface ClientSession {
         level = DeprecationLevel.WARNING,
     )
     public val client: Client
-    public val operations: ClientSessionOperations
+    override val operations: ClientSessionOperations
 
     /**
      * Sends a message to the agent for execution and waits for the whole turn to be completed.

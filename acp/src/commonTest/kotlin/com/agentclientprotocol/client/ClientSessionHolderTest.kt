@@ -2,6 +2,7 @@ package com.agentclientprotocol.client
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
+import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.model.ContentBlock
 import com.agentclientprotocol.model.LoadSessionResponse
@@ -37,6 +38,7 @@ class ClientSessionHolderTest {
     private val queuedUpdate = SessionUpdate.AgentMessageChunk(ContentBlock.Text("queued"))
     private val lateUpdate = SessionUpdate.AgentMessageChunk(ContentBlock.Text("late"))
     private val response = LoadSessionResponse()
+    private val parameters = SessionCreationParameters(cwd = "/root", mcpServers = emptyList())
 
     @Test
     fun `update for a reaped holder is reported as undelivered instead of failing`() = runTest {
@@ -77,7 +79,7 @@ class ClientSessionHolderTest {
     fun `early delivery hands the queued updates and the arriving updates to the operations in arrival order`() = runTest {
         val holder = ClientSessionHolder()
         assertTrue(holder.handleOrQueue(QueuedItem.Update(queuedUpdate, null)))
-        assertTrue(holder.claimForOpening(replayRequested = true))
+        assertTrue(holder.claimForOpening(replayRequested = true, parameters))
 
         val operations = RecordingOperations()
         val delivery = async { holder.deliverEarly(operations) }
@@ -111,7 +113,7 @@ class ClientSessionHolderTest {
     @Test
     fun `early delivery stops at the marker without delivering it and leaves the later updates queued`() = runTest {
         val holder = ClientSessionHolder()
-        assertTrue(holder.claimForOpening(replayRequested = false))
+        assertTrue(holder.claimForOpening(replayRequested = false, parameters))
         val operations = RecordingOperations()
 
         assertTrue(holder.handleOrQueue(QueuedItem.Update(queuedUpdate, null)))
@@ -145,7 +147,7 @@ class ClientSessionHolderTest {
     @Test
     fun `a failed opening drops its marker`() = runTest {
         val holder = ClientSessionHolder()
-        assertTrue(holder.claimForOpening(replayRequested = true))
+        assertTrue(holder.claimForOpening(replayRequested = true, parameters))
         assertTrue(holder.handleOrQueue(QueuedItem.Update(queuedUpdate, null)))
         assertTrue(holder.markOpened(response))
         assertTrue(holder.handleOrQueue(QueuedItem.Update(lateUpdate, null)))
@@ -159,7 +161,7 @@ class ClientSessionHolderTest {
     @Test
     fun `the marker goes only into an open queue`() = runTest {
         val holder = ClientSessionHolder()
-        assertTrue(holder.claimForOpening(replayRequested = true))
+        assertTrue(holder.claimForOpening(replayRequested = true, parameters))
         holder.failAndDrainQueue(IllegalStateException("load failed")) { _, _ -> }
 
         assertFalse(holder.markOpened(response))
@@ -169,7 +171,7 @@ class ClientSessionHolderTest {
     @Test
     fun `marking a holder opened records the answer`() {
         val holder = ClientSessionHolder()
-        assertTrue(holder.claimForOpening(replayRequested = false))
+        assertTrue(holder.claimForOpening(replayRequested = false, parameters))
         assertFalse(holder.isAnswered)
 
         assertTrue(holder.markOpened(response))
@@ -180,22 +182,22 @@ class ClientSessionHolderTest {
     fun `one opening call owns a holder`() = runTest {
         val load = ClientSessionHolder()
         assertNull(load.replayRequested)
-        assertTrue(load.claimForOpening(replayRequested = true))
+        assertTrue(load.claimForOpening(replayRequested = true, parameters))
         assertEquals(true, load.replayRequested)
-        assertFalse(load.claimForOpening(replayRequested = true), "a second load")
-        assertFalse(load.claimForOpening(replayRequested = false), "a resume of a holder that a load owns")
+        assertFalse(load.claimForOpening(replayRequested = true, parameters), "a second load")
+        assertFalse(load.claimForOpening(replayRequested = false, parameters), "a resume of a holder that a load owns")
         assertEquals(true, load.replayRequested, "a refused claim leaves the holder unchanged")
 
         val resume = ClientSessionHolder()
-        assertTrue(resume.claimForOpening(replayRequested = false))
+        assertTrue(resume.claimForOpening(replayRequested = false, parameters))
         assertEquals(false, resume.replayRequested)
-        assertFalse(resume.claimForOpening(replayRequested = false), "a second resume")
-        assertFalse(resume.claimForOpening(replayRequested = true), "a load of a holder that a resume owns")
+        assertFalse(resume.claimForOpening(replayRequested = false, parameters), "a second resume")
+        assertFalse(resume.claimForOpening(replayRequested = true, parameters), "a load of a holder that a resume owns")
 
         val failed = ClientSessionHolder()
         failed.failAndDrainQueue(IllegalStateException("load failed")) { _, _ -> }
         assertTrue(failed.isFailed)
-        assertFalse(failed.claimForOpening(replayRequested = true), "an opening of a failed holder")
+        assertFalse(failed.claimForOpening(replayRequested = true, parameters), "an opening of a failed holder")
         assertNull(failed.replayRequested)
     }
 

@@ -1,0 +1,183 @@
+package com.agentclientprotocol.client
+
+import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.common.ClientSessionOperations
+import com.agentclientprotocol.model.AcpMethod
+import com.agentclientprotocol.model.CancelNotification
+import com.agentclientprotocol.model.MaybeUndefined
+import com.agentclientprotocol.model.SessionId
+import com.agentclientprotocol.model.SessionUpdate
+import com.agentclientprotocol.model.StateUpdate
+import com.agentclientprotocol.model.SubagentSessionCapabilities
+import com.agentclientprotocol.model.update
+import com.agentclientprotocol.protocol.Protocol
+import com.agentclientprotocol.protocol.invoke
+import kotlinx.atomicfu.atomic
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
+ * A session that the agent started under another session, to do work for it. The client builds it when the agent
+ * announces the subagent, from the operations that [SubagentOperations.createSubagentOperations] returned, and it
+ * lists it in the parent's [BaseClientSession.subagents]. The `subagents` client capability enables the
+ * announcements.
+ *
+ * The client never prompts a subagent, so there is no prompt, mode, model, configuration or close here. Every update
+ * of the subagent reaches its [operations] through [ClientSessionOperations.notify], including
+ * `config_option_update` and `current_mode_update`, and none of them changes a root session's mode or options.
+ *
+ * Everything that changes on this object reaches the application as an event of a stream it already receives:
+ * a `subagent_update` in the parent's [ClientSessionOperations.notify], or the [com.agentclientprotocol.common.SessionEvent.Opened]
+ * of the parent. So the properties are plain getters, not flows. A flow beside the stream would be a second channel
+ * with its own timing: a collector on another thread could see a value before the event that caused it.
+ *
+ * **Contract:** inside a `notify` of the parent's operations, the getters reflect every event delivered so far,
+ * including the current one. Elsewhere they return the latest applied value. Each value is read atomically, so any
+ * thread may read them, but values read one after the other may come from different moments. An application that
+ * wants a flow keeps its own and updates it from `notify`.
+ *
+ * @property parentSessionId the id of the session this subagent was started under. There is no parent object, because
+ * the parent's [ClientSession] may not exist yet when the subagent is built, while the history of a loading session
+ * is being delivered. The application's own objects already link the two, because the parent's operations created
+ * this subagent's.
+ */
+@UnstableApi
+public class ClientSubagentSession internal constructor(
+    override val sessionId: SessionId,
+    public val parentSessionId: SessionId,
+    override val operations: ClientSessionOperations,
+    private val protocol: Protocol,
+    private val parentCwd: () -> String,
+    private val parentAdditionalDirectories: () -> List<String>,
+    private val children: SubagentList,
+    // TODO also receives the SubagentPendingPermissions of this subagent, which cancel() answers for.
+) : BaseClientSession {
+    private val _title = atomic<String?>(null)
+    private val _description = atomic<String?>(null)
+    private val ownCwd = atomic<String?>(null)
+    private val ownAdditionalDirectories = atomic<List<String>?>(null)
+    private val capabilities = atomic<SubagentSessionCapabilities?>(null)
+    private val _state = atomic<StateUpdate?>(null)
+    private val closed = atomic(false)
+
+    /*
+     * The `capabilities` and `state` patches that arrived before the parent's answer, not yet applied. Each one holds
+     * the latest patch of its field, `Undefined` if there was none. Only the parent's consumer writes them, in
+     * [applyPatch] and [onParentOpened], so they need no atomics.
+     */
+    private var heldCapabilities: MaybeUndefined<SubagentSessionCapabilities> = MaybeUndefined.Undefined
+    private var heldState: MaybeUndefined<StateUpdate> = MaybeUndefined.Undefined
+
+    /**
+     * The title of the subagent, or `null` if the agent reported none or cleared it.
+     */
+    public val title: String? get() = _title.value
+
+    /**
+     * The description of the subagent, or `null` if the agent reported none or cleared it.
+     */
+    public val description: String? get() = _description.value
+
+    /**
+     * The work state the agent last confirmed.
+     *
+     * `null` means no confirmed current state: before the first state that arrives after the parent's answer, and
+     * after the agent reported the state as unconfirmed with `null`, which does not mean idle.
+     * [StateUpdate.Unknown] is different: the agent confirmed that it lost track of the subagent's state. There is no
+     * last known value, because a state that was replayed from history is never shown as current.
+     */
+    public val state: StateUpdate? get() = _state.value
+
+    /**
+     * Whether [cancel] may be called: the agent granted the cancel control, and this session isn't closed.
+     *
+     * The latest `capabilities` of the subagent decide it. There is no grant before the agent sends them, and none
+     * if the cancel control is omitted or `null`. A [StateUpdate.Unknown] state doesn't revoke the grant. The grant
+     * resets when the parent is loaded or resumed again, and a grant that was reported while the history was
+     * replayed never takes effect.
+     */
+    public val canCancel: Boolean get() = !closed.value && capabilities.value?.cancel != null
+
+    override val subagents: List<ClientSubagentSession> get() = children.snapshot
+
+    override val cwd: String get() = ownCwd.value ?: parentCwd()
+
+    override val additionalDirectories: List<String> get() = ownAdditionalDirectories.value ?: parentAdditionalDirectories()
+
+    /**
+     * Asks the agent to cancel the work of this subagent by sending `session/cancel` for its id.
+     *
+     * The call returns once the notification is sent. It checks the grant itself, so it never acts on an outdated
+     * value of [canCancel].
+     *
+     * @throws IllegalStateException without sending anything, if the agent hasn't granted the cancel control or this
+     * session is closed
+     */
+    public suspend fun cancel() {
+        check(!closed.value) { "Subagent session $sessionId is closed" }
+        check(capabilities.value?.cancel != null) { "Subagent session $sessionId doesn't allow cancel" }
+
+        AcpMethod.AgentMethods.V1.SessionCancel(protocol, CancelNotification(sessionId))
+    }
+
+    /**
+     * Applies a `subagent_update` of this subagent, in the order the parent's stream delivers it.
+     *
+     * `title`, `description`, `cwd` and `additionalDirectories` are applied at once: the history may stay visible.
+     * `capabilities` and `state` are applied only if [parentOpened], or else held back until [onParentOpened]. For
+     * each field, an omitted value leaves it unchanged, `null` clears it, and a value replaces it. `cwd` and
+     * `additionalDirectories` fall back to the parent's when cleared, each on its own. `capabilities` is replaced as a
+     * whole.
+     *
+     * Only the parent's consumer calls it, so there is one writer.
+     *
+     * @param parentOpened whether the parent's [com.agentclientprotocol.common.SessionEvent.Opened] was already delivered
+     */
+    internal fun applyPatch(update: SessionUpdate.SubagentUpdate, parentOpened: Boolean) {
+        _title.value = update.title.update(_title.value)
+        _description.value = update.description.update(_description.value)
+        ownCwd.value = update.cwd.update(ownCwd.value)
+        ownAdditionalDirectories.value = update.additionalDirectories.update(ownAdditionalDirectories.value)
+
+        if (parentOpened) {
+            applyCapabilities(update.capabilities)
+            applyState(update.state)
+        } else {
+            heldCapabilities = update.capabilities.orElse(heldCapabilities)
+            heldState = update.state.orElse(heldState)
+        }
+    }
+
+    /**
+     * Resolves the `capabilities` and `state` that [applyPatch] held back, when the parent's
+     * [com.agentclientprotocol.common.SessionEvent.Opened] is delivered.
+     *
+     * @param promote `true` after a call that replayed no history: the held values were current, so they are applied.
+     * `false` after a load: they were history, and they are dropped.
+     */
+    internal fun onParentOpened(promote: Boolean) {
+        if (promote) {
+            applyCapabilities(heldCapabilities)
+            applyState(heldState)
+        }
+        heldCapabilities = MaybeUndefined.Undefined
+        heldState = MaybeUndefined.Undefined
+    }
+
+    /**
+     * Ends this session: [canCancel] becomes `false`, and [cancel] throws.
+     */
+    internal fun markClosed() {
+        closed.value = true
+    }
+
+    private fun applyCapabilities(patch: MaybeUndefined<SubagentSessionCapabilities>) {
+        capabilities.value = patch.update(capabilities.value)
+    }
+
+    private fun applyState(patch: MaybeUndefined<StateUpdate>) {
+        _state.value = patch.update(_state.value)
+    }
+}

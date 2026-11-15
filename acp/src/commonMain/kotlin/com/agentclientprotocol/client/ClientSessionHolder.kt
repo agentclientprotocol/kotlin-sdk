@@ -1,7 +1,10 @@
+@file:OptIn(UnstableApi::class)
+
 package com.agentclientprotocol.client
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
+import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.common.notify
 import com.agentclientprotocol.model.AcpCreatedSessionResponse
@@ -51,14 +54,16 @@ internal sealed class QueuedItem {
  * among them.
  */
 internal class ClientSessionHolder {
-    private val sessionDeferred: CompletableDeferred<ClientSessionImpl> = CompletableDeferred()
+    private class Opening(val replayRequested: Boolean, val parameters: SessionCreationParameters)
+
+    private val sessionDeferred: CompletableDeferred<BaseClientSession> = CompletableDeferred()
     // Don't make the channel limited, because it leads to a deadlock also:
     // when client side makes loadSession/newSession and an agent sends updates more than channel.capacity
     // the message with call response suspends because protocol thread is suspended in handleNotification
     // if to address it we have to somehow reorder events, that's not obvious on the protocol level, so we pay with memory right now to handle it
     private val queue = Channel<QueuedItem>(capacity = Channel.UNLIMITED)
-    // `null` until an opening call claims the holder, then whether that call asked the agent to replay the history.
-    private val replayRequestedByOpening = atomic<Boolean?>(null)
+    // `null` until an opening call claims the holder, then that call's replay request and parameters.
+    private val opening = atomic<Opening?>(null)
     private val answered = atomic(false)
     // The delivery of the last update that missed the closed queue, see [handleOrQueue].
     private val lateDeliveries = atomic<Job>(Job().apply { complete() })
@@ -75,7 +80,13 @@ internal class ClientSessionHolder {
     @OptIn(UnstableApi::class)
     private var earlyConfigOptions: SessionUpdate.ConfigOptionUpdate? = null
 
-    val session: Deferred<ClientSessionImpl> get() = sessionDeferred
+    val session: Deferred<BaseClientSession> get() = sessionDeferred
+
+    /**
+     * The [BaseClientSession.subagents] of this holder's session. It lives here, because children are added while the
+     * history of a loading root is delivered, before the root's [ClientSession] exists.
+     */
+    val subagents = SubagentList()
 
     /**
      * Whether the opening of this holder failed, so a new opening of the session id needs a new holder.
@@ -88,7 +99,14 @@ internal class ClientSessionHolder {
      * Whether the call that claimed this holder asked the agent to replay the history: `true` for `session/load`,
      * `false` for the other opening calls, and `null` while no call has claimed the holder.
      */
-    val replayRequested: Boolean? get() = replayRequestedByOpening.value
+    val replayRequested: Boolean? get() = opening.value?.replayRequested
+
+    /**
+     * The parameters of the call that claimed this holder, which the effective working directories of the root's
+     * subagents come from. They are known from the claim on, so subagents can read them before the root's
+     * [ClientSession] exists. `null` while no call has claimed the holder.
+     */
+    val rootParameters: SessionCreationParameters? get() = opening.value?.parameters
 
     /**
      * Whether [markOpened] has put the marker into the queue.
@@ -96,15 +114,15 @@ internal class ClientSessionHolder {
     val isAnswered: Boolean get() = answered.value
 
     /**
-     * Makes the opening call that asked for [replayRequested] the owner of this holder.
+     * Makes the opening call that asked for [replayRequested] with [parameters] the owner of this holder.
      *
      * Only a holder that has no owner and hasn't completed can be claimed: the response hook can put the marker
      * only into an open queue, and two openings of one id would race for it.
      *
      * @return `false` if the holder already has an owner or has completed. The holder is then unchanged.
      */
-    fun claimForOpening(replayRequested: Boolean): Boolean =
-        !sessionDeferred.isCompleted && replayRequestedByOpening.compareAndSet(null, replayRequested)
+    fun claimForOpening(replayRequested: Boolean, parameters: SessionCreationParameters): Boolean =
+        !sessionDeferred.isCompleted && opening.compareAndSet(null, Opening(replayRequested, parameters))
 
     /**
      * Puts the [QueuedItem.Opened] marker with [response] into the queue, after every update that has reached the
@@ -131,7 +149,7 @@ internal class ClientSessionHolder {
         while (true) {
             when (val item = queue.receive()) {
                 is QueuedItem.Update -> session.executeWithSession {
-                    session.handleNotification(item.update, item.meta)
+                    session.deliverUpdate(item.update, item.meta)
                 }
                 is QueuedItem.Opened -> return item
             }
@@ -217,7 +235,7 @@ internal class ClientSessionHolder {
             queue.close()
             for (item in queue) {
                 when (item) {
-                    is QueuedItem.Update -> deliverLive(session) { session.handleNotification(item.update, item.meta) }
+                    is QueuedItem.Update -> deliverLive(session) { session.deliverUpdate(item.update, item.meta) }
                     is QueuedItem.Opened -> logger.error { "Session ${session.sessionId} got a second opening marker" }
                 }
             }
@@ -225,7 +243,7 @@ internal class ClientSessionHolder {
         check(sessionDeferred.complete(session)) { "Session ${session.sessionId} is already complete" }
     }
 
-    private suspend fun deliverLive(session: ClientSessionImpl, block: suspend () -> Unit) {
+    private suspend fun deliverLive(session: BaseClientSession, block: suspend () -> Unit) {
         try {
             session.executeWithSession(block)
         } catch (t: Throwable) {
@@ -270,7 +288,7 @@ internal class ClientSessionHolder {
         val session = sessionDeferred.getCompleted()
         when (item) {
             is QueuedItem.Update -> session.executeWithSession {
-                session.handleNotification(item.update, item.meta)
+                session.deliverUpdate(item.update, item.meta)
             }
             // markOpened puts the marker only into an open queue, so it never takes this path.
             is QueuedItem.Opened -> error("The opening marker of session ${session.sessionId} missed the queue")

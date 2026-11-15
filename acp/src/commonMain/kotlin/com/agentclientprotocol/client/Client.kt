@@ -73,6 +73,7 @@ public class Client(
     }
 
     private fun createClientSession(
+        sessionHolder: ClientSessionHolder,
         sessionId: SessionId,
         sessionParameters: SessionCreationParameters,
         operations: ClientSessionOperations,
@@ -83,6 +84,7 @@ public class Client(
             // Nothing to do yet: a session has no descendants whose permission requests need an answer.
         },
         onClosed = { removeClosedSession(sessionId) },
+        holder = sessionHolder,
     )
 
     private fun removeClosedSession(sessionId: SessionId) {
@@ -104,7 +106,7 @@ public class Client(
         protocol.setRequestHandler(AcpMethod.ClientMethods.V1.SessionRequestPermission) { params: RequestPermissionRequest ->
             val session = sessions.getSessionOrThrow(params.sessionId)
             return@setRequestHandler session.executeWithSession {
-                session.handlePermissionResponse(params.toolCall, params.options, params._meta)
+                session.answerPermissionRequest(params.toolCall, params.options, params._meta)
             }
         }
 
@@ -585,7 +587,7 @@ public class Client(
     ): ClientSession {
         val (session, opened) = runCatching {
             val operations = factory.createClientOperations(sessionId, sessionResponse)
-            val session = createClientSession(sessionId, sessionParameters, operations, sessionResponse)
+            val session = createClientSession(sessionHolder, sessionId, sessionParameters, operations, sessionResponse)
             session to sessionHolder.drainHistory(session)
         }.getOrElse { throwable ->
             // throw IllegalStateException to pass it as INTERNAL_ERROR to the other side (see in Protocol)
@@ -613,7 +615,7 @@ public class Client(
         replayRequested: Boolean,
         request: suspend (onResponse: (AcpCreatedSessionResponse) -> Unit) -> AcpCreatedSessionResponse,
     ): ClientSession = sessions.withInitializingSession {
-        val sessionHolder = sessions.claimSessionHolder(sessionId, replayRequested)
+        val sessionHolder = sessions.claimSessionHolder(sessionId, replayRequested, sessionParameters)
         val sessionResponse = try {
             request { response -> sessionHolder.markOpened(response) }
         } catch (throwable: Throwable) {
@@ -647,7 +649,7 @@ public class Client(
         val sessionResponse = try {
             request { response ->
                 val sessionId = sessionIdOf(response)
-                claimed.complete(sessions.claimAnsweredSessionHolder(sessionId, response)?.let { sessionId to it })
+                claimed.complete(sessions.claimAnsweredSessionHolder(sessionId, response, sessionParameters)?.let { sessionId to it })
             }
         } catch (throwable: Throwable) {
             /*
@@ -685,7 +687,7 @@ public class Client(
         replayRequested: Boolean,
         request: suspend (onResponse: (AcpCreatedSessionResponse) -> Unit) -> AcpCreatedSessionResponse,
     ): ClientSession = sessions.withInitializingSession {
-        val sessionHolder = sessions.claimSessionHolder(sessionId, replayRequested)
+        val sessionHolder = sessions.claimSessionHolder(sessionId, replayRequested, sessionParameters)
 
         val (session, opened) = try {
             coroutineScope {
@@ -703,7 +705,7 @@ public class Client(
                 }
                 val sessionResponse = request { response -> sessionHolder.markOpened(response) }
                 val opened = checkNotNull(earlyDelivery.await()) { "The queue of session $sessionId closed before its answer" }
-                val session = createClientSession(sessionId, sessionParameters, operations, sessionResponse)
+                val session = createClientSession(sessionHolder, sessionId, sessionParameters, operations, sessionResponse)
                 sessionHolder.applyEarlyState(session)
                 session to opened
             }

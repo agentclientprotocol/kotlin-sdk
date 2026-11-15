@@ -18,9 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
-import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 
 private val logger = KotlinLogging.logger {}
@@ -36,6 +34,7 @@ internal class ClientSessionImpl(
     private val protocol: Protocol,
     private val onClosing: () -> Unit,
     private val onClosed: suspend () -> Unit,
+    private val holder: ClientSessionHolder,
 ) : ClientSession {
 
     private class PromptSession(
@@ -120,6 +119,18 @@ internal class ClientSessionImpl(
         return response
     }
 
+    @UnstableApi
+    override val subagents: List<ClientSubagentSession>
+        get() = holder.subagents.snapshot
+
+    @UnstableApi
+    override val cwd: String
+        get() = parameters.cwd
+
+    @UnstableApi
+    override val additionalDirectories: List<String>
+        get() = parameters.additionalDirectories ?: emptyList()
+
     override val modesSupported: Boolean
         get() = createdResponse.modes != null
 
@@ -171,11 +182,6 @@ internal class ClientSessionImpl(
         return response
     }
 
-    internal suspend fun <T> executeWithSession(block: suspend () -> T): T {
-        return withContext(this.asContextElement()) {
-            block()
-        }
-    }
     /**
      * Routes notification to either active prompt or global notification channel
      */
@@ -237,11 +243,11 @@ internal class ClientSessionImpl(
     }
 }
 
-internal class ClientSessionContextElement(val session: ClientSessionImpl) : AbstractCoroutineContextElement(Key) {
-    object Key : CoroutineContext.Key<ClientSessionContextElement>
-}
-
-internal fun ClientSessionImpl.asContextElement() = ClientSessionContextElement(this)
-
+/**
+ * The root session that the current call of a session's operations belongs to.
+ *
+ * @throws IllegalStateException if the context belongs to no session, or to a subagent session. Use
+ * [baseClientSession] where the operations may serve subagents.
+ */
 public val CoroutineContext.clientSession: ClientSession
-    get() = this[ClientSessionContextElement.Key]?.session ?: error("No client session data found in context")
+    get() = this[ClientSessionContextElement.Key]?.session as? ClientSession ?: error("No client session data found in context")

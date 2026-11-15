@@ -1,5 +1,9 @@
+@file:OptIn(UnstableApi::class)
+
 package com.agentclientprotocol.client
 
+import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.AcpCreatedSessionResponse
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionUpdate
@@ -83,13 +87,13 @@ internal class ClientSessionRegistry(
     /**
      * Returns the opened session [sessionId], without creating a holder.
      *
-     * @throws IllegalStateException if the session is not registered or not initialized yet
+     * @throws IllegalStateException if the session is not registered or not initialized yet, or is a subagent session
      */
     fun getSession(sessionId: SessionId): ClientSession {
         val sessionHolder = _sessions.value.sessions[sessionId] ?: error("Session $sessionId not found")
         if (!sessionHolder.session.isCompleted) error("Session $sessionId not initialized yet")
         @OptIn(ExperimentalCoroutinesApi::class)
-        return sessionHolder.session.getCompleted()
+        return sessionHolder.session.getCompleted() as? ClientSession ?: error("Session $sessionId is a subagent session")
     }
 
     /**
@@ -97,7 +101,7 @@ internal class ClientSessionRegistry(
      *
      * @throws com.agentclientprotocol.protocol.AcpExpectedError if the session is unknown
      */
-    suspend fun getSessionOrThrow(sessionId: SessionId): ClientSessionImpl {
+    suspend fun getSessionOrThrow(sessionId: SessionId): BaseClientSession {
         return getOrCreateSessionHolder(sessionId).session.await()
     }
 
@@ -127,30 +131,34 @@ internal class ClientSessionRegistry(
 
     /**
      * Returns the holder of [sessionId], claimed by an opening call that knows the id before its request: `session/load`
-     * with [replayRequested], or `session/resume` without it. Must run under [withInitializingSession], which makes sure
-     * the holder exists.
+     * with [replayRequested], or `session/resume` without it, with its [parameters]. Must run under
+     * [withInitializingSession], which makes sure the holder exists.
      *
      * @throws IllegalStateException if the session is open or being opened
      */
-    fun claimSessionHolder(sessionId: SessionId, replayRequested: Boolean): ClientSessionHolder {
+    fun claimSessionHolder(sessionId: SessionId, replayRequested: Boolean, parameters: SessionCreationParameters): ClientSessionHolder {
         val sessionHolder = getOrCreateSessionHolder(sessionId)
-        check(sessionHolder.claimForOpening(replayRequested)) { "Session $sessionId is already open or being opened" }
+        check(sessionHolder.claimForOpening(replayRequested, parameters)) { "Session $sessionId is already open or being opened" }
         return sessionHolder
     }
 
     /**
      * Claims the holder of [sessionId] for the call whose answer [response] names that id, and marks it opened, in
-     * one step. This serves `session/new` and `session/fork`, whose session id first appears in the answer; neither
-     * asks for a replay.
+     * one step, with the [parameters] of the call. This serves `session/new` and `session/fork`, whose session id
+     * first appears in the answer; neither asks for a replay.
      *
      * Runs in the response hook of the call, so it must not suspend or block. Must run under
      * [withInitializingSession], which makes sure the holder exists.
      *
      * @return `null` if the session is open or being opened
      */
-    fun claimAnsweredSessionHolder(sessionId: SessionId, response: AcpCreatedSessionResponse): ClientSessionHolder? {
+    fun claimAnsweredSessionHolder(
+        sessionId: SessionId,
+        response: AcpCreatedSessionResponse,
+        parameters: SessionCreationParameters,
+    ): ClientSessionHolder? {
         val sessionHolder = getOrCreateSessionHolderOrNull(sessionId) ?: return null
-        if (!sessionHolder.claimForOpening(replayRequested = false)) return null
+        if (!sessionHolder.claimForOpening(replayRequested = false, parameters)) return null
         sessionHolder.markOpened(response)
         return sessionHolder
     }

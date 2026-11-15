@@ -330,6 +330,18 @@ public final class com/agentclientprotocol/agent/v2/SessionCreationParameters {
 	public final fun get_meta ()Lkotlinx/serialization/json/JsonElement;
 }
 
+public abstract interface class com/agentclientprotocol/client/BaseClientSession {
+	public abstract fun getAdditionalDirectories ()Ljava/util/List;
+	public abstract fun getCwd ()Ljava/lang/String;
+	public abstract fun getOperations ()Lcom/agentclientprotocol/common/ClientSessionOperations;
+	public abstract fun getSessionId-7EW-EgU ()Ljava/lang/String;
+	public abstract fun getSubagents ()Ljava/util/List;
+}
+
+public final class com/agentclientprotocol/client/BaseClientSessionKt {
+	public static final fun getBaseClientSession (Lkotlin/coroutines/CoroutineContext;)Lcom/agentclientprotocol/client/BaseClientSession;
+}
+
 public final class com/agentclientprotocol/client/Client {
 	public fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/GlobalElicitationHandler;Lcom/agentclientprotocol/client/GlobalSessionUpdateHandler;)V
 	public synthetic fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/GlobalElicitationHandler;Lcom/agentclientprotocol/client/GlobalSessionUpdateHandler;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -439,7 +451,7 @@ public abstract interface class com/agentclientprotocol/client/ClientOperationsF
 	public abstract fun createClientOperations-nk3TnMc (Ljava/lang/String;Lcom/agentclientprotocol/model/AcpCreatedSessionResponse;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
-public abstract interface class com/agentclientprotocol/client/ClientSession {
+public abstract interface class com/agentclientprotocol/client/ClientSession : com/agentclientprotocol/client/BaseClientSession {
 	public abstract fun cancel (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun close (Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun close$default (Lcom/agentclientprotocol/client/ClientSession;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
@@ -482,6 +494,20 @@ public final class com/agentclientprotocol/client/ClientSessionKt {
 	public static synthetic fun setConfigOption-lh9iGNw$default (Lcom/agentclientprotocol/client/ClientSession;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
+public final class com/agentclientprotocol/client/ClientSubagentSession : com/agentclientprotocol/client/BaseClientSession {
+	public final fun cancel (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun getAdditionalDirectories ()Ljava/util/List;
+	public final fun getCanCancel ()Z
+	public fun getCwd ()Ljava/lang/String;
+	public final fun getDescription ()Ljava/lang/String;
+	public fun getOperations ()Lcom/agentclientprotocol/common/ClientSessionOperations;
+	public final fun getParentSessionId-7EW-EgU ()Ljava/lang/String;
+	public fun getSessionId-7EW-EgU ()Ljava/lang/String;
+	public final fun getState ()Lcom/agentclientprotocol/model/StateUpdate;
+	public fun getSubagents ()Ljava/util/List;
+	public final fun getTitle ()Ljava/lang/String;
+}
+
 public abstract interface class com/agentclientprotocol/client/GlobalElicitationHandler {
 	public abstract fun createElicitation (Lcom/agentclientprotocol/model/CreateElicitationRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
@@ -506,6 +532,10 @@ public final class com/agentclientprotocol/client/NegotiatedClient$V2 : com/agen
 	public final fun getAgentInfo ()Lcom/agentclientprotocol/agent/v2/AgentInfo;
 	public final fun getClient ()Lcom/agentclientprotocol/client/v2/Client;
 	public fun getProtocolVersion ()I
+}
+
+public abstract interface class com/agentclientprotocol/client/SubagentOperations {
+	public abstract fun createSubagentOperations-HxD9utI (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
 public final class com/agentclientprotocol/client/UnsupportedProtocolVersionException : java/lang/Exception {
