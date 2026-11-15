@@ -37,10 +37,15 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   `SessionCancelCapabilities`, `StateUpdate`, `IdleStopReason`, `ClientCapabilities.subagents` (after `_meta`);
   internal `JsonObjectSerializer`, `decodeOrNull`, `lenientMeta` helpers; `check` green. Possible follow-up: v1
   `Usage` decodes strictly, so one bad optional field nulls the whole `usage` (Rust nulls only that field).
+- M1.3 session update variants — `7acd10d` — `SubagentUpdate`, `SessionMessage`, `SessionMessageChunk`,
+  `ToolCallContent.Session`; v1→v2 `toV2()` throws `removedV1EnumVariant` for the three new updates; sample
+  `render()` got print-only branches; `check` green. M1 (model layer) complete: range `a0dcdc5..7acd10d`.
 
 ## Next
-- M1.3 (`SubagentUpdate`, `SessionMessage`, `SessionMessageChunk`, `ToolCallContent.Session`) programmer running;
-  then the M1 review over `a0dcdc5..HEAD`.
+- M1 review running (reviewer, range `a0dcdc5..7acd10d`); show findings to the user; fixes become new slices.
+- M2.1 (agent: `Protocol.newConnectionScope`, public API, `announce`, routing, root `notify` checks) programmer
+  running, model `opus`. Then M2.2, M2.3, then the M2 review.
+- Owed later: release note for the source-breaking `ToolCallContent.Session` addition (goes with the M3 release note).
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
