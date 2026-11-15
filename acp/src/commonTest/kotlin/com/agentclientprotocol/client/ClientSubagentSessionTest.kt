@@ -9,6 +9,7 @@ import com.agentclientprotocol.model.CancelNotification
 import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.NewSessionResponse
 import com.agentclientprotocol.model.PermissionOption
+import com.agentclientprotocol.model.PermissionOptionId
 import com.agentclientprotocol.model.RequestPermissionOutcome
 import com.agentclientprotocol.model.RequestPermissionResponse
 import com.agentclientprotocol.model.SessionCancelCapabilities
@@ -27,6 +28,7 @@ import com.agentclientprotocol.transport.Transport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.channels.Channel
@@ -47,6 +49,7 @@ import kotlin.time.Duration.Companion.seconds
 
 private class FrameRecordingTransport : BaseTransport() {
     val frames = Channel<TransportFrame>(capacity = Channel.UNLIMITED)
+    var sendFailure: Throwable? = null
 
     override fun start() {
         _state.value = Transport.State.STARTED
@@ -57,6 +60,7 @@ private class FrameRecordingTransport : BaseTransport() {
     }
 
     override fun send(frame: TransportFrame) {
+        sendFailure?.let { throw it }
         frames.trySend(frame)
     }
 }
@@ -89,6 +93,32 @@ private class RecordingChildOperations : ClientSessionOperations {
     }
 }
 
+private val ALLOWED = RequestPermissionResponse(RequestPermissionOutcome.Selected(PermissionOptionId("allow")))
+
+private fun toolCall(id: String) = SessionUpdate.ToolCallUpdate(ToolCallId(id))
+
+/**
+ * Operations whose permission handler reports each request on [started] and waits for the user's answer on
+ * [answers].
+ */
+private class WaitingChildOperations : ClientSessionOperations {
+    val started = Channel<Unit>(Channel.UNLIMITED)
+    val answers = Channel<RequestPermissionResponse>(Channel.UNLIMITED)
+    val requests = mutableListOf<SessionUpdate.ToolCallUpdate>()
+
+    override suspend fun requestPermissions(
+        toolCall: SessionUpdate.ToolCallUpdate,
+        permissions: List<PermissionOption>,
+        _meta: JsonElement?,
+    ): RequestPermissionResponse {
+        requests += toolCall
+        started.send(Unit)
+        return answers.receive()
+    }
+
+    override suspend fun notify(event: SessionEvent) {}
+}
+
 /**
  * The state of a [ClientSubagentSession], built through its internal constructor: the patches, the grant, the
  * held-back values before the parent's answer, the inherited directories and `cancel()`.
@@ -114,7 +144,10 @@ class ClientSubagentSessionTest {
         parentDirectories: () -> List<String> = { rootDirectories },
         children: SubagentList = SubagentList(),
         operations: ClientSessionOperations = NoOperations,
-    ) = ClientSubagentSession(SessionId(id), SessionId(parentId), operations, protocol, parentCwd, parentDirectories, children)
+        pendingPermissions: SubagentPendingPermissions = SubagentPendingPermissions(),
+    ) = ClientSubagentSession(
+        SessionId(id), SessionId(parentId), operations, protocol, parentCwd, parentDirectories, children, pendingPermissions,
+    )
 
     private fun patch(
         title: MaybeUndefined<String> = MaybeUndefined.Undefined,
@@ -431,6 +464,66 @@ class ClientSubagentSessionTest {
         assertEquals(AcpMethod.AgentMethods.V1.SessionCancel.methodName, notification.method)
         val sent = ACPJson.decodeFromJsonElement(CancelNotification.serializer(), notification.params!!)
         assertEquals(CancelNotification(SessionId("child")), sent)
+    }
+
+    @Test
+    fun `cancel answers the pending permission requests and blocks later ones while work is confirmed`() = runTest {
+        val operations = WaitingChildOperations()
+        val pendingPermissions = SubagentPendingPermissions()
+        val child = child(operations = operations, pendingPermissions = pendingPermissions)
+        child.applyPatch(patch(capabilities = cancelGrant), parentOpened = true)
+        pendingPermissions.onState(StateUpdate.Running(), live = true)
+        val pending = backgroundScope.async { child.answerPermissionRequest(toolCall("pending"), emptyList(), null) }
+        operations.started.receive()
+
+        child.cancel()
+
+        assertEquals(RequestPermissionResponse(RequestPermissionOutcome.Cancelled), pending.await())
+        val later = child.answerPermissionRequest(toolCall("later"), emptyList(), null)
+        assertEquals(RequestPermissionResponse(RequestPermissionOutcome.Cancelled), later)
+        assertEquals(listOf(toolCall("pending")), operations.requests, "the later request never reached the app")
+    }
+
+    @Test
+    fun `cancel answers the pending permission requests even if sending session cancel fails`() = runTest {
+        val operations = WaitingChildOperations()
+        val child = child(operations = operations)
+        child.applyPatch(patch(capabilities = cancelGrant), parentOpened = true)
+        val pending = backgroundScope.async { child.answerPermissionRequest(toolCall("pending"), emptyList(), null) }
+        operations.started.receive()
+        transport.sendFailure = IllegalStateException("writer closed")
+
+        val failure = assertFailsWith<IllegalStateException> { child.cancel() }
+
+        assertEquals("writer closed", failure.message)
+        assertEquals(RequestPermissionResponse(RequestPermissionOutcome.Cancelled), pending.await())
+    }
+
+    @Test
+    fun `cancel that throws for a missing grant or a closed session leaves the permission requests alone`() = runTest {
+        for (closed in listOf(false, true)) {
+            val operations = WaitingChildOperations()
+            val pendingPermissions = SubagentPendingPermissions()
+            val child = child(operations = operations, pendingPermissions = pendingPermissions)
+            pendingPermissions.onState(StateUpdate.Running(), live = true)
+            if (closed) {
+                child.applyPatch(patch(capabilities = cancelGrant), parentOpened = true)
+                child.markClosed()
+            }
+            val pending = backgroundScope.async { child.answerPermissionRequest(toolCall("pending"), emptyList(), null) }
+            operations.started.receive()
+
+            assertFailsWith<IllegalStateException> { child.cancel() }
+
+            assertFalse(pending.isCompleted, "the pending request still waits for the user, closed = $closed")
+            val later = backgroundScope.async { child.answerPermissionRequest(toolCall("later"), emptyList(), null) }
+            operations.started.receive()
+            operations.answers.send(ALLOWED)
+            operations.answers.send(ALLOWED)
+            assertEquals(ALLOWED, pending.await())
+            assertEquals(ALLOWED, later.await(), "a later request reached the app, closed = $closed")
+        }
+        assertNull(transport.frames.tryReceive().getOrNull(), "nothing was sent")
     }
 
     @Test

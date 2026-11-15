@@ -5,6 +5,7 @@ package com.agentclientprotocol.client
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.notify
 import com.agentclientprotocol.model.PermissionOption
+import com.agentclientprotocol.model.RequestPermissionOutcome
 import com.agentclientprotocol.model.RequestPermissionResponse
 import com.agentclientprotocol.model.SessionUpdate
 import kotlinx.coroutines.withContext
@@ -39,8 +40,11 @@ internal suspend fun BaseClientSession.answerPermissionRequest(
     meta: JsonElement?,
 ): RequestPermissionResponse = when (this) {
     is ClientSession -> (this as ClientSessionImpl).handlePermissionResponse(toolCall, permissions, meta)
-    // TODO answer through the SubagentPendingPermissions of the subagent, so that a cancel by the client reaches it.
-    is ClientSubagentSession -> operations.requestPermissions(toolCall, permissions, meta)
+    is ClientSubagentSession -> pendingPermissions.answerUnlessCancelled(
+        cancelledAnswer = { RequestPermissionResponse(RequestPermissionOutcome.Cancelled) },
+    ) {
+        operations.requestPermissions(toolCall, permissions, meta)
+    }
 }
 
 /**

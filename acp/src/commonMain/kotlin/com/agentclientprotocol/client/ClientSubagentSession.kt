@@ -52,7 +52,7 @@ public class ClientSubagentSession internal constructor(
     private val parentCwd: () -> String,
     private val parentAdditionalDirectories: () -> List<String>,
     private val children: SubagentList,
-    // TODO also receives the SubagentPendingPermissions of this subagent, which cancel() answers for.
+    internal val pendingPermissions: SubagentPendingPermissions,
 ) : BaseClientSession {
     private val _title = atomic<String?>(null)
     private val _description = atomic<String?>(null)
@@ -112,14 +112,22 @@ public class ClientSubagentSession internal constructor(
      * The call returns once the notification is sent. It checks the grant itself, so it never acts on an outdated
      * value of [canCancel].
      *
-     * @throws IllegalStateException without sending anything, if the agent hasn't granted the cancel control or this
-     * session is closed
+     * The subagent's pending permission requests are answered `cancelled`, even if sending fails. While the agent last
+     * reported foreground work, `running` or `requires_action`, later requests are answered `cancelled` too, without
+     * reaching [operations], until the agent reports the next state.
+     *
+     * @throws IllegalStateException without sending or answering anything, if the agent hasn't granted the cancel
+     * control or this session is closed
      */
     public suspend fun cancel() {
         check(!closed.value) { "Subagent session $sessionId is closed" }
         check(capabilities.value?.cancel != null) { "Subagent session $sessionId doesn't allow cancel" }
 
-        AcpMethod.AgentMethods.V1.SessionCancel(protocol, CancelNotification(sessionId))
+        try {
+            AcpMethod.AgentMethods.V1.SessionCancel(protocol, CancelNotification(sessionId))
+        } finally {
+            pendingPermissions.cancelByClient()
+        }
     }
 
     /**
