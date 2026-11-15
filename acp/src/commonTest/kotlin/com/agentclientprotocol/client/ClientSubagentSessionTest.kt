@@ -540,7 +540,7 @@ class ClientSubagentSessionTest {
 
     @Test
     fun `a root session has no subagents and its directories come from its parameters`() {
-        val holder = ClientSessionHolder()
+        val holder = rootHolder()
         val parameters = SessionCreationParameters(cwd = "/project", mcpServers = emptyList(), additionalDirectories = listOf("/lib"))
         assertTrue(holder.claimForOpening(replayRequested = false, parameters))
         val root = rootSession(holder, parameters)
@@ -553,7 +553,7 @@ class ClientSubagentSessionTest {
 
     @Test
     fun `a root session opened without additional directories reports an empty list`() {
-        val holder = ClientSessionHolder()
+        val holder = rootHolder()
         val parameters = SessionCreationParameters(cwd = "/project", mcpServers = emptyList())
         assertTrue(holder.claimForOpening(replayRequested = false, parameters))
 
@@ -562,7 +562,7 @@ class ClientSubagentSessionTest {
 
     @Test
     fun `the root's subagents are the holder's list in announcement order and an earlier read stays unchanged`() {
-        val holder = ClientSessionHolder()
+        val holder = rootHolder()
         val parameters = SessionCreationParameters(cwd = "/project", mcpServers = emptyList())
         assertTrue(holder.claimForOpening(replayRequested = false, parameters))
         val first = child(id = "first", parentId = "root", children = SubagentList())
@@ -605,7 +605,7 @@ class ClientSubagentSessionTest {
 
     @Test
     fun `a root's calls run with the root in the context for both accessors`() = runTest {
-        val holder = ClientSessionHolder()
+        val holder = rootHolder()
         val parameters = SessionCreationParameters(cwd = "/project", mcpServers = emptyList())
         val root = rootSession(holder, parameters)
 
@@ -615,6 +615,8 @@ class ClientSubagentSessionTest {
         }
         assertFailsWith<IllegalStateException> { currentCoroutineContext().baseClientSession }
     }
+
+    private fun rootHolder() = ClientSessionHolder(SessionId("root"), parent = null, SubagentSetup(protocol, scope) { _, _ -> })
 
     private fun rootSession(holder: ClientSessionHolder, parameters: SessionCreationParameters) = ClientSessionImpl(
         client = Client(protocol),

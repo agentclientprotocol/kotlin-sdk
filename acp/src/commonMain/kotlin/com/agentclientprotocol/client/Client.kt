@@ -40,7 +40,7 @@ public class Client(
     @property:UnstableApi
     public val globalSessionUpdateHandler: GlobalSessionUpdateHandler? = null
 ) {
-    private val sessions = ClientSessionRegistry(globalSessionUpdateHandler)
+    private val sessions = ClientSessionRegistry(globalSessionUpdateHandler, protocol, protocol.newConnectionScope("Subagent sessions"))
     private val _nesSessions = atomic(persistentMapOf<SessionId, ClientNesSessionImpl>())
     @OptIn(UnstableApi::class)
     private val _elicitationToSession = ElicitationSessionStore()
@@ -608,7 +608,7 @@ public class Client(
             session
         }.getOrElse { throwable ->
             // throw IllegalStateException to pass it as INTERNAL_ERROR to the other side (see in Protocol)
-            sessions.failSessionHolder(sessionId, sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
+            sessions.failSessionHolder(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             // cleanup of this sessionId entry will be done in finally of withInitializingSession
             throw throwable
         }
@@ -638,7 +638,7 @@ public class Client(
              * The hook may have put the marker into the queue before a cancellation won. Failing the holder drops
              * the marker, so nothing delivers it.
              */
-            sessions.failSessionHolder(sessionId, sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
+            sessions.failSessionHolder(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             throw throwable
         }
         createSession(sessionHolder, sessionId, sessionParameters, sessionResponse, factory)
@@ -675,7 +675,7 @@ public class Client(
             val claimedHolder = if (claimed.isCompleted) claimed.getCompleted() else null
             if (claimedHolder != null) {
                 val (sessionId, holder) = claimedHolder
-                sessions.failSessionHolder(sessionId, holder, IllegalStateException("Failed to create session $sessionId", throwable))
+                sessions.failSessionHolder(holder, IllegalStateException("Failed to create session $sessionId", throwable))
             }
             throw throwable
         }
@@ -729,7 +729,7 @@ public class Client(
             session
         } catch (throwable: Throwable) {
             // The cleanup of this sessionId entry is done in finally of withInitializingSession.
-            sessions.failSessionHolder(sessionId, sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
+            sessions.failSessionHolder(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             throw throwable
         }
     }

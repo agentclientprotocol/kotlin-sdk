@@ -8,8 +8,17 @@ import com.agentclientprotocol.model.ContentBlock
 import com.agentclientprotocol.model.LoadSessionResponse
 import com.agentclientprotocol.model.PermissionOption
 import com.agentclientprotocol.model.RequestPermissionResponse
+import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.protocol.AcpExpectedError
+import com.agentclientprotocol.protocol.Protocol
+import com.agentclientprotocol.rpc.TransportFrame
+import com.agentclientprotocol.transport.BaseTransport
+import com.agentclientprotocol.transport.Transport
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -17,12 +26,25 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonElement
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+
+private class NoTransport : BaseTransport() {
+    override fun start() {
+        _state.value = Transport.State.STARTED
+    }
+
+    override fun close() {
+        _state.value = Transport.State.CLOSED
+    }
+
+    override fun send(frame: TransportFrame) {}
+}
 
 /**
  * When the last session initialization ends, `Client` reaps speculative [ClientSessionHolder] holders that no initialization claimed.
@@ -39,10 +61,17 @@ class ClientSessionHolderTest {
     private val lateUpdate = SessionUpdate.AgentMessageChunk(ContentBlock.Text("late"))
     private val response = LoadSessionResponse()
     private val parameters = SessionCreationParameters(cwd = "/root", mcpServers = emptyList())
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private val protocol = Protocol(scope, NoTransport())
+
+    @AfterTest
+    fun tearDown() {
+        scope.cancel()
+    }
 
     @Test
     fun `update for a reaped holder is reported as undelivered instead of failing`() = runTest {
-        val holder = ClientSessionHolder()
+        val holder = holder()
         holder.failAndDrainQueue(AcpExpectedError("Session session-9 not found")) { _, _ -> }
 
         assertFalse(holder.handleOrQueue(QueuedItem.Update(lateUpdate, null)))
@@ -50,7 +79,7 @@ class ClientSessionHolderTest {
 
     @Test
     fun `update arriving during the reap is reported after the queued updates are drained`() = runTest {
-        val holder = ClientSessionHolder()
+        val holder = holder()
         assertTrue(holder.handleOrQueue(QueuedItem.Update(queuedUpdate, null)))
 
         val events = mutableListOf<String>()
@@ -77,7 +106,7 @@ class ClientSessionHolderTest {
 
     @Test
     fun `early delivery hands the queued updates and the arriving updates to the operations in arrival order`() = runTest {
-        val holder = ClientSessionHolder()
+        val holder = holder()
         assertTrue(holder.handleOrQueue(QueuedItem.Update(queuedUpdate, null)))
         assertTrue(holder.claimForOpening(replayRequested = true, parameters))
 
@@ -94,7 +123,7 @@ class ClientSessionHolderTest {
 
     @Test
     fun `early delivery hands one update at a time to the operations`() = runTest {
-        val holder = ClientSessionHolder()
+        val holder = holder()
         val releaseFirst = CompletableDeferred<Unit>()
         val operations = RecordingOperations(beforeEach = { update -> if (update == queuedUpdate) releaseFirst.await() })
         val delivery = launch { holder.deliverEarly(operations) }
@@ -112,7 +141,7 @@ class ClientSessionHolderTest {
 
     @Test
     fun `early delivery stops at the marker without delivering it and leaves the later updates queued`() = runTest {
-        val holder = ClientSessionHolder()
+        val holder = holder()
         assertTrue(holder.claimForOpening(replayRequested = false, parameters))
         val operations = RecordingOperations()
 
@@ -131,7 +160,7 @@ class ClientSessionHolderTest {
 
     @Test
     fun `updates left by a failed early delivery go to the unconnected handler and later updates are undelivered`() = runTest {
-        val holder = ClientSessionHolder()
+        val holder = holder()
         val failure = IllegalStateException("notify failed")
         val delivery = async { runCatching { holder.deliverEarly(RecordingOperations(beforeEach = { throw failure })) } }
         assertTrue(holder.handleOrQueue(QueuedItem.Update(queuedUpdate, null)))
@@ -146,7 +175,7 @@ class ClientSessionHolderTest {
 
     @Test
     fun `a failed opening drops its marker`() = runTest {
-        val holder = ClientSessionHolder()
+        val holder = holder()
         assertTrue(holder.claimForOpening(replayRequested = true, parameters))
         assertTrue(holder.handleOrQueue(QueuedItem.Update(queuedUpdate, null)))
         assertTrue(holder.markOpened(response))
@@ -160,7 +189,7 @@ class ClientSessionHolderTest {
 
     @Test
     fun `the marker goes only into an open queue`() = runTest {
-        val holder = ClientSessionHolder()
+        val holder = holder()
         assertTrue(holder.claimForOpening(replayRequested = true, parameters))
         holder.failAndDrainQueue(IllegalStateException("load failed")) { _, _ -> }
 
@@ -170,7 +199,7 @@ class ClientSessionHolderTest {
 
     @Test
     fun `marking a holder opened records the answer`() {
-        val holder = ClientSessionHolder()
+        val holder = holder()
         assertTrue(holder.claimForOpening(replayRequested = false, parameters))
         assertFalse(holder.isAnswered)
 
@@ -180,7 +209,7 @@ class ClientSessionHolderTest {
 
     @Test
     fun `one opening call owns a holder`() = runTest {
-        val load = ClientSessionHolder()
+        val load = holder()
         assertNull(load.replayRequested)
         assertTrue(load.claimForOpening(replayRequested = true, parameters))
         assertEquals(true, load.replayRequested)
@@ -188,18 +217,20 @@ class ClientSessionHolderTest {
         assertFalse(load.claimForOpening(replayRequested = false, parameters), "a resume of a holder that a load owns")
         assertEquals(true, load.replayRequested, "a refused claim leaves the holder unchanged")
 
-        val resume = ClientSessionHolder()
+        val resume = holder()
         assertTrue(resume.claimForOpening(replayRequested = false, parameters))
         assertEquals(false, resume.replayRequested)
         assertFalse(resume.claimForOpening(replayRequested = false, parameters), "a second resume")
         assertFalse(resume.claimForOpening(replayRequested = true, parameters), "a load of a holder that a resume owns")
 
-        val failed = ClientSessionHolder()
+        val failed = holder()
         failed.failAndDrainQueue(IllegalStateException("load failed")) { _, _ -> }
         assertTrue(failed.isFailed)
         assertFalse(failed.claimForOpening(replayRequested = true, parameters), "an opening of a failed holder")
         assertNull(failed.replayRequested)
     }
+
+    private fun holder() = ClientSessionHolder(SessionId("session"), parent = null, SubagentSetup(protocol, scope) { _, _ -> })
 
     private class RecordingOperations(
         private val beforeEach: suspend (SessionUpdate) -> Unit = {},

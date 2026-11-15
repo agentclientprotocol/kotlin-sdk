@@ -21,8 +21,15 @@ import kotlinx.atomicfu.atomic
  *
  * A session that the agent started under another session, to do work for it. The client builds it when the agent
  * announces the subagent, from the operations that [SubagentOperations.createSubagentOperations] returned, and it
- * lists it in the parent's [BaseClientSession.subagents]. The `subagents` client capability enables the
- * announcements.
+ * lists it in the parent's [BaseClientSession.subagents]. The `subagents` client capability,
+ * [com.agentclientprotocol.model.ClientCapabilities.subagents], enables the announcements. The client doesn't declare
+ * it on its own: the application declares it in the [ClientInfo] it passes to [Client.initialize].
+ *
+ * Inside the parent's [ClientSessionOperations.notify] for the announcement, the subagent is already in the parent's
+ * [BaseClientSession.subagents], with its operations and the announced values. The subagent's own stream gets
+ * its history, then exactly one [com.agentclientprotocol.common.SessionEvent.Opened] without a response, at the
+ * place of the root's answer, then its live updates. The live updates, and the agent's requests for the subagent,
+ * wait until the opening call of the root session has completed.
  *
  * The client never prompts a subagent, so there is no prompt, mode, model, configuration or close here. Every update
  * of the subagent reaches its [operations] through [ClientSessionOperations.notify], including

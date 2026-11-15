@@ -3,6 +3,7 @@ package com.agentclientprotocol.client
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.model.AcpCreatedSessionResponse
+import com.agentclientprotocol.model.AcpRequest
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.PermissionOption
 import com.agentclientprotocol.model.RequestPermissionResponse
@@ -108,7 +109,7 @@ internal class RecordingOperations(
  */
 internal class ScriptedAgentTransport : BaseTransport() {
     private val requests = Channel<JsonRpcRequest>(capacity = Channel.UNLIMITED)
-    private val responses = Channel<JsonRpcResponse>(capacity = Channel.UNLIMITED)
+    private val responses = MutableStateFlow<Map<RequestId, JsonRpcResponse>>(emptyMap())
     private val notifications = Channel<JsonRpcNotification>(capacity = Channel.UNLIMITED)
     private val barrierIds = atomic(0)
 
@@ -125,7 +126,7 @@ internal class ScriptedAgentTransport : BaseTransport() {
     override fun send(frame: TransportFrame) {
         when (val message = (frame as TransportFrame.Single).message) {
             is JsonRpcRequest -> requests.trySend(message)
-            is JsonRpcResponse -> responses.trySend(message)
+            is JsonRpcResponse -> responses.update { it + (message.id to message) }
             is JsonRpcNotification -> notifications.trySend(message)
         }
     }
@@ -161,6 +162,27 @@ internal class ScriptedAgentTransport : BaseTransport() {
         )
     }
 
+    /**
+     * Sends a request of the agent to the client, and returns its id for [awaitResponse].
+     */
+    fun <P : AcpRequest> sendRequest(method: AcpMethod.AcpRequestResponseMethod<P, *>, params: P): RequestId {
+        val id = RequestId.create("agent-${barrierIds.incrementAndGet()}")
+        val encoded = ACPJson.encodeToJsonElement(method.requestSerializer, params)
+        fireFrame(TransportFrame.Single(JsonRpcRequest(id, method.methodName, encoded)))
+        return id
+    }
+
+    /**
+     * Waits for the client's answer to the agent's request [id].
+     */
+    suspend fun awaitResponse(id: RequestId): JsonRpcResponse =
+        withTimeout(5.seconds) { responses.first { id in it }.getValue(id) }
+
+    /**
+     * Returns the client's answer to the agent's request [id], or `null` if it hasn't answered yet.
+     */
+    fun responseOrNull(id: RequestId): JsonRpcResponse? = responses.value[id]
+
     fun <T> answer(request: JsonRpcRequest, serializer: KSerializer<T>, response: T) {
         answerRaw(request, ACPJson.encodeToJsonElement(serializer, response))
     }
@@ -183,10 +205,6 @@ internal class ScriptedAgentTransport : BaseTransport() {
     suspend fun awaitHandled() {
         val id = RequestId.create("barrier-${barrierIds.incrementAndGet()}")
         fireFrame(TransportFrame.Single(JsonRpcRequest(id, MethodName("test/barrier"), null)))
-        withTimeout(5.seconds) {
-            while (responses.receive().id != id) {
-                // An answer to an earlier barrier.
-            }
-        }
+        awaitResponse(id)
     }
 }

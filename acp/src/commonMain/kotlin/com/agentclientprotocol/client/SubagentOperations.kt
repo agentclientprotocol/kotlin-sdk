@@ -16,13 +16,16 @@ import com.agentclientprotocol.model.SessionId
  * subagent session can implement it too, for the subagents that the subagent starts.
  *
  * It belongs with [ClientSubagentSession], the session object that the client builds from the returned operations,
- * and with the `subagents` client capability, which the client declares in
- * [com.agentclientprotocol.model.ClientCapabilities] to receive the announcements. Without the capability the agent
- * announces nothing, and this interface is never called.
+ * and with the `subagents` client capability, [com.agentclientprotocol.model.ClientCapabilities.subagents], which
+ * enables the announcements. The client doesn't declare the capability on its own: the application declares it in
+ * the [ClientInfo] it passes to [Client.initialize]. Without the capability the agent announces nothing, and this
+ * interface is never called.
  *
  * If the operations don't implement this interface, or [createSubagentOperations] throws, the subagent is not
- * registered in [BaseClientSession.subagents]. Its updates still reach the parent's
- * [ClientSessionOperations.notify] as plain updates.
+ * registered in [BaseClientSession.subagents], and the failure is logged. Its announcement and later
+ * `subagent_update`s still reach the parent's [ClientSessionOperations.notify] as plain updates. The subagent's own
+ * updates, and those of the subagents it announces, go to the [GlobalSessionUpdateHandler], and the agent's requests
+ * for it fail. The parent and its other subagents are not affected.
  */
 @UnstableApi
 public interface SubagentOperations {
