@@ -68,12 +68,17 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   (`deliverSessionUpdate`, claims, reaping, `failSessionHolder`, plus `getSession`, `isSessionCompleted`);
   `ClientSessionImpl` takes `onClosing`/`onClosed`; `Client.handleSessionRequest`, `createSessionElicitation`,
   `createClientSession`, `removeClosedSession`; no test file touched; `check` green; API dump untouched.
+- M3.3 deprecate `ClientSession.client` — `751a644` — WARNING-level deprecation; no usages in the repo; `check`
+  green; API dump untouched.
 
 ## Next
-- M2 review running (reviewer, commits `9bd0d26`, `6105d21`, `7ab77d2`) → `.agents/research/review-m2-agent.md`;
-  show findings to the user; fixes become new slices.
-- M3.3 programmer running: deprecate `ClientSession.client`. Then M3.4 (opus: `Protocol` response hook,
-  `SessionEvent`/`Opened`, one opening per holder, samples, release note), M3 review over `fa1f66d..HEAD`.
+- M2 review: report file `.agents/research/review-m2-agent.md` exists (0 blocker, 4 should-fix, 7 nit) but the
+  reviewer has not handed back yet; commit the file after the hand-back, show findings to the user, plan fix slices.
+- M3.4 (opus) programmer running: internal `Protocol` response hook (`OutgoingRequest.onResponse`, internal
+  `sendRequestRaw` overload, typed `Protocol.sendRequest` in `protocol/Protocol.extensions.kt`, notification-handler
+  ordering KDoc). Then M3.5 (opus): `SessionEvent`/`Opened`, `notify(SessionEvent)`, `QueuedItem`, `markOpened`,
+  `claimForOpening(replayRequested)`, one opening per holder, samples, release note. Then M3 review over
+  `fa1f66d..HEAD`.
 - Owed in M3's release note: `ToolCallContent.Session` and new `SessionUpdate` variants (exhaustive `when`),
   `ClientCapabilities` constructor/`copy` change.
 - Owed in M6: `CLAUDE.md` rules (nothing updated yet).
