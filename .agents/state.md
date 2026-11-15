@@ -169,11 +169,24 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   `SubagentTestSupport.kt`; 24 reruns clean; `check` green; no product bugs. Notes: during a prompt turn a root's
   updates go to the prompt flow, not `notify`; the spec's relay example `announce(id, parent = x) { }` does not
   compile (`parent` is the last parameter). Not covered: terminal call from a child.
+- M4.5a review nits — `1bb9dcc` — removal closes `subagentPermissions`; close KDoc; agent `registerSubagent`
+  reads the closed flag inside the update (reopen race); factory `drainHistory` wraps a `notify` CE; failed roots'
+  descendants leave the map when reaped/replaced (`replacing()`); `ensureActive()` before each pre-marker receive;
+  `createSubagentOperations` context KDoc; own-consumer detection by job ancestry (the `SubagentConsumer` element
+  is gone); deterministic timeout test; 7 regression tests failed before; `check` green (JS flake again); no API
+  change. Not done: nit 12 (unreachable from a test).
 
 ## Next
-- Discussing three M4 review decisions with the user (see Open questions). Then M4.5 fix slice (opus): findings
-  1, 2, 4 per the answers, nits 5-11, 13. Then M6b (client-side `AGENTS.md` rules, final `apiDump` review,
-  `check`), final `.agents/` reference grep.
+- WAITING on the user's confirmation of three M4 decisions (see Open questions). Then M4.5b (opus):
+  (1) a child's permission request joins the cancel race at arrival, the wait for the holder moves inside the
+  race's `answer` block; (2) `closing` flag on the root holder, set first in `closeDescendantPermissions`, read
+  in `registerChild` after `addChild`; (3) a child whose holder fails is marked closed and stays in `subagents`.
+  Note: `ClientSubagentCloseTest` "the removal answers the permission requests of a subagent announced after the
+  close started" waits for the request to reach the app in that window and must change with (2).
+  Optional in the same slice: `createClientOperations` CE unwrapped on factory paths; item lost when a consumer
+  is cancelled after its marker; `registerChild` vs `removeSessionTree` map race (read a flag inside the update).
+- Then M6b: client-side `AGENTS.md` rules (own-consumer detection is by job ancestry), spec example fix if the
+  user wants spec edits, final `apiDump` review, `check`, final `.agents/` reference grep.
 - PR description (when the user asks for a PR): release-note text from the commit body of `2f35a77` (replaces `d505b25`'s),
   plus the reminder to delete `.agents/prompt.md`, `.agents/state.md`, `.agents/research/` before merge.
 - Flaky: Kotlin/JS "Internal compiler error" in `:acp:compileTestDevelopmentExecutableKotlinJs`, twice, passes
@@ -187,6 +200,8 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
-- M4 finding 1: the user prefers "join the cancel race at arrival"; asked why it changes the spec's wording.
-- M4 finding 2: the user likes the closing flag; asked for a code design prototype of where it goes.
-- M4 nit 4: the user likes "mark it closed"; asked why nothing is ever removed from `subagents` (memory).
+- Confirm the three M4 decisions after the explanations and the closing-flag prototype given 2026-11-16:
+  (1) join the cancel race at arrival; (2) closing flag on the root holder; (3) mark a failed child closed and
+  keep it in `subagents`. The user said they prefer/like option 1 on each but asked questions first.
+- Whether to update the design spec file for the sentences the decisions made inaccurate (lines ~809, 1050,
+  1400-1401, the relay example).
