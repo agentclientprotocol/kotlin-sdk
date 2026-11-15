@@ -75,6 +75,18 @@ fun SessionUpdate.render() {
             println("Plan removed: ${this.id}")
         }
 
+        is SessionUpdate.SubagentUpdate -> {
+            println("Subagent session ${this.sessionId.value} updated")
+        }
+
+        is SessionUpdate.SessionMessage -> {
+            println("Session message ${this.messageId.value} updated")
+        }
+
+        is SessionUpdate.SessionMessageChunk -> {
+            println("Session message ${this.messageId.value}: ${this.content.render()}")
+        }
+
         is SessionUpdate.UnknownSessionUpdate -> {
             println("Unknown session update: ${this.sessionUpdateType}")
         }

@@ -117,7 +117,7 @@ private fun ToolCallContent.toV1OrNull(): V1ToolCallContent? = when (this) {
 
 private fun V1ToolCallContent.toV2OrNull(): ToolCallContent? = when (this) {
     is V1ToolCallContent.Content -> ToolCallContent.Content(content = content.toV2())
-    is V1ToolCallContent.Diff, is V1ToolCallContent.Terminal -> null
+    is V1ToolCallContent.Diff, is V1ToolCallContent.Terminal, is V1ToolCallContent.Session -> null
 }
 
 /**

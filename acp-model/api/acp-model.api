@@ -7056,6 +7056,87 @@ public final class com/agentclientprotocol/model/SessionUpdate$SessionInfoUpdate
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class com/agentclientprotocol/model/SessionUpdate$SessionMessage : com/agentclientprotocol/model/SessionUpdate {
+	public static final field Companion Lcom/agentclientprotocol/model/SessionUpdate$SessionMessage$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Q0JOWoQ ()Ljava/lang/String;
+	public final fun component2 ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun component3 ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun component4 ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun component5 ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun component6 ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun component7 ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun copy-unNxBgg (Ljava/lang/String;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;)Lcom/agentclientprotocol/model/SessionUpdate$SessionMessage;
+	public static synthetic fun copy-unNxBgg$default (Lcom/agentclientprotocol/model/SessionUpdate$SessionMessage;Ljava/lang/String;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionUpdate$SessionMessage;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContent ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun getMessageId-Q0JOWoQ ()Ljava/lang/String;
+	public final fun getRecipientMessageId ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun getRecipientSessionId ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun getSenderMessageId ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun getSenderSessionId ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun get_meta ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/SessionUpdate$SessionMessage$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/SessionUpdate$SessionMessageChunk : com/agentclientprotocol/model/SessionUpdate, com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/SessionUpdate$SessionMessageChunk$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Lcom/agentclientprotocol/model/ContentBlock;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lcom/agentclientprotocol/model/ContentBlock;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Q0JOWoQ ()Ljava/lang/String;
+	public final fun component2 ()Lcom/agentclientprotocol/model/ContentBlock;
+	public final fun component3 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy-jGZKPAM (Ljava/lang/String;Lcom/agentclientprotocol/model/ContentBlock;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/SessionUpdate$SessionMessageChunk;
+	public static synthetic fun copy-jGZKPAM$default (Lcom/agentclientprotocol/model/SessionUpdate$SessionMessageChunk;Ljava/lang/String;Lcom/agentclientprotocol/model/ContentBlock;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionUpdate$SessionMessageChunk;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContent ()Lcom/agentclientprotocol/model/ContentBlock;
+	public final fun getMessageId-Q0JOWoQ ()Ljava/lang/String;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/SessionUpdate$SessionMessageChunk$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/SessionUpdate$SubagentUpdate : com/agentclientprotocol/model/SessionUpdate {
+	public static final field Companion Lcom/agentclientprotocol/model/SessionUpdate$SubagentUpdate$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-7EW-EgU ()Ljava/lang/String;
+	public final fun component2 ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun component3 ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun component4 ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun component5 ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun component6 ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun component7 ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun component8 ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun copy-aXQG-3s (Ljava/lang/String;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;)Lcom/agentclientprotocol/model/SessionUpdate$SubagentUpdate;
+	public static synthetic fun copy-aXQG-3s$default (Lcom/agentclientprotocol/model/SessionUpdate$SubagentUpdate;Ljava/lang/String;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;Lcom/agentclientprotocol/model/MaybeUndefined;ILjava/lang/Object;)Lcom/agentclientprotocol/model/SessionUpdate$SubagentUpdate;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAdditionalDirectories ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun getCapabilities ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun getCwd ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun getDescription ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun getSessionId-7EW-EgU ()Ljava/lang/String;
+	public final fun getState ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun getTitle ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public final fun get_meta ()Lcom/agentclientprotocol/model/MaybeUndefined;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/SessionUpdate$SubagentUpdate$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class com/agentclientprotocol/model/SessionUpdate$ToolCall : com/agentclientprotocol/model/SessionUpdate, com/agentclientprotocol/model/AcpWithMeta {
 	public static final field Companion Lcom/agentclientprotocol/model/SessionUpdate$ToolCall$Companion;
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lcom/agentclientprotocol/model/ToolKind;Lcom/agentclientprotocol/model/ToolCallStatus;Ljava/util/List;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonElement;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -8047,6 +8128,36 @@ public final synthetic class com/agentclientprotocol/model/ToolCallContent$Diff$
 }
 
 public final class com/agentclientprotocol/model/ToolCallContent$Diff$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/ToolCallContent$Session : com/agentclientprotocol/model/ToolCallContent, com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/ToolCallContent$Session$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-7EW-EgU ()Ljava/lang/String;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy-HxD9utI (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/ToolCallContent$Session;
+	public static synthetic fun copy-HxD9utI$default (Lcom/agentclientprotocol/model/ToolCallContent$Session;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/ToolCallContent$Session;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSessionId-7EW-EgU ()Ljava/lang/String;
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/ToolCallContent$Session$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/ToolCallContent$Session$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/ToolCallContent$Session;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/ToolCallContent$Session;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/ToolCallContent$Session$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 

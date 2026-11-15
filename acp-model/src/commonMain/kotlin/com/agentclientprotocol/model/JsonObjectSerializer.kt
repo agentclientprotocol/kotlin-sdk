@@ -6,6 +6,7 @@ import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.nullable
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
@@ -78,3 +79,28 @@ internal fun <T : Any> JsonObject.decodeOrNull(
  * The string value of this element, or `null` when it is not a JSON string.
  */
 internal fun JsonElement?.stringOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+/**
+ * Serializer for an optional `_meta` property that decodes a value that is not a JSON object as `null`.
+ *
+ * Mirrors Rust's `DefaultOnError` on `Meta` for models whose other fields use generated serializers.
+ */
+internal object LenientMetaSerializer : KSerializer<JsonElement?> {
+    override val descriptor: SerialDescriptor = JsonElement.serializer().nullable.descriptor
+
+    override fun serialize(encoder: Encoder, value: JsonElement?) {
+        if (value == null) {
+            encoder.encodeNull()
+            return
+        }
+        val jsonEncoder = encoder as? JsonEncoder
+            ?: throw SerializationException("_meta supports only JSON encoding")
+        jsonEncoder.encodeJsonElement(value)
+    }
+
+    override fun deserialize(decoder: Decoder): JsonElement? {
+        val jsonDecoder = decoder as? JsonDecoder
+            ?: throw SerializationException("_meta supports only JSON decoding")
+        return jsonDecoder.decodeJsonElement() as? JsonObject
+    }
+}

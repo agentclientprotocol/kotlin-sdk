@@ -2,6 +2,7 @@
 
 package com.agentclientprotocol.model
 
+import com.agentclientprotocol.annotations.UnstableApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
@@ -96,6 +97,32 @@ public sealed class ToolCallContent {
     @SerialName("terminal")
     public data class Terminal(
         val terminalId: String,
+        override val _meta: JsonElement? = null
+    ) : ToolCallContent(), AcpWithMeta
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * A display-only reference to a session that this tool call operates on, such as a child session it
+     * spawned or waits on.
+     *
+     * In v1 the agent may send it only when the client advertised the `subagents` client capability. The
+     * referenced session must already be known to the client, through session setup or an announcement.
+     * The reference grants no controls and says nothing about the referenced session's work.
+     *
+     * Adding this variant is a source-breaking change for an exhaustive `when` over [ToolCallContent]: it
+     * needs a branch for [Session] (with an opt-in) or an `else`.
+     *
+     * @property _meta extension metadata; a value that is not a JSON object decodes as `null`
+     */
+    @UnstableApi
+    @Serializable
+    @SerialName("session")
+    public data class Session(
+        val sessionId: SessionId,
+        @Serializable(with = LenientMetaSerializer::class)
         override val _meta: JsonElement? = null
     ) : ToolCallContent(), AcpWithMeta
 }

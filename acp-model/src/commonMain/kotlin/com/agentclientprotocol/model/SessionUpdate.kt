@@ -271,6 +271,111 @@ public sealed class SessionUpdate {
     ) : SessionUpdate(), AcpWithMeta
 
     /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * A patch of a subagent session's state, sent by the agent as `subagent_update`.
+     *
+     * Every field except [sessionId] is a [MaybeUndefined] patch: omitted leaves the stored value unchanged,
+     * `null` clears it, and a value replaces it. [capabilities] replaces the stored capabilities as a whole,
+     * so `{}` and `null` are different patches. The SDK does not validate or rewrite patch contents.
+     *
+     * Decoding is lenient for [title], [description], [capabilities], [state] and [_meta]: a malformed value
+     * decodes as [MaybeUndefined.Undefined]. [cwd] and [additionalDirectories] are strict, because the client
+     * acts on them: a malformed value fails the whole update.
+     *
+     * This type does not implement [AcpWithMeta], because [_meta] is a patch field.
+     *
+     * @property sessionId the subagent session this update describes
+     * @property title human-readable name of the subagent session
+     * @property description short description of what the subagent session is doing
+     * @property capabilities controls the client may use on the session; replaced as a whole
+     * @property state the work state of the session; a malformed known state decodes as
+     * [MaybeUndefined.Undefined], never as [StateUpdate.Other]
+     * @property cwd absolute working directory of the session
+     * @property additionalDirectories absolute additional roots of the session
+     * @property _meta extension metadata; a value that is not a JSON object decodes as
+     * [MaybeUndefined.Undefined]
+     */
+    @UnstableApi
+    @Serializable(with = SubagentUpdateSerializer::class)
+    public data class SubagentUpdate(
+        val sessionId: SessionId,
+        val title: MaybeUndefined<String> = MaybeUndefined.Undefined,
+        val description: MaybeUndefined<String> = MaybeUndefined.Undefined,
+        val capabilities: MaybeUndefined<SubagentSessionCapabilities> = MaybeUndefined.Undefined,
+        val state: MaybeUndefined<StateUpdate> = MaybeUndefined.Undefined,
+        val cwd: MaybeUndefined<String> = MaybeUndefined.Undefined,
+        val additionalDirectories: MaybeUndefined<List<String>> = MaybeUndefined.Undefined,
+        val _meta: MaybeUndefined<JsonElement> = MaybeUndefined.Undefined,
+    ) : SessionUpdate()
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * A message exchanged between sessions, sent as `session_message`. Needs the `subagents` client
+     * capability.
+     *
+     * Messages are keyed by [messageId]: repeated updates with the same ID patch the stored message. Every
+     * other field is a [MaybeUndefined] patch: omitted leaves the stored value unchanged, `null` clears it,
+     * and a value replaces it. For [content], `[]` clears it too, but stays distinct from `null` on the wire
+     * and round-trips as it came in. A [content] value replaces everything accumulated for the message so
+     * far, including chunks of [SessionMessageChunk].
+     *
+     * Decoding is lenient: a malformed patch field decodes as [MaybeUndefined.Undefined], an unparseable
+     * content block is skipped, and a content array whose items are all invalid decodes as `[]`.
+     *
+     * This type does not implement [AcpWithMeta], because [_meta] is a patch field.
+     *
+     * @property messageId identifies the message across updates and chunks
+     * @property senderSessionId the session that sent the message
+     * @property recipientSessionId the session the message is addressed to
+     * @property senderMessageId the message in the sender's session that this one corresponds to
+     * @property recipientMessageId the message in the recipient's session that this one corresponds to
+     * @property content complete replacement content of the message
+     * @property _meta extension metadata; a value that is not a JSON object decodes as
+     * [MaybeUndefined.Undefined]
+     */
+    @UnstableApi
+    @Serializable(with = SessionMessageSerializer::class)
+    public data class SessionMessage(
+        val messageId: MessageId,
+        val senderSessionId: MaybeUndefined<SessionId> = MaybeUndefined.Undefined,
+        val recipientSessionId: MaybeUndefined<SessionId> = MaybeUndefined.Undefined,
+        val senderMessageId: MaybeUndefined<MessageId> = MaybeUndefined.Undefined,
+        val recipientMessageId: MaybeUndefined<MessageId> = MaybeUndefined.Undefined,
+        val content: MaybeUndefined<List<ContentBlock>> = MaybeUndefined.Undefined,
+        val _meta: MaybeUndefined<JsonElement> = MaybeUndefined.Undefined,
+    ) : SessionUpdate()
+
+    /**
+     * **UNSTABLE**
+     *
+     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     *
+     * A chunk of a message exchanged between sessions, sent as `session_message_chunk`. Needs the
+     * `subagents` client capability.
+     *
+     * The chunk appends [content] to the message with the same [messageId]. It carries no participant fields:
+     * any such field on the wire is ignored.
+     *
+     * @property messageId the message the chunk belongs to
+     * @property content the appended content block
+     * @property _meta extension metadata; omitted, `null` and values that are not a JSON object all decode
+     * as `null`
+     */
+    @UnstableApi
+    @Serializable(with = SessionMessageChunkSerializer::class)
+    public data class SessionMessageChunk(
+        val messageId: MessageId,
+        val content: ContentBlock,
+        override val _meta: JsonElement? = null,
+    ) : SessionUpdate(), AcpWithMeta
+
+    /**
      * Unknown session update for forward compatibility.
      * 
      * Captures any session update type not recognized by this SDK version.
@@ -391,6 +496,27 @@ internal object SessionUpdateSerializer : KSerializer<SessionUpdate> {
                     base.forEach { (k, v) -> put(k, v) }
                 }
             }
+            is SessionUpdate.SubagentUpdate -> {
+                val base = ACPJson.encodeToJsonElement(SessionUpdate.SubagentUpdate.serializer(), value).jsonObject
+                buildJsonObject {
+                    put(SESSION_UPDATE_DISCRIMINATOR, "subagent_update")
+                    base.forEach { (k, v) -> put(k, v) }
+                }
+            }
+            is SessionUpdate.SessionMessage -> {
+                val base = ACPJson.encodeToJsonElement(SessionUpdate.SessionMessage.serializer(), value).jsonObject
+                buildJsonObject {
+                    put(SESSION_UPDATE_DISCRIMINATOR, "session_message")
+                    base.forEach { (k, v) -> put(k, v) }
+                }
+            }
+            is SessionUpdate.SessionMessageChunk -> {
+                val base = ACPJson.encodeToJsonElement(SessionUpdate.SessionMessageChunk.serializer(), value).jsonObject
+                buildJsonObject {
+                    put(SESSION_UPDATE_DISCRIMINATOR, "session_message_chunk")
+                    base.forEach { (k, v) -> put(k, v) }
+                }
+            }
             is SessionUpdate.UnknownSessionUpdate -> {
                 // For unknown, use the stored type and raw JSON
                 buildJsonObject {
@@ -461,6 +587,18 @@ internal object SessionUpdateSerializer : KSerializer<SessionUpdate> {
             )
             "usage_update" -> ACPJson.decodeFromJsonElement(
                 SessionUpdate.UsageUpdate.serializer(),
+                jsonObject
+            )
+            "subagent_update" -> ACPJson.decodeFromJsonElement(
+                SessionUpdate.SubagentUpdate.serializer(),
+                jsonObject
+            )
+            "session_message" -> ACPJson.decodeFromJsonElement(
+                SessionUpdate.SessionMessage.serializer(),
+                jsonObject
+            )
+            "session_message_chunk" -> ACPJson.decodeFromJsonElement(
+                SessionUpdate.SessionMessageChunk.serializer(),
                 jsonObject
             )
             else -> {
