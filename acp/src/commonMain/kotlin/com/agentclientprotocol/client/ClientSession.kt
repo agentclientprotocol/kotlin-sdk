@@ -13,6 +13,17 @@ public interface ClientSession {
     public val sessionId: SessionId
     public val parameters: SessionCreationParameters
 
+    /**
+     * The [Client] this session was opened with.
+     *
+     * Deprecated: the application already has the [Client] it opened the session with, and keeping a reference from
+     * the session back to it adds a cycle. v2's session has no such member.
+     */
+    @Deprecated(
+        message = "Keep the Client you opened the session with instead of reading it from the session. " +
+                "Will be removed.",
+        level = DeprecationLevel.WARNING,
+    )
     public val client: Client
     public val operations: ClientSessionOperations
 

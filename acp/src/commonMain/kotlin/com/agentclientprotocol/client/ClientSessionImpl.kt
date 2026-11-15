@@ -24,6 +24,8 @@ import kotlin.coroutines.CoroutineContext
 private val logger = KotlinLogging.logger {}
 
 internal class ClientSessionImpl(
+    // Kept only to implement the deprecated getter.
+    @Suppress("OVERRIDE_DEPRECATION")
     override val client: Client,
     override val sessionId: SessionId,
     override val parameters: SessionCreationParameters,
