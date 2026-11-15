@@ -106,11 +106,21 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   (`Protocol.extensions.kt`, runs when the transport accepts a success response; `endReplay()` moved there);
   N3 fixed without a regression test; N4 `discardFailedLoad` also removes the root; N5, N6; 78 tests; `check`
   green; no API change. Not yet reviewed: include `5bca6d3` in the M4 review brief.
+- M4.1 client types — `57b948c` — `BaseClientSession` (+ `CoroutineContext.baseClientSession`),
+  `ClientSubagentSession(sessionId, parentSessionId, operations, protocol, parentCwd, parentAdditionalDirectories,
+  children: SubagentList)` with `applyPatch(update, parentOpened)`, `onParentOpened(promote)`, `markClosed()`;
+  `SubagentOperations`; `SubagentList`; `BaseClientSessionRuntime.kt` extensions (`deliverUpdate`,
+  `answerPermissionRequest`, `executeWithSession`, `asContextElement`); holder has `subagents`, `rootParameters`,
+  `claimForOpening(replayRequested, parameters)`; 25 tests; `check` green; `:acp` dump reviewed. TODO seams left
+  for `SubagentPendingPermissions` in the child constructor, `cancel()` and the child permission branch.
 
 ## Next
-- M4.1 programmer running: client types (`BaseClientSession`, `ClientSubagentSession`, `SubagentOperations`,
-  context accessor, holder typed to `BaseClientSession`). Then M4.2 (opus) registration, sorting, setup, delivery;
-  M4.3 (opus) effective grants and `SubagentPendingPermissions`; M4.4 (opus) close and subtree removal; M4 review.
+- M4.3a programmer running (reordered ahead of M4.2, which waits on the `NonCancellable` answer):
+  `SubagentPendingPermissions` class with unit tests, hooked into `ClientSubagentSession.cancel()` and the child
+  branch of `answerPermissionRequest`. Its calls from the sorting (`onState` at arrival) and from `markOpened`
+  (`onOpened`) are wired in M4.2.
+- M4.2 (opus) registration, sorting, setup, delivery, child consumers, `Opened(null)`, wiring of
+  `SubagentPendingPermissions`; M4.4 (opus) close and subtree removal; M4 review (include `5bca6d3`).
 - M3.6 fix slice after the user answers the `NonCancellable` question: should-fix 1-3, release-note wording,
   block comments. Must land before M4.2, which builds on `completeOpening`.
 - Agent S3 fix slice after the user answers the reopen question.
