@@ -40,13 +40,31 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 - M1.3 session update variants — `7acd10d` — `SubagentUpdate`, `SessionMessage`, `SessionMessageChunk`,
   `ToolCallContent.Session`; v1→v2 `toV2()` throws `removedV1EnumVariant` for the three new updates; sample
   `render()` got print-only branches; `check` green. M1 (model layer) complete: range `a0dcdc5..7acd10d`.
+- M1 review — `.agents/research/review-m1-model.md` — no blockers; nits 2-4 (untested conversion branches, `//`
+  comment block, stale `MaybeUndefined` KDoc) go to fix slice M1.4; nit 1 (`V1ClientCapabilities.toV2()` drops
+  `subagents`) is a v2 follow-up; lenient-`ACPJson` and strict-`Usage` nits accepted/pre-existing.
+- M2.1 agent announce and routing — `9bd0d26` — `agent/AgentSubagents.kt` (public API), `agent/SubagentWrapper.kt`
+  (`SessionSubagents`, `SubagentWrapper`), `ChatSessionWrapper` supertype and `_subagents` table in `Agent.kt`,
+  root checks in `RemoteClientSessionOperations`, `Protocol.newConnectionScope`; 35 tests; `check` green.
+  Seams: `SubagentWrapper.isCancelGranted`/`.session`/`onFeedEnd(failure)`/`eventsState`, `Agent.subagentOrNull`,
+  `SessionWrapper.subtreeScope`, `Agent.unregisterSubagent`. Public KDoc already states the M2.2/M2.3 contract.
+  Programmer choices for the M2 reviewer: corrective `SubagentUpdate` sent inline (not launched); per-child
+  atomicfu lock around sends; lazy subtree scope; `.subagents` throws ISE outside a session; `announce` throws ISE
+  when its collection is cancelled before announcing.
 
 ## Next
-- M1 review running (reviewer, range `a0dcdc5..7acd10d`); show findings to the user; fixes become new slices.
-- M2.1 (agent: `Protocol.newConnectionScope`, public API, `announce`, routing, root `notify` checks) programmer
-  running, model `opus`. Then M2.2, M2.3, then the M2 review.
-- Owed later: release note for the source-breaking `ToolCallContent.Session` addition (goes with the M3 release note).
+- M1.4 fix slice (review nits 2-4) programmer running. Then M2.2 (opus): `session/cancel` routing, other methods
+  rejected on child ids, feed-end `unknown` rule. Then M2.3 (opus): subtree cleanup, replay window, `forkSession`
+  KDoc. Then the M2 review over `63f54c5..HEAD` (excluding the M1.4 commit).
+- Owed in M3's release note: `ToolCallContent.Session` and new `SessionUpdate` variants (exhaustive `when`),
+  `ClientCapabilities` constructor/`copy` change.
+- Owed in M6: `CLAUDE.md` rules (nothing updated yet).
+- Follow-ups outside this goal: `V1ClientCapabilities.toV2()` and `subagents`; `PromptResponse.usage` failing the
+  whole response on one bad field; v2 string patch fields under lenient `ACPJson`.
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
-(none)
+- M2.1: the factory throws a `CancellationException` AFTER the announcement while the caller is still active.
+  Implemented: rethrown unchanged (spec: "rethrows the factory's exception unchanged"). Alternative: convert to
+  `IllegalStateException` as in the nothing-sent case, so a foreign CE cannot tear down the caller's scope. Asked
+  2026-11-15; work continues with the implemented behaviour; a change would be a small fix slice.
