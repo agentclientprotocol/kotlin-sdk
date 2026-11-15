@@ -335,6 +335,9 @@ public class Client(
     /**
      * Creates a new session with specified [sessionParameters].
      *
+     * The operations get [SessionEvent.Opened] and the buffered updates as [ClientOperationsFactory] describes, which
+     * also says when the call fails and what happens to the session's updates then.
+     *
      * @param sessionParameters parameters for creating a new session
      * @param operationsFactory a factory for creating [com.agentclientprotocol.common.ClientSessionOperations] for the new session.
      * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
@@ -360,6 +363,9 @@ public class Client(
 
     /**
      * Load an existing session with specified [sessionId] and [sessionParameters].
+     *
+     * The operations get [SessionEvent.Opened] and the buffered updates as [ClientOperationsFactory] describes, which
+     * also says when the call fails and what happens to the session's updates then.
      *
      * @param sessionId the id of the existing session to load
      * @param sessionParameters parameters for creating a new session
@@ -387,10 +393,12 @@ public class Client(
      * this call to return. The mode and config options of the returned session are the same as with the
      * [ClientOperationsFactory] overload.
      *
-     * If the agent answers with an error, `notify` throws before the marker, or the caller is cancelled before the
-     * marker is delivered, the load fails and [operations] never get the marker. The updates that [operations] did
-     * not receive yet, and all later updates for [sessionId], go to [globalSessionUpdateHandler]. Once the marker is
-     * delivered, the load succeeds: a later failure of `notify` is logged, as for any live update.
+     * The load fails if the agent answers with an error, or if the caller is cancelled or `notify` throws before
+     * this call returns. A load that fails before the answer arrives delivers no marker to [operations]. Once the
+     * answer has arrived, the marker may have been delivered even though the load then fails, so treat a failed
+     * call as a failed load. The updates that [operations] did not receive yet, and all later updates for
+     * [sessionId], then go to [globalSessionUpdateHandler], and [sessionId] can be loaded again. After this call has
+     * returned, a failure of `notify` is logged, as for any live update.
      *
      * @param sessionId the id of the existing session to load
      * @param sessionParameters parameters for loading the session
@@ -454,6 +462,9 @@ public class Client(
      *
      * Forks an existing session, creating a new session based on the existing session's context.
      *
+     * The operations get [SessionEvent.Opened] and the buffered updates as [ClientOperationsFactory] describes, which
+     * also says when the call fails and what happens to the session's updates then.
+     *
      * @param sessionId the id of the session to fork
      * @param sessionParameters parameters for the forked session
      * @param operationsFactory a factory for creating [com.agentclientprotocol.common.ClientSessionOperations] for the new session.
@@ -486,6 +497,9 @@ public class Client(
      * This capability is not part of the spec yet, and may be removed or changed at any point.
      *
      * Resumes an existing session without replaying message history.
+     *
+     * The operations get [SessionEvent.Opened] and the buffered updates as [ClientOperationsFactory] describes, which
+     * also says when the call fails and what happens to the session's updates then.
      *
      * This method is only available if the agent advertises the `session.resume` capability.
      *
@@ -576,7 +590,8 @@ public class Client(
 
     /**
      * Creates the session with [factory] after the answer, and delivers the updates buffered in [sessionHolder] to it:
-     * the history, then the marker, then the live updates, see [ClientSessionHolder.completeOpening].
+     * the history, then the marker, then the live updates, see [ClientSessionHolder.completeOpening]. If the factory
+     * or the delivery fails, or the caller is cancelled, the holder fails, even if the operations got the marker.
      */
     private suspend fun createSession(
         sessionHolder: ClientSessionHolder,
@@ -585,18 +600,18 @@ public class Client(
         sessionResponse: AcpCreatedSessionResponse,
         factory: ClientOperationsFactory,
     ): ClientSession {
-        val (session, opened) = runCatching {
+        return runCatching {
             val operations = factory.createClientOperations(sessionId, sessionResponse)
             val session = createClientSession(sessionHolder, sessionId, sessionParameters, operations, sessionResponse)
-            session to sessionHolder.drainHistory(session)
+            val opened = sessionHolder.drainHistory(session)
+            sessionHolder.completeOpening(session, opened)
+            session
         }.getOrElse { throwable ->
             // throw IllegalStateException to pass it as INTERNAL_ERROR to the other side (see in Protocol)
             sessions.failSessionHolder(sessionId, sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             // cleanup of this sessionId entry will be done in finally of withInitializingSession
             throw throwable
         }
-        sessionHolder.completeOpening(session, opened)
-        return session
     }
 
     /**
@@ -677,8 +692,9 @@ public class Client(
      * The holder is claimed before [request] sends anything, and one consumer hands its queue to [operations] until
      * the marker that the response hook of [request] adds. The consumer stops at the marker, and only after [request]
      * has returned is the marker delivered, so a call that fails, even by a cancellation that races with the answer,
-     * delivers none. If the opening fails, also in [ClientSessionOperations.notify] or by a cancellation, the holder
-     * fails, and the updates still in its queue go to [globalSessionUpdateHandler].
+     * delivers none. If the opening fails, also in [ClientSessionOperations.notify] or by a cancellation, before or
+     * after the marker is delivered, the holder fails, and the updates still in its queue go to
+     * [globalSessionUpdateHandler].
      */
     private suspend fun withEarlyInitializingSession(
         sessionId: SessionId,
@@ -689,8 +705,8 @@ public class Client(
     ): ClientSession = sessions.withInitializingSession {
         val sessionHolder = sessions.claimSessionHolder(sessionId, replayRequested, sessionParameters)
 
-        val (session, opened) = try {
-            coroutineScope {
+        try {
+            val (session, opened) = coroutineScope {
                 val earlyDelivery = async {
                     try {
                         sessionHolder.deliverEarly(operations)
@@ -709,13 +725,13 @@ public class Client(
                 sessionHolder.applyEarlyState(session)
                 session to opened
             }
+            sessionHolder.completeOpening(session, opened)
+            session
         } catch (throwable: Throwable) {
             // The cleanup of this sessionId entry is done in finally of withInitializingSession.
             sessions.failSessionHolder(sessionId, sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             throw throwable
         }
-        sessionHolder.completeOpening(session, opened)
-        session
     }
 
     private fun loadSessionRequest(sessionId: SessionId, sessionParameters: SessionCreationParameters): LoadSessionRequest =

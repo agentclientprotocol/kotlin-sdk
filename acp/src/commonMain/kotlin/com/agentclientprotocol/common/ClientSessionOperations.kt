@@ -36,10 +36,15 @@ public interface ClientSessionOperations : FileSystemOperations, TerminalOperati
     /**
      * Handles an event of the session's stream that is not bound to any prompt.
      *
-     * On the client, this receives the session's updates as [SessionEvent.Update] and, exactly once, the
-     * [SessionEvent.Opened] marker with the answer of the opening call. Updates before the marker came before that
-     * answer, for example the history that `session/load` replays; updates after it are live. If the opening call
-     * fails, the marker never arrives.
+     * On the client, this receives the session's updates as [SessionEvent.Update], and the [SessionEvent.Opened]
+     * marker with the answer of the opening call, exactly once if the opening succeeds. Updates before the marker
+     * came before that answer, for example the history that `session/load` replays; updates after it are live.
+     *
+     * Until the opening call returns, the call delivers these events itself: cancelling the caller cancels
+     * `notify`, and a cancellation of the caller or a failure of `notify` fails the opening. If the call fails
+     * before the agent's answer arrives, the marker never arrives. Once the answer has arrived, the marker may have
+     * been delivered even though the call then fails, so treat a failed opening call as a failed opening. After the
+     * call has returned, a failure of `notify` is logged, as for any live update.
      *
      * On the agent, this sends a [SessionEvent.Update] to the client. Only the client runtime delivers
      * [SessionEvent.Opened], so the agent's implementation throws [IllegalStateException] for it. Agent code usually

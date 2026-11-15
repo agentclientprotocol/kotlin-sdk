@@ -48,6 +48,14 @@ public typealias ClientSupport = ClientOperationsFactory
  * This is necessary for `session/new` and `session/fork`, because the client learns the session id only from the
  * answer.
  *
+ * The opening call fails if the agent answers with an error, or if the factory throws, the caller is cancelled, or
+ * `notify` throws before the call returns. A call that fails before the answer arrives doesn't call the factory, so
+ * nothing gets [com.agentclientprotocol.common.SessionEvent.Opened]. Once the answer has arrived, `Opened` may have
+ * been delivered even though the call then fails, so treat a failed call as a failed opening. The session's updates
+ * that the operations did not receive yet, and its later ones, then go to the client's
+ * [GlobalSessionUpdateHandler], and the session id can be opened again. After the call has returned, a failure of
+ * `notify` is logged, as for any live update.
+ *
  * For `session/load` and `session/resume`, the client knows the session id before the request. An agent can replay
  * the whole history before it answers. If the client has the operations object before the request, use the
  * [Client.loadSession] or [Client.resumeSession] overload with a [ClientSessionOperations] argument instead. It

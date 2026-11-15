@@ -11,13 +11,14 @@ import com.agentclientprotocol.model.AcpCreatedSessionResponse
 import com.agentclientprotocol.model.SessionUpdate
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.JsonElement
 
 private val logger = KotlinLogging.logger {}
@@ -224,31 +225,34 @@ internal class ClientSessionHolder {
      * Delivers [opened] and the updates queued after it to [session], then makes [session] the receiver of all
      * later updates.
      *
-     * Must run after the opening call succeeded and its consumer, [deliverEarly] or [drainHistory], returned
-     * [opened]. The operations then know that the session is open, so from here on this can't fail the opening:
-     * it runs to the end even if the caller is cancelled, and a failure of the operations for one event is logged,
-     * as in the synchronous delivery after the switch.
+     * Must run after the request of the opening call has returned, and after its consumer, [deliverEarly] or
+     * [drainHistory], returned [opened]. The operations run in the caller's coroutine, so this can be cancelled. If
+     * the caller is cancelled or the operations throw, this throws and the opening fails, even though the operations
+     * may already have the marker: the caller must then fail the holder with [failAndDrainQueue], which hands the
+     * rest of the queue on. A cancellation that the operations throw while the caller is active becomes an
+     * [IllegalStateException], so the caller sees a failed opening rather than a cancellation of its own.
      */
     suspend fun completeOpening(session: ClientSessionImpl, opened: QueuedItem.Opened) {
-        withContext(NonCancellable) {
-            deliverLive(session) { session.deliverOpened(opened.response) }
-            queue.close()
-            for (item in queue) {
-                when (item) {
-                    is QueuedItem.Update -> deliverLive(session) { session.deliverUpdate(item.update, item.meta) }
-                    is QueuedItem.Opened -> logger.error { "Session ${session.sessionId} got a second opening marker" }
-                }
+        deliverOpening(session) { session.deliverOpened(opened.response) }
+        queue.close()
+        for (item in queue) {
+            when (item) {
+                is QueuedItem.Update -> deliverOpening(session) { session.deliverUpdate(item.update, item.meta) }
+                is QueuedItem.Opened -> logger.error { "Session ${session.sessionId} got a second opening marker" }
             }
         }
+
+        // A cancellation that came after the last delivery still fails the opening, before the session is published.
+        currentCoroutineContext().ensureActive()
         check(sessionDeferred.complete(session)) { "Session ${session.sessionId} is already complete" }
     }
 
-    private suspend fun deliverLive(session: BaseClientSession, block: suspend () -> Unit) {
+    private suspend fun deliverOpening(session: BaseClientSession, block: suspend () -> Unit) {
         try {
             session.executeWithSession(block)
-        } catch (t: Throwable) {
-            // Runs in NonCancellable, so a cancellation here comes from the operations themselves, like a timeout.
-            logger.error(t) { "Delivery of a session event to session ${session.sessionId} failed" }
+        } catch (ce: CancellationException) {
+            currentCoroutineContext().ensureActive()
+            throw IllegalStateException("ClientSessionOperations.notify was cancelled", ce)
         }
     }
 

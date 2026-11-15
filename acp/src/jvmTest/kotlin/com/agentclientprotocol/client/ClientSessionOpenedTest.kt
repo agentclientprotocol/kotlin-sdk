@@ -18,16 +18,24 @@ import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.rpc.MethodName
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonPrimitive
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -35,8 +43,10 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -431,7 +441,7 @@ class ClientSessionOpenedTest {
     }
 
     @Test
-    fun `a call cancelled while the marker is delivered still opens the session`() = withClient { client, agent ->
+    fun `a caller cancelled while the marker is delivered fails the opening`() = withUnconnectedRecorder { client, agent, unconnected ->
         for (opening in allOpenings) {
             val sessionId = SessionId("cancel-at-marker-$opening")
             val entered = CompletableDeferred<Unit>()
@@ -440,44 +450,183 @@ class ClientSessionOpenedTest {
                 entered.complete(Unit)
                 release.await()
             })
-            val returned = CompletableDeferred<ClientSession>()
-            val open = async { returned.complete(opening.open(client, sessionId, parameters, operations)) }
-            val request = agent.receiveRequest(opening.method)
-            opening.answer(agent, request, sessionId, "$opening")
+            val open = async { opening.open(client, sessionId, parameters, operations) }
+            opening.answer(agent, agent.receiveRequest(opening.method), sessionId, "$opening")
+            // The queue stays open while the marker is delivered, so this update goes into it behind the marker.
+            val queued = text("queued-$opening")
+            agent.sendUpdate(sessionId, queued)
+            agent.awaitHandled()
             entered.await()
 
             open.cancel()
             release.complete(Unit)
             open.join()
-            val session = withTimeout(5.seconds) { returned.await() }
-            assertSame(session, client.getSession(sessionId), "$opening")
+            assertTrue(open.isCancelled, "$opening must end cancelled")
+            unconnected.awaitUpdate(queued)
+            assertTrue(operations.updates.value.isEmpty(), "$opening: the operations of the failed opening get no update")
 
-            val live = text("live")
-            agent.sendUpdate(sessionId, live)
-            operations.awaitUpdate(live)
-            assertEquals(listOf(RecordingOperations.OPENED, live), operations.events.value, "$opening")
+            assertHolderFailed(opening, client, agent, unconnected, sessionId)
         }
     }
 
     @Test
-    fun `a notify that fails for the marker leaves the session open`() = withClient { client, agent ->
+    fun `a caller that times out while the marker is delivered fails the opening`() = withUnconnectedRecorder { client, agent, unconnected ->
         for (opening in allOpenings) {
-            val sessionId = SessionId("failing-marker-$opening")
-            val operations = RecordingOperations(beforeOpened = { error("notify failed for the marker") })
-            val open = async { opening.open(client, sessionId, parameters, operations) }
+            val sessionId = SessionId("timeout-at-marker-$opening")
+            val entered = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val operations = RecordingOperations(beforeOpened = {
+                entered.complete(Unit)
+                release.await()
+            })
+            val open = async { runCatching { withTimeout(OPENING_TIMEOUT) { opening.open(client, sessionId, parameters, operations) } } }
             opening.answer(agent, agent.receiveRequest(opening.method), sessionId, "$opening")
-            assertSame(open.await(), client.getSession(sessionId), "$opening")
+            select {
+                entered.onAwait {}
+                open.onAwait {}
+            }
+            assertTrue(entered.isCompleted, "$opening: the timeout must fire while the marker is delivered, not before")
 
-            val live = text("live")
-            agent.sendUpdate(sessionId, live)
-            operations.awaitUpdate(live)
-            assertEquals(listOf<SessionUpdate>(live), operations.updates.value, "$opening")
+            // Only the timeout ends the delivery. The bound and the release keep a regression from hanging the test.
+            withTimeoutOrNull(5.seconds) { open.join() }
+            release.complete(Unit)
+            val failure = open.await().exceptionOrNull()
+            assertTrue(failure is TimeoutCancellationException, "$opening must time out, got $failure")
+
+            assertHolderFailed(opening, client, agent, unconnected, sessionId)
         }
     }
 
+    @Test
+    fun `a caller cancelled while an update queued after the marker is delivered fails the opening`() =
+        withUnconnectedRecorder { client, agent, unconnected ->
+            for (opening in allOpenings) {
+                val sessionId = SessionId("cancel-after-marker-$opening")
+                val queued = text("queued-$opening")
+                val behind = text("behind-$opening")
+                val releaseOpened = CompletableDeferred<Unit>()
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                val operations = RecordingOperations(
+                    beforeOpened = { releaseOpened.await() },
+                    beforeEach = { update ->
+                        if (update == queued) {
+                            entered.complete(Unit)
+                            release.await()
+                        }
+                    },
+                )
+                val open = async { opening.open(client, sessionId, parameters, operations) }
+                opening.answer(agent, agent.receiveRequest(opening.method), sessionId, "$opening")
+                agent.sendUpdate(sessionId, queued)
+                agent.sendUpdate(sessionId, behind)
+                agent.awaitHandled()
+                releaseOpened.complete(Unit)
+                entered.await()
+
+                // The queue is closed now, so this update takes the late path and waits for the opening's outcome.
+                val late = text("late-$opening")
+                agent.sendUpdate(sessionId, late)
+                agent.awaitHandled()
+
+                open.cancel()
+                release.complete(Unit)
+                open.join()
+                assertTrue(open.isCancelled, "$opening must end cancelled")
+                unconnected.awaitUpdate(late)
+                assertEquals(listOf<SessionUpdate>(behind, late), unconnected.updates.value.takeLast(2), "$opening")
+                assertEquals(listOf<Any>(RecordingOperations.OPENED), operations.events.value, "$opening")
+
+                assertHolderFailed(opening, client, agent, unconnected, sessionId)
+            }
+        }
+
+    @Test
+    fun `a notify that suspends forever does not keep the caller's scope from being cancelled`() =
+        withUnconnectedRecorder { client, agent, unconnected ->
+            for (opening in allOpenings) {
+                val sessionId = SessionId("hanging-marker-$opening")
+                val entered = CompletableDeferred<Unit>()
+                // Like a send to a UI channel whose consumer died together with the caller's scope.
+                val operations = RecordingOperations(beforeOpened = {
+                    entered.complete(Unit)
+                    awaitCancellation()
+                })
+                val callerScope = CoroutineScope(Dispatchers.Default + Job())
+                callerScope.launch { opening.open(client, sessionId, parameters, operations) }
+                opening.answer(agent, agent.receiveRequest(opening.method), sessionId, "$opening")
+                entered.await()
+
+                callerScope.cancel()
+                // The bound only keeps a regression from hanging the test.
+                val joined = withTimeoutOrNull(5.seconds) { callerScope.coroutineContext.job.join() }
+                assertNotNull(joined, "$opening: cancelling the caller's scope must end the opening")
+
+                assertHolderFailed(opening, client, agent, unconnected, sessionId)
+            }
+        }
+
+    @Test
+    fun `a notify that throws for the marker fails the opening`() = withUnconnectedRecorder { client, agent, unconnected ->
+        for (opening in allOpenings) {
+            val sessionId = SessionId("failing-marker-$opening")
+            val operations = RecordingOperations(beforeOpened = { error("notify failed for the marker") })
+            val open = async { runCatching { opening.open(client, sessionId, parameters, operations) } }
+            opening.answer(agent, agent.receiveRequest(opening.method), sessionId, "$opening")
+            val queued = text("queued-$opening")
+            agent.sendUpdate(sessionId, queued)
+
+            // The coroutines debug agent may rethrow a copy of the failure, so compare the message.
+            assertEquals("notify failed for the marker", open.await().exceptionOrNull()?.message, "$opening")
+            unconnected.awaitUpdate(queued)
+            assertTrue(operations.events.value.isEmpty(), "$opening: the operations of the failed opening get no event")
+
+            assertHolderFailed(opening, client, agent, unconnected, sessionId)
+        }
+    }
+
+    @Test
+    fun `a notify that throws for an update queued after the marker fails the opening`() =
+        withUnconnectedRecorder { client, agent, unconnected ->
+            /*
+             * A cancellation that the operations throw while the caller is active, as from a timeout inside a UI
+             * callback, fails the opening like any other failure, instead of looking like a cancellation of the caller.
+             */
+            val failures = listOf(
+                Triple("failure", { throw IllegalStateException("notify failed") }, "notify failed"),
+                Triple("cancellation", { throw CancellationException("notify cancelled itself") }, "ClientSessionOperations.notify was cancelled"),
+            )
+            for (opening in allOpenings) {
+                for ((kind, fail, message) in failures) {
+                    val sessionId = SessionId("failing-after-marker-$kind-$opening")
+                    val queued = text("queued-$kind-$opening")
+                    val behind = text("behind-$kind-$opening")
+                    val releaseOpened = CompletableDeferred<Unit>()
+                    val operations = RecordingOperations(
+                        beforeOpened = { releaseOpened.await() },
+                        beforeEach = { update -> if (update == queued) fail() },
+                    )
+                    val open = async { runCatching { opening.open(client, sessionId, parameters, operations) } }
+                    opening.answer(agent, agent.receiveRequest(opening.method), sessionId, "$opening")
+                    agent.sendUpdate(sessionId, queued)
+                    agent.sendUpdate(sessionId, behind)
+                    agent.awaitHandled()
+                    releaseOpened.complete(Unit)
+
+                    val failure = open.await().exceptionOrNull()
+                    assertTrue(failure is IllegalStateException, "$opening, $kind: the opening must fail, got $failure")
+                    assertEquals(message, failure.message, "$opening, $kind")
+                    unconnected.awaitUpdate(behind)
+                    assertEquals(listOf<Any>(RecordingOperations.OPENED), operations.events.value, "$opening, $kind")
+
+                    assertHolderFailed(opening, client, agent, unconnected, sessionId)
+                }
+            }
+        }
+
     /**
-     * Asserts that the failed opening of [sessionId] delivered no marker, and that its holder failed: a later update
-     * goes to the unconnected handler, and a new load of the id works.
+     * Asserts that the failed opening of [sessionId] delivered no marker, and that its holder failed, see
+     * [assertHolderFailed].
      */
     private suspend fun CoroutineScope.assertNoMarkerAndHolderFailed(
         opening: Opening,
@@ -491,10 +640,29 @@ class ClientSessionOpenedTest {
         if (opening.factory) {
             assertTrue(operations.events.value.isEmpty(), "$opening: the factory of a failed opening is not called")
         }
+        assertHolderFailed(opening, client, agent, unconnected, sessionId)
+    }
 
-        val afterFailure = text("after-failure-$opening")
+    /**
+     * Asserts that the failed opening of [sessionId] registered no session and failed its holder: a later update for
+     * the id goes to the unconnected handler, so does an update for an unknown id, because no opening is in progress
+     * any more, and a new load of the id works.
+     */
+    private suspend fun CoroutineScope.assertHolderFailed(
+        opening: Opening,
+        client: Client,
+        agent: ScriptedAgentTransport,
+        unconnected: RecordingOperations,
+        sessionId: SessionId,
+    ) {
+        assertFailsWith<IllegalStateException>("$opening: a failed opening registers no session") { client.getSession(sessionId) }
+
+        val afterFailure = text("after-failure-$sessionId")
         agent.sendUpdate(sessionId, afterFailure)
         unconnected.awaitUpdate(afterFailure)
+        val forUnknownSession = text("unknown-after-failure-$sessionId")
+        agent.sendUpdate(SessionId("unknown-after-$sessionId"), forUnknownSession)
+        unconnected.awaitUpdate(forUnknownSession)
 
         val retried = RecordingOperations()
         val retry = async { client.loadSession(sessionId, parameters, retried) }
@@ -537,6 +705,7 @@ class ClientSessionOpenedTest {
 
     private companion object {
         private const val ROUNDS = 100
+        private val OPENING_TIMEOUT = 500.milliseconds
         private val counter = AtomicInteger()
 
         private fun text(value: String) = SessionUpdate.AgentMessageChunk(ContentBlock.Text(value))
