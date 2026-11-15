@@ -136,10 +136,14 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   failure from the marker on fails the opening through `failSessionHolder`; six new tests in
   `ClientSessionOpenedTest` (all failed before the fix); KDoc and `AGENTS.md` holder bullet reworded; corrected
   release note in the commit body (replaces `d505b25`'s); `check` green; no API change.
+- M2.5 agent reopen fix — `38a25dc` — `createSession` runs `closeSubtree(old)` right after replacing an open
+  root (after the app's factory, before the new replay and the response); a throwing factory leaves the old tree;
+  a failed reload leaves the id absent with no orphans; six tests (four failed before); `AGENTS.md` + KDoc;
+  `check` green; no API change. Not done: rare transient "already registered" on reload under true parallelism
+  (old root's `announce` between cleanup's scan and its own re-check).
 
 ## Next
-- M2.5 (opus) programmer running: agent S3 fix (clean up the old root's subtree when `session/load`/
-  `session/resume` replaces an open root) with tests and the `AGENTS.md` bullet.
+- M4.2 (opus) programmer running (see the scope in the next bullet).
 - Then M4.2 (opus): registration, sorting (`QueuedItem.Announcement`/`Patch`), setup via
   `createSubagentOperations`, child holders/tree, child consumers, `Opened(null)`, `markOpened` walk, applying
   child state, wiring `SubagentPendingPermissions` (`onState` at arrival, `onOpened`), failed setup, malformed
