@@ -21,6 +21,18 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   lives in the PR description only (text in commit bodies); no changelog file.
 - `SubagentPendingPermissions.onState` sets `activeWork` before `clearCancellation()`; "cancel racing a state"
   means: state then cancel blocks until a further state; cancel then state blocks only between the two.
+- M4 review answers (user, 2026-11-16, final):
+  (1) A subagent's `session/request_permission` joins the cancel race when it arrives: the handler takes the
+  child holder's `SubagentPendingPermissions` at arrival (non-suspending, before anything suspends) and the wait
+  for the holder (`getSessionOrThrow`) moves inside the race's `answer` block. The app still sees the request only
+  after the holder completes. Roots unchanged.
+  (2) A `closing` flag on the root `ClientSessionHolder` (next to `answered`, read through `root`):
+  `closeDescendantPermissions` sets it FIRST, then walks the descendants; `registerChild` reads it AFTER
+  `addChild` and closes the new child's permissions. A failed close keeps the flag set. No lock.
+  (3) A child whose holder fails (e.g. its `notify` throws before its `Opened`) is marked closed (`canCancel`
+  false, `cancel()` throws, later patches not applied) and stays in `subagents`; the list only grows. KDoc: a
+  listed child may be closed because its stream failed or its root closed.
+  (4) Update the design spec file so it is accurate with every decision taken after it was written.
 
 ## Plan
 - M0 research: wire shapes of the RFD and Rust v1 models at current upstream vs the spec's pinned `c392d7e9`
@@ -177,31 +189,61 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   change. Not done: nit 12 (unreachable from a test).
 
 ## Next
-- WAITING on the user's confirmation of three M4 decisions (see Open questions). Then M4.5b (opus):
-  (1) a child's permission request joins the cancel race at arrival, the wait for the holder moves inside the
-  race's `answer` block; (2) `closing` flag on the root holder, set first in `closeDescendantPermissions`, read
-  in `registerChild` after `addChild`; (3) a child whose holder fails is marked closed and stays in `subagents`.
-  Note: `ClientSubagentCloseTest` "the removal answers the permission requests of a subagent announced after the
-  close started" waits for the request to reach the app in that window and must change with (2).
-  Optional in the same slice: `createClientOperations` CE unwrapped on factory paths; item lost when a consumer
-  is cancelled after its marker; `registerChild` vs `removeSessionTree` map race (read a flag inside the update).
-- Then M6b: client-side `AGENTS.md` rules (own-consumer detection is by job ancestry), spec example fix if the
-  user wants spec edits, final `apiDump` review, `check`, final `.agents/` reference grep.
-- PR description (when the user asks for a PR): release-note text from the commit body of `2f35a77` (replaces `d505b25`'s),
-  plus the reminder to delete `.agents/prompt.md`, `.agents/state.md`, `.agents/research/` before merge.
-- Flaky: Kotlin/JS "Internal compiler error" in `:acp:compileTestDevelopmentExecutableKotlinJs`, twice, passes
-  on rerun.
-- Follow-ups outside this goal: the design spec line ~809 ("If the opening call fails, no stream gets one") is now
-  stronger than the decided behaviour; factory-path `drainHistory` rethrows a `notify` `CancellationException` as is; `Agent.kt` registers `session/resume` twice; `session/new`/`resume`/`fork` leave
-  the root registered if building the response fails; `V1ClientCapabilities.toV2()` drops `subagents`;
-  `PromptResponse.usage` fails the whole response on one bad field; v2 string patch fields under lenient
-  `ACPJson`; client `close()` removes the holder by id not identity; a failed `session/close` leaves the id
-  taken; `elicitation/complete` failed-holder quirk; a re-opened root's old turn keeps running.
+The user stopped the session on 2026-11-16 for a restart. Nothing is running; the working tree is clean; the last
+product commit is `1bb9dcc`. Continue here:
+
+1. M4.5b (programmer, model `opus`), one commit: decisions (1), (2), (3) of the M4 review answers above, each with
+   a regression test that fails before the fix. Reference: `.agents/research/review-m4-client.md` findings 1, 2, 4.
+   Notes for the brief:
+   - `ClientSubagentCloseTest` "the removal answers the permission requests of a subagent announced after the
+     close started" waits for the request to reach the app in the close window; it must change with (2).
+   - The spec's sentence "No request is pending then" (about `onOpened`) becomes false with (1); `onOpened` only
+     promotes or drops the held-back active-work value, so that is safe; say so in a comment.
+   - Fold in three small gaps reported by M4.5a: a `CancellationException` from the app's
+     `ClientOperationsFactory.createClientOperations` reaches an active caller unwrapped; an item taken by a child
+     consumer cancelled just after its marker is neither delivered nor handed to the global handler; a child
+     registered at the moment of a root close can enter the map after `removeSessionTree`'s update (read a flag
+     inside the update).
+   - No API change expected; `./gradlew check` (rerun once if the Kotlin/JS internal compiler error appears).
+2. M6b (programmer, default model), docs, one commit:
+   - `AGENTS.md` client-side subagent lifecycle rules (M4 review finding 3; topics in the spec's "Deliverables"):
+     per-child holder and tree, synchronous sorting and registration at arrival, setup by the parent's consumer
+     before the announcement is delivered, child consumer in the connection scope that waits for its parent's
+     holder before switching, `Opened(null)` from the response hook, announcements always through
+     `lateDeliveries` once the parent is complete, plain getters (no `StateFlow`), `SubagentPendingPermissions`
+     in wire order and joined at arrival, the closing flag, root close order (`closeDescendantPermissions`, then
+     `removeSessionTree` in one update), own-consumer detection by job ancestry, failed child marked closed.
+   - Update `docs/superpowers/specs/2026-11-07-v1-subagents-architecture.md` to match the implemented decisions:
+     agent: factory CE after the announcement → ISE; latched cancel during a running factory; late child requests
+     after close accepted; re-open of an open root cleans the old subtree; replay window ends when the transport
+     accepts the response (`invokeOnResponseQueued`); failed load also drops the root. Client: cancellable opening
+     and the weakened "no `Opened`" rule (line ~809); cancelled calls drop their response hook; children wait for
+     the parent's holder; decisions (1)-(3) above (lines ~1050, ~1400); `SubagentPendingPermissions.onState`
+     order; own-consumer detection; closable `subagents` list; `createSubagentOperations` context. Fix the relay
+     example (`announce(id, parent = x) { }` does not compile: `parent` is the last parameter); RFD status is
+     Preview; `client.rs` line numbers per `.agents/research/subagents-wire-shapes.md`. The spec must not
+     reference `.agents/` files.
+3. Final checks (orchestrator): review the cumulative `acp/api/acp.api` and `acp-model/api/acp-model.api` diffs
+   against `39ecba6`; run `./gradlew check`; run
+   `git grep -nE '\.agents/(research|state\.md|prompt\.md)' -- ':!.agents' ':!AGENTS.md'` (clean so far).
+4. Optional, ask the user: a final review of the commits after `ced95e7` (`1bb9dcc`, M4.5b, M6b), since reviews
+   are on per milestone and these fix slices are unreviewed.
+5. Tell the user the goal is done; remind them to delete `.agents/prompt.md`, `.agents/state.md` and
+   `.agents/research/` before the PR merges. Do not push or open a PR unless asked. PR description, when asked:
+   the release-note text from the commit body of `2f35a77` (it replaces the one in `d505b25`), plus that reminder.
+
+Notes:
+- Flaky build: `./gradlew check` fails now and then with a Kotlin/JS "Internal compiler error" in
+  `:acp:compileTestDevelopmentExecutableKotlinJs` (five occurrences); it passes on rerun; cause unknown.
+- `commonTest` test names must not contain commas (native targets reject them).
+- Not covered end to end: a terminal call from a child. No regression test for agent nit N3 (unreachable).
+- Follow-ups outside this goal (do not fix unless the user asks): `Agent.kt` registers `session/resume` twice;
+  `session/new`/`resume`/`fork` leave the root registered if building the response fails; a re-opened root's old
+  turn keeps running; `V1ClientCapabilities.toV2()` drops `subagents`; `PromptResponse.usage` fails the whole
+  response on one bad field; v2 string patch fields under lenient `ACPJson`; client `close()` removes the holder
+  by id not identity; a failed `session/close` leaves the id taken; `elicitation/complete` failed-holder quirk;
+  no protocol signal for a finished child, so child holders live until their root closes.
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
-- Confirm the three M4 decisions after the explanations and the closing-flag prototype given 2026-11-16:
-  (1) join the cancel race at arrival; (2) closing flag on the root holder; (3) mark a failed child closed and
-  keep it in `subagents`. The user said they prefer/like option 1 on each but asked questions first.
-- Whether to update the design spec file for the sentences the decisions made inaccurate (lines ~809, 1050,
-  1400-1401, the relay example).
+(none)
