@@ -3,6 +3,7 @@
 package com.agentclientprotocol.model.v2
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.rpc.ACPJson
 import kotlinx.serialization.SerializationException
 import kotlin.test.Test

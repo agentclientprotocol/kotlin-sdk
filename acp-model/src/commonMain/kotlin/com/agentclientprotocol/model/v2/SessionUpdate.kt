@@ -5,8 +5,13 @@ package com.agentclientprotocol.model.v2
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.AcpWithMeta
 import com.agentclientprotocol.model.Cost
+import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.Usage
+import com.agentclientprotocol.model.decodeMaybeUndefined
+import com.agentclientprotocol.model.decodeMaybeUndefinedList
+import com.agentclientprotocol.model.decodeSkippingInvalid
+import com.agentclientprotocol.model.putMaybeUndefined
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException

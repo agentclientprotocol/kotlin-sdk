@@ -3,8 +3,10 @@
 package com.agentclientprotocol.model.v2
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.ToolCallId
 import com.agentclientprotocol.model.ToolCallLocation
+import com.agentclientprotocol.model.update
 import com.agentclientprotocol.rpc.ACPJson
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonPrimitive

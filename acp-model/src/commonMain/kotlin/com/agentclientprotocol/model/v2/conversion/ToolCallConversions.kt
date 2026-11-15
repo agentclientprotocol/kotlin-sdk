@@ -8,7 +8,7 @@ import com.agentclientprotocol.model.SessionUpdate as V1SessionUpdate
 import com.agentclientprotocol.model.ToolCallContent as V1ToolCallContent
 import com.agentclientprotocol.model.ToolCallStatus as V1ToolCallStatus
 import com.agentclientprotocol.model.ToolKind as V1ToolKind
-import com.agentclientprotocol.model.v2.MaybeUndefined
+import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.v2.ToolCallContent
 import com.agentclientprotocol.model.v2.ToolCallStatus
 import com.agentclientprotocol.model.v2.ToolCallUpdate

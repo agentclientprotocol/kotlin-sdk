@@ -1,6 +1,6 @@
 @file:Suppress("unused")
 
-package com.agentclientprotocol.model.v2
+package com.agentclientprotocol.model
 
 import com.agentclientprotocol.annotations.UnstableApi
 import kotlinx.serialization.DeserializationStrategy

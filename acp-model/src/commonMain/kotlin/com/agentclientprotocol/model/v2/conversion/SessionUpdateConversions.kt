@@ -14,7 +14,7 @@ import com.agentclientprotocol.model.v2.AvailableCommandsUpdate
 import com.agentclientprotocol.model.v2.ConfigOptionUpdate
 import com.agentclientprotocol.model.v2.ContentBlock
 import com.agentclientprotocol.model.v2.ContentChunk
-import com.agentclientprotocol.model.v2.MaybeUndefined
+import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.v2.SessionInfoUpdate
 import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.model.v2.UsageUpdate
