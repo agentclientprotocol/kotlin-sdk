@@ -30,6 +30,8 @@ internal class ClientSessionImpl(
     override val operations: ClientSessionOperations,
     private val createdResponse: AcpCreatedSessionResponse,
     private val protocol: Protocol,
+    private val onClosing: () -> Unit,
+    private val onClosed: suspend () -> Unit,
 ) : ClientSession {
 
     private class PromptSession(
@@ -107,8 +109,10 @@ internal class ClientSessionImpl(
          * wait for the permission answer while the client waits for the close response.
          */
         pendingPermissions.close()
+        onClosing()
+
         val response = AcpMethod.AgentMethods.V1.SessionClose(protocol, CloseSessionRequest(sessionId, _meta))
-        client.removeSessionHolder(sessionId)
+        onClosed()
         return response
     }
 
