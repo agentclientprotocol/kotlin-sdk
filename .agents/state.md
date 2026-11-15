@@ -64,12 +64,15 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 - M3.1 `clearCancellation()` fix — `955965c` — replaces `startTurn()` in `PendingPermissionCancellation`; v1 and
   v2 callers switched; regression tests in `ClientPermissionCancellationTest` and v2 `ClientSessionTest` failed
   before the fix; `check` green; no API change.
+- M3.2 extract `ClientSessionRegistry` — `a095659` — `client/ClientSessionRegistry.kt` owns the session map
+  (`deliverSessionUpdate`, claims, reaping, `failSessionHolder`, plus `getSession`, `isSessionCompleted`);
+  `ClientSessionImpl` takes `onClosing`/`onClosed`; `Client.handleSessionRequest`, `createSessionElicitation`,
+  `createClientSession`, `removeClosedSession`; no test file touched; `check` green; API dump untouched.
 
 ## Next
 - M2 review running (reviewer, commits `9bd0d26`, `6105d21`, `7ab77d2`) → `.agents/research/review-m2-agent.md`;
   show findings to the user; fixes become new slices.
-- M3.2 programmer running: extract `ClientSessionRegistry`, close callbacks, session-request helper; no behaviour
-  or API change. Then M3.3 (deprecate `ClientSession.client`), M3.4 (opus: `Protocol` response hook,
+- M3.3 programmer running: deprecate `ClientSession.client`. Then M3.4 (opus: `Protocol` response hook,
   `SessionEvent`/`Opened`, one opening per holder, samples, release note), M3 review over `fa1f66d..HEAD`.
 - Owed in M3's release note: `ToolCallContent.Session` and new `SessionUpdate` variants (exhaustive `when`),
   `ClientCapabilities` constructor/`copy` change.
