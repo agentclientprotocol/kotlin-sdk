@@ -10,7 +10,10 @@ import com.agentclientprotocol.protocol.*
 import com.agentclientprotocol.util.SequenceToPaginatedResponseAdapter
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.atomicfu.update
+import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -18,6 +21,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -84,12 +88,19 @@ public class Agent(
         abstract val subagents: AgentSubagents?
     }
 
+    /**
+     * A root session.
+     *
+     * @param replaying whether the session is being opened by `session/load`: its replay window is then open until
+     * [endReplay]
+     */
     internal class SessionWrapper(
         agent: Agent,
         val agentSession: AgentSession,
         override val clientOperations: ClientSessionOperations,
         protocol: Protocol,
         subagentsSupported: Boolean,
+        replaying: Boolean = false,
     ) : ChatSessionWrapper(agent, protocol) {
         override val sessionId: SessionId get() = agentSession.sessionId
         override val root: SessionWrapper get() = this
@@ -104,6 +115,60 @@ public class Agent(
          * connection scope, so the connection's end cancels it.
          */
         val subtreeScope: CoroutineScope by lazy { protocol.newConnectionScope("Subagents of session $sessionId") }
+
+        private val _isSubtreeClosed = atomic(false)
+
+        /**
+         * Whether this root's subtree was cleaned up, because the session was closed or its `session/load` failed.
+         * No subagent can be registered under it any more.
+         */
+        val isSubtreeClosed: Boolean get() = _isSubtreeClosed.value
+
+        /**
+         * Guards [_isReplaying] and [replayedCollections] together, so a collection is either deferred before the
+         * window closes or started by its caller.
+         */
+        private val replayLock = SynchronizedObject()
+
+        private val _isReplaying = atomic(replaying)
+
+        /**
+         * Whether the replay window of `session/load` is open: everything sent for this subtree meanwhile goes out
+         * before the load response, so it is history. A subagent announced meanwhile is a replayed one.
+         */
+        val isReplaying: Boolean get() = _isReplaying.value
+
+        private var replayedCollections = mutableListOf<() -> Unit>()
+
+        /**
+         * Runs [start] now, or after the load response if the replay window is still open.
+         */
+        fun startAfterReplay(start: () -> Unit) {
+            val deferred = synchronized(replayLock) {
+                if (_isReplaying.value) replayedCollections += start
+                _isReplaying.value
+            }
+            if (!deferred) start()
+        }
+
+        /**
+         * Closes the replay window and starts the collections deferred until then. Called after the load response.
+         */
+        fun endReplay() {
+            val starts = synchronized(replayLock) {
+                _isReplaying.value = false
+                replayedCollections.also { replayedCollections = mutableListOf() }
+            }
+            starts.forEach { it() }
+        }
+
+        /**
+         * Marks the subtree closed and cancels its collections. The caller removes the subagents themselves.
+         */
+        fun closeSubtree() {
+            _isSubtreeClosed.value = true
+            subtreeScope.cancel()
+        }
 
         private class PromptSession(val promptJob: Job) {
             /**
@@ -408,7 +473,7 @@ public class Agent(
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val created = createSession(
                 sessionParameters,
-                beforeResponse = { session -> session.replayHistory() },
+                replayHistory = { session -> session.replayHistory() },
             ) { agentSupport.loadSession(params.sessionId, sessionParameters) }
             @OptIn(UnstableApi::class)
             return@setRequestOutcomeHandler created.mapResponse { session ->
@@ -474,6 +539,11 @@ public class Agent(
                 session.agentSession.close(params._meta)
             }
             _sessions.update { it.remove(params.sessionId) }
+            /*
+             * Clean the subtree up before answering, so nothing about the children reaches the client after the
+             * response. If close() threw, the session and its children stay registered.
+             */
+            closeSubtree(session)
             return@setRequestHandler response
         }
 
@@ -602,10 +672,14 @@ public class Agent(
         }
     }
 
+    /**
+     * Opens a root session. [replayHistory] is given only for `session/load`: it runs before the response, in the
+     * replay window of the new session.
+     */
     @OptIn(UnstableApi::class)
     private suspend fun createSession(
         sessionParameters: SessionCreationParameters,
-        beforeResponse: suspend (AgentSession) -> Unit = {},
+        replayHistory: (suspend (AgentSession) -> Unit)? = null,
         sessionFactory: suspend (SessionCreationParameters) -> AgentSession,
     ): RequestOutcome<AgentSession> {
         val session = sessionFactory(sessionParameters)
@@ -617,24 +691,36 @@ public class Agent(
             RemoteClientSessionOperations(protocol, session.sessionId, clientInfo.capabilities),
             protocol,
             subagentsSupported = clientInfo.capabilities.subagents != null,
+            replaying = replayHistory != null,
         )
 
         _sessions.update {
             it.put(session.sessionId, sessionWrapper)
         }
 
-        try {
-            sessionWrapper.executeWithSession { beforeResponse(session) }
-        } catch (t: Throwable) {
-            _sessions.update { sessions ->
-                if (sessions[session.sessionId] === sessionWrapper) sessions.remove(session.sessionId) else sessions
+        if (replayHistory != null) {
+            try {
+                sessionWrapper.executeWithSession { replayHistory(session) }
+            } catch (t: Throwable) {
+                _sessions.update { sessions ->
+                    if (sessions[session.sessionId] === sessionWrapper) sessions.remove(session.sessionId) else sessions
+                }
+                // The subagents replayed so far were never confirmed by a response: drop them with the session.
+                closeSubtree(sessionWrapper)
+                throw t
             }
-            throw t
         }
 
         return RequestOutcome(
             response = session,
-            afterResponse = { sessionWrapper.executeWithSession { session.postInitialize() } },
+            afterResponse = {
+                /*
+                 * Start the replayed subagents' collections first, without waiting for them: a slow postInitialize()
+                 * would otherwise keep every child's state unconfirmed and its cancel disabled on the client.
+                 */
+                sessionWrapper.endReplay()
+                sessionWrapper.executeWithSession { session.postInitialize() }
+            },
         )
     }
 
@@ -667,12 +753,36 @@ public class Agent(
             }
             subagents.put(child.sessionId, child)
         }
+        /*
+         * The root's subtree may have been closed after the caller checked it. Either the cleanup sees this entry, or
+         * this check sees the closed subtree.
+         */
+        if (child.root.isSubtreeClosed) {
+            unregisterSubagent(child)
+            error("Session ${child.root.sessionId} is closed")
+        }
     }
 
     internal fun unregisterSubagent(child: SubagentWrapper) {
         _subagents.update { subagents ->
             if (subagents[child.sessionId] === child) subagents.remove(child.sessionId) else subagents
         }
+    }
+
+    /**
+     * Subtree cleanup for [root]: cancels the collections of every subagent below it, at every depth, removes them
+     * from the child table, and makes their operations fail. No app code is called for them: stopping their work
+     * belongs to the root's [AgentSession.close].
+     */
+    private fun closeSubtree(root: SessionWrapper) {
+        root.closeSubtree()
+
+        var removed = emptyList<SubagentWrapper>()
+        _subagents.update { subagents ->
+            removed = subagents.values.filter { it.root === root }
+            subagents.mutate { table -> removed.forEach { table.remove(it.sessionId) } }
+        }
+        removed.forEach { it.remove() }
     }
 
     private fun getNesSessionOrThrow(sessionId: SessionId): NesSessionWrapper = _nesSessions.value[sessionId] ?: acpFail("NES session $sessionId not found")

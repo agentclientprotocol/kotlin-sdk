@@ -212,6 +212,12 @@ public interface AgentSupport {
      *
      * Forks an existing session, creating a new session based on the existing session's context.
      *
+     * The fork starts with no subagents, and the source session keeps its own. If the fork copies the history of
+     * subagents, the app must give the copies new ids and remap them in message participant fields and in `session`
+     * tool call content, including references to the forked root session: the SDK doesn't rewrite update contents.
+     * The copied subagents reach the client only when the fork is loaded later, announced from the fork's
+     * [AgentSession.replayHistory] through [AgentSubagents.announce].
+     *
      * @param sessionId the id of the session to fork
      * @param sessionParameters parameters for the forked session
      * @return an [AgentSession] instance for the forked session

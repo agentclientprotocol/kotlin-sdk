@@ -41,6 +41,7 @@ internal class SessionSubagents(private val bound: Agent.ChatSessionWrapper) : A
     }
 
     private fun resolveParent(parent: SessionId?): Agent.ChatSessionWrapper {
+        check(!bound.root.isSubtreeClosed) { "Session ${bound.root.sessionId} is closed" }
         /*
          * A child that isn't announced yet must not announce grandchildren: their announcements would put traffic on
          * a stream the client doesn't know.
@@ -62,7 +63,12 @@ internal class SessionSubagents(private val bound: Agent.ChatSessionWrapper) : A
  *
  * The child is pending until its announcement, the first [SessionUpdate.SubagentUpdate] for it, has been sent. Until
  * then every other operation fails. If its announcement can't be sent, it's dropped: unregistered, and every
- * operation fails for good. Once announced, it stays registered until subtree cleanup.
+ * operation fails for good. Once announced, it stays registered until subtree cleanup removes it, and then every
+ * operation fails for good too.
+ *
+ * A child announced while its root's replay window is open is a replayed one: its factory must send the
+ * announcement, its collection starts after the load response, and the SDK doesn't track the grants and states sent
+ * in the window, because they are history.
  *
  * @property parent the session whose stream carries this child's [SessionUpdate.SubagentUpdate]s
  */
@@ -72,11 +78,15 @@ internal class SubagentWrapper(
     override val sessionId: SessionId,
     val parent: Agent.ChatSessionWrapper,
 ) : Agent.ChatSessionWrapper(agent, protocol) {
-    private enum class Phase { PENDING, ANNOUNCED, DROPPED }
+    /**
+     * [DROPPED] is a child that was never announced, [REMOVED] an announced one that subtree cleanup removed.
+     */
+    private enum class Phase { PENDING, ANNOUNCED, DROPPED, REMOVED }
 
     /**
      * Makes each own [SessionUpdate.SubagentUpdate] send atomic with the phase change and the tracking it implies,
-     * and orders it against dropping the child. Held only around non-suspending sends.
+     * and orders every update sent for the child against dropping or removing it. Held only around non-suspending
+     * sends.
      */
     private val lock = SynchronizedObject()
 
@@ -116,6 +126,11 @@ internal class SubagentWrapper(
 
     override val root: Agent.SessionWrapper = parent.root
 
+    /**
+     * Whether this child was announced in its root's replay window.
+     */
+    private val isReplayed = root.isReplaying
+
     private val subagentOperations = SubagentClientOperations(agent.getClientInfoOrThrow().capabilities)
     override val clientOperations: RemoteClientSessionOperations get() = subagentOperations
 
@@ -140,10 +155,15 @@ internal class SubagentWrapper(
     val session: AgentSubagentSession? get() = _session.value
 
     fun checkAnnounced() {
+        if (_phase.value == Phase.PENDING) error("Subagent $sessionId is not announced yet: send its SubagentUpdate first")
+        checkRegistered()
+    }
+
+    private fun checkRegistered() {
         when (_phase.value) {
-            Phase.ANNOUNCED -> {}
-            Phase.PENDING -> error("Subagent $sessionId is not announced yet: send its SubagentUpdate first")
+            Phase.PENDING, Phase.ANNOUNCED -> {}
             Phase.DROPPED -> error("Subagent $sessionId is not registered")
+            Phase.REMOVED -> error("Subagent $sessionId is not registered: its root session ${root.sessionId} is closed")
         }
     }
 
@@ -157,7 +177,8 @@ internal class SubagentWrapper(
 
     /**
      * Runs the `announce` steps after registration: the factory, then the collection, then the wait for the
-     * announcement.
+     * announcement. A replayed child's collection waits for the load response instead, and its factory must have
+     * sent the announcement.
      */
     suspend fun <S : AgentSubagentSession> announce(factory: AgentSubagentFactory<S>): S {
         val session = try {
@@ -173,6 +194,22 @@ internal class SubagentWrapper(
             }
             reportFactoryFailure()
             throw e
+        }
+
+        if (isReplayed) {
+            /*
+             * Waiting for the events would deadlock: their collection starts only after the load response, which
+             * waits for the replay that called this.
+             */
+            if (dropUnlessAnnounced()) {
+                throw IllegalStateException(
+                    "Subagent $sessionId is not announced: during the parent's session/load, its factory must send " +
+                        "the announcement"
+                )
+            }
+            _session.value = session
+            root.startAfterReplay { startCollection(session) }
+            return session
         }
         _session.value = session
 
@@ -202,7 +239,7 @@ internal class SubagentWrapper(
     private fun dropUnlessAnnounced(): Boolean {
         val dropped = synchronized(lock) {
             when (_phase.value) {
-                Phase.ANNOUNCED -> false
+                Phase.ANNOUNCED, Phase.REMOVED -> false
                 Phase.PENDING -> {
                     _phase.value = Phase.DROPPED
                     true
@@ -215,15 +252,33 @@ internal class SubagentWrapper(
     }
 
     /**
+     * Subtree cleanup for this child, after the caller removed it from the child table: every operation fails from
+     * now on, and an `announce` still waiting for the announcement fails.
+     */
+    fun remove() {
+        synchronized(lock) {
+            when (_phase.value) {
+                Phase.PENDING -> _phase.value = Phase.DROPPED
+                Phase.ANNOUNCED -> _phase.value = Phase.REMOVED
+                Phase.DROPPED, Phase.REMOVED -> {}
+            }
+        }
+        announcement.completeExceptionally(
+            IllegalStateException("Subagent $sessionId is not announced: its root session ${root.sessionId} is closed")
+        )
+    }
+
+    /**
      * The factory threw after the announcement: the child exists on the wire, but there is no session to cancel or
      * collect. Revoke the grant, since the client can't learn otherwise that its cancel is ignored, and report
      * `unknown` if the factory left the child active.
      *
      * The send doesn't suspend, so a cancelled caller doesn't prevent it. Nothing is sent once the root's subtree is
-     * being torn down, and a failed send is only logged.
+     * being torn down, and a failed send is only logged. In the replay window there is nothing to correct: history
+     * grants are never in effect, and the client treats the child's state as unconfirmed after the load anyway.
      */
     private fun reportFactoryFailure() {
-        if (!root.subtreeScope.isActive) return
+        if (root.isReplaying || !root.subtreeScope.isActive) return
         runCatching { subagentOperations.sendFactoryFailureCorrection() }
             .onFailure { logger.debug(it) { "Could not correct subagent $sessionId after its factory failed" } }
     }
@@ -323,8 +378,11 @@ internal class SubagentWrapper(
                 }
                 sendOwnUpdate(notification, _meta)
             } else {
-                checkAnnounced()
-                sendUpdate(sessionId, notification, _meta)
+                // Under the lock, so nothing is sent for the child once subtree cleanup has removed it.
+                synchronized(lock) {
+                    checkAnnounced()
+                    sendUpdate(sessionId, notification, _meta)
+                }
             }
         }
 
@@ -355,15 +413,21 @@ internal class SubagentWrapper(
 
         /**
          * Sends a [SessionUpdate.SubagentUpdate] for this child on the parent's stream. The caller holds [lock].
+         *
+         * What it sends in the root's replay window is history: it neither grants cancel nor counts as the
+         * factory's last state.
          */
         private fun sendOwnUpdateLocked(update: SessionUpdate.SubagentUpdate, _meta: JsonElement?) {
-            check(_phase.value != Phase.DROPPED) { "Subagent $sessionId is not registered" }
+            checkRegistered()
 
+            val isLive = !root.isReplaying
             val wasGranted = _cancelGranted.value
-            _cancelGranted.value = when (val capabilities = update.capabilities) {
-                MaybeUndefined.Undefined -> wasGranted
-                MaybeUndefined.Null -> false
-                is MaybeUndefined.Value -> capabilities.value.cancel != null
+            if (isLive) {
+                _cancelGranted.value = when (val capabilities = update.capabilities) {
+                    MaybeUndefined.Undefined -> wasGranted
+                    MaybeUndefined.Null -> false
+                    is MaybeUndefined.Value -> capabilities.value.cancel != null
+                }
             }
             try {
                 sendUpdate(parent.sessionId, update, _meta)
@@ -372,7 +436,7 @@ internal class SubagentWrapper(
                 throw e
             }
 
-            if (factoryRunning) factoryState = update.state.update(factoryState)
+            if (isLive && factoryRunning) factoryState = update.state.update(factoryState)
             _phase.value = Phase.ANNOUNCED
         }
     }

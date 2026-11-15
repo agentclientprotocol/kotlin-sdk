@@ -35,7 +35,8 @@ public interface AgentSubagentContext {
      * child's session.
      *
      * Until the child's announcement has been sent, every operation fails with [IllegalStateException], except
-     * sending that announcement: a [SessionUpdate.SubagentUpdate] for this child.
+     * sending that announcement: a [SessionUpdate.SubagentUpdate] for this child. Once the child is removed with its
+     * root session (see [AgentSubagents]), every operation fails with [IllegalStateException] again.
      */
     public val client: ClientSessionOperations
 
@@ -72,14 +73,17 @@ public interface AgentSubagentSession {
      * unrecognized state), the SDK reports [StateUpdate.Unknown], because the client can no longer observe the child.
      * It never reports an outcome on its own. When the app knows that the work failed, or that it stopped after
      * [cancel], it emits `idle` with the `error` or `cancelled` stop reason before the flow ends, and the SDK then
-     * sends nothing more. The SDK cancels the collection when the parent session is closed or the connection ends,
-     * and sends nothing for it.
+     * sends nothing more. The SDK cancels the collection when the root session is closed or the connection ends,
+     * and sends nothing for it. A feed that ends doesn't stop the collections of the child's own subagents.
      */
     public val events: Flow<SessionUpdate> get() = emptyFlow()
 
     /**
      * Called on `session/cancel` for this child while the current cancel grant is in effect. Report the outcome
      * through [events]. The SDK does not stop the collection.
+     *
+     * A grant sent during the parent's `session/load`, before its response, is history and never in effect: to
+     * enable cancel for a replayed child, send a fresh grant, for example through [events].
      */
     public suspend fun cancel() {}
 }
@@ -95,7 +99,9 @@ public interface AgentSubagentSession {
 public fun interface AgentSubagentFactory<out S : AgentSubagentSession> {
     /**
      * Builds the child. When called from the parent's replay, send the child's announcement and recorded history
-     * through [context] before returning. The SDK collects the returned session's events afterwards.
+     * through [context] before returning, and announce its recorded subagents through [AgentSubagentContext.subagents]
+     * the same way. The SDK collects the returned session's events afterwards: return a session with empty events for
+     * a child that only has history.
      *
      * The call runs in the child's session context, so `currentCoroutineContext().client` is the child's
      * [AgentSubagentContext.client].
@@ -111,8 +117,22 @@ public fun interface AgentSubagentFactory<out S : AgentSubagentSession> {
  * The subagents of one session, a root session or a subagent, for announcing its children to the client.
  *
  * An instance is bound to its session and stays valid for that session's lifetime, not only inside the call that
- * obtained it. After the session is closed, [announce] fails. There is no update method: patches to a child are
- * ordinary events of the child.
+ * obtained it. There is no update method: patches to a child are ordinary events of the child.
+ *
+ * Every subagent belongs to a root session and lives until that root is closed by `session/close`. The SDK then
+ * removes every subagent below the root, at every depth, after the root's [AgentSession.close] returns and before
+ * the close is answered: it cancels their event collections without sending anything for them, frees their ids,
+ * ignores `session/cancel` for them, and makes their client operations and their [announce] fail with
+ * [IllegalStateException]. [announce] on the closed root fails the same way. The SDK calls no app code for the
+ * subagents: stopping their work and freeing their resources belongs to the root's [AgentSession.close]. If that
+ * throws, the root and its subagents stay registered. When the connection ends, the collections are cancelled the
+ * same way.
+ *
+ * During the root's `session/load`, until its response, the root is replaying: announcements made from its
+ * [AgentSession.replayHistory], or from a factory called from there, replay recorded subagents. Every update sent
+ * for them before the response is history, as the subagents spec defines it: a cancel grant sent then is never in
+ * effect, and a state sent then doesn't count as active. If the load fails, every subagent announced during it is
+ * removed. Subagents announced while a session is opened by any other method, or after the response, are live.
  */
 @UnstableApi
 public interface AgentSubagents {
@@ -120,8 +140,8 @@ public interface AgentSubagents {
      * Registers [sessionId] under [parent], calls [factory] with the child's context, then collects the returned
      * session's events. Returns the session once the child's announcement has been sent and [factory] has returned.
      *
-     * [parent] defaults to the session this object is bound to. It may name a live, announced descendant of that
-     * session, for relays that learn about nested children from a flat event stream.
+     * [parent] defaults to the session this object is bound to. It may name an announced descendant of that session
+     * that is still registered, for relays that learn about nested children from a flat event stream.
      *
      * The first thing sent for the child must be its announcement: a [SessionUpdate.SubagentUpdate] whose session id
      * is [sessionId], sent either through [AgentSubagentContext.client] while [factory] runs or as the first item of
@@ -134,17 +154,24 @@ public interface AgentSubagents {
      * emitting, or when their first item isn't the child's announcement, the child is unregistered, nothing more is
      * sent for it, and this call throws [IllegalStateException], even when the cause is a [CancellationException]
      * from the app's code. If [factory] throws after the announcement was sent, the child stays registered, this call
-     * rethrows the exception unchanged, and the SDK revokes the child's cancel grant and reports its work state as
-     * [StateUpdate.Unknown] when the factory left it active.
+     * rethrows the exception unchanged, and, outside the root's replay, the SDK revokes the child's cancel grant and
+     * reports its work state as [StateUpdate.Unknown] when the factory left it active.
      *
      * If the caller is cancelled before the announcement was sent, the child is unregistered and its id is free
      * again. Once it was sent, the child stays registered and its events keep being collected; only the caller gets
      * the [CancellationException].
      *
+     * While the root is replaying (see [AgentSubagents]), [factory] must send the announcement itself, through
+     * [AgentSubagentContext.client]: if it returns without one, the child is unregistered and this call throws
+     * [IllegalStateException] right away. The call doesn't wait for the events: their collection starts after the
+     * root's `session/load` response, before the root's [AgentSession.postInitialize], and their updates are fresh
+     * patches to the replayed child.
+     *
      * @throws IllegalArgumentException if [parent] is neither the bound session nor a registered, announced
      * descendant of it, or if [sessionId] is already registered on the connection, as a root session or a subagent
-     * @throws IllegalStateException if the bound session is a subagent that has not been announced yet, or if the
-     * child's announcement could not be sent as described above
+     * @throws IllegalStateException if the bound session's root is closed, if the bound session is a subagent that
+     * has not been announced yet or was removed with its root, or if the child's announcement could not be sent as
+     * described above
      */
     public suspend fun <S : AgentSubagentSession> announce(
         sessionId: SessionId,
