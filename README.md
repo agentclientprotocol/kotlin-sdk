@@ -397,6 +397,8 @@ Contributions are welcome! Please open an issue to discuss significant changes b
 3. Use the supplied GitHub Actions workflows to verify compatibility.
 4. Optionally check protocol conformance with the [ACP Test Compatibility Kit](https://github.com/agentclientprotocol/acp-tck), see [`e2e/tck/README.md`](e2e/tck/README.md).
 
+Keep throwaway files, such as experiments, captured output, and ad hoc scripts, in `scratch/` at the repository root. It is gitignored.
+
 ## Support
 
 - File bugs and feature requests through GitHub Issues.

@@ -355,6 +355,18 @@ Before completion:
 3. Run full `./gradlew check` for core or public changes.
 4. Report the exact verification performed and any remaining limitations.
 
+## Working Files
+
+### Scratch files
+
+Put throwaway files, such as experiments, captured output, and ad hoc scripts, in `scratch/` at the repository root. It is gitignored. Do not create scratch files anywhere else in the repository.
+
+### Working files in `.agents/`
+
+`.agents/prompt.md`, `.agents/state.md`, and `.agents/research/` are working files for the current goal of a multi-agent session run with the `orchestrator` skill. They are deleted before the PR merges.
+
+Never reference them in the final code: not in comments, KDoc, tests, samples, docs, or build scripts, because such a reference would dangle. A temporary reference is fine while the work that needs it is in progress. By the time that work is done, remove it or replace it with a permanent upstream citation or a plain explanation.
+
 ## Agent Hygiene
 
 - Do not overwrite or revert unrelated working-tree changes.
