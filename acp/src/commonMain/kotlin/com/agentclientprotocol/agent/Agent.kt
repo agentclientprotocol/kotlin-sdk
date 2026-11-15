@@ -14,6 +14,7 @@ import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -61,12 +62,49 @@ public class Agent(
         }
     }
 
+    /**
+     * A session with client operations: a root session or a subagent. NES sessions have none.
+     */
+    internal abstract class ChatSessionWrapper(
+        agent: Agent,
+        protocol: Protocol
+    ) : BaseSessionWrapper(agent, protocol) {
+        abstract val sessionId: SessionId
+        abstract val clientOperations: ClientSessionOperations
+
+        /**
+         * The root session of the subtree this session belongs to.
+         */
+        abstract val root: SessionWrapper
+
+        /**
+         * This session's subagents, or `null` when the client did not advertise `subagents`.
+         */
+        @OptIn(UnstableApi::class)
+        abstract val subagents: AgentSubagents?
+    }
+
     internal class SessionWrapper(
         agent: Agent,
         val agentSession: AgentSession,
-        val clientOperations: ClientSessionOperations,
-        protocol: Protocol
-    ) : BaseSessionWrapper(agent, protocol) {
+        override val clientOperations: ClientSessionOperations,
+        protocol: Protocol,
+        subagentsSupported: Boolean,
+    ) : ChatSessionWrapper(agent, protocol) {
+        override val sessionId: SessionId get() = agentSession.sessionId
+        override val root: SessionWrapper get() = this
+
+        @OptIn(UnstableApi::class)
+        override val subagents: AgentSubagents? = if (subagentsSupported) SessionSubagents(this) else null
+
+        /**
+         * The supervisor scope of this root's subtree: the collections of its subagents' events run here.
+         *
+         * Created on first use, so a session without subagents doesn't attach a job to the connection. It is a
+         * connection scope, so the connection's end cancels it.
+         */
+        val subtreeScope: CoroutineScope by lazy { protocol.newConnectionScope("Subagents of session $sessionId") }
+
         private class PromptSession(val promptJob: Job) {
             /**
              * The number of cancels still running for this turn, or [ANSWERING] once the turn has passed the wait for
@@ -241,6 +279,11 @@ public class Agent(
 
     private val _clientInfo = CompletableDeferred<ClientInfo>()
     private val _sessions = atomic(persistentMapOf<SessionId, SessionWrapper>())
+
+    /**
+     * The subagents registered on this connection, at every depth, by their own session id.
+     */
+    private val _subagents = atomic(persistentMapOf<SessionId, SubagentWrapper>())
 
     private val _nesSessions = atomic(persistentMapOf<SessionId, NesSessionWrapper>())
 
@@ -549,6 +592,7 @@ public class Agent(
         }
     }
 
+    @OptIn(UnstableApi::class)
     private suspend fun createSession(
         sessionParameters: SessionCreationParameters,
         beforeResponse: suspend (AgentSession) -> Unit = {},
@@ -561,7 +605,8 @@ public class Agent(
             this,
             session,
             RemoteClientSessionOperations(protocol, session.sessionId, clientInfo.capabilities),
-            protocol
+            protocol,
+            subagentsSupported = clientInfo.capabilities.subagents != null,
         )
 
         _sessions.update {
@@ -585,6 +630,29 @@ public class Agent(
 
     private fun getSessionOrThrow(sessionId: SessionId): SessionWrapper = _sessions.value[sessionId] ?: acpFail("Session $sessionId not found")
 
+    internal fun subagentOrNull(sessionId: SessionId): SubagentWrapper? = _subagents.value[sessionId]
+
+    /**
+     * Registers [child] under its own id.
+     *
+     * @throws IllegalArgumentException if the id is already registered on this connection, as a root session or a
+     * subagent
+     */
+    internal fun registerSubagent(child: SubagentWrapper) {
+        _subagents.update { subagents ->
+            require(child.sessionId !in subagents && child.sessionId !in _sessions.value) {
+                "Session ${child.sessionId} is already registered on this connection"
+            }
+            subagents.put(child.sessionId, child)
+        }
+    }
+
+    internal fun unregisterSubagent(child: SubagentWrapper) {
+        _subagents.update { subagents ->
+            if (subagents[child.sessionId] === child) subagents.remove(child.sessionId) else subagents
+        }
+    }
+
     private fun getNesSessionOrThrow(sessionId: SessionId): NesSessionWrapper = _nesSessions.value[sessionId] ?: acpFail("NES session $sessionId not found")
 }
 
@@ -606,13 +674,21 @@ public val CoroutineContext.clientInfo: ClientInfo
 /**
  * Returns a remote client connected to the counterpart via the current protocol.
  * Only available for chat sessions. NES sessions do not have access to client operations.
+ * In a subagent's context, these are the subagent's operations (see [AgentSubagentContext.client]).
  *
  * @throws IllegalStateException if called from a NES session context or outside a session context
  */
 public val CoroutineContext.client: ClientSessionOperations
-    get() {
-        val wrapper = this[SessionWrapperContextElement.Key]?.sessionWrapper
-            ?: error("No session found in context")
-        return (wrapper as? Agent.SessionWrapper)?.clientOperations
-            ?: error("Client operations are not available for NES sessions. Only chat sessions have access to client operations.")
-    }
+    get() = chatSessionWrapper("Client operations").clientOperations
+
+/**
+ * The root session or subagent of this context.
+ *
+ * @param feature what the caller needs from the session, for the error message
+ */
+internal fun CoroutineContext.chatSessionWrapper(feature: String): Agent.ChatSessionWrapper {
+    val wrapper = this[SessionWrapperContextElement.Key]?.sessionWrapper
+        ?: error("No session found in context")
+    return wrapper as? Agent.ChatSessionWrapper
+        ?: error("$feature are not available for NES sessions. Only chat sessions have access to ${feature.lowercase()}.")
+}

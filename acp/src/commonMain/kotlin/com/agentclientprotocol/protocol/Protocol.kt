@@ -111,6 +111,16 @@ public class Protocol(
             checkNotNull(_negotiatedProtocolVersion.value)
 
     /**
+     * Creates a scope for work that belongs to this connection but outlives any single request.
+     * It is cancelled when the protocol closes.
+     *
+     * The scope runs on the dispatcher of the scope passed to this protocol, not on the handler dispatcher, so long
+     * or CPU-bound work in it does not delay handlers.
+     */
+    internal fun newConnectionScope(name: String): CoroutineScope =
+        CoroutineScope(scope.coroutineContext + SupervisorJob(protocolJob) + CoroutineName(name))
+
+    /**
      * Connect to a transport and start processing messages.
      */
     public fun start() {
