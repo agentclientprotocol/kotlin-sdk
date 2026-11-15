@@ -24,6 +24,7 @@ import com.agentclientprotocol.model.RequestPermissionRequest
 import com.agentclientprotocol.model.RequestPermissionResponse
 import com.agentclientprotocol.model.ResumeSessionResponse
 import com.agentclientprotocol.model.SessionCancelCapabilities
+import com.agentclientprotocol.model.SessionConfigOption
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionMode
 import com.agentclientprotocol.model.SessionModeId
@@ -817,21 +818,26 @@ class ClientSubagentSessionsTest {
         val root = SessionId("root")
         val child = SessionId("child")
         val modes = SessionModeState(SessionModeId("root-mode"), listOf(SessionMode(SessionModeId("root-mode"), "Root")))
+        val rootOptions = listOf(SessionConfigOption.boolean("root-option", "Root option", currentValue = true))
         val open = async { client.loadSession(root, parameters, world.root(root)) }
         val request = agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionLoad.methodName)
         agent.sendUpdate(root, announce(child))
         val childMode = SessionUpdate.CurrentModeUpdate(SessionModeId("child-history-mode"))
         agent.sendUpdate(child, childMode)
-        agent.answer(request, AcpMethod.AgentMethods.V1.SessionLoad.responseSerializer, LoadSessionResponse(modes = modes))
+        val historyConfig = SessionUpdate.ConfigOptionUpdate(listOf(SessionConfigOption.boolean("child-history-option", "Child", currentValue = false)))
+        agent.sendUpdate(child, historyConfig)
+        agent.answer(request, AcpMethod.AgentMethods.V1.SessionLoad.responseSerializer, LoadSessionResponse(modes = modes, configOptions = rootOptions))
         val session = open.await()
         val liveMode = SessionUpdate.CurrentModeUpdate(SessionModeId("child-live-mode"))
         agent.sendUpdate(child, liveMode)
         val config = SessionUpdate.ConfigOptionUpdate(emptyList())
         agent.sendUpdate(child, config)
 
-        assertEquals(listOf(childMode, TreeOperations.OPENED, liveMode, config), world.awaitOperations(child).awaitEvents(4))
+        assertEquals(listOf(childMode, historyConfig, TreeOperations.OPENED, liveMode, config), world.awaitOperations(child).awaitEvents(5))
         @Suppress("DEPRECATION")
         assertEquals(SessionModeId("root-mode"), session.currentMode.value)
+        @Suppress("DEPRECATION")
+        assertEquals(rootOptions, session.configOptions.value)
     }
 
     @Test

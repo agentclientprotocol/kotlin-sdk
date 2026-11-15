@@ -8,10 +8,12 @@ import com.agentclientprotocol.common.ElicitationOperations
 import com.agentclientprotocol.common.FileSystemOperations
 import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.common.TerminalOperations
+import com.agentclientprotocol.model.CompleteElicitationNotification
 import com.agentclientprotocol.model.CreateElicitationRequest
 import com.agentclientprotocol.model.CreateElicitationResponse
 import com.agentclientprotocol.model.CreateTerminalResponse
 import com.agentclientprotocol.model.ElicitationAction
+import com.agentclientprotocol.model.ElicitationId
 import com.agentclientprotocol.model.EnvVariable
 import com.agentclientprotocol.model.PermissionOption
 import com.agentclientprotocol.model.PermissionOptionId
@@ -94,6 +96,16 @@ internal class TreeOperations(
 
     var answerPermission: suspend (SessionUpdate.ToolCallUpdate) -> RequestPermissionResponse = { ALLOWED }
 
+    /**
+     * The action of every elicitation this session answers.
+     */
+    var elicitationAction: ElicitationAction = ElicitationAction.Decline
+
+    /**
+     * The ids of the elicitations whose completion reached this session, in arrival order.
+     */
+    val completedElicitations = MutableStateFlow<List<ElicitationId>>(emptyList())
+
     override suspend fun requestPermissions(
         toolCall: SessionUpdate.ToolCallUpdate,
         permissions: List<PermissionOption>,
@@ -131,7 +143,11 @@ internal class TreeOperations(
     ): CreateTerminalResponse = CreateTerminalResponse(answer())
 
     override suspend fun createElicitation(request: CreateElicitationRequest): CreateElicitationResponse =
-        CreateElicitationResponse(ElicitationAction.Decline, _meta = JsonPrimitive(answer()))
+        CreateElicitationResponse(elicitationAction, _meta = JsonPrimitive(answer()))
+
+    override suspend fun completeElicitation(notification: CompleteElicitationNotification) {
+        completedElicitations.update { it + notification.elicitationId }
+    }
 
     private suspend fun answer() = "$id in ${contextSession()?.sessionId}"
 

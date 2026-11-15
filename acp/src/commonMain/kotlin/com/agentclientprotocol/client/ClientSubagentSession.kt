@@ -31,9 +31,10 @@ import kotlinx.atomicfu.atomic
  * place of the root's answer, then its live updates. The live updates, and the agent's requests for the subagent,
  * wait until the opening call of the root session has completed.
  *
- * The client never prompts a subagent, so there is no prompt, mode, model, configuration or close here. Every update
- * of the subagent reaches its [operations] through [ClientSessionOperations.notify], including
- * `config_option_update` and `current_mode_update`, and none of them changes a root session's mode or options.
+ * The client never prompts a subagent, so there is no prompt, mode, model, configuration or close here. A subagent is
+ * closed together with its root session, see [ClientSession.close]. Every update of the subagent reaches its
+ * [operations] through [ClientSessionOperations.notify], including `config_option_update` and `current_mode_update`,
+ * and none of them changes a root session's mode or options.
  *
  * Everything that changes on this object reaches the application as an event of a stream it already receives:
  * a `subagent_update` in the parent's [ClientSessionOperations.notify], or the [com.agentclientprotocol.common.SessionEvent.Opened]

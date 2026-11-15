@@ -108,8 +108,8 @@ internal class ClientSessionImpl(
     @UnstableApi
     override suspend fun close(_meta: JsonElement?): CloseSessionResponse {
         /*
-         * Answer before waiting for the response: an agent whose close waits for its turn to end would otherwise
-         * wait for the permission answer while the client waits for the close response.
+         * Answer before waiting for the response: an agent whose close waits for its work to end, a subagent's
+         * included, would otherwise wait for the permission answer while the client waits for the close response.
          */
         pendingPermissions.close()
         onClosing()

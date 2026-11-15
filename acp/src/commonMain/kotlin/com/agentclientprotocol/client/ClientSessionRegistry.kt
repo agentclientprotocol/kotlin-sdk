@@ -15,10 +15,12 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 
@@ -27,7 +29,7 @@ private val logger = KotlinLogging.logger {}
 /**
  * The session map of a [Client]: owns the rules about which [ClientSessionHolder] owns a session id, and delivers
  * `session/update` notifications to the holders. It registers the subagent sessions that the agent announces, as a
- * tree of holders under their roots.
+ * tree of holders under their roots, and removes a root's tree when the root is closed.
  *
  * @param globalSessionUpdateHandler receives the updates for sessions that this client is not connected to
  * @param protocol the connection, for the subagents' `session/cancel`
@@ -91,10 +93,80 @@ internal class ClientSessionRegistry(
     private fun getOrCreateSessionHolder(sessionId: SessionId): ClientSessionHolder =
         getOrCreateSessionHolderOrNull(sessionId) ?: acpFail("Session $sessionId not found")
 
-    fun removeSessionHolder(sessionId: SessionId) {
-        _sessions.update { currentMap ->
-            currentMap.copy(sessions = currentMap.sessions.remove(sessionId))
+    /**
+     * Returns the holder of the root session [rootId], or `null` if the id is unknown or belongs to a subagent.
+     */
+    private fun rootHolderOrNull(rootId: SessionId): ClientSessionHolder? =
+        _sessions.value.sessions[rootId]?.takeIf { it.parent == null }
+
+    /**
+     * Answers the pending and the later permission requests of every subagent below the root session [rootId] with
+     * `cancelled`, when its close starts. Each close only completes a signal, so the order doesn't matter.
+     */
+    fun closeDescendantPermissions(rootId: SessionId) {
+        val root = rootHolderOrNull(rootId) ?: return
+        root.forEachDescendant { it.subagentPermissions?.close() }
+    }
+
+    /**
+     * Removes the root session [rootId] and every subagent below it, after the agent answered its `session/close`.
+     *
+     * Each holder first stops taking subagents, top-down, so a late announcement registers no subagent that no close
+     * would reach. Then every consumer is stopped and joined, so none starts or delivers afterwards. The joins wait
+     * for a subagent's `notify` to react to cancellation. A consumer whose own operations called the close is not
+     * joined, which would never finish, and is cancelled at the end instead. Then the holders leave the session map
+     * in one compare-and-set, each only if its id still maps to it, so no half-removed tree is visible. Last, each
+     * subagent object is closed, and each subagent holder that hasn't completed fails with a "closed" error, so its
+     * waiting requests get the error and its queue goes to [globalSessionUpdateHandler].
+     *
+     * The removal finishes even if the caller is cancelled while it joins the consumers, because the agent has
+     * already dropped the sessions.
+     *
+     * @return the ids that were removed from the session map
+     */
+    suspend fun removeSessionTree(rootId: SessionId): Set<SessionId> {
+        val root = rootHolderOrNull(rootId) ?: return emptySet()
+
+        val subtree = buildList {
+            fun visit(holder: ClientSessionHolder) {
+                add(holder)
+                holder.closeChildren().forEach(::visit)
+            }
+            visit(root)
         }
+
+        val current = currentCoroutineContext()[SubagentConsumer]?.holder
+        val consumers = subtree.mapNotNull { holder -> holder.stopConsumer()?.let { holder to it } }
+        val ownConsumer = consumers.firstOrNull { (holder, _) -> holder === current }?.second
+        val removed = mutableSetOf<SessionId>()
+        try {
+            for ((_, job) in consumers) if (job !== ownConsumer) job.cancel()
+            for ((_, job) in consumers) if (job !== ownConsumer) job.join()
+        } finally {
+            withContext(NonCancellable) {
+                _sessions.update { storage ->
+                    removed.clear()
+                    val sessions = storage.sessions.mutate { map ->
+                        for (holder in subtree) {
+                            if (map[holder.sessionId] === holder) {
+                                map.remove(holder.sessionId)
+                                removed += holder.sessionId
+                            }
+                        }
+                    }
+                    storage.copy(sessions = sessions)
+                }
+
+                // Bottom-up, so each holder fails with its own error rather than with its parent's.
+                for (holder in subtree.asReversed()) {
+                    if (holder === root) continue
+                    holder.subagent?.markClosed()
+                    if (!holder.session.isCompleted) failSessionHolder(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
+                }
+            }
+            ownConsumer?.cancel()
+        }
+        return removed
     }
 
     /**

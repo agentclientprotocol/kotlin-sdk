@@ -158,6 +158,37 @@ class ClientSessionRegistryTest {
     }
 
     @Test
+    fun `removing a tree frees its ids and fails its unopened subagents and starts no consumer afterwards`() = runTest {
+        registry.withInitializingSession {
+            val rootHolder = registry.claimSessionHolder(root, replayRequested = false, parameters)
+            registry.deliverSessionUpdate(root, announce(child), null)
+            val childHolder = assertNotNull(rootHolder.childOrNull(child))
+            registry.deliverSessionUpdate(child, announce(grandchild), null)
+            val grandchildHolder = assertNotNull(childHolder.childOrNull(grandchild))
+            registry.deliverSessionUpdate(grandchild, text("grandchild-queued"), null)
+
+            assertEquals(setOf(root, child, grandchild), registry.removeSessionTree(root))
+            assertEquals(emptySet(), registry.removeSessionTree(root), "a removed tree is removed once")
+
+            for (holder in listOf(childHolder, grandchildHolder)) {
+                assertEquals("Session ${holder.sessionId} closed", holder.session.getCompletionExceptionOrNull()?.message)
+            }
+            assertFalse(rootHolder.isFailed, "the root's opening is not the removal's to fail")
+            assertEquals(
+                listOf<Pair<SessionId, SessionUpdate>>(grandchild to text("grandchild-queued"), child to announce(grandchild)),
+                unconnected,
+                "each queue is handed on, bottom-up",
+            )
+
+            var started = false
+            grandchildHolder.startConsumer(this@runTest) { started = true }
+            runCurrent()
+            assertFalse(started, "a setup that returns after the removal starts no consumer")
+            assertFalse(rootHolder.addChild(ClientSessionHolder(SessionId("late"), rootHolder, SubagentSetup(protocol, scope) { _, _ -> })))
+        }
+    }
+
+    @Test
     fun `a consumer starts once and stopping it returns the running one`() = runTest {
         val holder = ClientSessionHolder(child, ClientSessionHolder(root, null, SubagentSetup(protocol, scope) { _, _ -> }), SubagentSetup(protocol, scope) { _, _ -> })
         var runs = 0

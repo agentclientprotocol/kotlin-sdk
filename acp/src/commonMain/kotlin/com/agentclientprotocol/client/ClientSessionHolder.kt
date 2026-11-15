@@ -28,6 +28,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 
 private val logger = KotlinLogging.logger {}
 
@@ -64,6 +66,14 @@ internal sealed class QueuedItem {
 }
 
 /**
+ * Marks the coroutine of the consumer of [holder]'s queue. A close of the root that the subagent's own operations
+ * start inside that consumer must not join it, because the join would wait for itself.
+ */
+internal class SubagentConsumer(val holder: ClientSessionHolder) : AbstractCoroutineContextElement(Key) {
+    companion object Key : CoroutineContext.Key<SubagentConsumer>
+}
+
+/**
  * The client's slot for one session id, a root or a subagent: buffers its updates until the session is created, then
  * delivers them to it.
  *
@@ -80,8 +90,8 @@ internal sealed class QueuedItem {
  * the update that missed the queue before it is delivered, and then goes to the session. So the updates keep the
  * order in which their handlers reach the holder, and the marker keeps its place among them.
  *
- * Each holder keeps the subagents registered under it, failed ones included, so [markOpened] and the failure cascade
- * of [ClientSessionRegistry.failSessionHolder] can walk the tree.
+ * Each holder keeps the subagents registered under it, failed ones included, so [markOpened], the failure cascade
+ * of [ClientSessionRegistry.failSessionHolder] and the close of the root can walk the tree.
  *
  * @property sessionId the id of this holder's session
  * @property parent the holder of the session this subagent was announced in, `null` for a root
@@ -275,11 +285,17 @@ internal class ClientSessionHolder(
     }
 
     /**
-     * Stops taking subagents and returns the ones registered so far.
+     * Stops taking subagents, both in the tree and in [subagents], and returns the ones registered so far.
      */
-    fun closeChildren(): Collection<ClientSessionHolder> = children.getAndUpdate { it.copy(closed = true) }.byId.values
+    fun closeChildren(): Collection<ClientSessionHolder> {
+        subagents.close()
+        return children.getAndUpdate { it.copy(closed = true) }.byId.values
+    }
 
-    private fun forEachDescendant(action: (ClientSessionHolder) -> Unit) {
+    /**
+     * Runs [action] on every subagent below this holder, failed ones included, each before its own subagents.
+     */
+    fun forEachDescendant(action: (ClientSessionHolder) -> Unit) {
         for (child in children.value.byId.values) {
             action(child)
             child.forEachDescendant(action)
@@ -295,10 +311,10 @@ internal class ClientSessionHolder(
 
     /**
      * Starts the consumer [block] of this subagent's queue in [scope], unless [stopConsumer] has run: a holder that
-     * failed or closed gets no consumer.
+     * failed or closed gets no consumer. The consumer's context has a [SubagentConsumer] of this holder.
      */
     fun startConsumer(scope: CoroutineScope, block: suspend CoroutineScope.() -> Unit) {
-        val job = scope.launch(start = CoroutineStart.LAZY, block = block)
+        val job = scope.launch(SubagentConsumer(this), start = CoroutineStart.LAZY, block = block)
         if (consumer.compareAndSet(ConsumerState.NotStarted, ConsumerState.Running(job))) job.start() else job.cancel()
     }
 

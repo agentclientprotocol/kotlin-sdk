@@ -80,17 +80,20 @@ public class Client(
         sessionResponse: AcpCreatedSessionResponse,
     ): ClientSessionImpl = ClientSessionImpl(
         this, sessionId, sessionParameters, operations, sessionResponse, protocol,
-        onClosing = {
-            // Nothing to do yet: a session has no descendants whose permission requests need an answer.
-        },
+        onClosing = { sessions.closeDescendantPermissions(sessionId) },
         onClosed = { removeClosedSession(sessionId) },
         holder = sessionHolder,
     )
 
-    private fun removeClosedSession(sessionId: SessionId) {
-        sessions.removeSessionHolder(sessionId)
-        @OptIn(UnstableApi::class)
-        _elicitationToSession.removeBySession(sessionId)
+    /**
+     * Removes the closed root session [sessionId] and its subagents, and the elicitation entries of their ids.
+     */
+    private suspend fun removeClosedSession(sessionId: SessionId) {
+        val removed = sessions.removeSessionTree(sessionId)
+        for (id in removed + sessionId) {
+            @OptIn(UnstableApi::class)
+            _elicitationToSession.removeBySession(id)
+        }
     }
 
     @OptIn(UnstableApi::class)

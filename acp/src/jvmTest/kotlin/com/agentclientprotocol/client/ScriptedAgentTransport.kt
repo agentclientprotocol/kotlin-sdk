@@ -3,6 +3,7 @@ package com.agentclientprotocol.client
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.model.AcpCreatedSessionResponse
+import com.agentclientprotocol.model.AcpNotification
 import com.agentclientprotocol.model.AcpRequest
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.PermissionOption
@@ -149,17 +150,12 @@ internal class ScriptedAgentTransport : BaseTransport() {
     }
 
     fun sendUpdate(sessionId: SessionId, update: SessionUpdate) {
-        fireFrame(
-            TransportFrame.Single(
-                JsonRpcNotification(
-                    method = AcpMethod.ClientMethods.V1.SessionUpdate.methodName,
-                    params = ACPJson.encodeToJsonElement(
-                        AcpMethod.ClientMethods.V1.SessionUpdate.serializer,
-                        SessionNotification(sessionId, update),
-                    ),
-                )
-            )
-        )
+        sendNotification(AcpMethod.ClientMethods.V1.SessionUpdate, SessionNotification(sessionId, update))
+    }
+
+    fun <P : AcpNotification> sendNotification(method: AcpMethod.AcpNotificationMethod<P>, params: P) {
+        val encoded = ACPJson.encodeToJsonElement(method.serializer, params)
+        fireFrame(TransportFrame.Single(JsonRpcNotification(method = method.methodName, params = encoded)))
     }
 
     /**

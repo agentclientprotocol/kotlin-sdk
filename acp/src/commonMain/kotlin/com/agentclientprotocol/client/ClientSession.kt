@@ -61,7 +61,18 @@ public interface ClientSession : BaseClientSession {
      * When the close starts, every pending permission request of this session is answered with
      * [RequestPermissionOutcome.Cancelled] and its handler is cancelled, without waiting for the response and
      * even if the close then fails. Requests that arrive later are answered `cancelled` without reaching
-     * [operations].
+     * [operations]. The same holds for every subagent session below this one, in [subagents] and their own
+     * [ClientSubagentSession.subagents].
+     *
+     * Closing a session closes all its subagents with it. After a successful response, and before this function
+     * returns, the client drops the whole tree: later updates for its session ids go to the
+     * [GlobalSessionUpdateHandler], the agent's requests for them fail, and a subagent that hasn't finished opening
+     * fails, so its waiting requests fail too. Each [ClientSubagentSession] keeps its last values and its
+     * [ClientSubagentSession.operations], which get no more calls. Its [ClientSubagentSession.canCancel] is `false`,
+     * and its [ClientSubagentSession.cancel] throws. The [subagents] lists stay as they were. This function cancels
+     * the deliveries to the subagents that haven't finished opening and waits for them to end, so it returns only
+     * once each [ClientSessionOperations.notify] or [SubagentOperations.createSubagentOperations] call in progress
+     * for such a subagent reacts to the cancellation. If the request fails, nothing is removed.
      *
      * Only available if the agent advertises the `session.close` capability.
      *
