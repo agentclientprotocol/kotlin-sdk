@@ -33,9 +33,14 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 - M1.1 move `MaybeUndefined` to `model` — `fc3ea32` — pure package move, `:acp-model` dump updated, `check` green.
   Note: `decodeMaybeUndefined` swallows malformed values (becomes `Undefined`), so strict fields (`cwd`,
   `additionalDirectories`) must not use it as is.
+- M1.2 capability and state types — `51b582d` — `SubagentCapabilities`, `SubagentSessionCapabilities`,
+  `SessionCancelCapabilities`, `StateUpdate`, `IdleStopReason`, `ClientCapabilities.subagents` (after `_meta`);
+  internal `JsonObjectSerializer`, `decodeOrNull`, `lenientMeta` helpers; `check` green. Possible follow-up: v1
+  `Usage` decodes strictly, so one bad optional field nulls the whole `usage` (Rust nulls only that field).
 
 ## Next
-- M1.2 (capability, `StateUpdate`, `IdleStopReason` types) programmer running; then M1.3, then the M1 review.
+- M1.3 (`SubagentUpdate`, `SessionMessage`, `SessionMessageChunk`, `ToolCallContent.Session`) programmer running;
+  then the M1 review over `a0dcdc5..HEAD`.
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
