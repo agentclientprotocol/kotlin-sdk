@@ -45,6 +45,16 @@ public interface RpcMethodsOperations {
      * Set a handler for a notification method.
      * This will override any existing handler for the same method.
      * Prefer typed [setNotificationHandler] over this method.
+     *
+     * Ordering: each incoming notification's handler runs until it first suspends, or returns, before the next
+     * incoming message is handled. So the parts of notification handlers before their first suspension run one at a
+     * time, in arrival order, and a message that arrives after a notification, such as a response, is handled
+     * after that part. The next message does not wait for the handler to finish: once it suspends, later messages
+     * are handled, and its remainder may interleave with later handlers.
+     *
+     * This holds only if [additionalContext] contains no dispatcher. The handler is entered through
+     * `withContext(additionalContext)`, which dispatches before the handler runs when the dispatcher changes, so
+     * later messages may be handled before the handler starts.
      */
     public fun setNotificationHandlerRaw(
         method: AcpMethod.AcpNotificationMethod<*>,

@@ -170,11 +170,32 @@ public class Protocol(
         method: MethodName,
         params: JsonElement?,
         sessionId: SessionId?
+    ): JsonElement = sendRequestRaw(method, params, sessionId, onResponse = null)
+
+    /**
+     * Sends a request like the public [sendRequestRaw], and calls [onResponse] with the result of its successful
+     * response.
+     *
+     * [onResponse] is registered before the request is sent. It runs synchronously in the read loop when the
+     * success response arrives: before this call returns, and before the protocol handles the next incoming
+     * message, so it observes where the response falls among the incoming notifications. It is not called for an
+     * error response, after this call is cancelled, or after the protocol closes. If cancellation races with the
+     * arrival of the response, it may still run while this call ends with a [CancellationException].
+     *
+     * [onResponse] must not suspend, block, or throw. Every incoming message of the connection waits while it runs,
+     * so a hook that waits for this connection deadlocks it. A hook that throws is logged, and this call still
+     * returns the response.
+     */
+    internal suspend fun sendRequestRaw(
+        method: MethodName,
+        params: JsonElement?,
+        sessionId: SessionId?,
+        onResponse: ((JsonElement) -> Unit)?,
     ): JsonElement {
         currentCoroutineContext().ensureActive()
         val requestId = OutgoingRequestId(RequestId.create(requestIdCounter.incrementAndGet()))
         val response = CompletableDeferred<JsonElement>()
-        val outgoingRequest = OutgoingRequest(response, sessionId)
+        val outgoingRequest = OutgoingRequest(response, sessionId, onResponse)
 
         pendingOutgoingRequests.update { it.put(requestId, outgoingRequest) }
 
@@ -191,6 +212,16 @@ public class Protocol(
             throw jsonRpcException.toProtocolException()
         } catch (ce: CancellationException) {
             logger.trace(ce) { "Request cancelled on this side. Sending CancelRequest notification." }
+            if (onResponse != null) {
+                /*
+                 * This call no longer returns a response, so its hook must not observe one that arrives during
+                 * the graceful wait below.
+                 */
+                pendingOutgoingRequests.update {
+                    if (it[requestId] === outgoingRequest) it.put(requestId, outgoingRequest.copy(onResponse = null))
+                    else it
+                }
+            }
             withContext(NonCancellable) {
                 if (!protocolJob.isActive) return@withContext
 
@@ -227,7 +258,7 @@ public class Protocol(
             throw ce
         }
         finally {
-            pendingOutgoingRequests.update { if (it[requestId] === outgoingRequest) it.remove(requestId) else it }
+            pendingOutgoingRequests.update { if (it[requestId]?.response === response) it.remove(requestId) else it }
         }
     }
 
@@ -585,18 +616,21 @@ public class Protocol(
 
     private fun handleResponse(response: JsonRpcResponse) {
         val outgoingRequestId = OutgoingRequestId(response.id)
-        var outgoing: OutgoingRequest? = null
-        pendingOutgoingRequests.update { currentRequests ->
-            outgoing = currentRequests[outgoingRequestId]
-            currentRequests.remove(outgoingRequestId)
-        }
+        val request = pendingOutgoingRequests.getAndUpdate { it.remove(outgoingRequestId) }[outgoingRequestId]
 
-        val result = outgoing?.response
-        if (result != null) {
+        if (request != null) {
             when (response) {
-                is JsonRpcSuccessResponse -> result.complete(response.result)
+                is JsonRpcSuccessResponse -> {
+                    // Runs before the caller can resume and before the read loop takes the next message.
+                    request.onResponse?.let { onResponse ->
+                        runCatching { onResponse(response.result) }.onFailure { t ->
+                            logger.error(t) { "Response hook failed for request ${response.id}" }
+                        }
+                    }
+                    request.response.complete(response.result)
+                }
 
-                is JsonRpcErrorResponse -> result.completeExceptionally(
+                is JsonRpcErrorResponse -> request.response.completeExceptionally(
                     JsonRpcException(
                         code = response.error.code,
                         message = response.error.message,
@@ -621,9 +655,16 @@ internal value class IncomingRequestId(val id: RequestId)
 @JvmInline
 internal value class OutgoingRequestId(val id: RequestId)
 
+/**
+ * A request this side sent and still awaits a response for.
+ *
+ * @property onResponse called in the read loop with the result of a success response, before [response]
+ * completes; see the `onResponse` overload of [Protocol.sendRequestRaw]
+ */
 internal data class OutgoingRequest(
     val response: CompletableDeferred<JsonElement>,
-    val sessionId: SessionId? = null
+    val sessionId: SessionId? = null,
+    val onResponse: ((JsonElement) -> Unit)? = null,
 )
 
 /**
