@@ -61,13 +61,16 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   registrations, `forkSession` KDoc; 69 tests; `check` green; no API change. M2 (agent side) complete: product
   commits `9bd0d26`, `6105d21`, `7ab77d2`. Known gap for the M2 reviewer: a child's permission/fs/terminal/
   elicitation request racing cleanup can go out after the close response (phase check then send, no lock).
+- M3.1 `clearCancellation()` fix — `955965c` — replaces `startTurn()` in `PendingPermissionCancellation`; v1 and
+  v2 callers switched; regression tests in `ClientPermissionCancellationTest` and v2 `ClientSessionTest` failed
+  before the fix; `check` green; no API change.
 
 ## Next
 - M2 review running (reviewer, commits `9bd0d26`, `6105d21`, `7ab77d2`) → `.agents/research/review-m2-agent.md`;
   show findings to the user; fixes become new slices.
-- M3.1 programmer running: `clearCancellation()` fix to #156. Then M3.2 (extract `ClientSessionRegistry`, close
-  callbacks, session-request helper; no behaviour change), M3.3 (deprecate `ClientSession.client`), M3.4 (opus:
-  `Protocol` response hook, `SessionEvent`/`Opened`, one opening per holder, samples, release note), M3 review.
+- M3.2 programmer running: extract `ClientSessionRegistry`, close callbacks, session-request helper; no behaviour
+  or API change. Then M3.3 (deprecate `ClientSession.client`), M3.4 (opus: `Protocol` response hook,
+  `SessionEvent`/`Opened`, one opening per holder, samples, release note), M3 review over `fa1f66d..HEAD`.
 - Owed in M3's release note: `ToolCallContent.Session` and new `SessionUpdate` variants (exhaustive `when`),
   `ClientCapabilities` constructor/`copy` change.
 - Owed in M6: `CLAUDE.md` rules (nothing updated yet).
