@@ -157,13 +157,23 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   `check` green (JS flake, fourth occurrence); no API change. M4 (client side) complete. Residual risks for the
   reviewer: deliveries already under way when `close()` runs can still reach a closed child's operations once; a
   child announced after `onClosing` but before the close response gets fresh (open) permissions.
+- M4 review — `.agents/research/review-m4-client.md` — 0 blocker, 3 should-fix, 10 nit. (1) child permission
+  requests enter the cancel race only after the holder completes; (2) `removeSessionTree` never closes
+  `subagentPermissions`, and a child announced during a close gets open permissions; (3) `AGENTS.md` lacks the
+  client rules. Nits: (4) child whose `notify` fails before `Opened` stays live in `subagents`; (5) close KDoc
+  "no more calls"; (6) agent reopen race, 3-line fix; (7) factory-path `drainHistory` CE unwrapped; (8) failed
+  child holders of a failed root never leave the map; (9) cascade without join; (10) `createSubagentOperations`
+  context undocumented; (11) `SubagentConsumer` element inherited by app coroutines; (12) N3 no regression test;
+  (13) 500 ms wall-clock test.
+- M5 integration tests — `c4b62c9` — `SubagentsTest` (16 scenarios) × STDIO and WebSocket on JVM; helpers in
+  `SubagentTestSupport.kt`; 24 reruns clean; `check` green; no product bugs. Notes: during a prompt turn a root's
+  updates go to the prompt flow, not `notify`; the spec's relay example `announce(id, parent = x) { }` does not
+  compile (`parent` is the last parameter). Not covered: terminal call from a child.
 
 ## Next
-- M4 review running (reviewer) → `.agents/research/review-m4-client.md`: client commits `57b948c`, `c03d9df`,
-  `d18dc66`, `ced95e7`, plus unreviewed fixes `5bca6d3`, `2f35a77`, `38a25dc` and docs `9ce0d52`.
-- M5 programmer running: end-to-end subagent tests in `:acp-integration-test` (STDIO and WebSocket).
-- Then M4/M5 fix slices from the review, M6b (client-side `AGENTS.md` rules, final `apiDump` review, `check`),
-  final `.agents/` reference grep.
+- Discussing three M4 review decisions with the user (see Open questions). Then M4.5 fix slice (opus): findings
+  1, 2, 4 per the answers, nits 5-11, 13. Then M6b (client-side `AGENTS.md` rules, final `apiDump` review,
+  `check`), final `.agents/` reference grep.
 - PR description (when the user asks for a PR): release-note text from the commit body of `2f35a77` (replaces `d505b25`'s),
   plus the reminder to delete `.agents/prompt.md`, `.agents/state.md`, `.agents/research/` before merge.
 - Flaky: Kotlin/JS "Internal compiler error" in `:acp:compileTestDevelopmentExecutableKotlinJs`, twice, passes
@@ -177,4 +187,6 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
-(none)
+- M4 finding 1: the user prefers "join the cancel race at arrival"; asked why it changes the spec's wording.
+- M4 finding 2: the user likes the closing flag; asked for a code design prototype of where it goes.
+- M4 nit 4: the user likes "mark it closed"; asked why nothing is ever removed from `subagents` (memory).
