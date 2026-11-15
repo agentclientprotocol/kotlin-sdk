@@ -9,6 +9,10 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 - All work lands on `eugenethedev/subagents`, one commit per slice. The opening-boundary commits (M3) stay
   contiguous so the user can split them into their own PR later.
 - The user approved the milestone plan below (shown 2026-11-15).
+- M2 review answers (user, 2026-11-15): S1 a factory `CancellationException` after the announcement with an active
+  caller is converted to `IllegalStateException` (cause kept); S2 a `session/cancel` arriving while the factory
+  runs with a grant in effect is latched and delivered to `cancel()` once the factory returns (dropped if it
+  throws); N1 late child requests / `$/cancel_request` after the close response are accepted and documented.
 
 ## Plan
 - M0 research: wire shapes of the RFD and Rust v1 models at current upstream vs the spec's pinned `c392d7e9`
@@ -76,16 +80,20 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   N2 grant between response queued and `afterResponse` treated as history, N3 `remove()` vs "not announced",
   N4 load-response build failure leaves replayed children, N5 two weak tests, N6 `@property` on an interface KDoc,
   N7 `AGENTS.md` (M6).
+- S3 research — `.agents/research/reopen-open-session.md` — v1 is silent on load/resume of an already-open
+  session (no error code fits); v2 docs, Rust SDK and the pre-subagents Kotlin agent accept it; replacing the
+  wrapper is pre-existing and cleans nothing (old turn keeps running).
+- M3.4 `Protocol` response hook — `21966d5` — internal `sendRequestRaw(method, params, sessionId, onResponse)`,
+  typed `Protocol.sendRequest(method, request, onResponse)` in `protocol/Protocol.extensions.kt`,
+  `encodeRequestParams`/`decodeResponseResult`, ordering KDoc, `ReadLoopOrderingTest` (12); `check` green; no API
+  change. Beyond the design: a cancelled call drops its hook; remaining race: the hook may have run for a call that
+  then ends with `CancellationException` (M3.5 must tolerate it).
 
 ## Next
-- M3.4 (opus) programmer running: internal `Protocol` response hook (`OutgoingRequest.onResponse`, internal
-  `sendRequestRaw` overload, typed `Protocol.sendRequest` in `protocol/Protocol.extensions.kt`, notification-handler
-  ordering KDoc). Then M3.5 (opus): `SessionEvent`/`Opened`, `notify(SessionEvent)`, `QueuedItem`, `markOpened`,
-  `claimForOpening(replayRequested)`, one opening per holder, samples, release note. Then M3 review over
-  `fa1f66d..HEAD`.
-- Researcher running for S3: may a v1 client load/resume a session that is already open on the connection, and what
-  the agent runtime did before subagents → `.agents/research/reopen-open-session.md`.
-- M2.4 fix slice (opus), after the user answers S1/S2 and the S3 research is in: S1, S2, S3, S4 tests, N2-N6.
+- M3.5 (opus) programmer running: `SessionEvent`/`Opened`, `notify(SessionEvent)`, `QueuedItem` (`Update`,
+  `Opened`), `markOpened`, `claimForOpening(replayRequested)`, one opening per holder, samples, release note.
+  Then the M3 review over `fa1f66d..HEAD`.
+- M2.4 fix slice (opus) after M3.5: S1 convert, S2 latch, S3 per the user's answer, S4 tests, N1 KDoc, N2-N6.
 - Owed in M3's release note: `ToolCallContent.Session` and new `SessionUpdate` variants (exhaustive `when`),
   `ClientCapabilities` constructor/`copy` change.
 - Owed in M6: `CLAUDE.md` rules (nothing updated yet).
@@ -94,8 +102,5 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
-- S1 (asked 2026-11-15, re-asked with the review): factory throws a `CancellationException` after the announcement
-  while the caller is active: rethrow unchanged (implemented, spec's literal text) or convert to
-  `IllegalStateException` (reviewer and orchestrator recommend).
-- S2: `session/cancel` arriving while the factory still runs with a grant on the wire: latch it until the factory
-  returns, or keep dropping it and document the gap.
+- S3: agent receives `session/load`/`session/resume` for a root already open on the connection: clean up the old
+  root's subagent subtree when the root is replaced (orchestrator recommends), reject the request, or leave as is.
