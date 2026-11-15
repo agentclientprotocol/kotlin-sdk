@@ -150,6 +150,64 @@ class ClientPermissionCancellationTest {
         }
 
     @Test
+    fun `a request still waiting when the next turn starts is answered by a later cancel`() =
+        withV1Client { client, agent, scope ->
+            val operations = UserOperations()
+            val session = client.newSession(agent, operations)
+            val firstTurn = scope.async { session.prompt(listOf(ContentBlock.Text("first"))).toList() }
+            val firstPrompt = agent.prompts.receive()
+            val request = agent.requestPermission(session.sessionId, "tool")
+            val user = operations.user("tool")
+            user.started.await()
+
+            // The agent ends the turn while the request is still waiting for the user.
+            agent.answerPrompt(firstPrompt)
+            firstTurn.await()
+            val secondTurn = scope.async { session.prompt(listOf(ContentBlock.Text("second"))).toList() }
+            val secondPrompt = agent.prompts.receive()
+
+            session.cancel()
+
+            assertEquals(RequestPermissionOutcome.Cancelled, agent.permissionOutcome(request))
+            assertTrue(user.cleanedUp.isCompleted, "the handler stopped without the user answering")
+            assertEquals(emptyList(), agent.responsesTo(request).toListNow(), "the request got exactly one response")
+
+            agent.answerPrompt(secondPrompt)
+            secondTurn.await()
+        }
+
+    @Test
+    fun `a turn started after a cancel lets new requests reach the app even if an earlier turn kept a request`() =
+        withV1Client { client, agent, scope ->
+            val operations = UserOperations()
+            val session = client.newSession(agent, operations)
+            val firstTurn = scope.async { session.prompt(listOf(ContentBlock.Text("first"))).toList() }
+            val firstPrompt = agent.prompts.receive()
+            val kept = agent.requestPermission(session.sessionId, "kept")
+            operations.user("kept").started.await()
+            agent.answerPrompt(firstPrompt)
+            firstTurn.await()
+            val secondTurn = scope.async { session.prompt(listOf(ContentBlock.Text("second"))).toList() }
+            val secondPrompt = agent.prompts.receive()
+            session.cancel()
+            assertEquals(RequestPermissionOutcome.Cancelled, agent.permissionOutcome(kept))
+            agent.answerPrompt(secondPrompt)
+            secondTurn.await()
+
+            val thirdTurn = scope.async { session.prompt(listOf(ContentBlock.Text("third"))).toList() }
+            val thirdPrompt = agent.prompts.receive()
+            val next = agent.requestPermission(session.sessionId, "next")
+            operations.user("next").started.await()
+            operations.user("next").answer.complete(ALLOWED)
+
+            assertEquals(ALLOWED.outcome, agent.permissionOutcome(next))
+            assertEquals(listOf("kept", "next"), operations.calls.toListNow())
+
+            agent.answerPrompt(thirdPrompt)
+            thirdTurn.await()
+        }
+
+    @Test
     fun `a prompt rejected for an active turn does not undo a cancel`() = withV1Client { client, agent, scope ->
         val operations = UserOperations()
         val session = client.newSession(agent, operations)

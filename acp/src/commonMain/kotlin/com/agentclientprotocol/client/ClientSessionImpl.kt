@@ -63,7 +63,7 @@ internal class ClientSessionImpl(
     ): Flow<Event> = channelFlow {
         val promptSession = PromptSession(Channel(Channel.UNLIMITED))
         if (!activePrompt.compareAndSet(null, promptSession)) error("There is active prompt execution")
-        pendingPermissions.startTurn()
+        pendingPermissions.clearCancellation()
         logger.trace { "Starting channel collection for prompt" }
         val channelJob = launch {
             for (update in promptSession.updateChannel) {

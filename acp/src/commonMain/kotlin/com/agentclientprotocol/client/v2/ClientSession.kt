@@ -71,7 +71,7 @@ public class ClientSession internal constructor(
      * with this id can arrive on [updates] before or after this call returns
      */
     public suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): MessageId {
-        pendingPermissions.startTurn()
+        pendingPermissions.clearCancellation()
         return AcpMethod.AgentMethods.V2.SessionPrompt(protocol, PromptRequest(sessionId, content, _meta)).messageId
     }
 

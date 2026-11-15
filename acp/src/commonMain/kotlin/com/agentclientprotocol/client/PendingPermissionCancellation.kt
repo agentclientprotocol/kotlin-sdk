@@ -13,23 +13,22 @@ import kotlinx.coroutines.selects.select
  * Every request races the app's handler against one per-session signal, so a single [cancelPending] answers all of
  * them. The race is the only answering path, which keeps exactly one response per request.
  *
- * The signal stays completed until the next turn calls [startTurn], so a request that arrives in between is
- * answered `cancelled` without reaching the app. A signal that was not completed is kept, so requests still pending
- * from an earlier turn, which v2 allows while a new prompt starts, are answered by a later cancel or close too.
- * After [close] the signal is never replaced.
+ * The signal stays completed until [clearCancellation] is called when new work starts, so a request that arrives in
+ * between is answered `cancelled` without reaching the app. After [close] the signal is never replaced.
  */
 internal class PendingPermissionCancellation {
     private val signal = atomic(CompletableDeferred<Unit>())
 
     /**
-     * Replaces a signal completed by a cancel, since a cancel belongs to the turn it interrupted.
+     * Lets later requests reach the app again after a cancel. A signal that no cancel has completed is kept, so
+     * requests already waiting on it are still answered by the next cancel.
      */
-    fun startTurn() {
-        signal.update { current -> if (current === CLOSED || !current.isCompleted) current else CompletableDeferred() }
+    fun clearCancellation() {
+        signal.update { current -> if (current.isCompleted && current !== CLOSED) CompletableDeferred() else current }
     }
 
     /**
-     * Answers every pending and every later request of the current turn with `cancelled`.
+     * Answers every pending request, and every later one until [clearCancellation], with `cancelled`.
      */
     fun cancelPending() {
         signal.value.complete(Unit)
@@ -67,7 +66,7 @@ internal class PendingPermissionCancellation {
     private companion object {
         /*
          * Marks a closed session and is never replaced. Compare by identity: a signal completed by a cancel is
-         * replaced by the next turn. It is already completed, so it answers later requests right away, and
+         * replaced by [clearCancellation]. It is already completed, so it answers later requests right away, and
          * sharing it between sessions is safe.
          */
         val CLOSED = CompletableDeferred(Unit)

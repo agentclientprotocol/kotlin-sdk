@@ -105,6 +105,33 @@ class ClientSessionTest {
     }
 
     @Test
+    fun `a request still waiting when the next prompt is sent is answered by a later cancel`() =
+        withV2Client { client, agent, _ ->
+            val user = WaitingUser()
+            val sessionId = SessionId("session")
+            agent.onNewSession(sessionId) { }
+            agent.onPrompt(MessageId("user-1")) { }
+            val session = client.newSession(cwd = ".", operations = user)
+            val permission = agent.requestPermission(sessionId)
+            user.started.await()
+
+            session.prompt(listOf(ContentBlock.Text("next")))
+            session.cancel()
+
+            assertEquals(RequestPermissionOutcome.Cancelled, agent.permissionOutcome(permission))
+            assertTrue(user.cleanedUp.isCompleted, "the handler stopped without the user answering")
+            assertEquals(emptyList(), agent.responsesTo(permission).toListNow(), "the request got exactly one response")
+
+            // Control: a prompt after the cancel lets new requests reach the app again.
+            user.answer.complete(ALLOWED)
+            session.prompt(listOf(ContentBlock.Text("again")))
+            val next = agent.requestPermission(sessionId)
+
+            assertEquals(ALLOWED.outcome, agent.permissionOutcome(next))
+            assertEquals(2, user.calls.get())
+        }
+
+    @Test
     fun `close answers a pending permission request when the agent does not cancel it`() =
         withV2Client { client, agent, scope ->
             val user = WaitingUser()
@@ -567,6 +594,10 @@ private class WaitingUser(private val cleanupGate: CompletableDeferred<Unit>? = 
             cleanedUp.complete(Unit)
         }
     }
+}
+
+private fun <T> Channel<T>.toListNow(): List<T> = buildList {
+    while (true) add(tryReceive().getOrNull() ?: break)
 }
 
 /** Starts reading [session], from the buffered updates onwards. */
