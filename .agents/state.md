@@ -52,15 +52,18 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   atomicfu lock around sends; lazy subtree scope; `.subagents` throws ISE outside a session; `announce` throws ISE
   when its collection is cancelled before announcing.
 - M1.4 model review fixes — `6b4dc10` — conversion-branch tests, block comments, `MaybeUndefined` KDoc; `check` green.
+- M2.2 child cancel, rejections, feed end — `6105d21` — `SubagentWrapper.cancel()`, `Agent.checkNotSubagent`
+  ("Session X is a subagent", `-32602`), `onFeedEnd` sends `unknown`; 54 tests in `AgentSubagentsTest`; `check`
+  green; no API change. Programmer choices for the M2 reviewer: a cancel arriving while the factory still runs is
+  dropped; a feed that ends after the SDK cancelled its job sends nothing even if the flow swallowed the cancel.
 
 ## Next
-- M2.2 (opus) programmer running: `session/cancel` routing, other methods rejected on child ids, feed-end
-  `unknown` rule. Then M2.3 (opus): subtree cleanup, replay window, `forkSession` KDoc. Then the M2 review over
+- M2.3 (opus) programmer running: subtree cleanup, replay window, `forkSession` KDoc. Then the M2 review over
   `63f54c5..HEAD` (excluding the M1.4 commit `6b4dc10`).
 - Owed in M3's release note: `ToolCallContent.Session` and new `SessionUpdate` variants (exhaustive `when`),
   `ClientCapabilities` constructor/`copy` change.
 - Owed in M6: `CLAUDE.md` rules (nothing updated yet).
-- Follow-ups outside this goal: `V1ClientCapabilities.toV2()` and `subagents`; `PromptResponse.usage` failing the
+- Follow-ups outside this goal: `Agent.kt` registers a `session/resume` handler twice (about lines 425 and 496); `V1ClientCapabilities.toV2()` and `subagents`; `PromptResponse.usage` failing the
   whole response on one bad field; v2 string patch fields under lenient `ACPJson`.
 - Temporary `.agents/` references left in code by programmers: none reported.
 
