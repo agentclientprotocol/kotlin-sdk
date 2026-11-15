@@ -15,9 +15,11 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 
-// Serializers of the subagent session updates. Field semantics follow the Rust schema's serde attributes:
-// `DefaultOnError` fields decode a malformed value as absent, and `cwd` and `additionalDirectories` are
-// strict. A required field that is missing or malformed fails the update.
+/*
+ * Serializers of the subagent session updates. Field semantics follow the Rust schema's serde attributes:
+ * `DefaultOnError` fields decode a malformed value as absent, and `cwd` and `additionalDirectories` are
+ * strict. A required field that is missing or malformed fails the update.
+ */
 
 @OptIn(UnstableApi::class)
 internal object SubagentUpdateSerializer : JsonObjectSerializer<SessionUpdate.SubagentUpdate>(
