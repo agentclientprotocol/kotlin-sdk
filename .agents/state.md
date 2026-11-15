@@ -28,10 +28,14 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 - M6 docs and checks: `Protocol` KDoc, `CLAUDE.md` rules, final `:acp:apiDump` review, `./gradlew check`.
 
 ## Done
-(nothing yet)
+- M0 research — report `.agents/research/subagents-wire-shapes.md` (upstream `13b76582`): no wire-shape change since
+  `c392d7e9`; only line numbers shifted and the RFD is now Preview. Report lists decoding details the spec omits.
+- M1.1 move `MaybeUndefined` to `model` — `fc3ea32` — pure package move, `:acp-model` dump updated, `check` green.
+  Note: `decodeMaybeUndefined` swallows malformed values (becomes `Undefined`), so strict fields (`cwd`,
+  `additionalDirectories`) must not use it as is.
 
 ## Next
-- M0: researcher running on the wire-shape question. Commit its report, then start M1 slice 1.
+- M1.2 (capability, `StateUpdate`, `IdleStopReason` types) programmer running; then M1.3, then the M1 review.
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
