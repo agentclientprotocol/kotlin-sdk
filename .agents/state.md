@@ -95,18 +95,39 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   M3 complete: product commits `955965c`, `a095659`, `751a644`, `21966d5`, `d505b25`. Programmer choices for the M3
   reviewer: `Opened` is delivered only after the request returned (`completeOpening`); once delivered the opening
   cannot fail (rest delivered in `NonCancellable`, `notify` failures logged) — a behaviour change vs. today.
+- M3 review — `.agents/research/review-m3-opening-boundary.md` — 0 blocker, 3 should-fix, 4 nit. Should-fix 1-3
+  all concern `completeOpening` delivering `Opened` + rest in `NonCancellable` (cancelled caller loses the session
+  but it stays registered and blocks a retry; app `notify` uncancellable; test gap). Nits: release-note wording,
+  `//` runs in `ClientSessionRegistry.kt:46-49`, `:117-121`, `elicitation/complete` quirk, unused
+  `replayRequested`/`isAnswered` (M4 uses them). Pre-existing follow-ups: `close()` removes the holder by id not
+  identity; failed `session/close` leaves the id taken.
+- M2.4 agent review fixes — `5bca6d3` — S1 converted to ISE; S2 latched cancel (grant at delivery time decides);
+  S4 tests; N1 KDoc; N2 fixed via new internal `CoroutineContext.invokeOnResponseQueued(hook)`
+  (`Protocol.extensions.kt`, runs when the transport accepts a success response; `endReplay()` moved there);
+  N3 fixed without a regression test; N4 `discardFailedLoad` also removes the root; N5, N6; 78 tests; `check`
+  green; no API change. Not yet reviewed: include `5bca6d3` in the M4 review brief.
 
 ## Next
-- M3 review running (reviewer, range `fa1f66d..d505b25`) → `.agents/research/review-m3-opening-boundary.md`.
-- M2.4 fix slice (opus) programmer running: S1 convert, S2 latch, S4 tests, N1 KDoc, N2-N6. S3 is NOT in it.
-- Then M4 (client side): M4.1 types and `SubagentOperations`; M4.2 registration, sorting, setup, delivery;
-  M4.3 effective grants and `SubagentPendingPermissions`; M4.4 close and subtree removal. Then M5, M6.
+- M4.1 programmer running: client types (`BaseClientSession`, `ClientSubagentSession`, `SubagentOperations`,
+  context accessor, holder typed to `BaseClientSession`). Then M4.2 (opus) registration, sorting, setup, delivery;
+  M4.3 (opus) effective grants and `SubagentPendingPermissions`; M4.4 (opus) close and subtree removal; M4 review.
+- M3.6 fix slice after the user answers the `NonCancellable` question: should-fix 1-3, release-note wording,
+  block comments. Must land before M4.2, which builds on `completeOpening`.
+- Agent S3 fix slice after the user answers the reopen question.
+- Then M5 (integration tests), M6 (docs: `AGENTS.md` subagent rules incl. `invokeOnResponseQueued` and the replay
+  window ending when the transport accepts the response; final `apiDump` review; `check`).
 - Release note text exists in the body of `d505b25` (no changelog file in the repo); ask the user where it goes.
 - Owed in M6: `CLAUDE.md` rules (nothing updated yet).
-- Follow-ups outside this goal: `Agent.kt` registers a `session/resume` handler twice (about lines 425 and 496); `V1ClientCapabilities.toV2()` and `subagents`; `PromptResponse.usage` failing the
+- Follow-ups outside this goal: `session/new`/`resume`/`fork` leave the root registered if building the response
+  fails; `Agent.kt` registers a `session/resume` handler twice (about lines 425 and 496); `V1ClientCapabilities.toV2()` and `subagents`; `PromptResponse.usage` failing the
   whole response on one bad field; v2 string patch fields under lenient `ACPJson`.
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
-- S3: agent receives `session/load`/`session/resume` for a root already open on the connection: clean up the old
-  root's subagent subtree when the root is replaced (orchestrator recommends), reject the request, or leave as is.
+- S3 (agent): `session/load`/`session/resume` for a root already open on the connection: clean up the old subtree
+  on replace, reject on the agent too, or leave and document. The user expected a refusal; explained that only the
+  client refuses and the agent replaces (`Agent.kt` `createSession`). Awaiting the choice.
+- M3 `NonCancellable`: A restore cancellable delivery (a cancellation or `notify` failure during the drain fails
+  the opening as before `d505b25`; orchestrator recommends) or B keep "once `Opened` is delivered the opening
+  cannot fail" and document `Client.getSession`.
+- Where the release note should live (no changelog file in the repo).
