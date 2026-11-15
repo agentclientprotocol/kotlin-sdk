@@ -11,6 +11,7 @@ import com.agentclientprotocol.protocol.*
 import com.agentclientprotocol.util.SequenceToPaginatedResponseAdapter
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.getAndUpdate
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.atomicfu.update
@@ -121,8 +122,8 @@ public class Agent(
         private val _isSubtreeClosed = atomic(false)
 
         /**
-         * Whether this root's subtree was cleaned up, because the session was closed or its `session/load` failed.
-         * No subagent can be registered under it any more.
+         * Whether this root's subtree was cleaned up, because the session was closed, its `session/load` failed, or
+         * a re-opening of its id replaced it. No subagent can be registered under it any more.
          */
         val isSubtreeClosed: Boolean get() = _isSubtreeClosed.value
 
@@ -700,9 +701,14 @@ public class Agent(
             replaying = replayHistory != null,
         )
 
-        _sessions.update {
-            it.put(session.sessionId, sessionWrapper)
-        }
+        /*
+         * A root that is already open with this id is replaced, as `session/load` and `session/resume` may re-open
+         * it. Its subtree is cleaned up before the replay, so the replay can announce the same ids again, and no
+         * update for an old subagent follows the response. The old root's own turn and AgentSession are left as they
+         * are. If this load fails later, the old root isn't restored.
+         */
+        val replaced = _sessions.getAndUpdate { it.put(session.sessionId, sessionWrapper) }[session.sessionId]
+        replaced?.let { closeSubtree(it) }
 
         if (replayHistory != null) {
             try {

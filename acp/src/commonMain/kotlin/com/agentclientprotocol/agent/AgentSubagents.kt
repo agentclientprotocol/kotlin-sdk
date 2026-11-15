@@ -135,8 +135,11 @@ public fun interface AgentSubagentFactory<out S : AgentSubagentSession> {
  * ignores `session/cancel` for them, and makes their client operations and their [announce] fail with
  * [IllegalStateException]. [announce] on the closed root fails the same way. The SDK calls no app code for the
  * subagents: stopping their work and freeing their resources belongs to the root's [AgentSession.close]. If that
- * throws, the root and its subagents stay registered. When the connection ends, the collections are cancelled the
- * same way.
+ * throws, the root and its subagents stay registered. When `session/load` or `session/resume` re-opens a root that
+ * is still open, the SDK removes the old root's subagents the same way once [AgentSupport.loadSession] or
+ * [AgentSupport.resumeSession] returns, before the replay and the response. The old [AgentSession] isn't closed and
+ * its turn isn't cancelled, so stopping the old subagents' work is up to the app. When the connection ends, the
+ * collections are cancelled the same way.
  *
  * Only the subagents' updates are guaranteed not to follow the close response. A request a subagent already had in
  * flight (permission, fs, terminal or elicitation), or the `$/cancel_request` the SDK sends for one whose call the

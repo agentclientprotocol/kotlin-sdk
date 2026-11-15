@@ -60,6 +60,7 @@ import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.rpc.JsonRpcSuccessResponse
+import com.agentclientprotocol.rpc.RequestId
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
@@ -72,6 +73,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -174,7 +176,7 @@ class AgentSubagentsTest {
         val agent: Agent,
         val root: RootSession,
         val rootContext: CoroutineContext,
-        private val openable: OpenableSessions,
+        val openable: OpenableSessions,
     ) {
         val rootSubagents: AgentSubagents get() = assertNotNull(rootContext.subagents)
         val rootClient get() = rootContext.client
@@ -253,11 +255,19 @@ class AgentSubagentsTest {
 
     /**
      * The sessions the fixture's agent opens: the next `session/new` takes [created]'s head, or the fixture's root,
-     * and `session/load` and `session/resume` look sessions up in [byId].
+     * and `session/load` and `session/resume` look sessions up in [byId], or throw [failure] if it is set.
      */
     private class OpenableSessions {
         val created = ConcurrentLinkedQueue<RootSession>()
         val byId = ConcurrentHashMap<SessionId, RootSession>()
+
+        @Volatile
+        var failure: Throwable? = null
+
+        fun find(sessionId: SessionId): RootSession {
+            failure?.let { throw it }
+            return checkNotNull(byId[sessionId])
+        }
     }
 
     private fun withSubagents(
@@ -275,10 +285,10 @@ class AgentSubagentsTest {
                 openable.created.poll() ?: root
 
             override suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters) =
-                checkNotNull(openable.byId[sessionId])
+                openable.find(sessionId)
 
             override suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters) =
-                checkNotNull(openable.byId[sessionId])
+                openable.find(sessionId)
         }
         val agent = Agent(protocol, support)
         protocol.start()
@@ -1898,6 +1908,240 @@ class AgentSubagentsTest {
         }
     }
 
+    // Re-opening a root that is already open
+
+    @Test
+    fun `reloading an open root replaces its subagents, and its replay can announce the same ids`() = withSubagents { f ->
+        val first = RootSession(loadedId)
+        val oldTree = ReplayedTree()
+        first.replay = { oldTree.replay() }
+        assertIs<JsonRpcSuccessResponse>(f.load(first).last())
+        val oldChild = assertNotNull(f.agent.subagentOrNull(childId))
+
+        val second = RootSession(loadedId)
+        second.replay = {
+            currentSubagents().announce(childId, { context ->
+                context.client.notify(announcement(childId))
+                context.subagents.announce(grandchildId, { grandchild ->
+                    grandchild.client.notify(announcement(grandchildId))
+                    TestSubagent()
+                })
+                TestSubagent()
+            })
+        }
+        val received = f.load(second)
+
+        assertEquals(
+            listOf(SessionNotification(loadedId, announcement(childId)), SessionNotification(childId, announcement(grandchildId))),
+            received.dropLast(1).map { it.sessionNotificationOrNull() },
+        )
+        assertIs<JsonRpcSuccessResponse>(received.last())
+        oldTree.awaitStopped()
+        val newChild = assertNotNull(f.agent.subagentOrNull(childId))
+        assertNotSame(oldChild, newChild)
+        assertSame(second.wrapper(), newChild.root)
+        assertSame(second.wrapper(), assertNotNull(f.agent.subagentOrNull(grandchildId)).root)
+        for (context in listOf(oldTree.child, oldTree.grandchild)) {
+            for (operation in childOperations(context)) {
+                assertFailsWith<IllegalStateException> { operation() }
+            }
+        }
+        assertIs<JsonRpcSuccessResponse>(
+            f.request(AcpMethod.AgentMethods.V1.SessionPrompt, PromptRequest(loadedId, listOf(ContentBlock.Text("go"))))
+        )
+        f.awaitCollectionsEnded(first.wrapper())
+        f.awaitCollectionsEnded(second.wrapper())
+        f.assertNothingMoreSent()
+    }
+
+    @Test
+    fun `resuming an open root stops its subagents and frees their ids, and closing it leaves nothing behind`() =
+        withSubagents { f ->
+            val first = RootSession(loadedId)
+            assertIs<JsonRpcSuccessResponse>(f.resume(first))
+            val firstSubagents = assertNotNull(first.wrapper().subagents)
+            val cancels = Channel<SessionId>(Channel.UNLIMITED)
+            val childStopped = CompletableDeferred<Unit>()
+            val grandchildStopped = CompletableDeferred<Unit>()
+            val child = announceActiveGranted(firstSubagents, childId, childStopped, cancels)
+            assertEquals(loadedId, f.nextNotification().sessionId)
+            announceActiveGranted(child.subagents, grandchildId, grandchildStopped, cancels)
+            assertEquals(childId, f.nextNotification().sessionId)
+
+            val second = RootSession(loadedId)
+            assertIs<JsonRpcSuccessResponse>(f.resume(second))
+
+            withTimeout(5.seconds) {
+                childStopped.await()
+                grandchildStopped.await()
+            }
+            f.awaitCollectionsEnded(first.wrapper())
+            assertNull(f.agent.subagentOrNull(childId))
+            assertNull(f.agent.subagentOrNull(grandchildId))
+            announceProbe(f, cancels)
+            assertCancelIgnored(f, childId, cancels)
+            assertCancelIgnored(f, grandchildId, cancels)
+            assertFailsWith<IllegalStateException> { firstSubagents.announce(siblingId, { TestSubagent() }) }
+            assertNull(f.agent.subagentOrNull(siblingId))
+            // Nothing for the old children, not even `unknown` for their running state.
+            f.assertNothingMoreSent()
+
+            val newChildStopped = CompletableDeferred<Unit>()
+            announceActiveGranted(assertNotNull(second.wrapper().subagents), childId, newChildStopped, cancels)
+            assertEquals(SessionNotification(loadedId, announcement(childId, granted = true, state = StateUpdate.Running())), f.nextNotification())
+            assertIs<JsonRpcSuccessResponse>(f.close(loadedId).single())
+            withTimeout(5.seconds) { newChildStopped.await() }
+            assertNull(f.agent.subagentOrNull(childId))
+            f.awaitCollectionsEnded(second.wrapper())
+            f.assertNothingMoreSent()
+        }
+
+    @Test
+    fun `a factory that throws on re-opening leaves the open root and its subagents working`() = withSubagents { f ->
+        val first = RootSession(loadedId)
+        val prompted = Channel<Unit>(Channel.UNLIMITED)
+        first.promptHandler = { prompted.send(Unit) }
+        assertIs<JsonRpcSuccessResponse>(f.resume(first))
+        val firstSubagents = assertNotNull(first.wrapper().subagents)
+        val cancels = Channel<SessionId>(Channel.UNLIMITED)
+        val events = Channel<SessionUpdate>(Channel.UNLIMITED)
+        firstSubagents.announce(childId, {
+            it.client.notify(announcement(childId, granted = true))
+            TestSubagent(events.consumeAsFlow(), onCancel = { cancels.send(childId) })
+        })
+        f.nextNotification()
+        val child = assertNotNull(f.agent.subagentOrNull(childId))
+
+        f.openable.failure = RuntimeException("cannot open")
+        assertIs<JsonRpcErrorResponse>(f.load(RootSession(loadedId)).single())
+        assertIs<JsonRpcErrorResponse>(f.resume(RootSession(loadedId)))
+        f.openable.failure = null
+
+        assertSame(child, f.agent.subagentOrNull(childId))
+        events.send(text("still collected"))
+        assertEquals(SessionNotification(childId, text("still collected")), f.nextNotification())
+        f.fireCancel(childId)
+        assertEquals(childId, withTimeout(5.seconds) { cancels.receive() })
+        firstSubagents.announce(siblingId, { TestSubagent(flowOf(announcement(siblingId))) })
+        assertEquals(SessionNotification(loadedId, announcement(siblingId)), f.nextNotification())
+        assertIs<JsonRpcSuccessResponse>(
+            f.request(AcpMethod.AgentMethods.V1.SessionPrompt, PromptRequest(loadedId, listOf(ContentBlock.Text("go"))))
+        )
+        withTimeout(5.seconds) { prompted.receive() }
+        events.close()
+    }
+
+    @Test
+    fun `a failed replay on reloading an open root leaves no subagents behind`() = withSubagents { f ->
+        val first = RootSession(loadedId)
+        val oldTree = ReplayedTree()
+        first.replay = { oldTree.replay() }
+        assertIs<JsonRpcSuccessResponse>(f.load(first).last())
+
+        val second = RootSession(loadedId)
+        lateinit var newChild: AgentSubagentContext
+        second.replay = {
+            currentSubagents().announce(childId, { context ->
+                newChild = context
+                context.client.notify(announcement(childId))
+                TestSubagent(flowOf(text("must never be collected")))
+            })
+            throw RuntimeException("replay failed")
+        }
+        val failed = f.load(second)
+
+        assertEquals(
+            listOf(SessionNotification(loadedId, announcement(childId))),
+            failed.dropLast(1).map { it.sessionNotificationOrNull() },
+        )
+        assertIs<JsonRpcErrorResponse>(failed.last())
+        assertNull(f.agent.subagentOrNull(childId))
+        assertNull(f.agent.subagentOrNull(grandchildId))
+        oldTree.awaitStopped()
+        for (context in listOf(oldTree.child, oldTree.grandchild, newChild)) {
+            assertFailsWith<IllegalStateException> { context.client.notify(text("late")) }
+        }
+        assertIs<JsonRpcErrorResponse>(
+            f.request(AcpMethod.AgentMethods.V1.SessionPrompt, PromptRequest(loadedId, listOf(ContentBlock.Text("go"))))
+        )
+        f.awaitCollectionsEnded(first.wrapper())
+        f.assertNothingMoreSent()
+    }
+
+    @Test
+    fun `an announce on a replaced root fails, including one whose factory was running`() = withSubagents { f ->
+        val first = RootSession(loadedId)
+        assertIs<JsonRpcSuccessResponse>(f.resume(first))
+        val firstSubagents = assertNotNull(first.wrapper().subagents)
+        val factoryStarted = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val pending = async {
+            runCatching {
+                firstSubagents.announce(childId, { context ->
+                    factoryStarted.complete(Unit)
+                    release.await()
+                    context.client.notify(announcement(childId))
+                    TestSubagent()
+                })
+            }
+        }
+        withTimeout(5.seconds) { factoryStarted.await() }
+
+        val second = RootSession(loadedId)
+        assertIs<JsonRpcSuccessResponse>(f.resume(second))
+        release.complete(Unit)
+
+        assertIs<IllegalStateException>(pending.await().exceptionOrNull())
+        assertNull(f.agent.subagentOrNull(childId))
+        assertFailsWith<IllegalStateException> { firstSubagents.announce(siblingId, { TestSubagent(flowOf(announcement(siblingId))) }) }
+        assertNull(f.agent.subagentOrNull(siblingId))
+        f.assertNothingMoreSent()
+
+        assertNotNull(second.wrapper().subagents).announce(childId, { TestSubagent(flowOf(announcement(childId))) })
+        assertEquals(SessionNotification(loadedId, announcement(childId)), f.nextNotification())
+    }
+
+    /*
+     * Re-opening a root cleans up only its subagents: the SDK leaves the replaced root's turn and AgentSession as they
+     * are.
+     */
+    @Test
+    fun `a turn running on a replaced root keeps running and answers`() = withSubagents { f ->
+        val first = RootSession(loadedId)
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        first.promptHandler = {
+            started.complete(Unit)
+            release.await()
+            emit(Event.SessionUpdateEvent(text("old turn")))
+        }
+        assertIs<JsonRpcSuccessResponse>(f.resume(first))
+        val promptId = RequestId.create("old-turn")
+        f.transport.fireTestRequestWithoutReply(
+            AcpMethod.AgentMethods.V1.SessionPrompt.methodName,
+            ACPJson.encodeToJsonElement(
+                AcpMethod.AgentMethods.V1.SessionPrompt.requestSerializer,
+                PromptRequest(loadedId, listOf(ContentBlock.Text("go"))),
+            ),
+            promptId,
+        )
+        withTimeout(5.seconds) { started.await() }
+
+        assertIs<JsonRpcSuccessResponse>(f.resume(RootSession(loadedId)))
+        // The new root has a turn slot of its own.
+        assertIs<JsonRpcSuccessResponse>(
+            f.request(AcpMethod.AgentMethods.V1.SessionPrompt, PromptRequest(loadedId, listOf(ContentBlock.Text("go"))))
+        )
+        release.complete(Unit)
+
+        val (update, response) = f.transport.receiveTestMessages(2)
+        assertEquals(SessionNotification(loadedId, text("old turn")), update.sessionNotificationOrNull())
+        assertIs<JsonRpcSuccessResponse>(response)
+        assertEquals(promptId, response.id)
+        val stopReason = ACPJson.decodeFromJsonElement(AcpMethod.AgentMethods.V1.SessionPrompt.responseSerializer, response.result).stopReason
+        assertEquals(StopReason.END_TURN, stopReason)
+    }
+
     // Helpers
 
     private val closingId = SessionId("closing")
@@ -1932,6 +2176,76 @@ class AgentSubagentsTest {
             })
         })
         return context
+    }
+
+    /**
+     * Like [announceActive], but the announcement also grants cancel, and the child's cancel sends its id to
+     * [cancels].
+     */
+    private suspend fun announceActiveGranted(
+        subagents: AgentSubagents,
+        sessionId: SessionId,
+        stopped: CompletableDeferred<Unit>,
+        cancels: Channel<SessionId>,
+    ): AgentSubagentContext {
+        lateinit var context: AgentSubagentContext
+        subagents.announce(sessionId, {
+            context = it
+            TestSubagent(
+                flow {
+                    emit(announcement(sessionId, granted = true, state = StateUpdate.Running()))
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        stopped.complete(Unit)
+                    }
+                },
+                onCancel = { cancels.send(sessionId) },
+            )
+        })
+        return context
+    }
+
+    /**
+     * A child with a grandchild below it, both announced from a root's replay as running, with events that never
+     * complete.
+     */
+    private inner class ReplayedTree {
+        lateinit var child: AgentSubagentContext
+        lateinit var grandchild: AgentSubagentContext
+        private val childStopped = CompletableDeferred<Unit>()
+        private val grandchildStopped = CompletableDeferred<Unit>()
+
+        suspend fun replay() {
+            currentSubagents().announce(childId, { context ->
+                child = context
+                context.client.notify(announcement(childId, state = StateUpdate.Running()))
+                context.subagents.announce(grandchildId, { nested ->
+                    grandchild = nested
+                    nested.client.notify(announcement(grandchildId, state = StateUpdate.Running()))
+                    TestSubagent(endlessEvents(grandchildStopped))
+                })
+                TestSubagent(endlessEvents(childStopped))
+            })
+        }
+
+        /**
+         * Waits until both collections have stopped.
+         */
+        suspend fun awaitStopped() {
+            withTimeout(5.seconds) {
+                childStopped.await()
+                grandchildStopped.await()
+            }
+        }
+
+        private fun endlessEvents(stopped: CompletableDeferred<Unit>): Flow<SessionUpdate> = flow {
+            try {
+                awaitCancellation()
+            } finally {
+                stopped.complete(Unit)
+            }
+        }
     }
 
     /**
