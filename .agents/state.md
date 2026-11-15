@@ -132,11 +132,14 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 - M6a agent-side docs — `9ce0d52` — nine `AGENTS.md` lifecycle bullets (notification ordering,
   `invokeOnResponseQueued`, `newConnectionScope`, announcement/routing, cancel grant, `unknown`, close cleanup,
   replay window, per-child lock); block comments in `ClientSessionRegistry.kt`; `check` green.
+- M3.6 cancellable opening — `2f35a77` — `completeOpening` no longer in `NonCancellable`; cancel or `notify`
+  failure from the marker on fails the opening through `failSessionHolder`; six new tests in
+  `ClientSessionOpenedTest` (all failed before the fix); KDoc and `AGENTS.md` holder bullet reworded; corrected
+  release note in the commit body (replaces `d505b25`'s); `check` green; no API change.
 
 ## Next
-- M3.6 (opus) programmer running: restore cancellable delivery in `completeOpening` (user decision a), tests for
-  M3 review findings 1-3, KDoc/`AGENTS.md`/release-note wording; corrected release note in the commit body.
-- Then M2.5 (opus): agent S3 fix (user decision b) with tests and the `AGENTS.md` bullet.
+- M2.5 (opus) programmer running: agent S3 fix (clean up the old root's subtree when `session/load`/
+  `session/resume` replaces an open root) with tests and the `AGENTS.md` bullet.
 - Then M4.2 (opus): registration, sorting (`QueuedItem.Announcement`/`Patch`), setup via
   `createSubagentOperations`, child holders/tree, child consumers, `Opened(null)`, `markOpened` walk, applying
   child state, wiring `SubagentPendingPermissions` (`onState` at arrival, `onOpened`), failed setup, malformed
@@ -144,11 +147,12 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   Then the M4 review (include `5bca6d3`, `c03d9df`, M3.6, M2.5).
 - Then M5 (integration tests in `:acp-integration-test`), M6b (client-side `AGENTS.md` rules, final `apiDump`
   review, `check`), final `.agents/` reference grep.
-- PR description (when the user asks for a PR): release-note text from the commit bodies of `d505b25` and M3.6,
+- PR description (when the user asks for a PR): release-note text from the commit body of `2f35a77` (replaces `d505b25`'s),
   plus the reminder to delete `.agents/prompt.md`, `.agents/state.md`, `.agents/research/` before merge.
 - Flaky: Kotlin/JS "Internal compiler error" in `:acp:compileTestDevelopmentExecutableKotlinJs`, twice, passes
   on rerun.
-- Follow-ups outside this goal: `Agent.kt` registers `session/resume` twice; `session/new`/`resume`/`fork` leave
+- Follow-ups outside this goal: the design spec line ~809 ("If the opening call fails, no stream gets one") is now
+  stronger than the decided behaviour; factory-path `drainHistory` rethrows a `notify` `CancellationException` as is; `Agent.kt` registers `session/resume` twice; `session/new`/`resume`/`fork` leave
   the root registered if building the response fails; `V1ClientCapabilities.toV2()` drops `subagents`;
   `PromptResponse.usage` fails the whole response on one bad field; v2 string patch fields under lenient
   `ACPJson`; client `close()` removes the holder by id not identity; a failed `session/close` leaves the id
