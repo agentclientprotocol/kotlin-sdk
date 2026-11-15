@@ -47,10 +47,12 @@ internal class ClientSessionRegistry(
         // Fast path for the common case of an already registered session.
         _sessions.value.sessions[sessionId]?.takeUnless { it.isFailed }?.let { return it }
         var clientSessionHolder: ClientSessionHolder? = null
-        // Every branch below has to look the session up in `currentStorage` rather than rely on the read above:
-        // `_sessions` can change between that read and the CAS, and it can change again between two attempts of
-        // the CAS loop. A session that a concurrent newSession/loadSession registers in such a window - together
-        // with decrementing `initializingSessionsCount` back to zero - would otherwise be reported as missing.
+        /*
+         * Every branch below has to look the session up in `currentStorage` rather than rely on the read above:
+         * `_sessions` can change between that read and the CAS, and it can change again between two attempts of
+         * the CAS loop. A session that a concurrent newSession/loadSession registers in such a window - together
+         * with decrementing `initializingSessionsCount` back to zero - would otherwise be reported as missing.
+         */
         _sessions.update { currentStorage ->
             val existingHolder = currentStorage.sessions[sessionId]?.takeUnless { it.isFailed }
             when {
@@ -118,11 +120,13 @@ internal class ClientSessionRegistry(
      * not connected to the session.
      */
     suspend fun deliverSessionUpdate(sessionId: SessionId, update: SessionUpdate, _meta: JsonElement?) {
-        // The agent may report an update (e.g., a status change on `session/list`) for a session this client
-        // never called `session/new` / `session/load` / `session/resume` for. It can live on the server,
-        // created from another IDE window, the web, or another machine. That's not a protocol violation, so
-        // unlike other session-scoped methods, an unknown/unconnected session here must not fail the call.
-        // A speculative holder can also be reaped by `withInitializingSession` after we found it here.
+        /*
+         * The agent may report an update (e.g., a status change on `session/list`) for a session this client
+         * never called `session/new` / `session/load` / `session/resume` for. It can live on the server,
+         * created from another IDE window, the web, or another machine. That's not a protocol violation, so
+         * unlike other session-scoped methods, an unknown/unconnected session here must not fail the call.
+         * A speculative holder can also be reaped by `withInitializingSession` after we found it here.
+         */
         val delivered = getOrCreateSessionHolderOrNull(sessionId)?.handleOrQueue(QueuedItem.Update(update, _meta)) ?: false
         if (!delivered) {
             handleUnconnectedSessionUpdate(sessionId, update, _meta)
@@ -201,9 +205,11 @@ internal class ClientSessionRegistry(
                 }
                 val newCount = currentStorage.initializingSessionsCount - 1
                 return@update if (newCount == 0) {
-                    // this means that currently no sessions can be in initializing state during to ongoing load/new/fork/resume calls
-                    // so if on exit from these methods we observe any entries with not completed or failed state we assume that someone sent us events with non-existent session ids
-                    // and we have to remove them and report errors
+                    /*
+                     * this means that currently no sessions can be in initializing state during to ongoing load/new/fork/resume calls
+                     * so if on exit from these methods we observe any entries with not completed or failed state we assume that someone sent us events with non-existent session ids
+                     * and we have to remove them and report errors
+                     */
                     hangingSessions = currentStorage.sessions.filterValues {
                         @OptIn(ExperimentalCoroutinesApi::class)
                         !it.session.isCompleted || it.session.getCompletionExceptionOrNull() != null
