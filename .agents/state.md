@@ -70,15 +70,22 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   `createClientSession`, `removeClosedSession`; no test file touched; `check` green; API dump untouched.
 - M3.3 deprecate `ClientSession.client` — `751a644` — WARNING-level deprecation; no usages in the repo; `check`
   green; API dump untouched.
+- M2 review — `.agents/research/review-m2-agent.md` — 0 blocker, 4 should-fix, 7 nit. S1 factory CE after the
+  announcement escapes into an active caller; S2 cancel during a running factory is dropped; S3 load/resume of an
+  already-open root leaves the old subtree registered; S4 test gaps. N1 late child requests after close (accept),
+  N2 grant between response queued and `afterResponse` treated as history, N3 `remove()` vs "not announced",
+  N4 load-response build failure leaves replayed children, N5 two weak tests, N6 `@property` on an interface KDoc,
+  N7 `AGENTS.md` (M6).
 
 ## Next
-- M2 review: report file `.agents/research/review-m2-agent.md` exists (0 blocker, 4 should-fix, 7 nit) but the
-  reviewer has not handed back yet; commit the file after the hand-back, show findings to the user, plan fix slices.
 - M3.4 (opus) programmer running: internal `Protocol` response hook (`OutgoingRequest.onResponse`, internal
   `sendRequestRaw` overload, typed `Protocol.sendRequest` in `protocol/Protocol.extensions.kt`, notification-handler
   ordering KDoc). Then M3.5 (opus): `SessionEvent`/`Opened`, `notify(SessionEvent)`, `QueuedItem`, `markOpened`,
   `claimForOpening(replayRequested)`, one opening per holder, samples, release note. Then M3 review over
   `fa1f66d..HEAD`.
+- Researcher running for S3: may a v1 client load/resume a session that is already open on the connection, and what
+  the agent runtime did before subagents → `.agents/research/reopen-open-session.md`.
+- M2.4 fix slice (opus), after the user answers S1/S2 and the S3 research is in: S1, S2, S3, S4 tests, N2-N6.
 - Owed in M3's release note: `ToolCallContent.Session` and new `SessionUpdate` variants (exhaustive `when`),
   `ClientCapabilities` constructor/`copy` change.
 - Owed in M6: `CLAUDE.md` rules (nothing updated yet).
@@ -87,7 +94,8 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
-- M2.1: the factory throws a `CancellationException` AFTER the announcement while the caller is still active.
-  Implemented: rethrown unchanged (spec: "rethrows the factory's exception unchanged"). Alternative: convert to
-  `IllegalStateException` as in the nothing-sent case, so a foreign CE cannot tear down the caller's scope. Asked
-  2026-11-15; work continues with the implemented behaviour; a change would be a small fix slice.
+- S1 (asked 2026-11-15, re-asked with the review): factory throws a `CancellationException` after the announcement
+  while the caller is active: rethrow unchanged (implemented, spec's literal text) or convert to
+  `IllegalStateException` (reviewer and orchestrator recommend).
+- S2: `session/cancel` arriving while the factory still runs with a grant on the wire: latch it until the factory
+  returns, or keep dropping it and document the gap.
