@@ -88,14 +88,20 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   `encodeRequestParams`/`decodeResponseResult`, ordering KDoc, `ReadLoopOrderingTest` (12); `check` green; no API
   change. Beyond the design: a cancelled call drops its hook; remaining race: the hook may have run for a call that
   then ends with `CancellationException` (M3.5 must tolerate it).
+- M3.5 opening boundary — `d505b25` (`feat!`) — `common/SessionEvent.kt`, `notify(SessionEvent)` + extension,
+  `QueuedItem` (`Update`, `Opened`), `markOpened`, `claimForOpening(replayRequested)`, one opening per holder
+  (`Opener` gone), registry `claimSessionHolder`/`claimAnsweredSessionHolder`, all four openings use the typed
+  hook, samples/e2e/README/AGENTS.md moved, `ClientSessionOpenedTest`; `check` green; `:acp` dump reviewed.
+  M3 complete: product commits `955965c`, `a095659`, `751a644`, `21966d5`, `d505b25`. Programmer choices for the M3
+  reviewer: `Opened` is delivered only after the request returned (`completeOpening`); once delivered the opening
+  cannot fail (rest delivered in `NonCancellable`, `notify` failures logged) — a behaviour change vs. today.
 
 ## Next
-- M3.5 (opus) programmer running: `SessionEvent`/`Opened`, `notify(SessionEvent)`, `QueuedItem` (`Update`,
-  `Opened`), `markOpened`, `claimForOpening(replayRequested)`, one opening per holder, samples, release note.
-  Then the M3 review over `fa1f66d..HEAD`.
-- M2.4 fix slice (opus) after M3.5: S1 convert, S2 latch, S3 per the user's answer, S4 tests, N1 KDoc, N2-N6.
-- Owed in M3's release note: `ToolCallContent.Session` and new `SessionUpdate` variants (exhaustive `when`),
-  `ClientCapabilities` constructor/`copy` change.
+- M3 review running (reviewer, range `fa1f66d..d505b25`) → `.agents/research/review-m3-opening-boundary.md`.
+- M2.4 fix slice (opus) programmer running: S1 convert, S2 latch, S4 tests, N1 KDoc, N2-N6. S3 is NOT in it.
+- Then M4 (client side): M4.1 types and `SubagentOperations`; M4.2 registration, sorting, setup, delivery;
+  M4.3 effective grants and `SubagentPendingPermissions`; M4.4 close and subtree removal. Then M5, M6.
+- Release note text exists in the body of `d505b25` (no changelog file in the repo); ask the user where it goes.
 - Owed in M6: `CLAUDE.md` rules (nothing updated yet).
 - Follow-ups outside this goal: `Agent.kt` registers a `session/resume` handler twice (about lines 425 and 496); `V1ClientCapabilities.toV2()` and `subagents`; `PromptResponse.usage` failing the
   whole response on one bad field; v2 string patch fields under lenient `ACPJson`.
