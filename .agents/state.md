@@ -141,14 +141,22 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   a failed reload leaves the id absent with no orphans; six tests (four failed before); `AGENTS.md` + KDoc;
   `check` green; no API change. Not done: rare transient "already registered" on reload under true parallelism
   (old root's `announce` between cleanup's scan and its own re-check).
+- M4.2 client registration and delivery — `d18dc66` — `QueuedItem.Announcement`/`Patch`, nullable `Opened`;
+  registry sorting (`queuedItemFor`, `registerChild`, `blocksId`, `failSessionTree`); `SubagentSetup.kt`;
+  `consumeSubagentQueue`; `markOpened` walk + `markSubagentOpened`; `followSubagentState`; consumer state;
+  `ClientSubagentSessionsTest` (21), `ClientSessionRegistryTest` (6); `check` green (one JS flake, third
+  occurrence); no API change. Deviations for the M4 reviewer: a child's consumer waits for its parent's holder to
+  complete before switching to synchronous delivery (so child live updates and requests wait for the root's opening
+  call); child `notify` failures after its `Opened(null)` are only logged; the cascade cancels consumers without
+  joining; late-path announcements go through `lateDeliveries`; `createSubagentOperations` runs with no session
+  context on the early path. Gaps: no test for connection end during a factory; root `configOptions` not checked
+  against a child's `config_option_update`.
 
 ## Next
-- M4.2 (opus) programmer running (see the scope in the next bullet).
-- Then M4.2 (opus): registration, sorting (`QueuedItem.Announcement`/`Patch`), setup via
-  `createSubagentOperations`, child holders/tree, child consumers, `Opened(null)`, `markOpened` walk, applying
-  child state, wiring `SubagentPendingPermissions` (`onState` at arrival, `onOpened`), failed setup, malformed
-  announcements, reaping exemption. Then M4.4 (opus): close, `removeSessionTree`, `closeDescendantPermissions`.
-  Then the M4 review (include `5bca6d3`, `c03d9df`, M3.6, M2.5).
+- M4.4 (opus) programmer running: root close: `closeDescendantPermissions` in `onClosing`, `removeSessionTree`
+  (replaces `removeSessionHolder`), `markClosed`, elicitation entries of removed ids. Then the M4 review over
+  `c88eba8..HEAD` (client: `57b948c`, `c03d9df`, `d18dc66`, M4.4; plus unreviewed fixes `5bca6d3`, `2f35a77`,
+  `38a25dc`, docs `9ce0d52`).
 - Then M5 (integration tests in `:acp-integration-test`), M6b (client-side `AGENTS.md` rules, final `apiDump`
   review, `check`), final `.agents/` reference grep.
 - PR description (when the user asks for a PR): release-note text from the commit body of `2f35a77` (replaces `d505b25`'s),
