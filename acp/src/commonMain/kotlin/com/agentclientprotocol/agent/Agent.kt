@@ -24,6 +24,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.getAndUpdate
@@ -135,14 +136,16 @@ public class Agent(
 
         /**
          * Whether the replay window of `session/load` is open: everything sent for this subtree meanwhile goes out
-         * before the load response, so it is history. A subagent announced meanwhile is a replayed one.
+         * before the load response, so it is history. A subagent announced meanwhile is a replayed one. The window
+         * closes once the transport has accepted the load response, which is where the client's view of history
+         * ends too.
          */
         val isReplaying: Boolean get() = _isReplaying.value
 
         private var replayedCollections = mutableListOf<() -> Unit>()
 
         /**
-         * Runs [start] now, or after the load response if the replay window is still open.
+         * Runs [start] now, or when the replay window closes if it is still open.
          */
         fun startAfterReplay(start: () -> Unit) {
             val deferred = synchronized(replayLock) {
@@ -153,7 +156,8 @@ public class Agent(
         }
 
         /**
-         * Closes the replay window and starts the collections deferred until then. Called after the load response.
+         * Closes the replay window and starts the collections deferred until then. Called once the transport has
+         * accepted the load response. Doesn't suspend or block.
          */
         fun endReplay() {
             val starts = synchronized(replayLock) {
@@ -541,8 +545,9 @@ public class Agent(
             }
             _sessions.update { it.remove(params.sessionId) }
             /*
-             * Clean the subtree up before answering, so nothing about the children reaches the client after the
-             * response. If close() threw, the session and its children stay registered.
+             * Clean the subtree up before answering, so no update for the children reaches the client after the
+             * response. Requests the children have in flight, and their $/cancel_request, may still follow it.
+             * If close() threw, the session and its children stay registered.
              */
             closeSubtree(session)
             return@setRequestHandler response
@@ -703,26 +708,38 @@ public class Agent(
             try {
                 sessionWrapper.executeWithSession { replayHistory(session) }
             } catch (t: Throwable) {
-                _sessions.update { sessions ->
-                    if (sessions[session.sessionId] === sessionWrapper) sessions.remove(session.sessionId) else sessions
-                }
-                // The subagents replayed so far were never confirmed by a response: drop them with the session.
-                closeSubtree(sessionWrapper)
+                discardFailedLoad(sessionWrapper)
                 throw t
             }
+            /*
+             * The client treats what follows the load response on the wire as live, so the replay window closes as
+             * soon as the transport has accepted the response, not a dispatch later when afterResponse starts. This
+             * also starts the replayed subagents' collections before postInitialize(): a slow one would otherwise
+             * keep every child's state unconfirmed and its cancel disabled on the client.
+             */
+            currentCoroutineContext().invokeOnResponseQueued { sessionWrapper.endReplay() }
         }
 
         return RequestOutcome(
             response = session,
-            afterResponse = {
-                /*
-                 * Start the replayed subagents' collections first, without waiting for them: a slow postInitialize()
-                 * would otherwise keep every child's state unconfirmed and its cancel disabled on the client.
-                 */
-                sessionWrapper.endReplay()
-                sessionWrapper.executeWithSession { session.postInitialize() }
+            afterResponse = { sessionWrapper.executeWithSession { session.postInitialize() } },
+            onCompletion = {
+                // Still replaying here means the load response never reached the transport: the load failed.
+                if (sessionWrapper.isReplaying) discardFailedLoad(sessionWrapper)
             },
         )
+    }
+
+    /**
+     * Drops the root session of a failed `session/load` with every subagent registered under it during the attempt:
+     * no response confirmed them.
+     */
+    private fun discardFailedLoad(sessionWrapper: SessionWrapper) {
+        val sessionId = sessionWrapper.sessionId
+        _sessions.update { sessions ->
+            if (sessions[sessionId] === sessionWrapper) sessions.remove(sessionId) else sessions
+        }
+        closeSubtree(sessionWrapper)
     }
 
     private fun getSessionOrThrow(sessionId: SessionId): SessionWrapper {

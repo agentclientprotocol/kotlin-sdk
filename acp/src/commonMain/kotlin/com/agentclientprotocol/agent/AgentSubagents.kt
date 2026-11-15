@@ -19,11 +19,12 @@ import kotlin.coroutines.CoroutineContext
  *
  * The context belongs to the child, not to the factory call: it stays valid after the factory returns or throws, so
  * work the factory launched can keep using it.
- *
- * @property sessionId the id of the child being built, as passed to [AgentSubagents.announce]
  */
 @UnstableApi
 public interface AgentSubagentContext {
+    /**
+     * The id of the child being built, as passed to [AgentSubagents.announce].
+     */
     public val sessionId: SessionId
 
     /**
@@ -82,6 +83,11 @@ public interface AgentSubagentSession {
      * Called on `session/cancel` for this child while the current cancel grant is in effect. Report the outcome
      * through [events]. The SDK does not stop the collection.
      *
+     * A cancel that arrives while the child's [AgentSubagentFactory.createSubagent] still runs, with a grant in
+     * effect, is held until the factory returns this session. It is then delivered once, outside the call to
+     * [AgentSubagents.announce], if a grant is still in effect at that point. A cancel that arrives with no grant in
+     * effect is ignored, and so is one held for a factory that throws.
+     *
      * A grant sent during the parent's `session/load`, before its response, is history and never in effect: to
      * enable cancel for a replayed child, send a fresh grant, for example through [events].
      */
@@ -105,6 +111,10 @@ public fun interface AgentSubagentFactory<out S : AgentSubagentSession> {
      *
      * The call runs in the child's session context, so `currentCoroutineContext().client` is the child's
      * [AgentSubagentContext.client].
+     *
+     * A cancel grant sent from here is in effect at once: a `session/cancel` for the child that arrives before this
+     * returns is held, and delivered to the returned session's [AgentSubagentSession.cancel] if the grant is still
+     * in effect then. If this throws, the held cancel is dropped.
      */
     public suspend fun createSubagent(context: AgentSubagentContext): S
 }
@@ -128,11 +138,16 @@ public fun interface AgentSubagentFactory<out S : AgentSubagentSession> {
  * throws, the root and its subagents stay registered. When the connection ends, the collections are cancelled the
  * same way.
  *
- * During the root's `session/load`, until its response, the root is replaying: announcements made from its
- * [AgentSession.replayHistory], or from a factory called from there, replay recorded subagents. Every update sent
- * for them before the response is history, as the subagents spec defines it: a cancel grant sent then is never in
- * effect, and a state sent then doesn't count as active. If the load fails, every subagent announced during it is
- * removed. Subagents announced while a session is opened by any other method, or after the response, are live.
+ * Only the subagents' updates are guaranteed not to follow the close response. A request a subagent already had in
+ * flight (permission, fs, terminal or elicitation), or the `$/cancel_request` the SDK sends for one whose call the
+ * cleanup cancelled, may still reach the client after the response.
+ *
+ * During the root's `session/load`, until the transport has accepted its response, the root is replaying:
+ * announcements made from its [AgentSession.replayHistory], or from a factory called from there, replay recorded
+ * subagents. Every update sent for them before the response is history, as the subagents spec defines it: a cancel
+ * grant sent then is never in effect, and a state sent then doesn't count as active. If the load fails, including
+ * when its response can't be built or sent, every subagent announced during it is removed with the root session.
+ * Subagents announced while a session is opened by any other method, or after the response, are live.
  */
 @UnstableApi
 public interface AgentSubagents {
@@ -153,9 +168,11 @@ public interface AgentSubagents {
      * If nothing has been sent for the child when [factory] throws, when the events complete or throw before
      * emitting, or when their first item isn't the child's announcement, the child is unregistered, nothing more is
      * sent for it, and this call throws [IllegalStateException], even when the cause is a [CancellationException]
-     * from the app's code. If [factory] throws after the announcement was sent, the child stays registered, this call
-     * rethrows the exception unchanged, and, outside the root's replay, the SDK revokes the child's cancel grant and
-     * reports its work state as [StateUpdate.Unknown] when the factory left it active.
+     * from the app's code. If [factory] throws after the announcement was sent, the child stays registered and,
+     * outside the root's replay, the SDK revokes the child's cancel grant and reports its work state as
+     * [StateUpdate.Unknown] when the factory left it active. This call then rethrows the exception unchanged, except
+     * a [CancellationException] from the app's code while the caller is active: that one is wrapped in an
+     * [IllegalStateException] too, so it doesn't tear down the caller's scope.
      *
      * If the caller is cancelled before the announcement was sent, the child is unregistered and its id is free
      * again. Once it was sent, the child stays registered and its events keep being collected; only the caller gets
@@ -170,8 +187,8 @@ public interface AgentSubagents {
      * @throws IllegalArgumentException if [parent] is neither the bound session nor a registered, announced
      * descendant of it, or if [sessionId] is already registered on the connection, as a root session or a subagent
      * @throws IllegalStateException if the bound session's root is closed, if the bound session is a subagent that
-     * has not been announced yet or was removed with its root, or if the child's announcement could not be sent as
-     * described above
+     * has not been announced yet or was removed with its root, if the child's announcement could not be sent as
+     * described above, or if [factory] threw a [CancellationException] of its own after the announcement
      */
     public suspend fun <S : AgentSubagentSession> announce(
         sessionId: SessionId,

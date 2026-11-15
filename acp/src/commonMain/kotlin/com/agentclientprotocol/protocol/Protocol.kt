@@ -496,6 +496,11 @@ public class Protocol(
                     if (frame is TransportFrame.Batch) TransportFrame.Batch(replies)
                     else replies.single()
                 )
+                // Before completing the frame, so every hook runs before any after-response work starts.
+                for (slot in slots) {
+                    val hook = slot.takeSuccessQueuedHook() ?: continue
+                    runCatching(hook).onFailure { t -> logger.error(t) { "Response queued hook failed" } }
+                }
                 responseFrameQueued.complete(Unit)
             } catch (ce: CancellationException) {
                 responseFrameQueued.cancel(ce)
@@ -554,7 +559,7 @@ public class Protocol(
                 val handler = requestHandlers.value[request.method]
                     ?: jsonRpcMethodNotFound("Method not supported: ${request.method}")
 
-                withContext(JsonRpcRequestContextElement(request)) {
+                withContext(JsonRpcRequestContextElement(request, slot)) {
                     outcome = handler(request)
                 }
 
@@ -715,4 +720,23 @@ internal class IncomingRequest(val handlerJob: Job) {
  */
 internal class ResponseSlot(val responseFrameQueued: CompletableDeferred<Unit>) {
     val response = CompletableDeferred<JsonRpcResponse>()
+
+    private val successQueuedHook = atomic<(() -> Unit)?>(null)
+
+    /**
+     * Registers the hook of [invokeOnResponseQueued] for this slot's request.
+     */
+    fun invokeOnSuccessQueued(hook: () -> Unit) {
+        check(successQueuedHook.compareAndSet(null, hook)) { "A response hook is already registered for this request" }
+    }
+
+    /**
+     * Returns the registered hook if [response] is a success, once the frame carrying it was accepted by the
+     * transport, and clears it.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun takeSuccessQueuedHook(): (() -> Unit)? {
+        val hook = successQueuedHook.getAndSet(null) ?: return null
+        return hook.takeIf { response.getCompleted() is JsonRpcSuccessResponse }
+    }
 }

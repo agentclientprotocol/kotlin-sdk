@@ -162,7 +162,15 @@ public operator fun <TNotification : AcpNotification> AcpMethod.AcpNotificationM
     return rpc.sendNotification(this, notification)
 }
 
-internal class JsonRpcRequestContextElement(val request: JsonRpcRequest) : AbstractCoroutineContextElement(Key) {
+/**
+ * The incoming request a handler serves.
+ *
+ * @property slot where the request's reply goes, for [invokeOnResponseQueued]
+ */
+internal class JsonRpcRequestContextElement(
+    val request: JsonRpcRequest,
+    val slot: ResponseSlot,
+) : AbstractCoroutineContextElement(Key) {
     object Key : CoroutineContext.Key<JsonRpcRequestContextElement>
 }
 

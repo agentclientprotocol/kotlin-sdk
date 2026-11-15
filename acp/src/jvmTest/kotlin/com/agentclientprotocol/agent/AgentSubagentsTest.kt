@@ -17,6 +17,11 @@ import com.agentclientprotocol.model.CloseSessionRequest
 import com.agentclientprotocol.model.CloseSessionResponse
 import com.agentclientprotocol.model.ContentBlock
 import com.agentclientprotocol.model.DeleteSessionRequest
+import com.agentclientprotocol.model.ElicitationCapabilities
+import com.agentclientprotocol.model.ElicitationId
+import com.agentclientprotocol.model.ElicitationMode
+import com.agentclientprotocol.model.ElicitationUrlCapabilities
+import com.agentclientprotocol.model.FileSystemCapability
 import com.agentclientprotocol.model.ForkSessionRequest
 import com.agentclientprotocol.model.IdleStopReason
 import com.agentclientprotocol.model.InitializeRequest
@@ -33,6 +38,7 @@ import com.agentclientprotocol.model.SessionCancelCapabilities
 import com.agentclientprotocol.model.SessionConfigId
 import com.agentclientprotocol.model.SessionConfigOptionValue
 import com.agentclientprotocol.model.SessionId
+import com.agentclientprotocol.model.SessionMode
 import com.agentclientprotocol.model.SessionModeId
 import com.agentclientprotocol.model.SessionNotification
 import com.agentclientprotocol.model.SessionUpdate
@@ -43,6 +49,8 @@ import com.agentclientprotocol.model.StateUpdate
 import com.agentclientprotocol.model.StopReason
 import com.agentclientprotocol.model.SubagentCapabilities
 import com.agentclientprotocol.model.SubagentSessionCapabilities
+import com.agentclientprotocol.model.SuggestNesRequest
+import com.agentclientprotocol.model.SuggestNesResponse
 import com.agentclientprotocol.model.ToolCallContent
 import com.agentclientprotocol.model.ToolCallId
 import com.agentclientprotocol.protocol.Protocol
@@ -50,9 +58,13 @@ import com.agentclientprotocol.rpc.ACPJson
 import com.agentclientprotocol.rpc.JsonRpcErrorResponse
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcNotification
+import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.rpc.JsonRpcSuccessResponse
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.coroutines.ContinuationInterceptor
 import kotlin.coroutines.CoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -68,6 +80,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CopyableThrowable
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -90,6 +103,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class AgentSubagentsTest {
 
@@ -115,6 +130,15 @@ class AgentSubagentsTest {
 
         @Volatile
         var onClose: suspend () -> Unit = {}
+
+        /**
+         * Thrown while the SDK builds the response that opens this session.
+         */
+        @Volatile
+        var responseFailure: Throwable? = null
+
+        override val availableModes: List<SessionMode>
+            get() = responseFailure?.let { throw it } ?: emptyList()
 
         override suspend fun postInitialize() {
             context.complete(checkNotNull(currentCoroutineContext()[SessionWrapperContextElement.Key]))
@@ -238,6 +262,7 @@ class AgentSubagentsTest {
 
     private fun withSubagents(
         subagentsCapability: Boolean = true,
+        otherCapabilities: ClientCapabilities = ClientCapabilities(),
         block: suspend CoroutineScope.(Fixture) -> Unit,
     ) = runBlocking {
         val transport = TestTransport(5.seconds)
@@ -258,7 +283,7 @@ class AgentSubagentsTest {
         val agent = Agent(protocol, support)
         protocol.start()
         try {
-            val capabilities = ClientCapabilities(subagents = if (subagentsCapability) SubagentCapabilities() else null)
+            val capabilities = otherCapabilities.copy(subagents = if (subagentsCapability) SubagentCapabilities() else null)
             transport.testRequest(AcpMethod.AgentMethods.V1.Initialize, InitializeRequest(LATEST_PROTOCOL_VERSION, capabilities))
             transport.testRequest(AcpMethod.AgentMethods.V1.SessionNew, NewSessionRequest(".", emptyList()))
             val rootContext = withTimeout(5.seconds) { root.context.await() }
@@ -279,6 +304,18 @@ class AgentSubagentsTest {
     fun `subagents accessor fails outside a session context`() = runBlocking {
         assertFailsWith<IllegalStateException> { currentCoroutineContext().subagents }
         Unit
+    }
+
+    @Test
+    fun `subagents accessor fails in a NES session context`() = withSubagents { f ->
+        val nesSession = object : NesAgentSession {
+            override val nesSessionId = SessionId("nes")
+            override suspend fun suggest(request: SuggestNesRequest): SuggestNesResponse = error("Not called")
+        }
+        val nesContext = Agent.NesSessionWrapper(f.agent, nesSession, f.protocol).asContextElement()
+
+        val failure = assertFailsWith<IllegalStateException> { nesContext.subagents }
+        assertTrue(failure.message!!.contains("NES"), failure.message)
     }
 
     @Test
@@ -370,6 +407,47 @@ class AgentSubagentsTest {
         failures.forEach { assertTrue(it.message!!.contains("not announced"), it.message) }
         assertEquals(SessionNotification(rootId, announcement(childId)), f.nextNotification())
         assertEquals(SessionNotification(childId, text("after")), f.nextNotification())
+    }
+
+    @Test
+    fun `an announced child's requests are sent for the child's session`() = withSubagents(
+        otherCapabilities = ClientCapabilities(
+            fs = FileSystemCapability(readTextFile = true, writeTextFile = true),
+            terminal = true,
+            elicitation = ElicitationCapabilities(url = ElicitationUrlCapabilities()),
+        ),
+    ) { f ->
+        val client = announceChild(f, childId).client
+        val sent = mutableListOf<JsonRpcRequest>()
+        // Captures each request as it is sent and fails the call, so no response is needed.
+        f.transport.onSend = { message ->
+            if (message is JsonRpcRequest) {
+                sent += message
+                throw UncopiedException("request captured")
+            }
+        }
+        val requests: List<Pair<String, suspend () -> Unit>> = listOf(
+            "requestPermissions" to { client.requestPermissions(SessionUpdate.ToolCallUpdate(ToolCallId("t")), emptyList()) },
+            "fsReadTextFile" to { client.fsReadTextFile("/a") },
+            "fsWriteTextFile" to { client.fsWriteTextFile("/a", "content") },
+            "terminalCreate" to { client.terminalCreate("ls") },
+            "terminalOutput" to { client.terminalOutput("term") },
+            "terminalRelease" to { client.terminalRelease("term") },
+            "terminalWaitForExit" to { client.terminalWaitForExit("term") },
+            "terminalKill" to { client.terminalKill("term") },
+            "createSessionElicitation" to {
+                (client as RemoteClientSessionOperations).createSessionElicitation(
+                    ElicitationMode.Url(ElicitationId("e"), "https://example.com"),
+                    "Sign in",
+                )
+            },
+        )
+
+        for ((name, request) in requests) {
+            assertFailsWith<UncopiedException>(name) { request() }
+            val params = assertNotNull(sent.removeLastOrNull()?.params, name).jsonObject
+            assertEquals(childId.value, params["sessionId"]?.jsonPrimitive?.content, name)
+        }
     }
 
     @Test
@@ -494,7 +572,7 @@ class AgentSubagentsTest {
         val failure = assertFailsWith<IllegalStateException> {
             f.rootSubagents.announce(childId, { TestSubagent(flow { throw CancellationException("app timeout") }) })
         }
-        assertTrue(failure.causes().any { it is CancellationException }, failure.stackTraceToString())
+        assertWrapsCancellation(failure)
         assertTrue(currentCoroutineContext().isActive)
         assertNull(f.agent.subagentOrNull(childId))
         f.assertNothingMoreSent()
@@ -506,7 +584,7 @@ class AgentSubagentsTest {
             val failure = assertFailsWith<IllegalStateException> {
                 f.rootSubagents.announce(childId, { throw CancellationException("app timeout") })
             }
-            assertTrue(failure.causes().any { it is CancellationException }, failure.stackTraceToString())
+            assertWrapsCancellation(failure)
             assertTrue(currentCoroutineContext().isActive)
             assertNull(f.agent.subagentOrNull(childId))
         }
@@ -593,6 +671,32 @@ class AgentSubagentsTest {
             assertEquals(SessionNotification(rootId, announcement(childId, granted = true)), f.nextNotification())
             val correction = SessionUpdate.SubagentUpdate(childId, capabilities = MaybeUndefined.Null)
             assertEquals(SessionNotification(rootId, correction), f.nextNotification())
+            assertNotNull(f.agent.subagentOrNull(childId))
+        }
+
+    /*
+     * The counterpart of the test above: there the caller itself is cancelled, and gets its cancellation as is.
+     */
+    @Test
+    fun `a cancellation thrown by the factory after announcing, while the caller is active, surfaces as IllegalStateException`() =
+        withSubagents { f ->
+            val failure = assertFailsWith<IllegalStateException> {
+                f.rootSubagents.announce(childId, {
+                    it.client.notify(announcement(childId, granted = true, state = StateUpdate.Running()))
+                    throw CancellationException("app timeout")
+                })
+            }
+
+            assertWrapsCancellation(failure)
+            assertTrue(currentCoroutineContext().isActive)
+            assertEquals(SessionNotification(rootId, announcement(childId, granted = true, state = StateUpdate.Running())), f.nextNotification())
+            val correction = SessionUpdate.SubagentUpdate(
+                childId,
+                capabilities = MaybeUndefined.Null,
+                state = MaybeUndefined.Value(StateUpdate.Unknown()),
+            )
+            assertEquals(SessionNotification(rootId, correction), f.nextNotification())
+            f.assertNothingMoreSent()
             assertNotNull(f.agent.subagentOrNull(childId))
         }
 
@@ -894,24 +998,32 @@ class AgentSubagentsTest {
     }
 
     @Test
-    fun `session cancel sent right after the grant goes out is routed`() = withSubagents { f ->
+    fun `session cancel handled while the grant is still being sent is routed`() = withSubagents { f ->
         val cancels = Channel<SessionId>(Channel.UNLIMITED)
-        val grantUpdate = SessionUpdate.SubagentUpdate(childId, capabilities = MaybeUndefined.Value(grant()))
-        f.transport.onSend = { message ->
-            if (message.sessionNotificationOrNull()?.update == grantUpdate) f.fireCancel(childId)
-        }
-        val events = Channel<SessionUpdate>(Channel.UNLIMITED)
-        events.send(announcement(childId))
-        f.rootSubagents.announce(childId, {
-            TestSubagent(events.consumeAsFlow(), onCancel = { cancels.send(childId) })
-        })
+        announceProbe(f, cancels)
+        val child = announceGranted(f.rootSubagents, childId, cancels, granted = false)
         f.nextNotification()
+        // The blocked send below holds the child's lock, which the end of its feed would wait for.
+        f.awaitCollectionsEnded()
+        val grantUpdate = SessionUpdate.SubagentUpdate(childId, capabilities = MaybeUndefined.Value(grant()))
+        var firstCancelled: SessionId? = null
+        /*
+         * The grant's send doesn't return until a cancel has been handled, so the child's cancel is routed only if the
+         * grant was recorded before the send. Otherwise the probe's cancel, handled after it, is the first.
+         */
+        f.transport.onSend = { message ->
+            if (message.sessionNotificationOrNull()?.update == grantUpdate) {
+                f.fireCancel(childId)
+                f.fireCancel(probeId)
+                firstCancelled = runBlocking { withTimeout(5.seconds) { cancels.receive() } }
+            }
+        }
 
-        events.send(grantUpdate)
+        // Off the thread that reads incoming messages, which the blocked send would otherwise stall.
+        withContext(Dispatchers.IO) { child.client.notify(grantUpdate) }
 
-        assertEquals(SessionNotification(rootId, grantUpdate), f.nextNotification())
-        assertEquals(childId, withTimeout(5.seconds) { cancels.receive() })
-        events.close()
+        assertEquals(childId, firstCancelled)
+        assertEquals(probeId, withTimeout(5.seconds) { cancels.receive() })
     }
 
     @Test
@@ -957,16 +1069,55 @@ class AgentSubagentsTest {
     }
 
     @Test
-    fun `session cancel while the factory runs is ignored, not deferred`() = withSubagents { f ->
+    fun `session cancel while a granted factory runs is delivered once, after it returns`() = withSubagents { f ->
+        val cancels = Channel<SessionId>(Channel.UNLIMITED)
+        val cancelClients = Channel<ClientSessionOperations>(Channel.UNLIMITED)
+        announceProbe(f, cancels)
+        lateinit var context: AgentSubagentContext
+        val announced = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val announcing = async {
+            f.rootSubagents.announce(childId, {
+                context = it
+                it.client.notify(announcement(childId, granted = true))
+                announced.complete(Unit)
+                release.await()
+                TestSubagent(onCancel = {
+                    cancelClients.send(currentCoroutineContext().client)
+                    cancels.send(childId)
+                })
+            })
+        }
+        withTimeout(5.seconds) { announced.await() }
+        f.nextNotification()
+
+        // Two cancels while the factory runs: the probe's cancel proves both were handled, and held.
+        repeat(2) { f.fireCancel(childId) }
+        f.fireCancel(probeId)
+        assertEquals(probeId, withTimeout(5.seconds) { cancels.receive() })
+        assertTrue(cancels.isEmpty)
+        release.complete(Unit)
+        withTimeout(5.seconds) { announcing.await() }
+
+        assertEquals(childId, withTimeout(5.seconds) { cancels.receive() })
+        assertSame(context.client, cancelClients.receive())
+        f.awaitCollectionsEnded()
+        assertTrue(cancels.isEmpty)
+    }
+
+    @Test
+    fun `session cancel while the factory runs without a grant is not delivered`() = withSubagents { f ->
         val cancels = Channel<SessionId>(Channel.UNLIMITED)
         announceProbe(f, cancels)
         val announced = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val announcing = async {
             f.rootSubagents.announce(childId, {
-                it.client.notify(announcement(childId, granted = true))
+                it.client.notify(announcement(childId))
                 announced.complete(Unit)
                 release.await()
+                // Granted only after the cancel arrived: the grant in effect on arrival decides.
+                it.client.notify(SessionUpdate.SubagentUpdate(childId, capabilities = MaybeUndefined.Value(grant())))
                 TestSubagent(onCancel = { cancels.send(childId) })
             })
         }
@@ -976,9 +1127,62 @@ class AgentSubagentsTest {
         assertCancelIgnored(f, childId, cancels)
         release.complete(Unit)
         withTimeout(5.seconds) { announcing.await() }
+        f.nextNotification()
+
+        f.awaitCollectionsEnded()
+        assertTrue(cancels.isEmpty)
+    }
+
+    @Test
+    fun `a held session cancel is dropped when the grant is revoked before the factory returns`() = withSubagents { f ->
+        val cancels = Channel<SessionId>(Channel.UNLIMITED)
+        announceProbe(f, cancels)
+        val announced = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val announcing = async {
+            f.rootSubagents.announce(childId, {
+                it.client.notify(announcement(childId, granted = true))
+                announced.complete(Unit)
+                release.await()
+                // The grant in effect on delivery decides.
+                it.client.notify(SessionUpdate.SubagentUpdate(childId, capabilities = MaybeUndefined.Null))
+                TestSubagent(onCancel = { cancels.send(childId) })
+            })
+        }
+        withTimeout(5.seconds) { announced.await() }
+        f.nextNotification()
 
         f.fireCancel(childId)
-        assertEquals(childId, withTimeout(5.seconds) { cancels.receive() })
+        f.fireCancel(probeId)
+        assertEquals(probeId, withTimeout(5.seconds) { cancels.receive() })
+        release.complete(Unit)
+        withTimeout(5.seconds) { announcing.await() }
+        f.nextNotification()
+
+        f.awaitCollectionsEnded()
+        assertTrue(cancels.isEmpty)
+    }
+
+    @Test
+    fun `session cancel while a replaying factory runs is not held`() = withSubagents { f ->
+        val loaded = RootSession(loadedId)
+        val cancels = Channel<SessionId>(Channel.UNLIMITED)
+        announceProbe(f, cancels)
+        loaded.replay = {
+            currentSubagents().announce(childId, { context ->
+                context.client.notify(announcement(childId, granted = true))
+                // A history grant is never in effect, so this cancel is ignored rather than held.
+                f.fireCancel(childId)
+                f.fireCancel(probeId)
+                assertEquals(probeId, withTimeout(5.seconds) { cancels.receive() })
+                TestSubagent(onCancel = { cancels.send(childId) })
+            })
+        }
+
+        assertIs<JsonRpcSuccessResponse>(f.load(loaded).last())
+
+        f.awaitCollectionsEnded(loaded.wrapper())
+        assertTrue(cancels.isEmpty)
     }
 
     @Test
@@ -1284,22 +1488,29 @@ class AgentSubagentsTest {
         events.close()
     }
 
+    /*
+     * Nothing can be sent once the connection has ended, so whether the SDK would report `unknown` for these
+     * collections can't be observed here. `a collection the SDK cancels sends nothing, however the feed ends` covers
+     * that rule.
+     */
     @Test
-    fun `the connection's end cancels the collections without reporting unknown`() {
+    fun `the connection's end cancels the collections at every depth`() {
         val endings: List<(Fixture) -> Unit> = listOf({ it.protocol.close() }, { it.transport.close() })
         for (ending in endings) {
             withSubagents { f ->
-                val stopped = CompletableDeferred<Unit>()
-                announceActive(f.rootSubagents, childId, stopped)
+                val childStopped = CompletableDeferred<Unit>()
+                val grandchildStopped = CompletableDeferred<Unit>()
+                val child = announceActive(f.rootSubagents, childId, childStopped)
                 f.nextNotification()
-                val sent = Channel<JsonRpcMessage>(Channel.UNLIMITED)
-                f.transport.onSend = { sent.trySend(it) }
+                announceActive(child.subagents, grandchildId, grandchildStopped)
+                f.nextNotification()
 
                 ending(f)
 
-                withTimeout(5.seconds) { stopped.await() }
-                f.awaitCollectionsEnded()
-                assertNull(sent.tryReceive().getOrNull())
+                withTimeout(5.seconds) {
+                    childStopped.await()
+                    grandchildStopped.await()
+                }
             }
         }
     }
@@ -1589,6 +1800,73 @@ class AgentSubagentsTest {
     }
 
     @Test
+    fun `a load whose response can't be built drops the session and its replayed subagents`() = withSubagents { f ->
+        val failing = RootSession(loadedId)
+        lateinit var child: AgentSubagentContext
+        failing.replay = {
+            currentSubagents().announce(childId, { context ->
+                child = context
+                context.client.notify(announcement(childId))
+                TestSubagent(flowOf(text("must never be collected")))
+            })
+        }
+        failing.responseFailure = RuntimeException("modes unavailable")
+
+        val failed = f.load(failing)
+
+        assertEquals(2, failed.size, "$failed")
+        assertIs<JsonRpcErrorResponse>(failed.last())
+        assertNull(f.agent.subagentOrNull(childId))
+        assertFailsWith<IllegalStateException> { child.client.notify(text("late")) }
+        assertIs<JsonRpcErrorResponse>(
+            f.request(AcpMethod.AgentMethods.V1.SessionPrompt, PromptRequest(loadedId, listOf(ContentBlock.Text("go"))))
+        )
+        f.assertNothingMoreSent()
+
+        val retried = RootSession(loadedId)
+        retried.replay = {
+            currentSubagents().announce(childId, { context ->
+                context.client.notify(announcement(childId))
+                TestSubagent()
+            })
+        }
+        assertIs<JsonRpcSuccessResponse>(f.load(retried).last())
+        assertNotNull(f.agent.subagentOrNull(childId))
+    }
+
+    @Test
+    fun `a grant sent once the load response is queued is live, before the after-response work starts`() =
+        withSubagents { f ->
+            val loaded = RootSession(loadedId)
+            val handlerThreadReleased = CountDownLatch(1)
+            lateinit var child: AgentSubagentContext
+            loaded.replay = {
+                currentSubagents().announce(childId, { context ->
+                    child = context
+                    context.client.notify(announcement(childId))
+                    TestSubagent()
+                })
+                /*
+                 * Occupy the single handler thread from the moment the load handler suspends to wait for its
+                 * response to be queued: its after-response work can't start until the test releases it.
+                 */
+                val handlerDispatcher = checkNotNull(currentCoroutineContext()[ContinuationInterceptor])
+                CoroutineScope(handlerDispatcher).launch { handlerThreadReleased.await(5, TimeUnit.SECONDS) }
+            }
+
+            try {
+                assertIs<JsonRpcSuccessResponse>(f.load(loaded).last())
+                val freshGrant = SessionUpdate.SubagentUpdate(childId, capabilities = MaybeUndefined.Value(grant()))
+                child.client.notify(freshGrant)
+
+                assertEquals(SessionNotification(loadedId, freshGrant), f.nextNotification())
+                assertTrue(assertNotNull(f.agent.subagentOrNull(childId)).isCancelGranted)
+            } finally {
+                handlerThreadReleased.countDown()
+            }
+        }
+
+    @Test
     fun `subagents announced from postInitialize are live, however the session was opened`() = withSubagents { f ->
         val openings: List<Pair<String, suspend (RootSession) -> Unit>> = listOf(
             "new" to { session -> f.newRoot(session) },
@@ -1657,17 +1935,19 @@ class AgentSubagentsTest {
     }
 
     /**
-     * Announces a granted child through its factory, whose cancel sends its id to [cancels].
+     * Announces a child through its factory, granted unless [granted] is `false`, whose cancel sends its id to
+     * [cancels].
      */
     private suspend fun announceGranted(
         subagents: AgentSubagents,
         sessionId: SessionId,
         cancels: Channel<SessionId>,
+        granted: Boolean = true,
     ): AgentSubagentContext {
         lateinit var context: AgentSubagentContext
         subagents.announce(sessionId, {
             context = it
-            it.client.notify(announcement(sessionId, granted = true))
+            it.client.notify(announcement(sessionId, granted = granted))
             TestSubagent(onCancel = { cancels.send(sessionId) })
         })
         return context
@@ -1789,6 +2069,15 @@ class AgentSubagentsTest {
 }
 
 private fun grant() = SubagentSessionCapabilities(cancel = SessionCancelCapabilities())
+
+/**
+ * Asserts that [failure] is an ordinary failure caused by a cancellation. On the JVM a [CancellationException] is an
+ * [IllegalStateException] itself, so `assertFailsWith<IllegalStateException>` alone would accept it unwrapped.
+ */
+private fun assertWrapsCancellation(failure: Throwable) {
+    assertFalse(failure is CancellationException, failure.stackTraceToString())
+    assertTrue(failure.causes().any { it is CancellationException }, failure.stackTraceToString())
+}
 
 private val CoroutineContext.rootWrapper: Agent.SessionWrapper
     get() = this[SessionWrapperContextElement.Key]!!.sessionWrapper as Agent.SessionWrapper

@@ -343,6 +343,54 @@ class BatchProtocolTest {
     }
 
     @Test
+    fun responseQueuedHooksRunOnceTheWholeFrameIsAcceptedAndBeforeFollowUps() = test { protocol, transport ->
+        val prepared = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val events = Channel<String>(Channel.UNLIMITED)
+        transport.onSend = { events.trySend("sent") }
+        protocol.setRequestOutcomeHandlerRaw(method) { request ->
+            val id = request.id.value as Int
+            currentCoroutineContext().invokeOnResponseQueued { events.trySend("hook $id") }
+            if (id == 2) release.await()
+            RequestOutcome<JsonElement?>(JsonNull, afterResponse = { events.trySend("follow-up $id") })
+                .also { if (id == 1) prepared.complete(Unit) }
+        }
+        transport.receive(TransportFrame.Batch(listOf(request(1), request(2))))
+        prepared.await()
+        assertTrue(events.tryReceive().isFailure, "Nothing runs before the frame carrying the reply is accepted")
+
+        release.complete(Unit)
+
+        assertIs<TransportFrame.Batch>(transport.sent.receive())
+        assertEquals(listOf("sent", "hook 1", "hook 2"), List(3) { events.receive() })
+        assertEquals(setOf("follow-up 1", "follow-up 2"), setOf(events.receive(), events.receive()))
+    }
+
+    @Test
+    fun responseQueuedHookIsSkippedForErrorRepliesAndFailedSends() = test { protocol, transport ->
+        val hooks = Channel<Int>(Channel.UNLIMITED)
+        val cleaned = Channel<Int>(Channel.UNLIMITED)
+        protocol.setRequestOutcomeHandlerRaw(method) { request ->
+            val id = request.id.value as Int
+            currentCoroutineContext().invokeOnResponseQueued { hooks.trySend(id) }
+            if (id == 1) error("handler failed")
+            RequestOutcome<JsonElement?>(JsonNull, onCompletion = { cleaned.trySend(id) })
+        }
+
+        transport.receive(request(1))
+        assertIs<JsonRpcErrorResponse>(transport.sent.receive().replies().single())
+        transport.failSend = true
+        transport.receive(request(2))
+        assertEquals(2, cleaned.receive())
+        transport.failSend = false
+        transport.receive(request(3))
+
+        assertIs<JsonRpcSuccessResponse>(transport.sent.receive().replies().single())
+        assertEquals(3, hooks.receive())
+        assertTrue(hooks.tryReceive().isFailure)
+    }
+
+    @Test
     fun closeCancelsWorkBeforeClosingTransportAndIsReentrantSafe() = test { protocol, transport ->
         val handlerStarted = CompletableDeferred<Job>()
         protocol.setRequestHandlerRaw(method) {

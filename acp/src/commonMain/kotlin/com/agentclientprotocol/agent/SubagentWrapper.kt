@@ -69,8 +69,8 @@ internal class SessionSubagents(private val bound: Agent.ChatSessionWrapper) : A
  * operation fails for good too.
  *
  * A child announced while its root's replay window is open is a replayed one: its factory must send the
- * announcement, its collection starts after the load response, and the SDK doesn't track the grants and states sent
- * in the window, because they are history.
+ * announcement, its collection starts once the transport has accepted the load response, and the SDK doesn't track
+ * the grants and states sent in the window, because they are history.
  *
  * @property parent the session whose stream carries this child's [SessionUpdate.SubagentUpdate]s
  */
@@ -107,10 +107,16 @@ internal class SubagentWrapper(
 
     /**
      * Whether the factory is running, and the last `state` the child's operations sent while it ran. Guarded by
-     * [lock]. Used only when the factory throws after the announcement.
+     * [lock]. The state is used only when the factory throws after the announcement.
      */
     private var factoryRunning = false
     private var factoryState: StateUpdate? = null
+
+    /**
+     * Whether a `session/cancel` arrived while the factory ran with cancel granted. It is delivered once the factory
+     * returns the session. Guarded by [lock].
+     */
+    private var isCancelLatched = false
 
     /**
      * The last `state` sent through the session's events, for the rule on a feed that ends while the child is
@@ -186,15 +192,17 @@ internal class SubagentWrapper(
         val session = try {
             runFactory(factory)
         } catch (e: Throwable) {
+            /*
+             * Only the caller's own cancellation passes as is. A CancellationException from the app while the
+             * caller is active would tear down the caller's scope, usually the parent's prompt flow.
+             */
+            val isAppCancellation = e is CancellationException && currentCoroutineContext().isActive
             if (dropUnlessAnnounced()) {
-                /*
-                 * Only the caller's own cancellation passes as is. A CancellationException from the app while the
-                 * caller is active would tear down the caller's scope, usually the parent's prompt flow.
-                 */
-                if (e is CancellationException && !currentCoroutineContext().isActive) throw e
+                if (e is CancellationException && !isAppCancellation) throw e
                 throw IllegalStateException("Subagent $sessionId is not announced: its factory failed", e)
             }
             reportFactoryFailure()
+            if (isAppCancellation) throw IllegalStateException("Subagent $sessionId is announced, but its factory failed", e)
             throw e
         }
 
@@ -209,11 +217,9 @@ internal class SubagentWrapper(
                         "the announcement"
                 )
             }
-            _session.value = session
             root.startAfterReplay { startCollection(session) }
             return session
         }
-        _session.value = session
 
         val collection = startCollection(session)
         try {
@@ -225,13 +231,31 @@ internal class SubagentWrapper(
         return session
     }
 
+    /**
+     * Runs the factory, then makes the session it returned the target of `session/cancel` and delivers a cancel
+     * latched while it ran.
+     */
     private suspend fun <S : AgentSubagentSession> runFactory(factory: AgentSubagentFactory<S>): S {
         synchronized(lock) { factoryRunning = true }
-        try {
-            return executeWithSession { factory.createSubagent(context) }
-        } finally {
-            synchronized(lock) { factoryRunning = false }
+        val session = try {
+            executeWithSession { factory.createSubagent(context) }
+        } catch (e: Throwable) {
+            synchronized(lock) {
+                factoryRunning = false
+                // There is no session for a latched cancel to reach.
+                isCancelLatched = false
+            }
+            throw e
         }
+
+        // One step, so a session/cancel either is latched or finds the session.
+        val cancelLatched = synchronized(lock) {
+            factoryRunning = false
+            _session.value = session
+            isCancelLatched.also { isCancelLatched = false }
+        }
+        if (cancelLatched) deliverLatchedCancel(session)
+        return session
     }
 
     /**
@@ -255,19 +279,31 @@ internal class SubagentWrapper(
 
     /**
      * Subtree cleanup for this child, after the caller removed it from the child table: every operation fails from
-     * now on, and an `announce` still waiting for the announcement fails.
+     * now on, and an `announce` still waiting for an announcement that wasn't sent fails.
      */
     fun remove() {
-        synchronized(lock) {
+        val wasPending = synchronized(lock) {
             when (_phase.value) {
-                Phase.PENDING -> _phase.value = Phase.DROPPED
-                Phase.ANNOUNCED -> _phase.value = Phase.REMOVED
-                Phase.DROPPED, Phase.REMOVED -> {}
+                Phase.PENDING -> {
+                    _phase.value = Phase.DROPPED
+                    true
+                }
+                Phase.ANNOUNCED -> {
+                    _phase.value = Phase.REMOVED
+                    false
+                }
+                Phase.DROPPED, Phase.REMOVED -> false
             }
         }
-        announcement.completeExceptionally(
-            IllegalStateException("Subagent $sessionId is not announced: its root session ${root.sessionId} is closed")
-        )
+        /*
+         * A sent announcement precedes the close response, and its sender completes the wait right after the send,
+         * so that `announce` returns.
+         */
+        if (wasPending) {
+            announcement.completeExceptionally(
+                IllegalStateException("Subagent $sessionId is not announced: its root session ${root.sessionId} is closed")
+            )
+        }
     }
 
     /**
@@ -342,22 +378,54 @@ internal class SubagentWrapper(
 
     /**
      * Serves `session/cancel` for this child: calls the session's [AgentSubagentSession.cancel] while the cancel
-     * grant is in effect, and otherwise ignores it, because a notification can't get an error. The SDK neither stops
-     * the collection nor reports an outcome: the app reports it through the events.
+     * grant is in effect, and otherwise ignores it, because a notification can't get an error. While the factory
+     * runs with cancel granted, the cancel is latched instead, and delivered once the factory returns. The SDK
+     * neither stops the collection nor reports an outcome: the app reports it through the events.
      */
     suspend fun cancel() {
-        val session = session
-        if (!isCancelGranted || session == null) {
-            logger.info {
-                if (session == null) "Ignoring session/cancel for subagent $sessionId: it has no session"
-                else "Ignoring session/cancel for subagent $sessionId: cancel is not granted"
-            }
+        val session = _session.value ?: latchCancel() ?: return
+        if (!isCancelGranted) {
+            logger.info { "Ignoring session/cancel for subagent $sessionId: cancel is not granted" }
             return
         }
+        callCancel(session)
+    }
+
+    /**
+     * Handles a `session/cancel` that found no session: latches it if the factory is running with cancel granted,
+     * and ignores it otherwise. Returns the session if the factory has returned it meanwhile.
+     */
+    private fun latchCancel(): AgentSubagentSession? {
+        val latched = synchronized(lock) {
+            _session.value?.let { return it }
+            if (factoryRunning && _cancelGranted.value) isCancelLatched = true
+            isCancelLatched
+        }
+        logger.info {
+            if (latched) "Deferring session/cancel for subagent $sessionId until its factory returns"
+            else "Ignoring session/cancel for subagent $sessionId: it has no session"
+        }
+        return null
+    }
+
+    /**
+     * Delivers a `session/cancel` latched while the factory ran, if the cancel grant is still in effect.
+     */
+    private fun deliverLatchedCancel(session: AgentSubagentSession) {
+        root.subtreeScope.launch(asContextElement() + CoroutineName("Subagent $sessionId cancel")) {
+            if (!isCancelGranted) {
+                logger.info { "Dropping the session/cancel latched for subagent $sessionId: cancel is no longer granted" }
+                return@launch
+            }
+            callCancel(session)
+        }
+    }
+
+    private suspend fun callCancel(session: AgentSubagentSession) {
         try {
             executeWithSession { session.cancel() }
         } catch (e: Throwable) {
-            // Only this handler's own cancellation passes: a notification has no response to fail.
+            // Only the caller's own cancellation passes: a notification has no response to fail.
             if (e is CancellationException && !currentCoroutineContext().isActive) throw e
             logger.warn(e) { "Cancel of subagent $sessionId failed" }
         }
