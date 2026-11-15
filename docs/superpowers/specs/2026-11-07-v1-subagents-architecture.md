@@ -1,21 +1,22 @@
 # v1 subagents: architecture
 
-Status: every question in the "Decision log" at the end is decided, and the decisions are written into the
-sections above. "Open questions (from the implementer review)" lists gaps that still need decisions before
-implementation. It supersedes the agent-side sections of `2026-11-05-v1-subagents-design.md`, which records the
-earlier discussion. Where the two disagree, this file wins.
+Status: complete. Every question in the "Decision log" at the end is decided, including the gaps an implementer
+review found ("Open questions"), and the decisions are written into the sections above. This file is the only
+design document for v1 subagents; the earlier discussion notes were removed, and are in commit `9d1dafb`.
 
 ## Sources
 
-- Spec: `agent-client-protocol` at `67cde2d5`. `docs/rfds/subagents.mdx` has not changed since `dc011f0e`, the
-  revision the earlier notes cite. Line numbers below refer to that RFD unless another file is named. The RFD is an
-  unstable draft.
-- Rust v1 models: `agent-client-protocol-schema/src/v1/client.rs`, behind the `unstable_subagents` feature:
-  - `SessionMessageChunk` (`:200`) and `SessionMessage` (`:246`);
-  - `SubagentUpdate` (`:964`);
-  - `SubagentSessionCapabilities` (`:1131`) and `SessionCancelCapabilities` (`:1187`);
-  - `StateUpdate` (`:1234`) and `IdleStateUpdate` (`:1298`);
-  - `ClientCapabilities.subagents: Option<SubagentCapabilities>` (`:3386`).
+- Spec: `agent-client-protocol` at `c392d7e9`. Line numbers below refer to `docs/rfds/subagents.mdx` at that
+  revision unless another file is named. The RFD is an unstable draft.
+- Rust v1 models at the same revision, behind the `unstable_subagents` feature:
+  - in `agent-client-protocol-schema/src/v1/client.rs`:
+    - `SessionMessageChunk` (`:200`) and `SessionMessage` (`:246`);
+    - `SubagentUpdate` (`:964`);
+    - `SubagentSessionCapabilities` (`:1131`) and `SessionCancelCapabilities` (`:1187`);
+    - `StateUpdate` (`:1234`), `IdleStateUpdate` (`:1298`) and `IdleStopReason` (`:1410`);
+    - `ClientCapabilities.subagents: Option<SubagentCapabilities>` (`:3389`);
+  - in `agent-client-protocol-schema/src/v1/tool_call.rs`: `ToolCallContent::Session` (`:564-565`) and
+    `SessionReference` (`:598`).
 - Use the `check-specification` skill to re-read the RFD and the Rust models before writing models or serializers.
   Do not rely on this summary for wire shapes.
 
@@ -31,7 +32,7 @@ earlier discussion. Where the two disagree, this file wins.
 ## Implementation order
 
 Read `CLAUDE.md` and this file first. Resolve "Open questions (from the implementer review)" with the user before
-starting the parts they affect: question 25 blocks the client side, and 26 affects the model and both sides.
+starting the parts they affect. All of them are decided now.
 Then:
 
 1. **Model layer** and its serialization tests. Re-read the RFD and the Rust models with `check-specification` first.
@@ -40,13 +41,15 @@ Then:
    replay, with the agent tests.
 3. **The opening boundary** (see "History and live updates"), as its own PR before the client side. Before it, as
    its own commit: the `clearCancellation()` fix to #156 (see "Pending permission requests"). The PR's first commit
-   extracts `ClientSessionRegistry` from `Client` (see "Session registry"): no behaviour or API change, and the
-   existing client and `ClientSessionHolderTest` tests pass unchanged. Then: the internal `Protocol` response hook,
-   the `Opened` marker in the holder's queue, `SessionEvent` in `ClientSessionOperations.notify`, and the
-   one-opening rule for holders (see "Holders"). It's a breaking change to stable v1 API and behaviour, so it needs
-   a release note and reviewed API dumps on its own.
-4. **Client side:** types, registration, setup and delivery, effective grants and pending permissions, with the
-   client tests.
+   extracts `ClientSessionRegistry` from `Client` (see "Session registry"), replaces `ClientSessionImpl`'s call to
+   `client.removeSessionHolder` with the close callbacks (see "Close and connection end"), and adds the
+   session-request helper (see "Session registry"): no behaviour or API change, and the existing client and
+   `ClientSessionHolderTest` tests pass unchanged. A second commit deprecates `ClientSession.client`. Then: the
+   internal `Protocol` response hook, the `Opened` marker in the holder's queue, `SessionEvent` in
+   `ClientSessionOperations.notify`, and the one-opening rule for holders (see "Holders"). It's a breaking change to
+   stable v1 API and behaviour, so it needs a release note and reviewed API dumps on its own.
+4. **Client side:** types, registration, setup and delivery, effective grants and pending permissions, close, with
+   the client tests.
 5. **End-to-end** tests in `:acp-integration-test`.
 6. **Docs and checks:** the `Protocol` KDoc and `CLAUDE.md` updates, `:acp:apiDump` with a reviewed diff, then
    `./gradlew check` (see "Deliverables").
@@ -54,35 +57,36 @@ Then:
 ## What the spec requires (v1)
 
 - **Opt-in.** The client advertises `clientCapabilities.subagents: {}`. Without it, the agent MUST NOT send
-  `subagent_update`, `session_message` or `session_message_chunk`, including during replay (`:59-75`, `:881-883`).
+  `subagent_update`, `session_message` or `session_message_chunk`, including during replay (`:62-78`, `:1003-1005`).
 - **Announcement.** The first `subagent_update` for an unknown `update.sessionId` announces a child. Later ones patch
-  it. The outer `sessionId` is the immediate parent, which allows arbitrary nesting (`:86-90`, `:162-166`). The
+  it. The outer `sessionId` is the immediate parent, which allows arbitrary nesting (`:89-93`, `:165-169`). The
   announcement MUST precede every request or notification bearing the child's id, including live `session_message`s
-  naming it (`:92-95`). The agent MUST NOT guess parentage (`:184-188`). Only `update.sessionId` is required, and it
-  is unique on the connection (`:123-127`).
+  naming it (`:95-98`). The agent MUST NOT guess parentage (`:195-199`). Only `update.sessionId` is required, and it
+  is unique on the connection (`:122-124`).
 - **Patches.** `title`, `description`, `capabilities`, `state`, `cwd`, `additionalDirectories` and `_meta`: omitted
   means unchanged, `null` clears, a value replaces. `capabilities` is replaced as a whole, and in v1 `_meta` is too.
-  `{ "cancel": null }` and `capabilities: null` both revoke cancel (`:138-160`).
+  `{ "cancel": null }` and `capabilities: null` both revoke cancel (`:141-163`).
 - **Streams.** A `subagent_update` goes on the parent's stream (outer `sessionId` = parent). Everything else about the
   child goes on the child's stream (outer = child). In v1, the child's work state exists only as
-  `subagent_update.state` on the parent's stream, and nothing is duplicated (`:663-665`, `:1115-1117`).
-- **Work state** (`:731-800`). `running`, `requires_action`, `idle` (optional `stopReason`, including `error` with an
+  `subagent_update.state` on the parent's stream, and nothing is duplicated (`:773-775`, `:1240-1242`).
+- **Work state** (`:841-922`). `running`, `requires_action`, `idle` (optional `stopReason`, including `error` with an
   optional JSON-RPC `error`, plus `usage` and `_meta`) and `unknown`. Unrecognized states and stop reasons are kept.
   - The agent MUST report `running`/`idle` when it observes child foreground work starting, resuming or stopping.
   - It MUST report `unknown` when observability is actually lost.
-  - Work may start and stop many times. It may also start without the parent assigning anything (`:677-679`).
-  - A v1 child has no prompt and no prompt response (`:710`, `:755-757`).
-- **Messages** (`:417-575`). `session_message` (an upsert with participant ids and links between the two views) and
+  - Work may start and stop many times (`:787-789`). The RFD ties state reports to observed work, not to
+    assignments (`:857-858`), so work may also start without the parent assigning anything.
+  - A v1 child has no prompt and no prompt response (`:820-821`, `:865-867`).
+- **Messages** (`:428-597`). `session_message` (an upsert with participant ids and links between the two views) and
   `session_message_chunk`. Each view goes on the stream of the session whose transcript it belongs to. Delivery is
   the agent's own business, and the agent reports only views it observed.
-- **Restrictions** (`:946-969`). The client must not prompt, load, resume or close a child. `session/cancel` is
+- **Restrictions** (`:1068-1094`). The client must not prompt, load, resume or close a child. `session/cancel` is
   allowed only while the child's current `capabilities.cancel` is granted.
-- **Cancellation** (`:985-1033`):
+- **Cancellation** (`:1107-1158`):
   - Cancelling work also cancels the descendant work it waits on, while background children may continue.
   - The agent reports cancellation from actual evidence: a cancellation that races with already-ended work does not
-    rewrite that work's outcome (`:1007-1013`).
+    rewrite that work's outcome (`:1132-1138`).
   - Closing a parent cancels all descendant work and needs no terminal notification.
-- **Replay** (`:840-940`):
+- **Replay** (`:960-1062`):
   - `session/load` replays child associations and history best-effort, and everything replayed MUST be sent before
     the response.
   - Snapshots of state and grants sent before the response are history. Fresh snapshots come after it, as ordinary
@@ -150,6 +154,26 @@ Then:
     `Usage` model; omitted or `null` means not reported) and `_meta`. In Rust, `usage` sits behind
     `unstable_end_turn_token_usage` and is deserialized with `DefaultOnError`, so a malformed `usage` becomes
     `null` without failing the snapshot. Match that, and test it.
+- **New `ToolCallContent` variant:** `ToolCallContent.Session(sessionId: SessionId, _meta: JsonElement? = null)`,
+  `@UnstableApi`, with the discriminator `session` (RFD `:609-665`; Rust `ToolCallContent::Session(SessionReference)`
+  behind `unstable_subagents`, `tool_call.rs:564-598`). It's a display-only reference to a session that the tool
+  call operates on, such as a child it spawned or waits on.
+  - Upstream doesn't change stable v1: `SessionReference` is only in `schema/v1/schema.unstable.json`. Kotlin has no
+    feature gates, so the variant lives in the stable sealed class, marked `@UnstableApi`, as `PlanUpdateV2`,
+    `PlanRemoved`, `SessionInfoUpdate` and `UsageUpdate` do in the stable `SessionUpdate`.
+  - It's a **source-breaking** addition to a stable sealed class: an exhaustive `when` over `ToolCallContent` needs
+    a new branch (with an opt-in) or an `else`, and code compiled earlier throws `NoWhenBranchMatchedException` if
+    it meets the variant. Only a client that advertises `subagents` can receive it. Rust's enum is
+    `#[non_exhaustive]`, so Rust has no such break. It goes into the release note.
+  - Leaving it out is worse: `ToolCallContent` has no fallback for unknown variants, so a client that advertises
+    `subagents` would fail to decode every `tool_call` and `tool_call_update` carrying a reference, and lose the
+    whole update (see "Side findings").
+  - `_meta` decodes leniently (Rust `DefaultOnError`), with the same helper as the other subagent models.
+  - Its KDoc says that in v1 it needs the `subagents` client capability, that the referenced session must already
+    be known through session setup or an announcement, and that the reference is display-only: it grants no
+    controls and says nothing about the referenced session's work.
+  - `V1ToolCallContent.toV2OrNull` (`model/v2/conversion/ToolCallConversions.kt`) is exhaustive, so it gets a
+    `Session -> null` branch until v2 has its own variant.
 - **Serializers.** Write them by hand, like other structs with `MaybeUndefined` fields. Add JSON tests for:
   - absent versus `null` on every patch field;
   - `capabilities` replaced as a whole;
@@ -170,7 +194,7 @@ process the SDK wraps. The app gives the SDK an object with the child's event st
 
 The app reports everything else itself, including `running`/`idle`, following the spec. This mirrors the v2 runtime,
 where the app reports state and the SDK only closes what the app left open (`agent/v2/Agent.kt`, `runTurn`). v1
-children use the v2 state model (`:731`).
+children use the v2 state model (`:841`).
 
 ### Public API (`com.agentclientprotocol.agent`, all `@UnstableApi`)
 
@@ -333,7 +357,7 @@ public val CoroutineContext.subagents: AgentSubagents?
 6. After the factory returns, start collecting `events` in the child's context, in a scope owned by the root session
    (see "Lifetimes"): right away for a live announcement, after the parent's load response for a replayed child.
 7. Return the session once the announcement has been sent and the factory has returned. This is the caller's
-   ordering point. For example, the parent may then send its own `session_message` naming the child (`:92-95`).
+   ordering point. For example, the parent may then send its own `session_message` naming the child (`:95-98`).
    - A live child that announces itself only in `events` makes `announce` wait for that first item, with no
      timeout. The SDK puts no timeouts on app code. An app that wants a bound wraps the call in `withTimeout`.
    - **If the caller is cancelled while waiting** and nothing has been sent yet, cancel the collection, unregister
@@ -365,6 +389,9 @@ collector sends through the same path:
   - It throws rather than dropping with a log: the app made an explicit call that breaks a MUST NOT, and a silent
     drop would hide the bug and lose content the app meant to show. Inside a prompt flow the throw fails the turn.
     The app checks first with `currentCoroutineContext().subagents != null`.
+  - The same check covers a `tool_call` or `tool_call_update` whose `content` contains `ToolCallContent.Session`:
+    the RFD puts `session` content under the same capability (`:663-665`). It's a scan of one list per tool-call
+    update.
   - Children need no check, because a child exists only when the client advertised `subagents`. `subagent_update`
     needs none either: a root's `notify` always rejects it (above).
   - The KDoc of `SessionUpdate.SessionMessage` and `SessionUpdate.SessionMessageChunk` says they need the
@@ -412,11 +439,11 @@ collector sends through the same path:
   - Otherwise log and ignore, since a notification can't get an error. This includes a child whose factory threw
     after announcing it: there is no session to call, and the SDK has already revoked the grant on the wire.
   - The SDK doesn't stop the collection, and doesn't report `cancelled` itself. The app reports the actual outcome
-    (`:1007-1013`).
-  - Cancel is still routed after the feed has ended, because `unknown` doesn't revoke a grant (`:780-783`).
+    (`:1132-1138`).
+  - Cancel is still routed after the feed has ended, because `unknown` doesn't revoke a grant (`:893-896`).
 - **Every other session method on a child id** fails with an explicit "session X is a subagent" error through
   `acpFail`. That covers `session/prompt`, `set_mode`, `set_model`, `set_config_option`, `close`, `delete`, `fork`,
-  `load` and `resume` (the RFD's mutations, `:954-958`). Today, `getSessionOrThrow` answers "not found" for these.
+  `load` and `resume` (the RFD's mutations, `:1076-1080`). Today, `getSessionOrThrow` answers "not found" for these.
 
 ### Feed end and failure
 
@@ -427,27 +454,27 @@ collector sends through the same path:
   - Use `runCatching` around the send, as `reportIdle` does in `v2/Agent.kt`: a dead protocol must stay silent.
   - A thrown flow means the SDK lost its view of the child, not that the work failed. In a relay the native child
     may still be running. `idle(error)` would invent an outcome, which the RFD forbids: `unknown` is "not a work
-    outcome" (`:735-737`), `error` is only for "a failure that ends the child's foreground work" (`:753-755`), and
-    a lost feed is reported as `unknown` "without inventing an outcome" (`:1287`).
+    outcome" (`:845-847`), `error` is only for "a failure that ends the child's foreground work" (`:863-864`), and
+    a lost feed is reported as `unknown` "without inventing an outcome" (`:1413-1414`).
   - This differs from v2's `runTurn`, which reports `idle` with no stop reason when the prompt flow throws. There the
     flow is the turn, so a throw proves the turn ended. Here `events` only observes work that runs elsewhere.
   - When the app knows its own work failed, it catches the failure and emits `idle(error)` through `events` before
     the flow ends. The last state is then `idle`, so the SDK sends nothing. Document this in the KDoc. The same
     holds for `idle(cancelled)` after the app's `cancel()` stopped the work.
 - If the last `state` is `StateUpdate.Idle`, `StateUpdate.Unknown`, none or cleared, send nothing.
-- If the collection is **cancelled** because the parent closed or the connection ended, send nothing (`:1029-1033`).
+- If the collection is **cancelled** because the parent closed or the connection ended, send nothing (`:1154-1158`).
 - A `CancellationException` from `events` counts as cancelled only if the collector's own job is no longer active.
   If the job is still active, the exception came from the app's flow (for example an uncaught `withTimeout`, or a
   channel cancelled elsewhere), and it's a feed failure like any other: log it, send `unknown` under the rule above,
   and let the collector complete normally without rethrowing.
   - The question is not who threw it, but whether the client can still see the child. When the SDK cancels the
     collection, the child is being torn down with its parent or the connection, and the RFD needs no terminal
-    notification for that (`:1117-1120`). When the app's flow ends while the parent is alive, the client still shows
-    the child, and the RFD says a lost feed on a live connection is reported as `unknown` (`:1375-1376`).
+    notification for that (`:1155-1158`). When the app's flow ends while the parent is alive, the client still shows
+    the child, and the RFD says a lost feed on a live connection is reported as `unknown` (`:1413-1414`).
   - The SDK doesn't send `idle(cancelled)` for it, even after a routed `session/cancel`. On the client, a child's
     `idle(cancelled)` marks its tool calls cancelled and answers its pending permission and elicitation requests
-    (`:1103-1106`, `:1132-1134`). For a relay, a dead feed doesn't show that the native child stopped, and the RFD
-    says to report `unknown` "rather than inventing a cancelled outcome" (`:1098-1101`). An app that knows its work
+    (`:1141-1144`, `:1170-1172`). For a relay, a dead feed doesn't show that the native child stopped, and the RFD
+    says to report `unknown` "rather than inventing a cancelled outcome" (`:1136-1139`). An app that knows its work
     was cancelled emits `idle(cancelled)` through `events` before the flow ends, as it does for `idle(error)`.
     Document both in the KDoc.
 
@@ -497,7 +524,7 @@ collector sends through the same path:
   3. makes its `AgentSubagents` and client operations fail with `IllegalStateException`.
 
   The SDK calls no app code for the children: not `cancel()`, and there is no per-child close hook. Stopping the
-  descendants' work, background children included (`:1030-1034`), and freeing their resources belongs to the app's
+  descendants' work, background children included (`:1155-1157`), and freeing their resources belongs to the app's
   root `AgentSession.close()`.
   - `cancel()` doesn't fit: it stops only foreground work, reports an outcome nobody needs after close, and is tied
     to the client's grant.
@@ -515,13 +542,13 @@ collector sends through the same path:
     sends fail on a closed protocol. Today v1 calls no app code on disconnect, for roots either. A "connection
     closed" hook for apps would be a separate change for roots and children together.
 - A child whose feed ends doesn't cancel its descendants' collections. In a relay, they may still be running natively.
-- Cancelling a child calls only that child's `cancel()`. Stopping the descendants its work waits on (`:987-993`) is
+- Cancelling a child calls only that child's `cancel()`. Stopping the descendants its work waits on (`:1113-1118`) is
   the app's job.
 
 ### Replay (`session/load`)
 
 The spec defines history by timing: during the parent's `session/load`, everything sent before the response is
-history, and fresh snapshots come after it (`:919-928`). The app starts every child replay itself, because child
+history, and fresh snapshots come after it (`:1027-1035`). The app starts every child replay itself, because child
 registrations don't survive a reconnect and only the app knows which children existed. So children are replayed from
 the parent's `AgentSession.replayHistory()`, which marks the replay window for the whole subtree.
 
@@ -532,10 +559,10 @@ the parent's `AgentSession.replayHistory()`, which marks the replay window for t
 - The SDK treats grants and states sent before the parent's response as history: they don't set `grant`, and they
   don't feed the `unknown` rule.
 - The SDK starts collecting a replayed child's `events` after the parent's load response (`afterResponse`). Its
-  updates are fresh patches, not a new announcement (`:925-928`).
+  updates are fresh patches, not a new announcement (`:1032-1035`).
   - `afterResponse` first launches the replayed children's collections into the root's connection scope, without
     waiting for them, and then calls the root's `postInitialize()`. In the other order, a slow `postInitialize()`
-    would keep every child's state unconfirmed and its cancel disabled on the client (`:972-978`).
+    would keep every child's state unconfirmed and its cancel disabled on the client (`:1010-1016`).
   - A child's fresh `SubagentUpdate`s and the parent updates from `postInitialize()` share the parent's stream and
     may interleave. The SDK orders only each sender's own updates, and both come after the response.
   - If `postInitialize()` throws, the started collections keep running. If the protocol is closing, the launch into
@@ -546,12 +573,12 @@ the parent's `AgentSession.replayHistory()`, which marks the replay window for t
   - `session/new` and `session/resume` have no replayed children, so this order applies only to `session/load`.
 - If the load fails, drop every registration made during the attempt.
 - Children of a resumed parent (`session/resume`, no replay) are announced live, for example from `postInitialize`.
-  Snapshots sent before a resume response are current observations, not history (`:930-933`). The client applies
+  Snapshots sent before a resume response are current observations, not history (`:1046-1049`). The client applies
   their grants only after the resume succeeds, which needs nothing on the agent side.
 - Ancestor chains: before live traffic for a child, its ancestors must be announced in parent-before-child order
-  during this load/resume (`:897-902`). This follows from the parent check in `announce`.
+  during this load/resume (`:1019-1022`). This follows from the parent check in `announce`.
 - **Forks need no SDK work.** A v1 `session/fork` replays nothing (`createSession` runs no `beforeResponse`), and
-  copying history "does not itself create live child runtimes" (`:1058-1065`), so a fork starts with no children and
+  copying history "does not itself create live child runtimes" (`:1096-1103`), so a fork starts with no children and
   the source keeps its own. If the app's fork copies child history, the app MUST remap the copied ids in message
   participant fields and in `session` tool call content, including references to the forked root. The SDK doesn't
   rewrite update contents, so the remap stays with the app. The copied children reach the wire only when the fork
@@ -571,6 +598,9 @@ class Reviewer(private val ctx: AgentSubagentContext, private val work: ReceiveC
             capabilities = MaybeUndefined.Value(SubagentSessionCapabilities(cancel = SessionCancelCapabilities()))))
         for (task in work) {
             send(SessionUpdate.SubagentUpdate(ctx.sessionId, state = MaybeUndefined.Value(StateUpdate.Running())))
+            // the task, as the incoming view in the child's transcript, before the child responds to it
+            send(SessionUpdate.SessionMessage(task.messageId, senderSessionId = MaybeUndefined.Value(task.parentId),
+                content = MaybeUndefined.Value(task.content)))
             // ... the child's own updates via send(...); requests via ctx.client
             val idle = StateUpdate.Idle(IdleStopReason.EndTurn)
             send(SessionUpdate.SubagentUpdate(ctx.sessionId, state = MaybeUndefined.Value(idle)))
@@ -627,10 +657,16 @@ Messages need no API. A parent → child message is the parent's outgoing `sessi
 or `client.notify`), plus the child's incoming view in the child's `events`. The app links them with
 `senderMessageId`/`recipientMessageId`.
 
+The task a parent gives a child, the first one included, SHOULD be reported as that incoming `session_message`,
+before the child's response to it, and SHOULD NOT be a `user_message_chunk`, which would attribute it to the human
+user (RFD `:667-694`). When the agent doesn't know the sender, it omits `senderSessionId` and must not assume the
+parent. A one-shot child, announced for one delegation and never given more work, conforms (`:182-186`): its
+`events` ends after its `idle`, and the SDK sends nothing more (see "Feed end and failure").
+
 ## Client side
 
-The client side is carried over from the earlier notes. The user decided its type structure, and confirmed the
-delivery and routing details below (decision log, question 7).
+The user decided the client's type structure in the earlier discussion, and confirmed the delivery and routing
+details below (decision log, question 7).
 
 ### Operations
 
@@ -664,10 +700,13 @@ delivery and routing details below (decision log, question 7).
 
 - `BaseClientSession` is a sealed v1 interface. The name follows the `Base` prefix of `Agent.BaseSessionWrapper`.
   Its direct subtypes are the `ClientSession` interface and the `ClientSubagentSession` class.
-  - Members: `sessionId`, `client`, `operations`, `subagents` (the children, named the same on both), and the
-    effective `cwd`/`additionalDirectories` (inherited from the parent unless set).
+  - Members: `sessionId`, `operations`, `subagents` (the children, named the same on both), and the effective
+    `cwd`/`additionalDirectories` (inherited from the parent unless set).
+  - No `client`. `ClientSession.client` is deprecated (see "Close and connection end"), so the base type doesn't
+    get it and `ClientSubagentSession` never has it.
   - `subagents: List<ClientSubagentSession>` lists the children in announcement order. It only grows: a child that
-    failed setup is never in it (see "Failed setup"), and what close does to it is question 25. A load needs a
+    failed setup is never in it (see "Failed setup"), and it stays as it was after close (see "Close and
+    connection end"). A load needs a
     closed session (question 19), so a reloaded parent is a new object with a new list; the old object's list stays
     as it was. The list lives in the parent's holder, because on the early path children are added before the
     root's `ClientSession` exists. Its KDoc says that a `subagent_update` whose child isn't in `subagents` is one
@@ -676,7 +715,7 @@ delivery and routing details below (decision log, question 7).
     one, otherwise its parent's effective value (RFD `:314-320`). A root's come from its `parameters`, with
     `additionalDirectories ?: emptyList()`. The root's parameters are known when the opening call is made, so the
     holder keeps them and a child's values work on the early path too. Clearing either field with `null` makes the
-    child inherit it again (`:146-148`), and the two are inherited independently.
+    child inherit it again (`:147-148`), and the two are inherited independently.
   - `operations` is valid on both kinds for the object's whole life, because both are built after their operations
     exist: a root from the opening call, a child from `createSubagentOperations` (question 20). It's the app's link
     from a session to its own per-session object, so the app needs no map.
@@ -687,7 +726,7 @@ delivery and routing details below (decision log, question 7).
   - Adding `subagents` to `ClientSession` breaks external implementations of that interface. This is accepted
     because the member is `@UnstableApi`.
 - `ClientSubagentSession` has no prompt, mode, model, config or close, and no config or mode state either (decision
-  log, question 8). A child's `config_option_update` and `current_mode_update` (RFD `:381-415`, `:274-276`) reach its
+  log, question 8). A child's `config_option_update` and `current_mode_update` (RFD `:392-426`, `:285-287`) reach its
   `notify` like any other update, as in v2, where the client keeps no config flow and reports changes as updates.
   `ClientSessionImpl.trackState` is root-only: a child's update must never touch a root's `currentMode` or
   `configOptions`.
@@ -704,7 +743,7 @@ delivery and routing details below (decision log, question 7).
   - `title: String?` and `description: String?`, `null` when not reported or cleared;
   - `state: StateUpdate?`. `null` means no confirmed current state: before a fresh snapshot arrives after the
     boundary (see "History and live updates"), and after a live `state: null` patch, which the RFD defines as
-    "unconfirmed, not idle" (`:146-147`). `StateUpdate.Unknown` is different: the agent confirmed that observability
+    "unconfirmed, not idle" (`:146`). `StateUpdate.Unknown` is different: the agent confirmed that observability
     is lost. There's no last-known value: a history snapshot is never shown as current;
   - `canCancel: Boolean`, the effective cancel grant (see "Effective cancel grant");
   - `cancel()`, which throws `IllegalStateException` locally when no grant is in effect, like `Client.authStatus`.
@@ -733,9 +772,9 @@ delivery and routing details below (decision log, question 7).
 
 **The problem.** During `session/load` the agent replays history as `session/update` before it answers, and the
 answer carries the current state. The RFD makes the successful response the freshness boundary for child work state
-and grants when replay is requested (`:989-997`). Without replay (v1 `session/resume`), updates before the response
-are current, but controls wait for success (`:1008-1012`). A failed attempt invalidates whatever arrived during it
-(`:976-979`). The client has to know where the response fell among the updates, and v1 can't tell the app today:
+and grants when replay is requested (`:1027-1035`). Without replay (v1 `session/resume`), updates before the response
+are current, but controls wait for success (`:1046-1049`). A failed attempt invalidates whatever arrived during it
+(`:1015-1017`). The client has to know where the response fell among the updates, and v1 can't tell the app today:
 the factory gets the response before the older history drains into `notify`, and the early overloads return it only
 after delivering some live updates. The same gap is behind the deprecated root `configOptions`/`currentMode` (see
 "Side findings").
@@ -902,7 +941,7 @@ arrival (see "Pending permission requests").
     code that handles it are the same.
 - **Malformed announcements.** A child id is "unique within the ACP connection" and "MUST NOT be reused for an
   unrelated session", and the association "cannot reparent an existing session, refer to itself, or create a
-  cycle" (RFD `:122-124`, `:165-169` at `c392d7e9`). The RFD doesn't say what a client does with a violation.
+  cycle" (RFD `:122-124`, `:165-169`). The RFD doesn't say what a client does with a violation.
   - A `subagent_update` whose `sessionId` has a blocking holder and isn't in `P`'s children is rejected. It's
     delivered to `P`'s `notify` as a plain update, it isn't applied to any child, it registers nothing, and the SDK
     logs a warning. The holder that owns the id keeps its own traffic.
@@ -993,7 +1032,7 @@ can't host a child: `getOrCreateSessionHolderOrNull` creates one only while an o
   threads. If the id turns out to be blocked, it removes the child from the parent's children again and rejects the
   update. Only the handler adds children, so only a cascade can see that entry, and failing a holder that never
   reached the map does no harm. `markOpened`, the failure
-  cascade and close (question 25) walk this list.
+  cascade and close walk this list.
 - **One consumer per child, until `Opened`.** Once the parent's consumer has built the child (see "Setup"), one
   consumer delivers the child's queue to its operations, setting up grandchildren the way the parent's consumer
   sets up the child. After it has delivered `Opened`, it closes the queue, delivers the rest and completes the
@@ -1020,7 +1059,10 @@ can't host a child: `getOrCreateSessionHolderOrNull` creates one only while an o
   - its parent's holder fails: the failure cascades down the tree, parent first, and each queue goes to
     `globalSessionUpdateHandler` through `failSessionHolder`. A speculative parent that gets reaped takes its
     children with it;
-  - an ancestor closes, or the connection ends (question 25).
+  - its root closes (see "Close and connection end").
+
+  The cascade stops each holder's consumer the way close does, through the consumer state, so a consumer can't
+  start after its holder has failed.
 
   **A failed child holder stays in the session map while its parent's holder is live,** so its id stays taken:
   its later patches are sorted as patches of a failed child, `getOrCreateSessionHolderOrNull` doesn't replace it
@@ -1039,7 +1081,8 @@ holder owns an id, and it delivers `session/update`s from start to end.
   lookup in the request handlers (`client/Client.kt:236`) and in `getSessionOrThrow` (`:787`) becomes a registry
   lookup, so nothing outside it touches the map.
 - **New:** `deliverSessionUpdate`, the sorting, `registerChild`, the blocking rule, the failure cascade over the
-  tree, and the close order of question 25.
+  tree, `closeDescendantPermissions` and `removeSessionTree` (see "Close and connection end"). `removeSessionTree`
+  replaces `removeSessionHolder`.
 - **Its constructor takes the `GlobalSessionUpdateHandler?`.** `Client` passes on its `globalSessionUpdateHandler`.
   That property stays, because it's public API, but nothing else in `Client` reads it.
 
@@ -1067,6 +1110,202 @@ holder owns an id, and it delivers `session/update`s from start to end.
   meta, child)`, `Patch(update, meta, child)` and `Opened(response)`. Step 3 adds it with `Update` and `Opened`;
   the client side adds the other two. The consumers, `failAndDrainQueue` and the direct path through
   `lateDeliveries` switch over it.
+- **A helper for session-scoped request handlers,** in `Client`. The fs and terminal handlers
+  (`client/Client.kt:112-176`) repeat the same steps: look up the session, cast its operations to the mixin or call
+  `sessionMethodNotFound`, then `executeWithSession`. One helper does that, so the `BaseClientSession` lookup is
+  written once:
+
+  ```kotlin
+  private inline fun <reified Ops : Any, P : AcpRequest, R : AcpResponse> handleSessionRequest(
+      method: AcpRequestMethod<P, R>,
+      crossinline sessionIdOf: (P) -> SessionId,
+      crossinline call: suspend Ops.(P) -> R,
+  ) {
+      protocol.setRequestHandler(method) { params ->
+          val session = sessions.getSessionOrThrow(sessionIdOf(params))
+          val ops = session.operations as? Ops ?: sessionMethodNotFound<Ops>(method)
+          session.executeWithSession { ops.call(params) }
+      }
+  }
+  ```
+
+  The session-scoped half of `elicitation/create` uses the same lookup and cast. Permission stays separate: it
+  answers through the type-dispatched extension (see "Holders" and "Pending permission requests"). The same commit
+  can tidy `elicitation/complete` (`:227-248`), which checks `holder.session.isCompleted` and then also calls
+  `getSessionOrThrow`, and declares `sessionId` as a `var`.
+  - An `ElicitationRegistry` was rejected: it would move about 50 lines and need three dependencies (the session
+    lookup, `protocol.getOutgoingRequestSessionId`, `globalElicitationHandler`), and its only state is already in
+    `ElicitationSessionStore`. Answering elicitations on cancel doesn't need it either (see "Side findings").
+
+### Close and connection end
+
+The RFD: closing a parent ends the work of all its descendants and needs no terminal notification
+(`:1155-1158`), and the client "cleans up their requests together with the parent's" (`:1175-1176`). In v1 only a
+root can be closed.
+
+- **Before the request:** every descendant's `SubagentPendingPermissions` is closed, at the same point as the
+  root's `PendingPermissionCancellation` today, and for the same reason: the agent's close may wait for child work
+  that waits for a permission answer. Each close only completes a signal, so the order doesn't matter.
+- **After a successful response, before `close()` returns,** the registry removes the subtree:
+  1. it closes each holder's children map, top-down, so a late announcement can't register a grandchild under a
+     holder that is going away (such a grandchild would block its id forever, and no close would reach it);
+  2. it stops each consumer, top-down, and joins it before going on, so a parent's consumer can't start a child's
+     consumer after the child was checked. The cost: `close()` waits for a child's `notify` to react to
+     cancellation;
+  3. it removes the root and every descendant from the session map in one compare-and-set, each only if its id
+     still maps to that holder, so no half-removed tree is ever visible;
+  4. outside the update, because both call app code or suspend: it marks each child object closed, and fails each
+     child holder that hasn't completed (waiting in `createSubagentOperations`, not yet set up, or still in its
+     `notify` before `Opened`) with "session closed" through `failSessionHolder`, so its waiting requests get the
+     error and its queue goes to `globalSessionUpdateHandler`;
+  5. it returns the removed ids, and `Client` removes their elicitation entries, as `removeSessionHolder` does for a
+     root today.
+
+  After that, updates for those ids are unconnected, as a closed root's are today.
+- **If the request fails,** nothing is removed, as for a root today and as on the agent side. The permissions stay
+  closed, as the root's do.
+- **Closed child objects keep their last values.** `subagents` on the closed parent stays as it was. `canCancel`
+  becomes `false`, and `cancel()` throws `IllegalStateException`, so a closed child never sends `session/cancel` for
+  an id the agent has dropped. `operations` stays valid as a link and gets no more calls.
+- **On connection end, nothing more happens.** The child consumers live in the connection scope, so they're
+  cancelled, and question 20 rethrows that cancellation rather than failing the holder. `Protocol` cancels the
+  incoming permission handlers, so no answer is sent. The holders stay, as roots' do. Cleaning up on disconnect would
+  be one change for roots and children together, as on the agent side.
+- **The race the consumer state closes.** Once a parent's holder is complete, its announcements are delivered
+  directly in the handler's coroutine, so a grandchild's setup can be inside `createSubagentOperations` while
+  `close()` runs. Its holder is in the subtree but has no consumer yet. Without a guard, the setup would return and
+  launch a consumer for a closed session. `startConsumer` refuses once `stopConsumer` has run.
+
+**`ClientSessionImpl` no longer calls its `Client`.** It used `client` only for `client.removeSessionHolder` after
+a close (`client/ClientSessionImpl.kt:111`). It gets two callbacks instead, as v2's `ClientSession` gets
+`onClosed` (`client/v2/Client.kt:474`):
+
+```kotlin
+internal class ClientSessionImpl(
+    @Deprecated(...) override val client: Client,   // only for the deprecated getter
+    ...,
+    private val protocol: Protocol,
+    private val onClosing: () -> Unit,              // answers the descendants' permission requests
+    private val onClosed: suspend () -> Unit,       // removes the subtree and its elicitation entries
+) : ClientSession {
+
+    override suspend fun close(_meta: JsonElement?): CloseSessionResponse {
+        /*
+         * Answer before waiting for the response: an agent whose close waits for its work to end (a child's
+         * included) would otherwise wait for a permission answer while the client waits for the close response.
+         */
+        pendingPermissions.close()
+        onClosing()
+
+        val response = AcpMethod.AgentMethods.V1.SessionClose(protocol, CloseSessionRequest(sessionId, _meta))
+        onClosed()
+        return response
+    }
+}
+
+// Client, where it creates the session
+ClientSessionImpl(
+    this, sessionId, sessionParameters, operations, sessionResponse, protocol,
+    onClosing = { sessions.closeDescendantPermissions(sessionId) },
+    onClosed = { removeClosedSession(sessionId) },
+)
+```
+
+- The session keeps the order: answer permissions, send the request, clean up only on success. `Client` decides
+  what cleanup means, because it has the registry and the elicitation store. `removeClosedSession` is a private
+  `Client` function that calls `sessions.removeSessionTree` and the store.
+- Passing the registry to the session was rejected: it would give the session claiming, sorting, reaping and every
+  other session's holders, and keep a cycle (registry → holder → session → registry). A single `onClose(_meta)`
+  doing all of close was rejected: the request would move into a map component. Passing the session its holder was
+  rejected: removal still needs the registry, so it would be the holder plus a callback.
+- **`ClientSession.client` is deprecated** at WARNING level, on the interface member. Nothing in the repo reads it,
+  the app already has the `Client` it opened the session with, v2 has no such member, and it makes a cycle
+  (`Client` → map → holder → session → `Client`). The message says to keep that `Client`. `ClientSessionImpl`
+  keeps the reference only to implement the getter. `ClientNesSessionImpl` could take the same callback shape, as a
+  separate cleanup.
+
+**Draft of the registry and holder parts** (names tentative):
+
+```kotlin
+// ClientSessionRegistry
+fun closeDescendantPermissions(rootId: SessionId) {
+    val root = _sessions.value.sessions[rootId] ?: return
+    root.forEachDescendant { it.subagentPermissions?.close() }
+}
+
+suspend fun removeSessionTree(rootId: SessionId): Set<SessionId> {
+    val root = _sessions.value.sessions[rootId] ?: return emptySet()
+
+    val subtree = buildList {
+        fun visit(holder: ClientSessionHolder) {
+            add(holder)
+            holder.closeChildren().forEach(::visit)
+        }
+        visit(root)
+    }
+
+    for (holder in subtree) holder.stopConsumer()?.cancelAndJoin()
+
+    _sessions.update { storage ->
+        storage.copy(sessions = storage.sessions.mutate { map ->
+            for (holder in subtree) if (map[holder.sessionId] === holder) map.remove(holder.sessionId)
+        })
+    }
+
+    for (holder in subtree) {
+        if (holder === root) continue
+        holder.completedSubagentOrNull()?.markClosed()
+        if (!holder.isCompleted) failSessionHolder(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
+    }
+    return subtree.mapTo(mutableSetOf()) { it.sessionId }
+}
+
+// ClientSessionHolder, which now knows its own id and parent
+internal class ClientSessionHolder(val sessionId: SessionId, val parent: ClientSessionHolder?) {
+    private data class Children(
+        val byId: PersistentMap<SessionId, ClientSessionHolder> = persistentMapOf(),
+        val closed: Boolean = false,
+    )
+    private val children = atomic(Children())
+
+    val subagentPermissions: SubagentPendingPermissions? = if (parent != null) SubagentPendingPermissions() else null
+
+    private sealed class ConsumerState {
+        object NotStarted : ConsumerState()
+        class Running(val job: Job) : ConsumerState()
+        object Stopped : ConsumerState()
+    }
+    private val consumer = atomic<ConsumerState>(ConsumerState.NotStarted)
+
+    fun addChild(child: ClientSessionHolder): Boolean   // false once closed
+    fun removeChild(id: SessionId)
+    fun hasChild(id: SessionId): Boolean
+    fun closeChildren(): Collection<ClientSessionHolder> =
+        children.getAndUpdate { it.copy(closed = true) }.byId.values
+    fun forEachDescendant(action: (ClientSessionHolder) -> Unit)
+
+    fun startConsumer(scope: CoroutineScope, block: suspend () -> Unit) {
+        val job = scope.launch(start = CoroutineStart.LAZY) { block() }
+        if (consumer.compareAndSet(ConsumerState.NotStarted, ConsumerState.Running(job))) job.start() else job.cancel()
+    }
+
+    fun stopConsumer(): Job? = (consumer.getAndSet(ConsumerState.Stopped) as? ConsumerState.Running)?.job
+}
+
+// ClientSubagentSession
+private val closed = atomic(false)
+public val canCancel: Boolean get() = !closed.value && grant.value != null
+public suspend fun cancel() {
+    check(!closed.value) { "Subagent session $sessionId is closed" }
+    check(grant.value != null) { "Subagent session $sessionId doesn't allow cancel" }
+    try {
+        AcpMethod.AgentMethods.V1.SessionCancel(protocol, CancelNotification(sessionId))
+    } finally {
+        permissions.cancelByClient()
+    }
+}
+internal fun markClosed() { closed.value = true }
+```
 
 ### Effective cancel grant
 
@@ -1080,11 +1319,11 @@ holder owns an id, and it delivers `session/update`s from start to end.
 
 ### Pending permission requests (builds on #156)
 
-The RFD (`c392d7e9`): when the client cancels a session's work, it MUST answer that session's pending permission
-requests with `cancelled` (`:1163-1166`). A descendant's requests are cleaned up once it reports `idle` with
+The RFD: when the client cancels a session's work, it MUST answer that session's pending permission
+requests with `cancelled` (`:1164-1166`). A descendant's requests are cleaned up once it reports `idle` with
 `cancelled`, "as if it had cancelled the descendant directly"; until then the user can still answer them, and "the
-Client never denies a tool use of work that continues" (`:1169-1173`). "Idle alone is not a cancellation of
-unrelated background requests" (`:1184-1185`). A v1 agent MUST report `running` or `idle` when it sees foreground
+Client never denies a tool use of work that continues" (`:1170-1174`). "Idle alone is not a cancellation of
+unrelated background requests" (`:1185-1186`). A v1 agent MUST report `running` or `idle` when it sees foreground
 work start or stop (`:857-858`), and a cancel that races with ended work "does not rewrite that work's outcome"
 (`:1132-1133`), so no new `idle` follows it. This covers `session/request_permission` only; fs, terminal and
 elicitation requests are unaffected (see "Side findings" for elicitation).
@@ -1094,11 +1333,11 @@ elicitation requests are unaffected (see "Side findings" for elicitation).
 | Work starts | `prompt()` → `clearCancellation()` | any live `state` patch → `clearCancellation()` |
 | Client cancels it directly | `cancel()` → `cancelPending()` | `cancel()` → `cancelPending()`, then `clearCancellation()` unless the child has confirmed foreground work |
 | Its work is cancelled, by anyone | n/a | a live `idle` + `cancelled` → `cancelPending()`, then `clearCancellation()` |
-| Ancestor closed | `close()` | `close()` on every descendant, and their holders are removed |
+| Root closed | `close()` | `close()` on every descendant before the request; holders removed after it (see "Close and connection end") |
 
 - **Every live `idle(cancelled)` answers the pending requests,** not only one that follows an ancestor's cancel. The
   client can't tell who cancelled the child, and doesn't need to: the snapshot confirms that the work was cancelled,
-  and a late answer can't restart cancelled work (`:1187-1189`), so the requests no longer apply (`:1181-1183`). An
+  and a late answer can't restart cancelled work (`:1189-1190`), so the requests no longer apply (`:1183-1185`). An
   `idle` with any other reason leaves them alone.
 - **After the client's `cancel()`, later requests are answered `cancelled` without reaching the app only while the
   child has confirmed foreground work**, and only until its next live `state` patch of any kind. `cancel()` always
@@ -1186,12 +1425,14 @@ cover externally observable behaviour.
 - Serialization of every new type: absent versus `null`, unrecognized values, `idle` with `error`.
 - `StateUpdate.Unknown` (`{"state": "unknown"}`) versus `StateUpdate.Other` (any unrecognized state).
 - `idle` with `usage`, and a malformed `usage` that decodes as `null` without failing the snapshot.
+- `ToolCallContent.Session`: round trip with absent, `null` and malformed `_meta`; a `tool_call_update` mixing it
+  with other content decodes; the v1 → v2 conversion drops it.
 
 **Agent**
 - Capability gate: `CoroutineContext.subagents` is `null` without `subagents`, and non-null with it.
 - Without `subagents`, a root's `client.notify` and its prompt flow both fail on `session_message` and
   `session_message_chunk` with `IllegalStateException`, and nothing reaches the wire. With `subagents`, both are
-  sent.
+  sent. The same for a `tool_call` and a `tool_call_update` with `ToolCallContent.Session` in `content`.
 - First-send rule: a factory that throws, a wrong first send or first item, an empty flow with nothing sent, or a
   flow that throws first all make `announce` throw, and nothing more reaches the wire.
 - Factory failure after the announcement:
@@ -1269,53 +1510,107 @@ cover externally observable behaviour.
 - Agent side: `client.notify(update)` still sends the update; `RemoteClientSessionOperations.notify` throws
   `IllegalStateException` for `Opened` (an in-module test).
 
-**Client**
-- Every item above under "Client side", including the #156 table for children.
-- Pending permissions for children:
-  - a live `idle(cancelled)` answers the child's pending requests, whether or not the client cancelled anything; a
-    live `idle` with another reason and an `unknown` don't;
-  - `cancel()` while `requires_action` answers the pending request and blocks later ones until the next live
-    state; `cancel()` while `idle`, unconfirmed or `unknown` answers the pending ones and blocks nothing;
-  - a request that arrives after a live `running` reaches the app while the parent's `notify` for an earlier
-    update is still blocked;
-  - a history `idle(cancelled)` touches nothing; after a resume, a held-back `running` counts as active work for
-    `cancel()`; after a load it doesn't;
-  - `SubagentPendingPermissions` unit tests for the same rules, without a `Client`.
-- `clearCancellation()` regression tests: a root request from turn 1 still waiting when `prompt()` starts turn 2 is
-  answered by `cancel()`; a child request still waiting when `requires_action` arrives is answered by `cancel()`.
-- Grants: after a load, a history grant never enables cancel, and a grant after `Opened` does. After a resume, a
-  grant before the answer makes `canCancel` true only once `Opened` is delivered. A failed resume discards it.
-- State: a history snapshot leaves `state` unconfirmed and doesn't touch pending permissions (a replayed
-  `idle(cancelled)` doesn't answer a pending request); a live snapshot is confirmed.
+**Client: types and members**
+- Member types: `subagents` is in announcement order on a root and on a child. Clearing `title` or `description`
+  gives `null`. A live `unknown` gives `StateUpdate.Unknown`.
 - Inside the parent's `notify` for a live `subagent_update`, the child's `canCancel` and `state` already reflect it.
-- Member types: `state` is `null` after a load until a live snapshot arrives, and again after a live `state: null`;
-  a live `unknown` gives `StateUpdate.Unknown`. Clearing `title` or `description` gives `null`. `subagents` is in
-  announcement order on a root and on a child.
 - Effective directories: a child without its own values gets the root's `parameters` (`additionalDirectories`
   `null` gives an empty list); a child's `cwd` patch doesn't change its `additionalDirectories`; clearing `cwd`
   inherits again; a grandchild follows a later `cwd` patch of its parent; on the early path, a child read during
   the root's history already gets the root's values.
-- Registration race: the agent announces a child and immediately sends `session/request_permission` for it while the
-  parent's `notify` is blocked. The request reaches the child's operations instead of failing with "session not
-  found". The same for the child's first `session/update`.
-- A throwing `createSubagentOperations` fails only that child and its descendants. Parent operations that don't
-  implement `SubagentOperations` do the same, with an error naming the interface. Either way, the child never
-  appears in `subagents`, and the parent's `notify` still gets the announcement.
+- A child's `current_mode_update` and `config_option_update` reach the child's `notify`, and the root's
+  `currentMode` and `configOptions` don't change.
+- `cancel()` without a grant throws `IllegalStateException` and sends nothing. With a grant, it sends
+  `session/cancel` for the child's id.
+- Reload and discovery: a root has a child with a live grant; the root is closed, then loaded or resumed again.
+  The new root object's `subagents` holds only the children the agent re-announced, and the old object's list
+  doesn't change. A re-announced child has `canCancel = false` until a live grant arrives after a load, and until
+  `Opened` after a resume.
+
+**Client: setup and routing**
 - `createSubagentOperations` gets the child's id. Inside the parent's `notify` for the announcement, the child is in
   `subagents`, and its `operations` is the factory's result. Inside a call to the child's operations, the context
   names the child.
+- A throwing `createSubagentOperations` fails only that child and its descendants. Parent operations that don't
+  implement `SubagentOperations` do the same, with an error naming the interface. Either way, the child never
+  appears in `subagents`, its requests get an error, and the parent's `notify` still gets the announcement.
+- A `CancellationException` from `createSubagentOperations` while the consumer is active fails only that child. The
+  connection ending while the factory runs is rethrown and fails no holder.
+- A child's `notify` that throws while its history is delivered, before `Opened`, fails that child and its
+  descendants, and the parent keeps working. The control case: a throw after `Opened` fails nothing, as for a root.
 - A factory that suspends delays the parent's later updates, not other sessions', and the child's updates and
   requests wait for it.
-- The registration race for a parent that is already open: the parent's `notify` blocks on the announcement, and the
-  child's next update and `session/request_permission` still reach the child's operations.
-- Malformed announcements: a `subagent_update` naming its own parent, an ancestor, another parent's child, an open
-  root and an id with a speculative holder each reach the parent's `notify`, register nothing, change no child,
-  and leave the owning holder's traffic where it was.
+- Registration race: the agent announces a child and immediately sends `session/request_permission` and a
+  `session/update` for it while the parent's `notify` is blocked on the announcement. Both reach the child's
+  operations instead of failing with "session not found" or going to `globalSessionUpdateHandler`. Two cases: the
+  parent is still delivering its history, and the parent is already open.
 - A second `subagent_update` for a child, sent before the parent's consumer reaches the announcement, is applied
   as a patch after setup, and the factory runs once.
+- A nested child queued behind a pending parent: on `session/load` with a factory, with a replayed child and
+  grandchild, the grandchild's `createSubagentOperations` is called on the child's operations, after the child's
+  factory, which runs after the root's factory. Each stream gets its history, then exactly one `Opened(null)`, then
+  live updates, and the grandchild's requests wait until then.
+- fs, terminal and elicitation requests on a child id reach the child's operations. If those operations don't
+  implement the mixin, the request fails with method-not-found.
+- A `subagent_update` on a session id with no holder goes to `globalSessionUpdateHandler` and registers nothing. A
+  later update on that child id is unconnected too.
+- Registry unit tests, without a `Protocol`:
+  - an announcement rejected because its id has a speculative holder stays rejected when that holder is reaped
+    before the parent's consumer reaches it: nothing is registered;
+  - a child whose parent fails while the child's setup is inside `createSubagentOperations` never gets a consumer.
+
+**Client: malformed announcements**
+- A `subagent_update` naming its own parent, an ancestor, another parent's child, an open root and an id with a
+  speculative holder each reach the parent's `notify`, register nothing, change no child, and leave the owning
+  holder's traffic where it was.
 - A failed child's id stays taken: a later patch for it reaches the parent's `notify` and doesn't call the factory
   again; an update on the child's id during an unrelated opening goes to `globalSessionUpdateHandler`; a
   `loadSession` of that id is refused. After a failed load is retried, the same child ids register again.
+
+**Client: history and grants**
+- Grant values: no grant before `capabilities` arrives; `null`, `{}` and `{cancel: null}` all mean no grant; a live
+  patch without `cancel` revokes the grant; `unknown` keeps it.
+- Grants: after a load, a history grant never enables cancel, and a grant after `Opened` does. After a resume, a
+  grant before the answer makes `canCancel` true only once `Opened` is delivered. A failed resume discards it.
+- State: after a load, `state` is `null` until a live snapshot arrives, and a history snapshot doesn't touch pending
+  permissions (a replayed `idle(cancelled)` doesn't answer a pending request). A live snapshot is confirmed, and a
+  live `state: null` makes `state` `null` again.
+- After a resume, a `state` that arrived before the answer becomes the confirmed `state` at `Opened`.
+- During a load, history `title`, `description` and `cwd` patches are visible on the child before `Opened`, and
+  history `capabilities` and `state` are not.
+- On `session/new` and `session/fork`, a child announced before the response with a grant and `running` gets both
+  at `Opened`, because no replay was requested.
+
+**Client: pending permissions for children**
+- A live `idle(cancelled)` answers the child's pending requests, whether or not the client cancelled anything; a
+  live `idle` with another reason and an `unknown` don't.
+- `cancel()` while `requires_action` answers the pending request and blocks later ones until the next live state;
+  `cancel()` while `idle`, unconfirmed or `unknown` answers the pending ones and blocks nothing.
+- A request that arrives after a live `running` reaches the app while the parent's `notify` for an earlier update
+  is still blocked.
+- A history `idle(cancelled)` touches nothing; after a resume, a held-back `running` counts as active work for
+  `cancel()`; after a load it doesn't.
+- `SubagentPendingPermissions` unit tests for the same rules, without a `Client`.
+- `clearCancellation()` regression tests: a root request from turn 1 still waiting when `prompt()` starts turn 2 is
+  answered by `cancel()`; a child request still waiting when `requires_action` arrives is answered by `cancel()`.
+
+**Client: close**
+- Every descendant's pending permission request is answered `cancelled` before `session/close` is sent, and an
+  agent whose close waits for a child's permission answer doesn't deadlock.
+- After the response, every descendant id is unconnected: its updates go to `globalSessionUpdateHandler`, its
+  requests fail with "session not found", and its elicitation entries are gone.
+- A child waiting in `createSubagentOperations` when the close is answered is failed: its consumer never starts,
+  and its waiting requests get the error.
+- A child inside a suspended `notify` when the response arrives: `close()` returns only after that `notify` has
+  reacted to the cancellation.
+- An announcement that arrives during the removal registers nothing.
+- A failed close removes nothing, and the permissions stay closed: later requests on the root and its children are
+  still answered `cancelled`.
+- A closed child keeps `subagents`, `state` and `title`; `canCancel` is `false`, and `cancel()` throws without
+  sending anything.
+- On connection end, child consumers stop and no holder is failed.
+- A registry unit test: a grandchild whose setup is inside `createSubagentOperations` when `removeSessionTree` runs
+  never gets a consumer.
 
 **Client: holders**
 - One opening per holder: a second opening of an open session fails before its request, for factory after factory,
@@ -1360,10 +1655,14 @@ cover externally observable behaviour.
   - `ClientSessionRegistry` owns the session map and `session/update` delivery; each update is sorted at arrival,
     and the consumer acts on its tag;
   - a child's pending permissions follow wire order through `SubagentPendingPermissions`, and the existing
-    pending-permission rule is updated for `clearCancellation()`.
+    pending-permission rule is updated for `clearCancellation()`;
+  - root close: descendants' permissions answered before the request, the subtree removed in one update after a
+    successful response, and sessions reach the client only through callbacks, never through `Client`.
 - A release note for the breaking `ClientSessionOperations.notify(SessionEvent)` change, and the samples moved to
   it. It also says that opening a session that is already open, or being opened, now fails for the factory
-  overloads too, so a client must close a session before loading it again.
+  overloads too, so a client must close a session before loading it again, that `ClientSession.client` is
+  deprecated, and that `ToolCallContent` gets the `@UnstableApi` `Session` variant, so an exhaustive `when` over it
+  needs a new branch or an `else`.
 - KDoc for `setNotificationHandlerRaw` and the `setNotificationHandler` extension stating that ordering guarantee
   (see "Routing and delivery").
 - Run the `check-specification` skill before writing the models (see "Sources").
@@ -1373,7 +1672,7 @@ cover externally observable behaviour.
 
 - v2 has no capability, because subagents are baseline. The child reports state with an ordinary `state_update` on its
   own stream, and the SDK mirrors the same snapshot onto the parent's `subagent_update.state` before collecting the
-  next event (`:681-690`). A child `SubagentUpdate` carrying `state` would be rejected.
+  next event (`:791-800`). A child `SubagentUpdate` carrying `state` would be rejected.
 - v2 merges `_meta` patches by key.
 - Replay uses `session/resume` with `replayFrom`.
 - The same `AgentSubagentSession` shape should carry over.
@@ -1392,16 +1691,41 @@ cover externally observable behaviour.
   would tie stable v1 to unstable v2. `updates` becomes a flow of events, the snapshot goes away, and replay is
   requested when `replayFrom != null`. New, resume and fork have separate response types, so `Opened` needs a shared
   supertype or just the state.
+- **Per-item cancels on a child** (RFD `7ec5185c`, `:1080-1083`): a child's tool call or terminal that advertises
+  its own `capabilities.cancel` enables `tool_call/cancel` or `terminal/cancel` with the child's `sessionId`, even
+  without the child's `cancel` grant. Both methods exist only in v2 (`schema/v2/schema.unstable.json`), so v1's
+  "every other session method on a child id fails" still holds. The v2 agent must route them to the child, and
+  the v2 client may need a way to send them for a child.
+- **`session` tool call content in v2:** v2's `ToolCallContent` gets the same variant. v2 receivers that don't know
+  it keep it as unknown content, which Kotlin's v2 `ToolCallContent.Unknown` already does. The conversion then maps
+  it between versions instead of dropping it.
+- **A per-child `prompt` capability** is the RFD's expected follow-up (FAQ "Why not allow prompting or steering a
+  subagent?", `:1587-1591`). `ClientSubagentSession` is a final class, so adding `prompt()` later breaks nothing.
 - **Operations on v2 sessions:** v2's `ClientSession` keeps its operations in a private constructor field
   (`client/v2/ClientSession.kt:44`), while v1 exposes `operations` on both roots and children (question 20). Decide
   in the v2 work whether v2 children follow v1 or v2 roots.
 
 ## Side findings
 
+- **v1 `ToolCallContent` has no fallback for unknown variants** (`model/ToolCall.kt:70`), unlike `SessionUpdate`
+  with `UnknownSessionUpdate` and v2's `ToolCallContent.Unknown`. Any future content type makes a v1 client fail to
+  decode the whole `tool_call` or `tool_call_update`, as `session` would without the new variant. Adding
+  `ToolCallContent.Unknown` would change how stable v1 decodes, from failing to keeping the raw value, so it's a
+  stable model decision of its own, not part of subagents.
 - **Neither v1 client cancels a cancelled session's elicitations.** The subagents RFD says the client SHOULD dismiss
-  a cancelled session's elicitation controls and answer them with the `cancel` action (`:1166-1167` at
-  `c392d7e9`). Only permission requests are answered on `cancel()` today, and `ElicitationSessionStore` has no
-  cancel path. Children follow roots here; fix both together, separately from subagents.
+  a cancelled session's elicitation controls and answer them with the `cancel` action (`:1166-1168`), and
+  that an interactive request whose work has ended SHOULD be dismissed (`:1183-1185`). The
+  `elicitation/create` handler calls `ops.createElicitation` directly (`client/Client.kt:202`, `:214`), so nothing
+  races it against a cancel. Children follow roots here; fix both together, separately from subagents.
+  - The fix needs no new state: run the session-scoped call through the same session's signal, whose
+    `answerUnlessCancelled` is already generic, with
+    `cancelledAnswer = { CreateElicitationResponse(ElicitationAction.Cancel) }`.
+    A root then follows the root rules and a child the #24 rules. Elicitations outside any session, handled by
+    `globalElicitationHandler`, stay out of it.
+  - In that fix, rename `PendingPermissionCancellation` to `PendingInteractionCancellation` and
+    `SubagentPendingPermissions` to `SubagentPendingInteractions` (the RFD's term is "interactive request";
+    `PendingRequestCancellation` would be too broad, since fs and terminal requests aren't answered on cancel), and
+    update `CLAUDE.md` and this spec. Until then, "permission" is the accurate name.
 - The v2 client's `cancel()` answers every pending permission request, but v2 exempts requests for work in the
   `background` list (`docs/protocol/v2/prompt-lifecycle.mdx`). The v2 runtime doesn't model that list yet.
 - **v1 `Agent.kt` registers the `SessionResume` handler twice** (confirmed after the rebase, `agent/Agent.kt:346` and
@@ -1467,32 +1791,8 @@ cover externally observable behaviour.
 
 ## Open questions (from the implementer review)
 
-A review of this spec as a fresh implementer found these gaps. They are not decided yet. Each has a recommendation to
-start the discussion from. Resolve them one by one, write the answers into the sections above, and move each to the
-decision log.
-
-### Client side
-
-25. **Close order on the client.** When the root closes, in what order do descendant `close()` calls and holder
-    removal happen relative to the close response, and what happens to the children when the connection ends?
-    *Recommendation:* close descendants bottom-up and remove their holders before `close()` returns; on connection
-    end, close every session the same way.
-
-### Spec drift since `67cde2d5`
-
-26. **RFD changes after the pinned revision.** At `ab825390`, `docs/rfds/subagents.mdx` has three newer commits:
-    - `7ec5185c` allows `tool_call/cancel` and `terminal/cancel` with a child's `sessionId` when the item advertises
-      its own `capabilities.cancel`, whether or not the child grants `cancel` (`:1042-1045`). This contradicts
-      "Every other session method on a child id fails" in "Incoming requests on a child id", and the client may need
-      a way to send them for a child.
-    - `b3f6123f` adds session tool call content and clarifies one-shot subagents.
-    - `14560463` recommends `session_message` for a child's initial task.
-
-    *Recommendation:* re-read the RFD and the Rust models with `check-specification`, move the pinned revision
-    forward, and update the model, routing and client sections for each change.
-
-After these are decided, expand the **Client** list under "Tests": grant reset on load and resume, history versus
-fresh state, a nested child queued behind a pending parent, and each case above.
+A review of this spec as a fresh implementer found gaps in it, numbered 12 to 26. All of them are decided: the
+sections above reflect the answers, the decision log records them, and "Tests" covers them. Nothing is open.
 
 ## Decision log
 
@@ -1505,20 +1805,21 @@ The design moved through several shapes before landing on the factory-based `ann
 
 - **No SDK-run turns.** The SDK doesn't start or run a child's work (no `send`, `runTurn` or `PromptResponse` for
   children). A child's work may run inside a native agent process the SDK only wraps. In v1, a child has no prompt and
-  no prompt response (`:710`, `:755-757`). The SDK's guarantees come from routing, from owning the collection of
+  no prompt response (`:820-821`, `:865-867`). The SDK's guarantees come from routing, from owning the collection of
   `events`, and from reporting `unknown` when that feed ends while the child is active.
-- **A child may start work on its own.** Work may start and stop many times, with or without an assignment from the
-  parent (`:677-679`, `:747-748`). v1 children use the v2 state model (`:731`).
+- **A child may start work on its own.** Work may start and stop many times (`:787-789`), and the RFD ties state
+  reports to observed work, not to assignments from the parent (`:857-858`). v1 children use the v2 state model
+  (`:841`).
 - **One app type, no SDK handle.** The app implements `AgentSubagentSession`. Patches, state and messages are ordinary
   events, so there's no `update(...)` method and no `AgentSubagent` handle. Metadata properties such as `title` on the
   session were dropped, so the announcement is the only source of that data.
 - **The announcement is the first send for the child,** enforced by the SDK. `announce` returns only after it's been
   sent, so the parent's `session_message` naming the child can't overtake it.
 - **The SDK doesn't rewrite stop reasons.** The RFD says a cancellation racing with already-ended work doesn't
-  rewrite its outcome, and cancellation is reported from evidence (`:1007-1013`). So unlike the v1 root, the SDK never
+  rewrite its outcome, and cancellation is reported from evidence (`:1132-1138`). So unlike the v1 root, the SDK never
   forces `cancelled`.
 - **No duplication in v1.** A child's state exists only as `subagent_update.state` on the parent's stream. In v2 the
-  child reports `state_update` on its own stream, and the SDK would mirror it onto the parent (`:681-690`).
+  child reports `state_update` on its own stream, and the SDK would mirror it onto the parent (`:791-800`).
 - **Replay inside the factory, not a hook.** The v1 root `AgentSession.replayHistory()` exists only because v1's
   `AgentSupport.loadSession` gets no client operations (#150, `e5f8c31`). v2 has no `postInitialize` or
   `replayHistory`: it passes `client: ClientOperations` into `createSession`/`resumeSession`/`forkSession`, and
@@ -1558,7 +1859,7 @@ The design moved through several shapes before landing on the factory-based `ann
 
 8. **Read-only config for children on the client. Decided:** no config state at all, only notifications, as in v2. A child's `config_option_update` and `current_mode_update` reach its `notify` like any other update (see "Client side", "Types").
 9. **Usage and cost. Decided:** no tracking. A child reports `usage` in its `idle` snapshot, and the client must
-   not add up the tree (`:1071-1101`). The only work is the model field `StateUpdate.Idle.usage` (see "Model
+   not add up the tree (`:1196-1226`). The only work is the model field `StateUpdate.Idle.usage` (see "Model
    layer"). The `idle` snapshot with its `usage` is already visible through `ClientSubagentSession.state`, a child's
    `usage_update` reaches its `notify` like any other update, and the SDK never adds up usage across the tree.
 
@@ -1581,7 +1882,7 @@ The design moved through several shapes before landing on the factory-based `ann
     - Unregistering was rejected: the client already knows the id.
     - Failing the cancel was rejected: `session/cancel` is a JSON-RPC notification (`CancelNotification` in
       `schema/v1/schema.json`), so it has no response to carry an error. The RFD defines no error or idempotency
-      rule for an ungranted cancel (`:1069-1070`, `:1094-1095`). The client learns whether it can cancel only
+      rule for an ungranted cancel (`:1107-1108`, `:1071-1074`). The client learns whether it can cancel only
       from the grant, so the SDK withdraws the grant.
     - Leaving recovery to the app was rejected: after the throw, the caller has no handle that can still send a
       `SubagentUpdate` for the child.
@@ -1603,7 +1904,7 @@ The design moved through several shapes before landing on the factory-based `ann
       is being torn down, so the same silence on a live parent would leave a `running` child on the client for
       good. Passing the CE through `announce` would also cancel the caller's active scope.
     - Sending `idle(cancelled)`, including after a routed `session/cancel`, was rejected: it has client-side
-      effects (tool calls and pending requests), and for a relay it invents an outcome (`:1098-1101`). The app
+      effects (tool calls and pending requests), and for a relay it invents an outcome (`:1136-1139`). The app
       emits `idle(cancelled)` itself when it knows.
     - The root runtimes have the same problem. It's recorded in "Side findings" and as `FIXME` comments, for a
       follow-up PR. #131 fixed only the peer's `-32800`, through `AcpRequestCancelledException`.
@@ -1616,7 +1917,7 @@ The design moved through several shapes before landing on the factory-based `ann
     collections first, then call `postInitialize()` (see "Replay"). The reverse order was rejected: the launch
     doesn't block, but a slow `postInitialize()` would delay every child's first fresh snapshot.
 17. **Forking a parent that has children. Decided:** no SDK work, a KDoc note on `AgentSupport.forkSession`, and
-    a test (see "Replay"). The RFD puts the remap of copied ids on the agent (`:1058-1065`), and those ids live in
+    a test (see "Replay"). The RFD puts the remap of copied ids on the agent (`:1096-1103`), and those ids live in
     update contents, which the SDK doesn't rewrite.
 18. **History versus live updates on the client. Decided:** a breaking change puts the opening response into the
     stream as `SessionEvent.Opened`, with `ClientSessionOperations.notify(SessionEvent)`, and the SDK uses the same
@@ -1653,7 +1954,7 @@ The design moved through several shapes before landing on the factory-based `ann
     - Letting a reopen join the open session, as the unmerged #148 proposed for JetBrains Air (which reopens a
       session when a tab is closed and opened again), was rejected: the replay would reach the open stream after its
       `Opened` and look live, and the RFD requires invalidating child state and grants on every load or resume
-      (`:971-980`).
+      (`:1009-1017`).
     - Letting a reload replace the open session (detach the old one without `session/close`, then open a fresh
       holder) was considered and not chosen: the strict rule is simpler, and a reload can be added later as an
       explicit API.
@@ -1665,9 +1966,9 @@ The design moved through several shapes before landing on the factory-based `ann
     delivery"). This also answers the former question 23: the operations are created in the parent's consumer,
     before the parent's `notify` sees the announcement. Objects are never reused across loads, because a load needs
     a closed session (question 19).
-    - Inheriting it in `common.ClientSessionOperations`, as the earlier notes decided
-      (`2026-11-05-v1-subagents-design.md`), was rejected: `common` would import from `client`, and agent code could
-      call it on `RemoteClientSessionOperations` and get `NotImplementedError`.
+    - Inheriting it in `common.ClientSessionOperations`, as the earlier notes decided (commit `9d1dafb`), was
+      rejected: `common` would import from `client`, and agent code could call it on
+      `RemoteClientSessionOperations` and get `NotImplementedError`.
     - The child as the factory's argument was rejected: the child would exist before its operations, so either its
       `operations` getter would be filled in late and throw inside the factory, or it would have no getter and the
       app would keep a map. With the id, the operations get their session from the context, as roots do.
@@ -1723,3 +2024,29 @@ The design moved through several shapes before landing on the factory-based `ann
     - Driving permissions from the consumer was rejected: it lags behind the wire by the app's `notify`.
     - Keeping the child's signal only in the child object was rejected: patches can arrive before it exists. Giving
       the child object its holder was rejected: it would expose more than it needs.
+25. **Close order on the client. Decided:** before the request, every descendant's permissions are closed; after a
+    successful response, the registry closes the children maps, stops the consumers, removes the subtree in one
+    compare-and-set, marks the child objects closed and fails the incomplete holders, and `Client` removes their
+    elicitation entries; a failed close removes nothing; on connection end nothing more happens (see "Close and
+    connection end"). `ClientSessionImpl` gets two callbacks instead of calling `Client`, and
+    `ClientSession.client` is deprecated.
+    - Closing descendants bottom-up, the earlier recommendation, was rejected: the order mattered only for removing
+      holders one at a time, and one update removes them all.
+    - Closing every session on connection end, also in the earlier recommendation, was rejected: v1 does nothing
+      for roots on disconnect, and the agent side doesn't either. It would be one change for both.
+    - Passing the registry or the holder to the session, and a single `onClose(_meta)`, were rejected (see "Close
+      and connection end").
+    - An `ElicitationRegistry` was rejected in favour of a helper for session-scoped request handlers (see "Session
+      registry").
+26. **RFD changes after `67cde2d5`. Decided:** the spec is pinned to `c392d7e9`, the latest revision of the RFD
+    (four commits: `7ec5185c`, `14560463`, `b3f6123f`, `c392d7e9`). The only model change is the `@UnstableApi`
+    `ToolCallContent.Session` variant in the stable v1 sealed class, a source-breaking addition noted in the release
+    note; the agent's capability check covers it as it covers `session_message`. The delegated-task rule changes the
+    examples. Per-item cancels and v2's `session` content go into "Looking ahead": those methods exist only in v2.
+    One-shot children, view linking and lost tracking need no change.
+    - Leaving the variant out was rejected: a client that advertises `subagents` would lose every tool-call update
+      carrying a reference.
+    - Adding `ToolCallContent.Unknown` in the same change was rejected: it changes stable v1 decoding (see "Side
+      findings").
+    - Not checking the capability for `session` content, the first version of this answer, was rejected: the RFD
+      puts it under the same capability as `session_message`, which the root's `notify` already checks.
