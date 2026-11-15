@@ -1,5 +1,6 @@
 package com.agentclientprotocol.client
 
+import com.agentclientprotocol.model.AcpCreatedSessionResponse
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.protocol.AcpExpectedError
@@ -118,29 +119,39 @@ internal class ClientSessionRegistry(
         // created from another IDE window, the web, or another machine. That's not a protocol violation, so
         // unlike other session-scoped methods, an unknown/unconnected session here must not fail the call.
         // A speculative holder can also be reaped by `withInitializingSession` after we found it here.
-        val delivered = getOrCreateSessionHolderOrNull(sessionId)?.handleOrQueue(update, _meta) ?: false
+        val delivered = getOrCreateSessionHolderOrNull(sessionId)?.handleOrQueue(QueuedItem.Update(update, _meta)) ?: false
         if (!delivered) {
             handleUnconnectedSessionUpdate(sessionId, update, _meta)
         }
     }
 
     /**
-     * Returns the holder of [sessionId], claimed by a factory call.
-     * Must run under [withInitializingSession], which makes sure the holder exists.
+     * Returns the holder of [sessionId], claimed by an opening call that knows the id before its request: `session/load`
+     * with [replayRequested], or `session/resume` without it. Must run under [withInitializingSession], which makes sure
+     * the holder exists.
+     *
+     * @throws IllegalStateException if the session is open or being opened
      */
-    fun claimFactorySessionHolder(sessionId: SessionId): ClientSessionHolder {
+    fun claimSessionHolder(sessionId: SessionId, replayRequested: Boolean): ClientSessionHolder {
         val sessionHolder = getOrCreateSessionHolder(sessionId)
-        check(sessionHolder.claim(ClientSessionHolder.Opener.FACTORY)) { "Session $sessionId is already open or being opened" }
+        check(sessionHolder.claimForOpening(replayRequested)) { "Session $sessionId is already open or being opened" }
         return sessionHolder
     }
 
     /**
-     * Returns the holder of [sessionId], claimed by an operations call.
-     * Must run under [withInitializingSession], which makes sure the holder exists.
+     * Claims the holder of [sessionId] for the call whose answer [response] names that id, and marks it opened, in
+     * one step. This serves `session/new` and `session/fork`, whose session id first appears in the answer; neither
+     * asks for a replay.
+     *
+     * Runs in the response hook of the call, so it must not suspend or block. Must run under
+     * [withInitializingSession], which makes sure the holder exists.
+     *
+     * @return `null` if the session is open or being opened
      */
-    fun claimOperationsSessionHolder(sessionId: SessionId): ClientSessionHolder {
-        val sessionHolder = getOrCreateSessionHolder(sessionId)
-        check(sessionHolder.claim(ClientSessionHolder.Opener.OPERATIONS)) { "Session $sessionId is already open or being opened" }
+    fun claimAnsweredSessionHolder(sessionId: SessionId, response: AcpCreatedSessionResponse): ClientSessionHolder? {
+        val sessionHolder = getOrCreateSessionHolderOrNull(sessionId) ?: return null
+        if (!sessionHolder.claimForOpening(replayRequested = false)) return null
+        sessionHolder.markOpened(response)
         return sessionHolder
     }
 

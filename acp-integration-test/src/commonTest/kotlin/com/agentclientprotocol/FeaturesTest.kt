@@ -30,11 +30,7 @@ open class TestClientSessionOperations(): ClientSessionOperations {
         TODO()
     }
 
-    override suspend fun notify(
-        notification: SessionUpdate,
-        _meta: JsonElement?,
-    ) {
-    }
+    override suspend fun notify(event: SessionEvent) {}
 }
 
 open class TestAgentSession(override val sessionId: SessionId = SessionId("test-session-id")) : AgentSession {

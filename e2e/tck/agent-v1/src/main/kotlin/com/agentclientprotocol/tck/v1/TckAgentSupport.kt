@@ -11,6 +11,7 @@ import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.ClientInfo
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
+import com.agentclientprotocol.common.notify
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.jsonRpcInvalidParams
 import io.github.oshai.kotlinlogging.KotlinLogging

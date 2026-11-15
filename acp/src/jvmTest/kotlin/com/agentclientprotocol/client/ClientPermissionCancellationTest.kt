@@ -6,6 +6,7 @@ import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
+import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.CloseSessionResponse
 import com.agentclientprotocol.model.ContentBlock
@@ -384,7 +385,7 @@ private class UserOperations : ClientSessionOperations {
         return user(toolCall.toolCallId.value).ask()
     }
 
-    override suspend fun notify(notification: SessionUpdate, _meta: JsonElement?) {}
+    override suspend fun notify(event: SessionEvent) {}
 }
 
 /**

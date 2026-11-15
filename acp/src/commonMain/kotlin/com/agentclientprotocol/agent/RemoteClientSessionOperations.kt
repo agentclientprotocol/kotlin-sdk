@@ -2,6 +2,7 @@ package com.agentclientprotocol.agent
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
+import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.RpcMethodsOperations
 import com.agentclientprotocol.protocol.invoke
@@ -34,18 +35,18 @@ internal open class RemoteClientSessionOperations(
     }
 
     /**
-     * Sends [notification] for this root session.
+     * Sends the update of [event] for this root session.
      *
      * Every root path sends through here: `client.notify`, the prompt flow and replay, so the subagents rules for a
      * root are checked once, here. A [SessionUpdate.SubagentUpdate] is always rejected, because the SDK must see
      * every announcement and grant. The other updates the subagents RFD defines need the `subagents` client
      * capability: a v1 agent MUST NOT send them without it (`docs/rfds/subagents.mdx`, "Capability negotiation").
+     *
+     * @throws IllegalStateException for [SessionEvent.Opened], which only the client runtime delivers
      */
     @OptIn(UnstableApi::class)
-    override suspend fun notify(
-        notification: SessionUpdate,
-        _meta: JsonElement?,
-    ) {
+    override suspend fun notify(event: SessionEvent) {
+        val (notification, _meta) = event.requireUpdate()
         if (notification is SessionUpdate.SubagentUpdate) {
             throw IllegalArgumentException(
                 "SubagentUpdate for ${notification.sessionId} cannot be sent through the client operations of " +
@@ -190,6 +191,17 @@ internal open class RemoteClientSessionOperations(
     protected fun sendUpdate(target: SessionId, update: SessionUpdate, _meta: JsonElement?) {
         AcpMethod.ClientMethods.V1.SessionUpdate(rpc, SessionNotification(target, update, _meta))
     }
+}
+
+/**
+ * Returns the update of an event that agent code sends. [SessionEvent.Opened] has an internal constructor, so only an
+ * SDK bug could pass one here.
+ *
+ * @throws IllegalStateException for [SessionEvent.Opened]
+ */
+internal fun SessionEvent.requireUpdate(): Pair<SessionUpdate, JsonElement?> = when (this) {
+    is SessionEvent.Update -> update to _meta
+    is SessionEvent.Opened -> throw IllegalStateException("SessionEvent.Opened is delivered only by the client runtime")
 }
 
 /**

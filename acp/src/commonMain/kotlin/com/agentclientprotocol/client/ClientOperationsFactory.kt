@@ -43,8 +43,10 @@ public typealias ClientSupport = ClientOperationsFactory
  * Creates the [ClientSessionOperations] of a session after the agent answers the request that opens it.
  *
  * The client calls the factory only after the answer. Until then, it buffers every `session/update` of the session
- * and delivers the buffer to the new operations after the factory returns. This is necessary for `session/new` and
- * `session/fork`, because the client learns the session id only from the answer.
+ * and delivers the buffer to the new operations after the factory returns: the updates that came before the answer,
+ * then [com.agentclientprotocol.common.SessionEvent.Opened] with the answer, then the updates that came after it.
+ * This is necessary for `session/new` and `session/fork`, because the client learns the session id only from the
+ * answer.
  *
  * For `session/load` and `session/resume`, the client knows the session id before the request. An agent can replay
  * the whole history before it answers. If the client has the operations object before the request, use the

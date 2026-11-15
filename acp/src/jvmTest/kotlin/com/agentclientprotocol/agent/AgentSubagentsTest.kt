@@ -7,6 +7,8 @@ import com.agentclientprotocol.client.ClientInfo
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
+import com.agentclientprotocol.common.SessionEvent
+import com.agentclientprotocol.common.notify
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.AcpRequest
 import com.agentclientprotocol.model.CancelNotification
@@ -20,6 +22,7 @@ import com.agentclientprotocol.model.IdleStopReason
 import com.agentclientprotocol.model.InitializeRequest
 import com.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
 import com.agentclientprotocol.model.LoadSessionRequest
+import com.agentclientprotocol.model.LoadSessionResponse
 import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.ModelId
@@ -649,6 +652,15 @@ class AgentSubagentsTest {
     }
 
     // Routing
+
+    @Test
+    fun `the opening marker can't be sent through the root's or a child's operations`() = withSubagents { f ->
+        val child = announceChild(f, childId)
+
+        assertFailsWith<IllegalStateException> { f.rootClient.notify(SessionEvent.Opened(LoadSessionResponse())) }
+        assertFailsWith<IllegalStateException> { child.client.notify(SessionEvent.Opened(null)) }
+        f.assertNothingMoreSent()
+    }
 
     @Test
     fun `a SubagentUpdate for another session is rejected by a child's operations`() = withSubagents { f ->

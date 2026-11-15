@@ -610,8 +610,7 @@ public final class com/agentclientprotocol/client/v2/ElicitationHandler$DefaultI
 }
 
 public abstract interface class com/agentclientprotocol/common/ClientSessionOperations : com/agentclientprotocol/common/ElicitationOperations, com/agentclientprotocol/common/FileSystemOperations, com/agentclientprotocol/common/TerminalOperations {
-	public abstract fun notify (Lcom/agentclientprotocol/model/SessionUpdate;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public static synthetic fun notify$default (Lcom/agentclientprotocol/common/ClientSessionOperations;Lcom/agentclientprotocol/model/SessionUpdate;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public abstract fun notify (Lcom/agentclientprotocol/common/SessionEvent;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun requestPermissions (Lcom/agentclientprotocol/model/SessionUpdate$ToolCallUpdate;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun requestPermissions$default (Lcom/agentclientprotocol/common/ClientSessionOperations;Lcom/agentclientprotocol/model/SessionUpdate$ToolCallUpdate;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
@@ -621,13 +620,17 @@ public final class com/agentclientprotocol/common/ClientSessionOperations$Defaul
 	public static fun createElicitation (Lcom/agentclientprotocol/common/ClientSessionOperations;Lcom/agentclientprotocol/model/CreateElicitationRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun fsReadTextFile-i6TIkSo (Lcom/agentclientprotocol/common/ClientSessionOperations;Ljava/lang/String;Lkotlin/UInt;Lkotlin/UInt;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun fsWriteTextFile (Lcom/agentclientprotocol/common/ClientSessionOperations;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public static synthetic fun notify$default (Lcom/agentclientprotocol/common/ClientSessionOperations;Lcom/agentclientprotocol/model/SessionUpdate;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun requestPermissions$default (Lcom/agentclientprotocol/common/ClientSessionOperations;Lcom/agentclientprotocol/model/SessionUpdate$ToolCallUpdate;Ljava/util/List;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static fun terminalCreate-HNfBzwE (Lcom/agentclientprotocol/common/ClientSessionOperations;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Lkotlin/ULong;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun terminalKill (Lcom/agentclientprotocol/common/ClientSessionOperations;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun terminalOutput (Lcom/agentclientprotocol/common/ClientSessionOperations;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun terminalRelease (Lcom/agentclientprotocol/common/ClientSessionOperations;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun terminalWaitForExit (Lcom/agentclientprotocol/common/ClientSessionOperations;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class com/agentclientprotocol/common/ClientSessionOperationsKt {
+	public static final fun notify (Lcom/agentclientprotocol/common/ClientSessionOperations;Lcom/agentclientprotocol/model/SessionUpdate;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun notify$default (Lcom/agentclientprotocol/common/ClientSessionOperations;Lcom/agentclientprotocol/model/SessionUpdate;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
 public abstract interface class com/agentclientprotocol/common/ElicitationOperations {
@@ -677,6 +680,20 @@ public final class com/agentclientprotocol/common/SessionCreationParameters {
 	public final fun getAdditionalDirectories ()Ljava/util/List;
 	public final fun getCwd ()Ljava/lang/String;
 	public final fun getMcpServers ()Ljava/util/List;
+	public final fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+}
+
+public abstract class com/agentclientprotocol/common/SessionEvent {
+}
+
+public final class com/agentclientprotocol/common/SessionEvent$Opened : com/agentclientprotocol/common/SessionEvent {
+	public final fun getResponse ()Lcom/agentclientprotocol/model/AcpCreatedSessionResponse;
+}
+
+public final class com/agentclientprotocol/common/SessionEvent$Update : com/agentclientprotocol/common/SessionEvent {
+	public fun <init> (Lcom/agentclientprotocol/model/SessionUpdate;Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lcom/agentclientprotocol/model/SessionUpdate;Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getUpdate ()Lcom/agentclientprotocol/model/SessionUpdate;
 	public final fun get_meta ()Lkotlinx/serialization/json/JsonElement;
 }
 

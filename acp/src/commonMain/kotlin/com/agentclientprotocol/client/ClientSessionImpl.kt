@@ -4,6 +4,8 @@ import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
+import com.agentclientprotocol.common.SessionEvent
+import com.agentclientprotocol.common.notify
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.invoke
@@ -194,6 +196,14 @@ internal class ClientSessionImpl(
             logger.trace { "Notifying globally: $notification" }
             operations.notify(notification, _meta)
         }
+    }
+
+    /**
+     * Delivers the marker of the opening call's [response] to the operations. No prompt can be active yet, so it
+     * always goes to [ClientSessionOperations.notify].
+     */
+    internal suspend fun deliverOpened(response: AcpCreatedSessionResponse) {
+        operations.notify(SessionEvent.Opened(response))
     }
 
     // TODO remove together with the deprecated ClientSession.currentMode and ClientSession.configOptions.

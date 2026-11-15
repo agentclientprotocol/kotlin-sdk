@@ -181,6 +181,7 @@ Create a `Client` with your own `ClientSessionOperations` implementation. This s
 import com.agentclientprotocol.client.*
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
+import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.common.SessionParameters
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
@@ -215,9 +216,13 @@ private class TerminalSession(
         // Grant whichever option was first in the list (swap for real UX).
         RequestPermissionResponse(RequestPermissionOutcome.Selected(permissions.first().optionId))
 
-    override suspend fun notify(notification: SessionUpdate, _meta: JsonElement?) {
-        // Surface streaming updates back to the host application.
-        println("Agent update: $notification")
+    override suspend fun notify(event: SessionEvent) {
+        when (event) {
+            // Surface streaming updates back to the host application.
+            is SessionEvent.Update -> println("Agent update: ${event.update}")
+            // Updates before this marker came before the answer that opened the session; later ones are live.
+            is SessionEvent.Opened -> println("Session opened")
+        }
     }
 
     override suspend fun fsReadTextFile(

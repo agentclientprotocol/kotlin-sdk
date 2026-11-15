@@ -10,6 +10,8 @@ import com.agentclientprotocol.client.UnsupportedProtocolVersionException
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
+import com.agentclientprotocol.common.SessionEvent
+import com.agentclientprotocol.common.notify
 import com.agentclientprotocol.framework.ProtocolDriver
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.AcpExpectedError
@@ -125,10 +127,8 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                     TODO("Not yet implemented")
                 }
 
-                override suspend fun notify(
-                    notification: SessionUpdate,
-                    _meta: JsonElement?,
-                ) {
+                override suspend fun notify(event: SessionEvent) {
+                    if (event !is SessionEvent.Update) return
                     TODO("Not yet implemented")
                 }
             }
@@ -192,10 +192,8 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                     TODO("Not yet implemented")
                 }
 
-                override suspend fun notify(
-                    notification: SessionUpdate,
-                    _meta: JsonElement?,
-                ) {
+                override suspend fun notify(event: SessionEvent) {
+                    if (event !is SessionEvent.Update) return
                     TODO("Not yet implemented")
                 }
             }
@@ -273,10 +271,8 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                     TODO("Not yet implemented")
                 }
 
-                override suspend fun notify(
-                    notification: SessionUpdate,
-                    _meta: JsonElement?,
-                ) {
+                override suspend fun notify(event: SessionEvent) {
+                    if (event !is SessionEvent.Update) return
                     TODO("Not yet implemented")
                 }
             }
@@ -347,10 +343,8 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 TODO("Not yet implemented")
             }
 
-            override suspend fun notify(
-                notification: SessionUpdate,
-                _meta: JsonElement?,
-            ) {
+            override suspend fun notify(event: SessionEvent) {
+                if (event !is SessionEvent.Update) return
                 TODO("Not yet implemented")
             }
         }
@@ -428,10 +422,8 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                     )
                 }
 
-                override suspend fun notify(
-                    notification: SessionUpdate,
-                    _meta: JsonElement?,
-                ) {
+                override suspend fun notify(event: SessionEvent) {
+                    if (event !is SessionEvent.Update) return
                     TODO("Not yet implemented")
                 }
             }
@@ -518,10 +510,8 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                     }
                 }
 
-                override suspend fun notify(
-                    notification: SessionUpdate,
-                    _meta: JsonElement?,
-                ) {
+                override suspend fun notify(event: SessionEvent) {
+                    if (event !is SessionEvent.Update) return
                     TODO("Not yet implemented")
                 }
             }
@@ -614,10 +604,8 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                     }
                 }
 
-                override suspend fun notify(
-                    notification: SessionUpdate,
-                    _meta: JsonElement?,
-                ) {
+                override suspend fun notify(event: SessionEvent) {
+                    if (event !is SessionEvent.Update) return
                     TODO("Not yet implemented")
                 }
             }
@@ -702,11 +690,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                     }
                 }
 
-                override suspend fun notify(
-                    notification: SessionUpdate,
-                    _meta: JsonElement?,
-                ) {
-                }
+                override suspend fun notify(event: SessionEvent) {}
             }
         }
 
@@ -773,10 +757,9 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                     TODO()
                 }
 
-                override suspend fun notify(
-                    notification: SessionUpdate,
-                    _meta: JsonElement?,
-                ) {
+                override suspend fun notify(event: SessionEvent) {
+                    if (event !is SessionEvent.Update) return
+                    val notification = event.update
                     notificationDeferred.complete(notification)
                 }
             }
@@ -840,10 +823,9 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                         return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
                     }
 
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
+                    override suspend fun notify(event: SessionEvent) {
+                        if (event !is SessionEvent.Update) return
+                        val notification = event.update
                         notificationDeferred.complete(notification)
                     }
                 }
@@ -927,11 +909,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                         return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
                     }
 
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
-                    }
+                    override suspend fun notify(event: SessionEvent) {}
                 }
             }
         }
@@ -947,10 +925,9 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                         return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
                     }
 
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
+                    override suspend fun notify(event: SessionEvent) {
+                        if (event !is SessionEvent.Update) return
+                        val notification = event.update
                         val text = (notification as? SessionUpdate.AgentMessageChunk)?.content as? ContentBlock.Text ?: return
                         received.add(text.text)
                     }
@@ -1018,11 +995,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                         return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
                     }
 
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
-                    }
+                    override suspend fun notify(event: SessionEvent) {}
                 }
             }
         }
@@ -1099,10 +1072,9 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                         return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
                     }
 
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
+                    override suspend fun notify(event: SessionEvent) {
+                        if (event !is SessionEvent.Update) return
+                        val notification = event.update
                         val text = (notification as? SessionUpdate.AgentMessageChunk)?.content as? ContentBlock.Text ?: return
                         if (!replayReceived.isCompleted) {
                             replayReceived.complete(text.text)
@@ -1125,11 +1097,7 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                         return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
                     }
 
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
-                    }
+                    override suspend fun notify(event: SessionEvent) {}
                 }
             }
         }
@@ -1208,10 +1176,9 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                         return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
                     }
 
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
+                    override suspend fun notify(event: SessionEvent) {
+                        if (event !is SessionEvent.Update) return
+                        val notification = event.update
                         notificationDeferred.complete(notification)
                     }
                 }
@@ -1290,10 +1257,9 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                         return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
                     }
 
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
+                    override suspend fun notify(event: SessionEvent) {
+                        if (event !is SessionEvent.Update) return
+                        val notification = event.update
                         notificationDeferred.complete(notification)
                     }
                 }
@@ -1358,7 +1324,9 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
             }
 
-            override suspend fun notify(notification: SessionUpdate, _meta: JsonElement?) {
+            override suspend fun notify(event: SessionEvent) {
+                if (event !is SessionEvent.Update) return
+                val notification = event.update
                 val text = (notification as? SessionUpdate.AgentMessageChunk)?.content as? ContentBlock.Text ?: return
                 received.update { it + text.text }
             }
@@ -1425,7 +1393,9 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                 return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
             }
 
-            override suspend fun notify(notification: SessionUpdate, _meta: JsonElement?) {
+            override suspend fun notify(event: SessionEvent) {
+                if (event !is SessionEvent.Update) return
+                val notification = event.update
                 val text = (notification as? SessionUpdate.AgentMessageChunk)?.content as? ContentBlock.Text ?: return
                 received.update { it + text.text }
             }
@@ -1557,10 +1527,9 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                         return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
                     }
 
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
+                    override suspend fun notify(event: SessionEvent) {
+                        if (event !is SessionEvent.Update) return
+                        val notification = event.update
                         val text = (notification as? SessionUpdate.AgentMessageChunk)?.content as? ContentBlock.Text ?: return
                         if (!firstNotification.isCompleted) {
                             firstNotification.complete(text.text)
@@ -1652,10 +1621,9 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                         return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
                     }
 
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
+                    override suspend fun notify(event: SessionEvent) {
+                        if (event !is SessionEvent.Update) return
+                        val notification = event.update
                         val text = (notification as? SessionUpdate.AgentMessageChunk)?.content as? ContentBlock.Text ?: return
                         received.add(text.text)
                     }
@@ -1722,10 +1690,9 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                         return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
                     }
 
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
+                    override suspend fun notify(event: SessionEvent) {
+                        if (event !is SessionEvent.Update) return
+                        val notification = event.update
                         if (notification !is SessionUpdate.AgentMessageChunk) return
                         val text = (notification.content as ContentBlock.Text).text
                         received.add(text)
@@ -1807,10 +1774,9 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                         return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
                     }
 
-                    override suspend fun notify(
-                        notification: SessionUpdate,
-                        _meta: JsonElement?,
-                    ) {
+                    override suspend fun notify(event: SessionEvent) {
+                        if (event !is SessionEvent.Update) return
+                        val notification = event.update
                         delay(2.milliseconds)
                         val text = (notification as? SessionUpdate.AgentMessageChunk)?.content as? ContentBlock.Text ?: return
                         receivedMessages.add(text.text)
@@ -1908,10 +1874,9 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                     return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
                 }
 
-                override suspend fun notify(
-                    notification: SessionUpdate,
-                    _meta: JsonElement?,
-                ) {
+                override suspend fun notify(event: SessionEvent) {
+                    if (event !is SessionEvent.Update) return
+                    val notification = event.update
                     delay(clientNotifyDelay)
                     val message = when (notification) {
                         is SessionUpdate.AgentMessageChunk -> "agent:${(notification.content as ContentBlock.Text).text}"
@@ -2591,10 +2556,9 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
                     return RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
                 }
 
-                override suspend fun notify(
-                    notification: SessionUpdate,
-                    _meta: JsonElement?,
-                ) {
+                override suspend fun notify(event: SessionEvent) {
+                    if (event !is SessionEvent.Update) return
+                    val notification = event.update
                     readyUpdate.complete(notification)
                 }
             }

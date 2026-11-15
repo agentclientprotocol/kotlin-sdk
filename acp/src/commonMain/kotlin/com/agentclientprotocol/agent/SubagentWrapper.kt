@@ -3,6 +3,8 @@
 package com.agentclientprotocol.agent
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.common.SessionEvent
+import com.agentclientprotocol.common.notify
 import com.agentclientprotocol.model.ClientCapabilities
 import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.SessionId
@@ -370,7 +372,8 @@ internal class SubagentWrapper(
     ) : RemoteClientSessionOperations(protocol, this@SubagentWrapper.sessionId, clientCapabilities) {
         override fun checkCanSend() = checkAnnounced()
 
-        override suspend fun notify(notification: SessionUpdate, _meta: JsonElement?) {
+        override suspend fun notify(event: SessionEvent) {
+            val (notification, _meta) = event.requireUpdate()
             if (notification is SessionUpdate.SubagentUpdate) {
                 require(notification.sessionId == sessionId) {
                     "SubagentUpdate for ${notification.sessionId} cannot be sent through the client operations of " +
