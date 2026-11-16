@@ -223,12 +223,23 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   context element (a false "own consumer" only skips a join; a missed one deadlocks); (2) a held cancellation is
   promoted when a non-replaying opening is answered, like the held active-work value.
 
+- M7 final review fixes — `28348bb` — finding 1: own consumer detected by the `SubagentConsumer` context element
+  OR job ancestry (`runsIn`); limitation in the `ClientSession.close` KDoc: a close in a fresh-context coroutine of
+  another scope that `notify` awaits non-cancellably still deadlocks. Finding 2: `setPendingAside()` +
+  `heldCancellation`; a non-live `idle(cancelled)` is promoted at `onOpened(promote = true)` and answers exactly
+  the requests pending at its arrival (later requests reach the app; a later held `running` doesn't undo it);
+  dropped on a load. Finding 5: `subagentHolderOrNull`, the handler awaits that holder. Finding 6: request handler
+  start order documented (`Protocol` KDoc, `AGENTS.md`), caveat: a response right after a request may be handled
+  before that request's handler starts. Findings 7, 8 docs. Finding 4 not done (fix would touch the shared
+  `PendingPermissionCancellation.answerUnlessCancelled`, also used by v2). `check` green at `28348bb`
+  (programmer and orchestrator); no API change; `.agents/` grep empty.
+
 ## Next
-1. M7 (programmer, `opus`), running: review findings 1, 2, 5, 6, 7, 8 (4 if simple), docs kept in step.
-2. Orchestrator: `./gradlew check`, `.agents/` grep, push `eugenethedev/subagents`, open the PR against
-   `eugenethedev/permission-cancellation-fix` (stacked on #156). Description: summary per layer, the release-note
-   text from the commit body of `2f35a77`, known limitations, and the reminder to delete `.agents/state.md` and
-   `.agents/research/` before merge.
+The goal is done. The branch is pushed and the PR is open against `eugenethedev/permission-cancellation-fix`
+(stacked on #156); see the PR number in the last state commit message or `gh pr list --head eugenethedev/subagents`.
+Remaining for the user: delete `.agents/state.md` and `.agents/research/` before the PR merges; retarget the PR to
+`master` once #156 merges. Follow-up candidates: review finding 4; the fresh-context close deadlock; the dropped
+pre-marker update; regression test for agent nit N3; stale Kotlin file:line cites in the spec.
 
 Notes:
 - Flaky build: `./gradlew check` fails now and then with a Kotlin/JS "Internal compiler error" in
