@@ -199,34 +199,23 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   then cancelled is dropped by the channel (would need `onUndeliveredElement`); a waiting request whose holder
   fails at the moment its signal completes can get an error instead of `cancelled`.
 
-## Next
-Last product commit is `f684ec3`. Continue here:
+- M6b docs — `0bd1962` — twelve client-side subagent bullets in `AGENTS.md` (`CLAUDE.md` is a symlink to it); the
+  design spec updated in place for every later decision, relay example fixed, pin moved to `13b76582`, RFD and
+  `client.rs` line cites shifted, RFD status Preview. Not done: Kotlin file:line cites in the spec are stale; the
+  spec's Deliverables section still reads as a plan. Programmer-worded rationale the user may want to skim: spec
+  decisions 6 (accepting a re-open), 19 ("Leaving it live was rejected"), 25 ("Narrowing the KDoc was rejected").
+- Final checks (orchestrator, at `0bd1962`) — `./gradlew check` green (no flake); `.agents/` reference grep empty;
+  cumulative dumps vs `39ecba6`: `acp.api` adds the agent subagent API, `BaseClientSession`,
+  `ClientSubagentSession`, `SubagentOperations`, `SessionEvent`, and replaces the abstract
+  `ClientSessionOperations.notify(SessionUpdate, JsonElement)` with `notify(SessionEvent)` plus an extension (the
+  intended `feat!` break); `acp-model.api` moves `MaybeUndefined` out of `model.v2` and adds the new types.
 
-1. (done) M4.5b.
-2. M6b (programmer, default model), docs, one commit:
-   - `AGENTS.md` client-side subagent lifecycle rules (M4 review finding 3; topics in the spec's "Deliverables"):
-     per-child holder and tree, synchronous sorting and registration at arrival, setup by the parent's consumer
-     before the announcement is delivered, child consumer in the connection scope that waits for its parent's
-     holder before switching, `Opened(null)` from the response hook, announcements always through
-     `lateDeliveries` once the parent is complete, plain getters (no `StateFlow`), `SubagentPendingPermissions`
-     in wire order and joined at arrival, the closing flag, root close order (`closeDescendantPermissions`, then
-     `removeSessionTree` in one update), own-consumer detection by job ancestry, failed child marked closed.
-   - Update `docs/superpowers/specs/2026-11-07-v1-subagents-architecture.md` to match the implemented decisions:
-     agent: factory CE after the announcement → ISE; latched cancel during a running factory; late child requests
-     after close accepted; re-open of an open root cleans the old subtree; replay window ends when the transport
-     accepts the response (`invokeOnResponseQueued`); failed load also drops the root. Client: cancellable opening
-     and the weakened "no `Opened`" rule (line ~809); cancelled calls drop their response hook; children wait for
-     the parent's holder; decisions (1)-(3) above (lines ~1050, ~1400); `SubagentPendingPermissions.onState`
-     order; own-consumer detection; closable `subagents` list; `createSubagentOperations` context. Fix the relay
-     example (`announce(id, parent = x) { }` does not compile: `parent` is the last parameter); RFD status is
-     Preview; `client.rs` line numbers per `.agents/research/subagents-wire-shapes.md`. The spec must not
-     reference `.agents/` files.
-3. Final checks (orchestrator): review the cumulative `acp/api/acp.api` and `acp-model/api/acp-model.api` diffs
-   against `39ecba6`; run `./gradlew check`; run
-   `git grep -nE '\.agents/(research|state\.md|prompt\.md)' -- ':!.agents' ':!AGENTS.md'` (clean so far).
-4. Optional, ask the user: a final review of the commits after `ced95e7` (`1bb9dcc`, `f684ec3`, M6b), since reviews
-   are on per milestone and these fix slices are unreviewed.
-5. Tell the user the goal is done; remind them to delete `.agents/prompt.md`, `.agents/state.md` and
+## Next
+All planned slices are done; the last product commit is `0bd1962`.
+
+1. Waiting on the user: whether to run a final review of the unreviewed commits after `ced95e7` (`1bb9dcc`,
+   `f684ec3`, `0bd1962`). Findings become new slices.
+2. Then tell the user the goal is done; remind them to delete `.agents/prompt.md`, `.agents/state.md` and
    `.agents/research/` before the PR merges. Do not push or open a PR unless asked. PR description, when asked:
    the release-note text from the commit body of `2f35a77` (it replaces the one in `d505b25`), plus that reminder.
 
@@ -244,4 +233,4 @@ Notes:
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
-(none)
+- Final review of `1bb9dcc`, `f684ec3`, `0bd1962`: yes or no?
