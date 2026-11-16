@@ -640,6 +640,89 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
     }
 
     @Test
+    fun `client cancel answers a pending permission request with the cancelled outcome`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val permissionAnswer = CompletableDeferred<Result<RequestPermissionResponse>>()
+        val clientHandlerStarted = CompletableDeferred<Unit>()
+        val clientHandlerCleanedUp = CompletableDeferred<Unit>()
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(clientInfo.protocolVersion)
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                return object : AgentSession {
+                    override val sessionId: SessionId = SessionId("test-session-id")
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = flow {
+                        val answer = runCatching {
+                            currentCoroutineContext().client.requestPermissions(
+                                SessionUpdate.ToolCallUpdate(toolCallId = ToolCallId("tool-id")),
+                                listOf(PermissionOption(PermissionOptionId("approve"), "Approve", PermissionOptionKind.ALLOW_ONCE)),
+                            )
+                        }
+                        permissionAnswer.complete(answer)
+                        answer.getOrThrow()
+                    }
+
+                    /*
+                     * A cooperative cancel that waits for the turn: the SDK cancels the turn's job, and with it the
+                     * outgoing permission request, only after this returns. So the turn gets the client's own
+                     * answer, never a `$/cancel_request` from this side.
+                     */
+                    override suspend fun cancel() {
+                        permissionAnswer.await()
+                    }
+                }
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                TODO("Not yet implemented")
+            }
+        })
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+        val session = client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+            object : ClientSessionOperations {
+                override suspend fun requestPermissions(
+                    toolCall: SessionUpdate.ToolCallUpdate,
+                    permissions: List<PermissionOption>,
+                    _meta: JsonElement?,
+                ): RequestPermissionResponse {
+                    clientHandlerStarted.complete(Unit)
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        clientHandlerCleanedUp.complete(Unit)
+                    }
+                }
+
+                override suspend fun notify(
+                    notification: SessionUpdate,
+                    _meta: JsonElement?,
+                ) {
+                }
+            }
+        }
+
+        val turn = async { session.prompt(listOf(ContentBlock.Text("Test message"))).toList() }
+        clientHandlerStarted.await()
+
+        session.cancel()
+
+        val answer = withTimeout(5000) { permissionAnswer.await() }
+        assertEquals(RequestPermissionOutcome.Cancelled, answer.getOrThrow().outcome)
+        assertTrue(clientHandlerCleanedUp.isCompleted)
+        // The stop reason depends on how the agent runtime ends a cooperatively stopped turn, so it is not asserted.
+        assertIs<Event.PromptResponseEvent>(withTimeout(5000) { turn.await() }.last())
+    }
+
+    @Test
     fun `long session init on client and consequent session update should be properly handler`() = testWithProtocols { clientProtocol, agentProtocol ->
         val notificationDeferred = CompletableDeferred<SessionUpdate>()
 

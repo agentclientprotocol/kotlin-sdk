@@ -25,7 +25,13 @@ public interface ClientSession {
     public suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): Flow<Event>
 
     /**
-     * Cancels the current agent turn and returns after the agent canceled all activities of the current turn.
+     * Asks the agent to cancel the current turn by sending `session/cancel`.
+     *
+     * The call returns once the notification is sent; the turn itself ends when the agent answers the pending
+     * `session/prompt`. Every pending permission request of this session is answered with
+     * [RequestPermissionOutcome.Cancelled] and the handlers for them are cancelled, even if the send fails.
+     * Requests that arrive after this call and before the next [prompt] are answered `cancelled` too, without
+     * reaching [operations].
      *
      * Corresponds to the [com.agentclientprotocol.model.AcpMethod.AgentMethods.V1.SessionCancel]
      */
@@ -39,6 +45,11 @@ public interface ClientSession {
      * Closes the session and frees up any resources associated with it.
      * The agent must cancel any ongoing work (as if `session/cancel` was called)
      * and then free up any resources associated with the session.
+     *
+     * When the close starts, every pending permission request of this session is answered with
+     * [RequestPermissionOutcome.Cancelled] and its handler is cancelled, without waiting for the response and
+     * even if the close then fails. Requests that arrive later are answered `cancelled` without reaching
+     * [operations].
      *
      * Only available if the agent advertises the `session.close` capability.
      *

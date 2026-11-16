@@ -23,8 +23,12 @@ public interface ClientSessionOperations {
      * Asks the user about [request] and returns the outcome.
      *
      * Returning [RequestPermissionOutcome.Cancelled] is allowed but usually unnecessary: when the client
-     * cancels the turn, the SDK answers whatever request is in flight with `cancelled` on its own, so this
-     * can simply keep waiting for the user.
+     * cancels the turn or closes the session, the SDK answers whatever request is in flight with `cancelled`
+     * on its own and cancels this coroutine, so this can simply keep waiting for the user.
+     *
+     * Respond to cancellation promptly, for example by dismissing the UI in `finally`: the `cancelled` reply
+     * goes out only after this coroutine finishes, so blocking a thread or suspending in `NonCancellable`
+     * delays it.
      */
     public suspend fun requestPermission(request: RequestPermissionRequest): RequestPermissionResponse
 }

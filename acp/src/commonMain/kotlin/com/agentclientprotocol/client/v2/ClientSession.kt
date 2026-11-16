@@ -1,6 +1,7 @@
 package com.agentclientprotocol.client.v2
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.client.PendingPermissionCancellation
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.SessionConfigId
@@ -20,11 +21,6 @@ import com.agentclientprotocol.model.v2.RequestPermissionResponse
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.acpFail
 import com.agentclientprotocol.protocol.invoke
-import kotlinx.atomicfu.atomic
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonElement
 
@@ -49,8 +45,7 @@ public class ClientSession internal constructor(
     private val updatesFlow: Flow<UpdateWithMeta>,
     private val onClosed: () -> Unit = {},
 ) {
-    // Completed when the client cancels the turn, so pending permission requests can be answered.
-    private val _cancelled = atomic(CompletableDeferred<Unit>())
+    private val pendingPermissions = PendingPermissionCancellation()
 
     /**
      * One `session/update` notification: the update and the metadata it came with.
@@ -76,17 +71,16 @@ public class ClientSession internal constructor(
      * with this id can arrive on [updates] before or after this call returns
      */
     public suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): MessageId {
-        // A fresh signal per turn: a cancel belongs to the turn it interrupted.
-        _cancelled.value = CompletableDeferred()
+        pendingPermissions.startTurn()
         return AcpMethod.AgentMethods.V2.SessionPrompt(protocol, PromptRequest(sessionId, content, _meta)).messageId
     }
 
     /**
      * Answers an incoming `session/request_permission` for this session.
      *
-     * Races the handler against a cancel of the turn, because a client that cancels MUST answer every
-     * pending permission request with [RequestPermissionOutcome.Cancelled] rather than leave the agent
-     * waiting
+     * Races the handler against a cancel of the turn or a close of the session, because a client that
+     * cancels MUST answer every pending permission request with [RequestPermissionOutcome.Cancelled] rather
+     * than leave the agent waiting
      * ([prompt lifecycle](https://agentclientprotocol.com/protocol/v2/prompt-lifecycle#cancellation)).
      */
     internal suspend fun handlePermissionRequest(request: RequestPermissionRequest): RequestPermissionResponse {
@@ -95,16 +89,10 @@ public class ClientSession internal constructor(
                 "This client has no v2 session operations, so it cannot answer session/request_permission. " +
                     "Pass operations to Client.v2.newSession to handle permissions"
             )
-        val cancelled = _cancelled.value
-        return coroutineScope {
-            val answer = async { handler.requestPermission(request) }
-            select {
-                answer.onAwait { it }
-                cancelled.onAwait {
-                    answer.cancel()
-                    RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
-                }
-            }
+        return pendingPermissions.answerUnlessCancelled(
+            cancelledAnswer = { RequestPermissionResponse(RequestPermissionOutcome.Cancelled) },
+        ) {
+            handler.requestPermission(request)
         }
     }
 
@@ -127,9 +115,21 @@ public class ClientSession internal constructor(
     /**
      * Ends this session with `session/close`.
      *
-     * The session is forgotten locally afterwards, so its [updates] stop being routed anywhere.
+     * Closing makes the agent cancel the session's ongoing work, including background work, and free its
+     * resources. When the close starts, every pending permission request of this session is answered with
+     * [RequestPermissionOutcome.Cancelled] and its handler is cancelled, without waiting for the response and
+     * even if the close then fails. Requests that arrive later are answered the same way without reaching
+     * the operations.
+     *
+     * After a successful response the session is forgotten locally, so its [updates] stop being routed
+     * anywhere.
      */
     public suspend fun close(_meta: JsonElement? = null): CloseSessionResponse {
+        /*
+         * Answer before waiting for the response, so an agent that does not cancel its own permission requests
+         * first is not left waiting for a session the client is dropping.
+         */
+        pendingPermissions.close()
         val response = AcpMethod.AgentMethods.V2.SessionClose(protocol, CloseSessionRequest(sessionId, _meta))
         onClosed()
         return response
@@ -149,7 +149,7 @@ public class ClientSession internal constructor(
             AcpMethod.AgentMethods.V2.SessionCancel(protocol, CancelSessionNotification(sessionId, _meta))
         } finally {
             // Answers whatever permission request is in flight even if sending fails.
-            _cancelled.value.complete(Unit)
+            pendingPermissions.cancelPending()
         }
     }
 }
