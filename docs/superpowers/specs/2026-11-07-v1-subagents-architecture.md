@@ -1201,7 +1201,8 @@ holder owns an id, and it delivers `session/update`s from start to end.
   lookup in the request handlers (`client/Client.kt:236`) and in `getSessionOrThrow` (`:787`) becomes a registry
   lookup, so nothing outside it touches the map.
 - **New:** `deliverSessionUpdate`, the sorting, `registerChild`, the blocking rule, the failure cascade over the
-  tree, `subagentPermissionsOrNull` (the request handler's non-suspending lookup of a child's pending permissions),
+  tree, `subagentHolderOrNull` (the request handler's non-suspending lookup of a child's holder and its pending
+  permissions),
   `closeDescendantPermissions` and `removeSessionTree` (see "Close and connection end"). `removeSessionTree`
   replaces `removeSessionHolder`.
 - **Its constructor takes the `GlobalSessionUpdateHandler?`,** and also the `Protocol`, for a subagent's
@@ -1302,18 +1303,31 @@ root can be closed.
      root today.
 
   After that, updates for those ids are unconnected, as a closed root's are today.
-- **Detecting the consumer that the close runs in.** The close checks whether its own job is a consumer's job or
-  below it, through the job hierarchy (`Job.children`): a close that a subagent's `notify` starts runs in its
-  consumer's job tree, directly or in a coroutine that `notify` launched. A marker element in the coroutine context
-  was rejected: an app coroutine that copies the consumer's context into a long-lived scope would carry it and make
-  every close skip that join.
+- **Detecting the consumer that the close runs in.** Either of two signs counts, and the close skips the join of
+  every consumer that matches one:
+  - the close's job is the consumer's job or below it, through the job hierarchy (`Job.children`): a close that a
+    subagent's `notify` starts runs in its consumer's job tree, directly or in a coroutine that `notify` launched,
+    even one whose context lost the element below;
+  - the close's context carries the consumer's `SubagentConsumer` element, which `startConsumer` puts into the
+    consumer's context. It survives `withContext(NonCancellable)`, `withContext(Job())` and
+    `withContext(otherScope.coroutineContext)`, which replace the job: the consumer then waits for the close without
+    reacting to cancellation, and isn't above it any more, so ancestry alone would join it and deadlock.
+
+  A false match only skips a join: a close from an app coroutine that copied the consumer's context into another
+  scope returns before that consumer reacts, and cancels it at the end. A missed one deadlocks, so the check errs
+  that way. Ancestry alone, an earlier version, was rejected for that deadlock. A close in a coroutine of another
+  scope with a context of its own, such as `otherScope.async { close() }`, matches neither sign and joins the
+  consumer: if `notify` awaits it cancellably, the cancellation ends that wait and the close completes; if `notify`
+  waits for it without reacting to cancellation, neither finishes. The `ClientSession.close` KDoc states that
+  limitation.
 - **If the request fails,** nothing is removed, as for a root today and as on the agent side. The permissions stay
   closed, as the root's do, and so does the `closing` flag.
 - **Closed child objects keep their last values.** `subagents` on the closed parent stays as it was. `canCancel`
   becomes `false`, and `cancel()` throws `IllegalStateException`, so a closed child never sends `session/cancel` for
-  an id the agent has dropped. Later `subagent_update`s are not applied to it. A child whose own holder failed is
-  closed the same way, and stays in its parent's `subagents`: a listed child may be closed because its stream failed
-  or its root closed. `operations` stays valid as a link. An update that was already being delivered when `close()`
+  an id the agent has dropped. Later `subagent_update`s are not applied to it. The removal marks every child of the
+  tree closed, also one whose holder had completed. A child whose holder failed, because its own `notify` threw
+  before its `Opened` or an ancestor's holder failed, is closed the same way, and stays in its parent's `subagents`:
+  a listed child may be closed because its stream or an ancestor's failed, or because its root closed. `operations` stays valid as a link. An update that was already being delivered when `close()`
   ran can still reach it once, because the removal doesn't wait for deliveries in the handler's coroutine.
 - **On connection end, nothing more happens.** The child consumers live in the connection scope, so they're
   cancelled, and question 20 rethrows that cancellation rather than failing the holder. `Protocol` cancels the
@@ -1393,11 +1407,13 @@ suspend fun removeSessionTree(rootId: SessionId): Set<SessionId> {
         visit(root)
     }
 
-    val consumers = subtree.mapNotNull { it.stopConsumer() }
-    val ownConsumer = consumers.firstOrNull { it.isSelfOrAncestorOf(currentCoroutineContext()[Job]) }
+    val context = currentCoroutineContext()
+    val consumers = subtree.mapNotNull { holder -> holder.stopConsumer()?.let { holder to it } }
+    // the consumer's SubagentConsumer element, or job ancestry
+    val ownConsumers = consumers.filter { (holder, job) -> context.runsIn(holder, job) }.map { it.second }.toSet()
     try {
-        for (job in consumers) if (job !== ownConsumer) job.cancel()
-        for (job in consumers) if (job !== ownConsumer) job.join()
+        for ((_, job) in consumers) if (job !in ownConsumers) job.cancel()
+        for ((_, job) in consumers) if (job !in ownConsumers) job.join()
     } finally {
         withContext(NonCancellable) {
             root.markRemoved()  // registerChild reads it inside its own update of the map
@@ -1414,7 +1430,7 @@ suspend fun removeSessionTree(rootId: SessionId): Set<SessionId> {
                 if (!holder.session.isCompleted) failSessionHolder(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
             }
         }
-        ownConsumer?.cancel()
+        for (job in ownConsumers) job.cancel()
     }
     return removedIds
 }
@@ -1499,7 +1515,7 @@ elicitation requests are unaffected (see "Side findings" for elicitation).
 |---|---|---|
 | Work starts | `prompt()` → `clearCancellation()` | any live `state` patch → `clearCancellation()` |
 | Client cancels it directly | `cancel()` → `cancelPending()` | `cancel()` → `cancelPending()`, then `clearCancellation()` unless the child has confirmed foreground work |
-| Its work is cancelled, by anyone | n/a | a live `idle` + `cancelled` → `cancelPending()`, then `clearCancellation()` |
+| Its work is cancelled, by anyone | n/a | a live `idle` + `cancelled` → `cancelPending()`, then `clearCancellation()`; before the root's answer it is held back, see `onOpened` below |
 | Root closed | `close()` | `close()` on every descendant before the request; holders removed after it (see "Close and connection end") |
 
 - **Every live `idle(cancelled)` answers the pending requests,** not only one that follows an ancestor's cancel. The
@@ -1549,11 +1565,14 @@ elicitation requests are unaffected (see "Side findings" for elicitation).
   root's close, and not only by what happens after the holder completed. So the `session/request_permission`
   handler takes the child's `SubagentPendingPermissions` from the registry at arrival, in its non-suspending prefix,
   before anything suspends. `Protocol` starts request handlers in arrival order, so that prefix runs before any
-  later notification is sorted. The wait for the holder, `getSessionOrThrow`, moves **inside** the race, as the
-  first step of the `answer` block, and the app's `requestPermissions` runs after it. The app still sees the
-  request only after the holder has completed. A request that is cancelled meanwhile is answered `cancelled`
-  without waiting for the holder. Roots are unchanged: their signal is read at the same point, and their holder is
-  already complete when a prompt can run.
+  later notification is sorted (the `setRequestOutcomeHandlerRaw` KDoc states the guarantee; a response that follows
+  the request isn't ordered against it). The handler takes the child's holder (`subagentHolderOrNull`) and its
+  permissions there, and the wait for **that** holder, `holder.session.await()`, moves **inside** the race, as the
+  first step of the `answer` block, and the app's `requestPermissions` runs after it. It never looks the id up
+  again, so it can't create a speculative root holder for a child's id or reach a holder registered later under
+  the same id. The app still sees the request only after the holder has completed. A request that is cancelled
+  meanwhile is answered `cancelled` without waiting for the holder. Roots are unchanged: their signal is read at the
+  same point, and their holder is already complete when a prompt can run.
 - **`SubagentPendingPermissions`**, an internal class, holds a child's `PendingPermissionCancellation` and an atomic
   `activeWork` flag, and owns the rules above:
 
@@ -1562,6 +1581,7 @@ elicitation requests are unaffected (see "Side findings" for elicitation).
       private val cancellation = PendingPermissionCancellation()
       private val activeWork = atomic(false)
       private val heldActiveWork = atomic(false)  // the latest state that arrived before the root's answer
+      private val heldCancellation = atomic<CompletableDeferred<Unit>?>(null)  // set aside by a held idle(cancelled)
 
       fun onState(state: StateUpdate?, live: Boolean)  // from the sorting, at arrival
       fun onOpened(promote: Boolean)                    // from markOpened, at the root's response
@@ -1573,12 +1593,18 @@ elicitation requests are unaffected (see "Side findings" for elicitation).
 
   - `onState` with `live = true`: `idle(cancelled)` calls `cancelPending()`; every patch, including `state: null`,
     then sets `activeWork` to whether the state is `running` or `requires_action`, **and only then** calls
-    `clearCancellation()`. With `live = false` it only remembers that value, held back as in "History and live
-    updates". "Live" comes from question 18's `answered` flag, which the response hook sets in wire order.
-  - `onOpened(promote)`: after a resume, `activeWork` takes the held-back value; after a load, it stays `false`.
+    `clearCancellation()`. With `live = false` it holds the state's effect back, as in "History and live updates":
+    it remembers that value, and an `idle(cancelled)` sets aside the requests pending at its arrival
+    (`PendingPermissionCancellation.setPendingAside()`: the signal they wait on is replaced by a fresh one, which
+    completes the old one when it completes, so the next cancel or close still answers them). "Live" comes from
+    question 18's `answered` flag, which the response hook sets in wire order.
+  - `onOpened(promote)`: after a resume, `activeWork` takes the held-back value, and the requests set aside by a
+    held `idle(cancelled)` are answered `cancelled`, as that `idle` would have answered them live; a later held
+    state doesn't undo that, and a request that arrived after the `idle` isn't answered by it. After a load,
+    `activeWork` stays `false` and nothing is answered: the requests set aside stay pending like the others.
     `markOpened` calls it on every open descendant as it walks the tree. Requests can be pending then, because a
-    request joins the race when it arrives, also while it waits for its holder. That is safe: `onOpened` only
-    promotes or drops the held value, and leaves the signal that they wait on alone.
+    request joins the race when it arrives, also while it waits for its holder, which completes only after the
+    answer, so the app never sees a request that a held `idle(cancelled)` answers.
   - `cancelByClient()`: `cancelPending()`, then `clearCancellation()` unless `activeWork`.
   - **A cancel racing a state.** The write order in `onState` fixes what each interleaving gives. If the state comes
     first and the cancel after it, the cancel sees the new `activeWork`: with confirmed foreground work, later
@@ -1587,8 +1613,8 @@ elicitation requests are unaffected (see "Side findings" for elicitation).
     `onState` gets the outcome of one of these two orders.
   - `answerPermissionRequest` (an internal extension in `BaseClientSessionRuntime.kt`) runs the race:
     `answerUnlessCancelled(cancelledAnswer)` around "get the child's session, then run its operations'
-    `requestPermissions`". The registry's `subagentPermissionsOrNull(sessionId)` gives the handler the
-    `SubagentPendingPermissions` without suspending.
+    `requestPermissions`". The registry's `subagentHolderOrNull(sessionId)` gives the handler the child's holder,
+    and with it the `SubagentPendingPermissions`, without suspending.
   - **Ownership:** the child's holder creates it at registration, so a load or resume, which needs new holders
     (question 19), starts with a fresh one. The holder keeps a reference for the sorting and `markOpened`, and hands
     it to the `ClientSubagentSession` constructor at setup, for `cancel()` and the permission handler. The holder
@@ -1817,6 +1843,8 @@ cover externally observable behaviour.
   between the two.
 - A history `idle(cancelled)` touches nothing; after a resume, a held-back `running` counts as active work for
   `cancel()`; after a load it doesn't.
+- After a resume, a held-back `idle(cancelled)` answers `cancelled` the requests that arrived before it, at the
+  answer, and not the ones after it; after a load it answers none of them, and they still reach the app.
 - `SubagentPendingPermissions` unit tests for the same rules, without a `Client`.
 - `clearCancellation()` regression tests: a root request from turn 1 still waiting when `prompt()` starts turn 2 is
   answered by `cancel()`; a child request still waiting when `requires_action` arrives is answered by `cancel()`.
@@ -1840,8 +1868,10 @@ cover externally observable behaviour.
 - A child registered while the removal runs stays out of the session map (the `removed` flag), and its subagent
   object is closed.
 - A close that a child's own `notify` starts returns without joining that consumer, and cancels the consumer at the
-  end. A close that an app coroutine starts after copying the consumer's context into another scope joins the
-  consumer as usual.
+  end, also when `notify` waits for it under `withContext(NonCancellable)`, `withContext(Job())` or another scope's
+  context. A close that an app coroutine starts after copying the consumer's context into another scope doesn't
+  join the consumer either. A close in another scope with a fresh context that `notify` awaits joins the consumer,
+  whose cancellation ends that wait.
 - The closed `subagents` list: a child whose setup finishes after the close is dropped, not added.
 - A closed child keeps `subagents`, `state` and `title`; `canCancel` is `false`, and `cancel()` throws without
   sending anything.
@@ -1900,8 +1930,8 @@ cover externally observable behaviour.
     successful response, and sessions reach the client only through callbacks, never through `Client`;
   - the root holder's `closing` flag (set first by `closeDescendantPermissions`, read by `registerChild` after
     `addChild`, kept after a failed close) and its separate `removed` flag (read inside `registerChild`'s update of
-    the map), the close order, own-consumer detection by job ancestry, and that a failed child is marked closed and
-    stays in `subagents`;
+    the map), the close order, own-consumer detection by job ancestry or the consumer's context element, and that a
+    failed child is marked closed and stays in `subagents`;
   - a child's consumer waits for its parent's holder before it switches to synchronous delivery.
 - A release note for the breaking `ClientSessionOperations.notify(SessionEvent)` change, and the samples moved to
   it. It also says that opening a session that is already open, or being opened, now fails for the factory
@@ -2304,6 +2334,11 @@ The design moved through several shapes before landing on the factory-based `ann
     - `onState` sets `activeWork` before it calls `clearCancellation()`, so a cancel that overlaps a state gets the
       outcome of one of the two orders: a state followed by a cancel blocks until a further state, and a cancel
       followed by a state blocks only between the two.
+    - An `idle(cancelled)` that arrives before the root's answer is held back like the other states, and its
+      effect with it: it sets aside the requests pending at its arrival, and `onOpened(promote = true)` answers them
+      `cancelled`, so the outcome is that of the live `idle`. After a load it is dropped like the rest of history,
+      and those requests stay pending like the others. Dropping it after a resume too, the earlier behaviour, let a
+      request of cancelled work reach the app.
     - Keeping the child's signal only in the child object was rejected: patches can arrive before it exists. Giving
       the child object its holder was rejected: it would expose more than it needs.
 25. **Close order on the client. Decided:** before the request, every descendant's permissions are closed; after a
@@ -2315,11 +2350,19 @@ The design moved through several shapes before landing on the factory-based `ann
     - The root's holder has a `closing` flag. `closeDescendantPermissions` sets it first, and `registerChild` reads it
       after `addChild` and closes the new child's permissions, so a child announced during the walk, or after it and
       before the response, gets closed permissions. It stays set after a failed close, as the closed permissions do,
-      and it needs no lock. The removal reads a separate `removed` flag inside the registration's update of the map.
+      and it needs no lock. The removal sets a separate `removed` flag, and the registration reads it inside its own
+      update of the map.
       The removal also closes every subagent's permissions. Narrowing the KDoc to the subagents that existed when the
       close started was rejected: the RFD says the client cleans up the requests together with the parent's.
-    - A close that a child's own `notify` starts doesn't join that child's consumer, and detects it by job ancestry,
-      not through a marker in the context (see "Close and connection end").
+    - A close that a child's own `notify` starts doesn't join that child's consumer. It detects the consumer by job
+      ancestry or by the consumer's `SubagentConsumer` context element, either one: the element survives
+      `withContext(NonCancellable)` and other replaced jobs, and ancestry covers a coroutine below the consumer whose
+      context dropped the element. A false match only skips a join, while a missed one deadlocks (see "Close and
+      connection end").
+    - Detecting it by job ancestry alone was rejected: a close that `notify` waits for under
+      `withContext(NonCancellable)` leaves the consumer's job tree and would join its own consumer forever. Detecting
+      it by the element alone was rejected too: it misses a coroutine below the consumer started with a context of
+      its own.
     - Closing descendants bottom-up, the earlier recommendation, was rejected: the order mattered only for removing
       holders one at a time, and one update removes them all.
     - Closing every session on connection end, also in the earlier recommendation, was rejected: v1 does nothing

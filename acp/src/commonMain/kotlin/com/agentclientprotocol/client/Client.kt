@@ -110,12 +110,14 @@ public class Client(
             /*
              * A subagent's request joins its cancel race before the handler first suspends, so before any later
              * notification is handled: a later `idle` with `cancelled`, a cancel or a close answers it even while it
-             * waits for the subagent's holder.
+             * waits for the subagent's holder. It waits for the holder it found here, whose race it joined, and
+             * never looks the id up again.
              */
-            val subagentPermissions = sessions.subagentPermissionsOrNull(params.sessionId)
-            if (subagentPermissions != null) {
+            val subagent = sessions.subagentHolderOrNull(params.sessionId)
+            val subagentPermissions = subagent?.subagentPermissions
+            if (subagent != null && subagentPermissions != null) {
                 return@setRequestHandler subagentPermissions.answerPermissionRequest(params.toolCall, params.options, params._meta) {
-                    sessions.getSessionOrThrow(params.sessionId)
+                    subagent.session.await()
                 }
             }
 

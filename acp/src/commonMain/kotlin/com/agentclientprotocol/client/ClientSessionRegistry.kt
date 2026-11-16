@@ -24,6 +24,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
+import kotlin.coroutines.CoroutineContext
 
 private val logger = KotlinLogging.logger {}
 
@@ -115,11 +116,12 @@ internal class ClientSessionRegistry(
     }
 
     /**
-     * Returns the pending permission requests of the subagent [sessionId], or `null` if the id has no subagent holder.
-     * Doesn't suspend, so a request handler can join the race before anything else changes the subagent's state.
+     * Returns the holder of the subagent [sessionId], or `null` if the id has no subagent holder. Doesn't suspend or
+     * create a holder, so a request handler can join the subagent's race before anything else changes its state, and
+     * then wait for this holder rather than for whatever the id maps to later.
      */
-    fun subagentPermissionsOrNull(sessionId: SessionId): SubagentPendingPermissions? =
-        _sessions.value.sessions[sessionId]?.takeIf { it.blocksId }?.subagentPermissions
+    fun subagentHolderOrNull(sessionId: SessionId): ClientSessionHolder? =
+        _sessions.value.sessions[sessionId]?.takeIf { it.blocksId && it.parent != null }
 
     /**
      * Removes the root session [rootId] and every subagent below it, after the agent answered its `session/close`.
@@ -127,10 +129,10 @@ internal class ClientSessionRegistry(
      * Each holder first stops taking subagents, top-down, so a late announcement registers no subagent that no close
      * would reach. Then every consumer is stopped and joined, so none starts or delivers afterwards. The joins wait
      * for a subagent's `notify` to react to cancellation. The consumer that the close runs in, because a subagent's
-     * own operations called it there, is not joined, which would never finish, and is cancelled at the end instead.
-     * Then the holders leave the session map in one compare-and-set, each only if its id still maps to it, so no
-     * half-removed tree is visible, and a subagent registered after that compare-and-set stays out of the map. Last,
-     * the permission requests of each subagent are answered `cancelled`, which changes nothing if
+     * own operations called it there, is not joined, which would never finish, and is cancelled at the end instead,
+     * see [runsIn]. Then the holders leave the session map in one compare-and-set, each only if its id still maps to
+     * it, so no half-removed tree is visible, and a subagent registered after that compare-and-set stays out of the
+     * map. Last, the permission requests of each subagent are answered `cancelled`, which changes nothing if
      * [closeDescendantPermissions] ran first, each subagent object is closed, and each subagent holder that hasn't
      * completed fails with a "closed" error, so its waiting requests get the error and its queue goes to
      * [globalSessionUpdateHandler].
@@ -151,13 +153,13 @@ internal class ClientSessionRegistry(
             visit(root)
         }
 
-        val current = currentCoroutineContext()[Job]
-        val consumers = subtree.mapNotNull { holder -> holder.stopConsumer() }
-        val ownConsumer = current?.let { job -> consumers.firstOrNull { it.isSelfOrAncestorOf(job) } }
+        val context = currentCoroutineContext()
+        val consumers = subtree.mapNotNull { holder -> holder.stopConsumer()?.let { holder to it } }
+        val ownConsumers = consumers.filter { (holder, job) -> context.runsIn(holder, job) }.map { it.second }.toSet()
         val removed = mutableSetOf<SessionId>()
         try {
-            for (job in consumers) if (job !== ownConsumer) job.cancel()
-            for (job in consumers) if (job !== ownConsumer) job.join()
+            for ((_, job) in consumers) if (job !in ownConsumers) job.cancel()
+            for ((_, job) in consumers) if (job !in ownConsumers) job.join()
         } finally {
             withContext(NonCancellable) {
                 /*
@@ -187,15 +189,26 @@ internal class ClientSessionRegistry(
                     if (!holder.session.isCompleted) failSessionHolder(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
                 }
             }
-            ownConsumer?.cancel()
+            for (job in ownConsumers) job.cancel()
         }
         return removed
     }
 
     /**
-     * Whether [job] is this job or a job below it. The close that a subagent's `notify` calls runs below its consumer's
-     * job, directly or in a child coroutine that `notify` started. A coroutine that only copied the consumer's context
-     * into another scope is not below it, and its close joins the consumer like any other.
+     * Whether the close with this context may run in [consumer], the consumer of [holder]'s queue, so joining it could
+     * wait for itself.
+     *
+     * Either sign counts. The close runs below the consumer's job when the subagent's `notify` calls it directly or in
+     * a coroutine it started, even one whose context lost the [SubagentConsumer] element. The element is still there
+     * when `notify` replaced the job, as `withContext(NonCancellable)` does: the consumer then waits for the close
+     * without reacting to its cancellation, and is no longer above it. A false match only skips a join, for example
+     * for a coroutine that copied the context into another scope, while a missed one deadlocks.
+     */
+    private fun CoroutineContext.runsIn(holder: ClientSessionHolder, consumer: Job): Boolean =
+        this[SubagentConsumer]?.holder === holder || this[Job]?.let { consumer.isSelfOrAncestorOf(it) } == true
+
+    /**
+     * Whether [job] is this job or a job below it.
      */
     private fun Job.isSelfOrAncestorOf(job: Job): Boolean = this === job || children.any { it.isSelfOrAncestorOf(job) }
 

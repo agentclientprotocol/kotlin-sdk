@@ -77,6 +77,14 @@ public interface ClientSession : BaseClientSession {
      * [SubagentOperations.createSubagentOperations] call in progress for such a subagent reacts to the cancellation.
      * If the request fails, nothing is removed.
      *
+     * Such a call may close the root itself. Then this function doesn't wait for that subagent's delivery, which
+     * would wait for itself, and cancels it before returning. It recognizes the call when this function runs in the
+     * call's coroutine or in one below it, or in a coroutine that kept the call's context elements, as
+     * `withContext(NonCancellable)` does, so a coroutine of another scope that copied them doesn't wait either. A
+     * close in a coroutine of another scope with a context of its own, such as `scope.async { session.close() }`, waits
+     * like any other: if the call waits for that close without reacting to cancellation, for example under
+     * `NonCancellable`, neither of them ever finishes.
+     *
      * Only available if the agent advertises the `session.close` capability.
      *
      * Corresponds to the [com.agentclientprotocol.model.AcpMethod.AgentMethods.V1.SessionClose]

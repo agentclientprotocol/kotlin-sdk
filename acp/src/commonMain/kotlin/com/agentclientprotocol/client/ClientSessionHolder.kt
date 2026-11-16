@@ -28,6 +28,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 
 private val logger = KotlinLogging.logger {}
 
@@ -61,6 +63,15 @@ internal sealed class QueuedItem {
      * @property response the answer, for a root; `null` for a subagent
      */
     class Opened(val response: AcpCreatedSessionResponse?) : QueuedItem()
+}
+
+/**
+ * Marks the coroutine of the consumer of [holder]'s queue, and everything that inherits its context, so a close of the
+ * root that the subagent's own operations start there can tell that it runs in that consumer, see
+ * [ClientSessionRegistry.removeSessionTree].
+ */
+internal class SubagentConsumer(val holder: ClientSessionHolder) : AbstractCoroutineContextElement(Key) {
+    companion object Key : CoroutineContext.Key<SubagentConsumer>
 }
 
 /**
@@ -330,12 +341,12 @@ internal class ClientSessionHolder(
 
     /**
      * Starts the consumer [block] of this subagent's queue in [scope], unless [stopConsumer] has run: a holder that
-     * failed or closed gets no consumer.
+     * failed or closed gets no consumer. The consumer's context has a [SubagentConsumer] of this holder.
      *
      * @return `false` if [stopConsumer] has run, so no consumer started
      */
     fun startConsumer(scope: CoroutineScope, block: suspend CoroutineScope.() -> Unit): Boolean {
-        val job = scope.launch(start = CoroutineStart.LAZY, block = block)
+        val job = scope.launch(SubagentConsumer(this), start = CoroutineStart.LAZY, block = block)
         val started = consumer.compareAndSet(ConsumerState.NotStarted, ConsumerState.Running(job))
         if (started) job.start() else job.cancel()
         return started

@@ -34,11 +34,12 @@ import kotlinx.atomicfu.atomic
  * meanwhile, see [cancel].
  *
  * The client never prompts a subagent, so there is no prompt, mode, model, configuration or close here. A subagent is
- * closed together with its root session, see [ClientSession.close]. It is also closed when its own stream fails: when
- * its [ClientSessionOperations.notify] throws before its [com.agentclientprotocol.common.SessionEvent.Opened], its
- * later updates go to the [GlobalSessionUpdateHandler] and the agent's requests for it fail. A closed subagent stays in
- * its parent's [BaseClientSession.subagents] with the values it had: [canCancel] is `false`, [cancel] throws, and
- * later `subagent_update`s don't change it. Every update of the subagent reaches its
+ * closed together with its root session, see [ClientSession.close], whether or not it has finished opening. It is also
+ * closed when its stream fails before it has finished opening: when its own [ClientSessionOperations.notify] throws
+ * before its [com.agentclientprotocol.common.SessionEvent.Opened], or when the stream of a session above it fails, as
+ * when the root's opening fails. Its later updates then go to the [GlobalSessionUpdateHandler] and the agent's
+ * requests for it fail. A closed subagent stays in its parent's [BaseClientSession.subagents] with the values it had:
+ * [canCancel] is `false`, [cancel] throws, and later `subagent_update`s don't change it. Every update of the subagent reaches its
  * [operations] through [ClientSessionOperations.notify], including `config_option_update` and `current_mode_update`,
  * and none of them changes a root session's mode or options.
  *

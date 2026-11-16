@@ -408,6 +408,39 @@ class ClientSubagentSessionsTest {
     }
 
     @Test
+    fun `an idle cancelled before the answer answers the requests pending at its arrival after a resume and not after a load`() =
+        withClient { client, agent ->
+            for (opening in allOpenings) {
+                val world = SubagentWorld()
+                val root = SessionId("root-$opening")
+                val child = SessionId("child-$opening")
+                val open = async { opening.open(client, root, parameters, world) }
+                val request = agent.receiveRequest(opening.method)
+                agent.sendUpdate(root, announce(child, state = StateUpdate.Running()))
+                val cancelledWork = agent.sendRequest(AcpMethod.ClientMethods.V1.SessionRequestPermission, permissionRequest(child, "cancelled-work"))
+                agent.sendUpdate(root, announce(child, state = StateUpdate.Idle(IdleStopReason.Cancelled)))
+                // Arrives after the cancelled state, as a live request would reach the app then.
+                val later = agent.sendRequest(AcpMethod.ClientMethods.V1.SessionRequestPermission, permissionRequest(child, "later"))
+                agent.awaitHandled()
+                assertNull(agent.responseOrNull(cancelledWork), "$opening: the request waits for the root's answer")
+
+                opening.answer(agent, request, root)
+                open.await()
+
+                val answer = decode(agent.awaitResponse(cancelledWork), AcpMethod.ClientMethods.V1.SessionRequestPermission.responseSerializer)
+                assertEquals(TreeOperations.ALLOWED, decode(agent.awaitResponse(later), AcpMethod.ClientMethods.V1.SessionRequestPermission.responseSerializer), "$opening")
+                val reached = world.awaitOperations(child).permissionRequests.value.map { it.toolCallId.value }
+                if (opening.replayRequested) {
+                    assertEquals(TreeOperations.ALLOWED, answer, "$opening: the history's idle cancels nothing")
+                    assertEquals(setOf("cancelled-work", "later"), reached.toSet(), "$opening")
+                } else {
+                    assertEquals(RequestPermissionResponse(RequestPermissionOutcome.Cancelled), answer, "$opening: the held idle answers it at the answer")
+                    assertEquals(listOf("later"), reached, "$opening")
+                }
+            }
+        }
+
+    @Test
     fun `a subagent's permission requests follow the wire order of its state, not the parent's delivery`() = withClient { client, agent ->
         val world = SubagentWorld()
         val root = SessionId("root")

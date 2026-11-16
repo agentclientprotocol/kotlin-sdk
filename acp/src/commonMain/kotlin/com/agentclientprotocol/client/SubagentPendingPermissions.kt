@@ -6,6 +6,7 @@ import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.IdleStopReason
 import com.agentclientprotocol.model.StateUpdate
 import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.CompletableDeferred
 
 /**
  * Answers a subagent's pending permission requests with `cancelled` when its work is cancelled, by the client or by
@@ -36,6 +37,12 @@ internal class SubagentPendingPermissions {
      */
     private val heldActiveWork = atomic(false)
 
+    /*
+     * The requests that were pending when the latest `idle` with `cancelled` arrived before the parent's answer, set
+     * aside from the later ones. Only the arrival path writes it, in [onState] and [onOpened].
+     */
+    private val heldCancellation = atomic<CompletableDeferred<Unit>?>(null)
+
     /**
      * Follows a `state` patch of this subagent, at its arrival in the parent's stream.
      *
@@ -45,20 +52,24 @@ internal class SubagentPendingPermissions {
      *
      * A live `idle` with stop reason `cancelled` answers the pending requests, whoever cancelled the work. Then every
      * live patch lets later requests reach the app again, and records whether the state confirms foreground work.
-     * A patch that isn't live is history, or current but not yet in effect: it only holds that value back for
-     * [onOpened].
+     * A patch that isn't live is history, or current but not yet in effect: it only holds its effect back for
+     * [onOpened]. For an `idle` with `cancelled` that effect is the answer to the requests pending at its arrival,
+     * so they are set aside from the requests that arrive later.
      *
      * @param state the patch's `state`, `null` for an unconfirmed state
      * @param live whether the parent's answer had arrived before this patch, so the state is current
      */
     fun onState(state: StateUpdate?, live: Boolean) {
         val confirmsWork = state is StateUpdate.Running || state is StateUpdate.RequiresAction
+        val cancelsWork = state is StateUpdate.Idle && state.stopReason == IdleStopReason.Cancelled
         if (!live) {
             heldActiveWork.value = confirmsWork
+            // Completing the signal set aside here also completes any set aside before it, so only the latest is kept.
+            if (cancelsWork) cancellation.setPendingAside()?.let { heldCancellation.value = it }
             return
         }
 
-        if (state is StateUpdate.Idle && state.stopReason == IdleStopReason.Cancelled) cancellation.cancelPending()
+        if (cancelsWork) cancellation.cancelPending()
         /*
          * Record the work before clearing, so a concurrent [cancelByClient] that sees the old value has its block
          * cleared by this patch, and one that sees the new value runs after the clear. Either way the outcome is
@@ -69,17 +80,22 @@ internal class SubagentPendingPermissions {
     }
 
     /**
-     * Resolves the value that [onState] held back, when the parent's answer arrives.
+     * Resolves what [onState] held back, when the parent's answer arrives.
      *
      * Requests may be pending then, because a request joins the race when it arrives, also while it waits for the
-     * opening. That is safe: this only promotes or drops the held value and leaves the signal they wait on alone.
+     * opening. After a call that replayed no history, the held states were current: the requests set aside by an
+     * `idle` with `cancelled` are answered `cancelled` now, as that `idle` would have answered them live, and the
+     * latest held state decides whether foreground work is confirmed. After a load they were history: nothing is
+     * answered, the requests set aside stay pending like the others, so a later cancel or close still answers them,
+     * and no foreground work is confirmed.
      *
-     * @param promote `true` after a call that replayed no history: the held value was current, so it takes effect.
-     * `false` after a load: it was history, so no foreground work is confirmed.
+     * @param promote `true` after a call that replayed no history, `false` after a load
      */
     fun onOpened(promote: Boolean) {
         val held = heldActiveWork.getAndSet(false)
         activeWork.value = promote && held
+        val setAside = heldCancellation.getAndSet(null)
+        if (promote) setAside?.complete(Unit)
     }
 
     /**

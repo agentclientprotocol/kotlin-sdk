@@ -35,6 +35,7 @@ import com.agentclientprotocol.rpc.JsonRpcSuccessResponse
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -414,7 +415,7 @@ class ClientSubagentCloseTest {
     }
 
     @Test
-    fun `a close from a coroutine that copied a subagent's notify context still waits for that subagent`() = withConnection { c ->
+    fun `a close from a coroutine that copied a subagent's notify context cancels that subagent without waiting for it`() = withConnection { c ->
         val world = SubagentWorld()
         val rootSession = CompletableDeferred<ClientSession>()
         val closed = CompletableDeferred<Result<CloseSessionResponse>>()
@@ -442,12 +443,76 @@ class ClientSubagentCloseTest {
         c.agent.sendUpdate(root, announce(child))
         c.agent.answer(c.agent.receiveRequest(CLOSE.methodName), CLOSE.responseSerializer, CloseSessionResponse())
 
-        // A close that took the coroutine for the consumer itself would cancel it only after removing the tree.
-        assertTrue(treeRegisteredAtCancel.await(), "the close cancels the consumer to join it, before it removes the tree")
-        assertFalse(closed.isCompleted, "the close waits for the subagent's notify")
-        releaseNotify.complete(Unit)
+        // The copied context looks like the consumer's own, which only costs the join.
         assertEquals(CloseSessionResponse(), withTimeout(5.seconds) { closed.await() }.getOrThrow())
+        assertFalse(treeRegisteredAtCancel.await(), "the consumer is cancelled after the tree is removed")
         assertFailsWith<IllegalStateException> { c.client.getSession(root) }
+        releaseNotify.complete(Unit)
+    }
+
+    @Test
+    fun `a close that a subagent's own notify waits for under a replaced job does not wait for itself`() {
+        val variants = listOf<Pair<String, suspend (CoroutineScope, suspend () -> CloseSessionResponse) -> CloseSessionResponse>>(
+            "NonCancellable" to { _, close -> withContext(NonCancellable) { close() } },
+            "the context of another scope" to { appScope, close -> withContext(appScope.coroutineContext) { close() } },
+            "a new job" to { _, close -> withContext(Job()) { close() } },
+        )
+        for ((variant, closeIn) in variants) withConnection { c ->
+            val world = SubagentWorld()
+            val rootSession = CompletableDeferred<ClientSession>()
+            val closed = CompletableDeferred<Result<CloseSessionResponse>>()
+            val appScope: CoroutineScope = this
+            world.configure = { operations ->
+                if (operations.id == child) operations.onNotify = { event, _ ->
+                    if (event is SessionEvent.Opened) {
+                        // The consumer waits for the close without reacting to the cancellation of its own job.
+                        closed.complete(runCatching { closeIn(appScope) { rootSession.await().close() } })
+                    }
+                }
+            }
+            rootSession.complete(openLive(c, root, world))
+            c.agent.sendUpdate(root, announce(child))
+            c.agent.answer(c.agent.receiveRequest(CLOSE.methodName), CLOSE.responseSerializer, CloseSessionResponse())
+
+            assertEquals(CloseSessionResponse(), withTimeout(5.seconds) { closed.await() }.getOrThrow(), variant)
+            for (id in listOf(root, child)) {
+                c.agent.sendUpdate(id, text("after-$id"))
+                awaitUnconnected(c, id, text("after-$id"))
+            }
+        }
+    }
+
+    @Test
+    fun `a close in another scope that a subagent's notify awaits cancels that notify and completes`() = withConnection { c ->
+        val world = SubagentWorld()
+        val rootSession = CompletableDeferred<ClientSession>()
+        val closing = CompletableDeferred<Deferred<CloseSessionResponse>>()
+        val notifyFailure = CompletableDeferred<Throwable>()
+        val appScope: CoroutineScope = this
+        world.configure = { operations ->
+            if (operations.id == child) operations.onNotify = { event, _ ->
+                if (event is SessionEvent.Opened) {
+                    // A fresh context: neither the job nor the elements of the consumer.
+                    val close = appScope.async { rootSession.await().close() }
+                    closing.complete(close)
+                    try {
+                        close.await()
+                    } catch (t: Throwable) {
+                        notifyFailure.complete(t)
+                        throw t
+                    }
+                }
+            }
+        }
+        rootSession.complete(openLive(c, root, world))
+        c.agent.sendUpdate(root, announce(child))
+        c.agent.answer(c.agent.receiveRequest(CLOSE.methodName), CLOSE.responseSerializer, CloseSessionResponse())
+
+        // The close joins the consumer like any other, and the cancellation ends the notify's wait.
+        assertEquals(CloseSessionResponse(), withTimeout(5.seconds) { closing.await().await() })
+        assertIs<CancellationException>(notifyFailure.await())
+        c.agent.sendUpdate(child, text("after"))
+        awaitUnconnected(c, child, text("after"))
     }
 
     @Test

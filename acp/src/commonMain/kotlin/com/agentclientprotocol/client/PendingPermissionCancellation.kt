@@ -35,6 +35,25 @@ internal class PendingPermissionCancellation {
     }
 
     /**
+     * Sets the requests pending now aside: completing the returned signal answers them `cancelled`, and not the
+     * requests that arrive from now on. Until then they stay pending as before, so the next [cancelPending] or [close]
+     * answers them too.
+     *
+     * @return the signal of the requests set aside, or `null` if the signal is completed, so no request waits on it
+     */
+    fun setPendingAside(): CompletableDeferred<Unit>? {
+        while (true) {
+            val pending = signal.value
+            if (pending.isCompleted) return null
+            val next = CompletableDeferred<Unit>()
+            if (signal.compareAndSet(pending, next)) {
+                next.invokeOnCompletion { pending.complete(Unit) }
+                return pending
+            }
+        }
+    }
+
+    /**
      * Answers every pending and every later request with `cancelled`, permanently.
      */
     fun close() {

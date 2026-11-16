@@ -302,6 +302,32 @@ class ReadLoopOrderingTest {
     }
 
     @Test
+    fun requestHandlerRunsUntilItSuspendsBeforeAFollowingNotificationIsHandled() = test { protocol, transport ->
+        val events = ConcurrentLinkedQueue<String>()
+        val gate = CompletableDeferred<Unit>()
+        val notified = CompletableDeferred<Unit>()
+        protocol.setRequestHandlerRaw(method) {
+            events += "request"
+            gate.await()
+            events += "request resumed"
+            JsonNull
+        }
+        protocol.setNotificationHandlerRaw(rawNotification) {
+            events += "notification"
+            notified.complete(Unit)
+        }
+
+        transport.receive(TransportFrame.Single(JsonRpcRequest(RequestId.create(1), method.methodName)))
+        transport.receive(rawNotification("after"))
+        notified.await()
+
+        assertEquals(listOf("request", "notification"), events.toList())
+        gate.complete(Unit)
+        transport.sent.receive()
+        assertEquals(listOf("request", "notification", "request resumed"), events.toList())
+    }
+
+    @Test
     fun aDispatcherInTheAdditionalContextLetsAFollowingResponseOvertakeTheHandler() = test { protocol, transport ->
         val events = ConcurrentLinkedQueue<String>()
         val held = HeldDispatcher()

@@ -306,6 +306,82 @@ class SubagentPendingPermissionsTest {
     }
 
     @Test
+    fun `a held back idle with cancelled answers the requests pending at its arrival when the parent's answer follows a resume`() =
+        runTest {
+            val permissions = SubagentPendingPermissions()
+            permissions.onState(StateUpdate.Running(), live = false)
+            val first = request(permissions)
+            permissions.onState(StateUpdate.Idle(stopReason = IdleStopReason.Cancelled), live = false)
+            val second = request(permissions)
+            permissions.onState(StateUpdate.Idle(stopReason = IdleStopReason.Cancelled), live = false)
+            val later = request(permissions)
+            first.assertWaitingInApp("before the answer")
+            second.assertWaitingInApp("before the answer")
+
+            permissions.onOpened(promote = true)
+
+            first.assertCancelledInApp("set aside by the first idle")
+            second.assertCancelledInApp("set aside by the second idle")
+            later.assertWaitingInApp("arrived after the last idle")
+            later.assertAnsweredByUser()
+        }
+
+    @Test
+    fun `a held back idle with cancelled still answers its requests after a later held back state`() = runTest {
+        val permissions = SubagentPendingPermissions()
+        val pending = request(permissions)
+        permissions.onState(StateUpdate.Idle(stopReason = IdleStopReason.Cancelled), live = false)
+        permissions.onState(StateUpdate.Running(), live = false)
+        val later = request(permissions)
+
+        permissions.onOpened(promote = true)
+
+        pending.assertCancelledInApp()
+        later.assertWaitingInApp("the work that runs again")
+        // The latest held state, running, is promoted as before.
+        permissions.cancelByClient()
+        later.assertCancelledInApp()
+        request(permissions).assertCancelledWithoutApp("the promoted running confirms work")
+    }
+
+    @Test
+    fun `a held back idle with cancelled is dropped after a load and its requests stay answerable`() = runTest {
+        for (end in listOf("cancel by the client", "close", "live idle with cancelled")) {
+            val permissions = SubagentPendingPermissions()
+            val pending = request(permissions)
+            permissions.onState(StateUpdate.Idle(stopReason = IdleStopReason.Cancelled), live = false)
+            val later = request(permissions)
+
+            permissions.onOpened(promote = false)
+            pending.assertWaitingInApp("$end: the history's idle answers nothing")
+            later.assertWaitingInApp(end)
+
+            when (end) {
+                "cancel by the client" -> permissions.cancelByClient()
+                "close" -> permissions.close()
+                else -> permissions.onState(StateUpdate.Idle(stopReason = IdleStopReason.Cancelled), live = true)
+            }
+            pending.assertCancelledInApp(end)
+            later.assertCancelledInApp(end)
+        }
+    }
+
+    @Test
+    fun `requests set aside by a held back idle are still answered by an earlier cancel or close`() = runTest {
+        for (end in listOf("cancel by the client", "close")) {
+            val permissions = SubagentPendingPermissions()
+            val pending = request(permissions)
+            permissions.onState(StateUpdate.Idle(stopReason = IdleStopReason.Cancelled), live = false)
+
+            if (end == "close") permissions.close() else permissions.cancelByClient()
+
+            pending.assertCancelledInApp(end)
+            permissions.onOpened(promote = true)
+            request(permissions).let { if (end == "close") it.assertCancelledWithoutApp(end) else it.assertWaitingInApp(end) }
+        }
+    }
+
+    @Test
     fun `a live state after the parent's answer replaces the promoted value`() = runTest {
         val permissions = SubagentPendingPermissions()
         permissions.onState(StateUpdate.Running(), live = false)

@@ -39,6 +39,11 @@ public open class ProtocolOptions(
  * Communication protocol implementation, implementing [RpcMethodsOperations] and handling JSON-RPC communication over a transport.
  *
  * This class manages request/response correlation, notifications, and error handling.
+ *
+ * Incoming requests and notifications are dispatched in arrival order to handlers that run one at a time on a single
+ * thread. Each handler runs until it first suspends before the handler of a later message starts, while responses are
+ * handled directly in the read loop; see [setNotificationHandlerRaw] and [setRequestOutcomeHandlerRaw] for exactly
+ * what that orders.
  */
 public class Protocol(
     parentScope: CoroutineScope,

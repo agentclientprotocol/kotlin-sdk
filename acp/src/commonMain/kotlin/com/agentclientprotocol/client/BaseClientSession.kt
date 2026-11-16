@@ -37,8 +37,8 @@ public sealed interface BaseClientSession {
      * them. A subagent of a subagent is in that subagent's list.
      *
      * The list only grows: a subagent whose operations couldn't be created is never in it, and it stays as it was
-     * after this session is closed. A listed subagent may be closed, because its own stream failed or its root
-     * session was closed, see [ClientSubagentSession]. A `subagent_update` whose subagent is not in the list is one
+     * after this session is closed. A listed subagent may be closed, because its own stream or that of a session
+     * above it failed, or its root session was closed, see [ClientSubagentSession]. A `subagent_update` whose subagent is not in the list is one
      * that the client didn't accept: the setup of the subagent failed, or the update was rejected because the agent
      * announced an id that another session owns.
      *

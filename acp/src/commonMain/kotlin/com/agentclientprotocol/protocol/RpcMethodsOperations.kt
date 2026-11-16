@@ -21,6 +21,13 @@ public interface RpcMethodsOperations {
      * and cleanup to be scheduled after the initial response.
      * This will override any existing handler for the same method.
      * Prefer typed [setRequestOutcomeHandler] over this method.
+     *
+     * Ordering: incoming request handlers start in arrival order, on the same single thread as the notification
+     * handlers, see [setNotificationHandlerRaw]. A request handler runs until it first suspends, or returns, before the
+     * handler of any request or notification that arrives after it, and so before any message that arrives after a
+     * later notification is handled. The read loop doesn't wait for the handler otherwise: a response that arrives
+     * right after a request may be handled, with its response hook, before that request's handler starts. As for
+     * notifications, this holds only if [additionalContext] contains no dispatcher.
      */
     public fun setRequestOutcomeHandlerRaw(
         method: AcpMethod.AcpRequestResponseMethod<*, *>,
@@ -32,6 +39,8 @@ public interface RpcMethodsOperations {
      * Set a simple handler for a request method that only produces [JsonElement] result without any additional work or cleanup.
      * This will override any existing handler for the same method.
      * Prefer typed [setRequestHandler] over this method.
+     *
+     * The handler starts in arrival order as described on [setRequestOutcomeHandlerRaw].
      */
     public fun setRequestHandlerRaw(
         method: AcpMethod.AcpRequestResponseMethod<*, *>,
