@@ -217,6 +217,67 @@ class ClientSessionTest {
             assertEquals(0, user.calls.get())
         }
 
+    @Test
+    fun `close answers a permission request that was pending when another prompt started`() =
+        withV2Client { client, agent, scope ->
+            val user = WaitingUser()
+            val sessionId = SessionId("session")
+            agent.onNewSession(sessionId) { }
+            agent.onPrompt(MessageId("user-1")) { }
+            val session = client.newSession(cwd = ".", operations = user)
+            session.prompt(listOf(ContentBlock.Text("first")))
+            val permission = agent.requestPermission(sessionId)
+            user.started.await()
+
+            // v2 allows prompting while the agent awaits a permission answer.
+            session.prompt(listOf(ContentBlock.Text("second")))
+            val closing = scope.async { session.close() }
+            val closeRequest = agent.nextRequest(AcpMethod.AgentMethods.V2.SessionClose)
+
+            // This agent never sends `$/cancel_request`.
+            assertEquals(RequestPermissionOutcome.Cancelled, agent.permissionOutcome(permission))
+            assertTrue(user.cleanedUp.isCompleted)
+            agent.respond(closeRequest, AcpMethod.AgentMethods.V2.SessionClose.responseSerializer, CloseSessionResponse())
+            closing.await()
+        }
+
+    @Test
+    fun `cancel answers a permission request that was pending when another prompt started`() =
+        withV2Client { client, agent, _ ->
+            val user = WaitingUser()
+            val sessionId = SessionId("session")
+            agent.onNewSession(sessionId) { }
+            agent.onPrompt(MessageId("user-1")) { }
+            val session = client.newSession(cwd = ".", operations = user)
+            session.prompt(listOf(ContentBlock.Text("first")))
+            val permission = agent.requestPermission(sessionId)
+            user.started.await()
+
+            session.prompt(listOf(ContentBlock.Text("second")))
+            session.cancel()
+
+            assertEquals(RequestPermissionOutcome.Cancelled, agent.permissionOutcome(permission))
+            assertTrue(user.cleanedUp.isCompleted)
+        }
+
+    @Test
+    fun `a prompt after a cancel lets the app answer new permission requests`() =
+        withV2Client { client, agent, _ ->
+            val user = WaitingUser()
+            val sessionId = SessionId("session")
+            agent.onNewSession(sessionId) { }
+            agent.onPrompt(MessageId("user-1")) { }
+            val session = client.newSession(cwd = ".", operations = user)
+            session.cancel()
+
+            session.prompt(listOf(ContentBlock.Text("after cancel")))
+            val permission = agent.requestPermission(sessionId)
+            user.started.await()
+            user.answer.complete(ALLOWED)
+
+            assertEquals(ALLOWED.outcome, agent.permissionOutcome(permission))
+        }
+
     /**
      * The user message arrives before the receipt that names it, so the session must still deliver it.
      */

@@ -14,16 +14,18 @@ import kotlinx.coroutines.selects.select
  * them. The race is the only answering path, which keeps exactly one response per request.
  *
  * The signal stays completed until the next turn calls [startTurn], so a request that arrives in between is
- * answered `cancelled` without reaching the app. After [close] the signal is never replaced.
+ * answered `cancelled` without reaching the app. A signal that was not completed is kept, so requests still pending
+ * from an earlier turn, which v2 allows while a new prompt starts, are answered by a later cancel or close too.
+ * After [close] the signal is never replaced.
  */
 internal class PendingPermissionCancellation {
     private val signal = atomic(CompletableDeferred<Unit>())
 
     /**
-     * Gives a new turn a fresh signal, since a cancel belongs to the turn it interrupted.
+     * Replaces a signal completed by a cancel, since a cancel belongs to the turn it interrupted.
      */
     fun startTurn() {
-        signal.update { current -> if (current === CLOSED) current else CompletableDeferred() }
+        signal.update { current -> if (current === CLOSED || !current.isCompleted) current else CompletableDeferred() }
     }
 
     /**
