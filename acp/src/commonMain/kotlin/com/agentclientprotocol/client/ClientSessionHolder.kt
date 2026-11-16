@@ -114,6 +114,8 @@ internal class ClientSessionHolder(
     // `null` until an opening call claims the holder, then that call's replay request and parameters.
     private val opening = atomic<Opening?>(null)
     private val answered = atomic(false)
+    private val closing = atomic(false)
+    private val removed = atomic(false)
     // The delivery of the last update that missed the closed queue, see [handleOrQueue].
     private val lateDeliveries = atomic<Job>(Job().apply { complete() })
     private val children = atomic(Children())
@@ -190,6 +192,33 @@ internal class ClientSessionHolder(
      * Whether [markOpened] has put the marker into the queue. Only a root has it.
      */
     val isAnswered: Boolean get() = answered.value
+
+    /**
+     * Whether the close of this root has started, see [markClosing]. Only a root has it. It stays set if the close
+     * fails.
+     */
+    val isClosing: Boolean get() = closing.value
+
+    /**
+     * Whether the removal of this root's tree from the session map has started, see [markRemoved]. Only a root has it.
+     */
+    val isRemoved: Boolean get() = removed.value
+
+    /**
+     * Records that the close of this root has started, before the subagents' permissions are closed, so a subagent
+     * registered from now on has its permissions closed by its registration.
+     */
+    fun markClosing() {
+        closing.value = true
+    }
+
+    /**
+     * Records that this root's tree is about to leave the session map, so a subagent registered from now on stays out
+     * of it.
+     */
+    fun markRemoved() {
+        removed.value = true
+    }
 
     /**
      * The effective working directory of this holder's session, for the subagents announced in it.
@@ -302,10 +331,14 @@ internal class ClientSessionHolder(
     /**
      * Starts the consumer [block] of this subagent's queue in [scope], unless [stopConsumer] has run: a holder that
      * failed or closed gets no consumer.
+     *
+     * @return `false` if [stopConsumer] has run, so no consumer started
      */
-    fun startConsumer(scope: CoroutineScope, block: suspend CoroutineScope.() -> Unit) {
+    fun startConsumer(scope: CoroutineScope, block: suspend CoroutineScope.() -> Unit): Boolean {
         val job = scope.launch(start = CoroutineStart.LAZY, block = block)
-        if (consumer.compareAndSet(ConsumerState.NotStarted, ConsumerState.Running(job))) job.start() else job.cancel()
+        val started = consumer.compareAndSet(ConsumerState.NotStarted, ConsumerState.Running(job))
+        if (started) job.start() else job.cancel()
+        return started
     }
 
     /**
@@ -481,9 +514,17 @@ internal class ClientSessionHolder(
         if (parent.isFailed) return
 
         queue.close()
-        for (item in queue) {
-            currentCoroutineContext().ensureActive()
-            session.executeWithSession { deliverLive(item, session.operations, deliver) }
+        /*
+         * Check for cancellation before taking each item, and nowhere between taking it and handing it to the
+         * operations, so one loop runs in one context: an item that a stopped consumer took would reach neither the
+         * session nor the drain of [failAndDrainQueue].
+         */
+        session.executeWithSession {
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                val item = queue.tryReceive().getOrNull() ?: break
+                deliverLive(item, session.operations, deliver)
+            }
         }
         currentCoroutineContext().ensureActive()
         sessionDeferred.complete(session)

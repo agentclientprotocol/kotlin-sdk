@@ -315,22 +315,102 @@ class ClientSubagentCloseTest {
     }
 
     @Test
-    fun `the removal answers the permission requests of a subagent announced after the close started`() = withConnection { c ->
+    fun `a subagent announced after the close started has its permission requests answered before the response`() = withConnection { c ->
         val world = SubagentWorld()
         val late = SessionId("late")
-        world.configure = { operations -> if (operations.id == late) operations.answerPermission = { awaitCancellation() } }
+        val lateGrandchild = SessionId("late-grandchild")
+        world.configure = { operations -> operations.answerPermission = { awaitCancellation() } }
         val session = openLive(c, root, world)
+        c.agent.sendUpdate(root, announce(child))
+        world.awaitOperations(child).awaitEvent(TreeOperations.OPENED)
 
         val closing = async { session.close() }
         val request = c.agent.receiveRequest(CLOSE.methodName)
-        // Announced after the close started, so the start of the close didn't answer its requests.
+        // Announced after the start of the close had answered the requests of the subagents it knew.
         c.agent.sendUpdate(root, announce(late))
-        val permission = c.agent.sendRequest(PERMISSION, permissionRequest(late, "late"))
-        world.awaitOperations(late).awaitPermissionRequests(1)
+        c.agent.sendUpdate(child, announce(lateGrandchild))
+        for (id in listOf(late, lateGrandchild)) {
+            world.awaitOperations(id).awaitEvent(TreeOperations.OPENED)
+            val permission = c.agent.sendRequest(PERMISSION, permissionRequest(id, "late-$id"))
+            assertEquals(CANCELLED, decodePermission(c.agent.awaitResponse(permission)), "$id")
+            assertTrue(world.awaitOperations(id).permissionRequests.value.isEmpty(), "$id: the request doesn't reach the app")
+        }
 
         c.agent.answer(request, CLOSE.responseSerializer, CloseSessionResponse())
         closing.await()
-        assertEquals(CANCELLED, decodePermission(c.agent.awaitResponse(permission)))
+    }
+
+    @Test
+    fun `close answers a permission request that waits for its subagent's setup`() = withConnection { c ->
+        val world = SubagentWorld()
+        val factoryEntered = CompletableDeferred<Unit>()
+        val releaseFactory = CompletableDeferred<Unit>()
+        world.configure = { operations ->
+            if (operations.id == root) operations.createChild = { id ->
+                factoryEntered.complete(Unit)
+                releaseFactory.await()
+                world.create(id)
+            }
+        }
+        val session = openLive(c, root, world)
+        c.agent.sendUpdate(root, announce(child))
+        factoryEntered.await()
+        val permission = c.agent.sendRequest(PERMISSION, permissionRequest(child, "waiting"))
+        c.agent.awaitHandled()
+        assertNull(c.agent.responseOrNull(permission), "the request waits for the subagent's setup")
+
+        val closing = async { session.close() }
+        val request = c.agent.receiveRequest(CLOSE.methodName)
+        assertEquals(CANCELLED, decodePermission(c.agent.awaitResponse(permission)), "answered when the close starts")
+
+        c.agent.answer(request, CLOSE.responseSerializer, CloseSessionResponse())
+        closing.await()
+        releaseFactory.complete(Unit)
+        world.awaitOperations(root).awaitEvent(announce(child))
+        assertTrue(world.awaitOperations(child).permissionRequests.value.isEmpty())
+    }
+
+    @Test
+    fun `a subagent's consumer stopped by the close hands the updates it has not taken to the global handler`() = withConnection { c ->
+        val world = SubagentWorld()
+        val first = text("first")
+        val second = text("second")
+        val releaseOpened = CompletableDeferred<Unit>()
+        val firstEntered = CompletableDeferred<Unit>()
+        val notifyCancelled = CompletableDeferred<Unit>()
+        val releaseNotify = CompletableDeferred<Unit>()
+        world.configure = { operations ->
+            if (operations.id == child) operations.onNotify = { event, _ ->
+                if (event is SessionEvent.Opened) releaseOpened.await()
+                if (event is SessionEvent.Update && event.update == first) {
+                    firstEntered.complete(Unit)
+                    try {
+                        awaitCancellation()
+                    } catch (_: CancellationException) {
+                        // Returns normally after the cancellation, as an app that swallows it does.
+                        notifyCancelled.complete(Unit)
+                        withContext(NonCancellable) { releaseNotify.await() }
+                    }
+                }
+            }
+        }
+        val session = openLive(c, root, world)
+        c.agent.sendUpdate(root, announce(child))
+        // Both wait in the subagent's queue behind its marker.
+        c.agent.sendUpdate(child, first)
+        c.agent.sendUpdate(child, second)
+        c.agent.awaitHandled()
+        releaseOpened.complete(Unit)
+        firstEntered.await()
+
+        val closing = async { session.close() }
+        c.agent.answer(c.agent.receiveRequest(CLOSE.methodName), CLOSE.responseSerializer, CloseSessionResponse())
+        notifyCancelled.await()
+        releaseNotify.complete(Unit)
+        withTimeout(5.seconds) { closing.await() }
+
+        awaitUnconnected(c, child, second)
+        assertFalse(second in world.awaitOperations(child).events.value)
     }
 
     @Test

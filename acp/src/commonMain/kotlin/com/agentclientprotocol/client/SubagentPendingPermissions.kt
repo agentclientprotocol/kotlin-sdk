@@ -17,10 +17,11 @@ import kotlinx.atomicfu.atomic
  * client never denies a tool use of work that continues.
  *
  * The state is followed at arrival, in wire order, not at delivery to the app: the parent's consumer may lag behind
- * the requests. A cancel by the client blocks later requests only while the last live state confirmed foreground
- * work, `running` or `requires_action`, and only until the next live state. After `idle` a cancel raced with work that
- * already ended, and no new `idle` will come, so blocking would deny background requests. With an unconfirmed or
- * `unknown` state the client can't tell, so it doesn't deny work that may continue.
+ * the requests. Each request joins the race at its arrival too, see [answerPermissionRequest]. A cancel by the client
+ * blocks later requests only while the last live state confirmed foreground work, `running` or `requires_action`, and
+ * only until the next live state. After `idle` a cancel raced with work that already ended, and no new `idle` will
+ * come, so blocking would deny background requests. With an unconfirmed or `unknown` state the client can't tell, so
+ * it doesn't deny work that may continue.
  *
  * As with [PendingPermissionCancellation], the race in [answerUnlessCancelled] is the only answering path, so each
  * request gets exactly one response.
@@ -70,7 +71,8 @@ internal class SubagentPendingPermissions {
     /**
      * Resolves the value that [onState] held back, when the parent's answer arrives.
      *
-     * No request is pending then, because requests on a subagent wait until the opening completes.
+     * Requests may be pending then, because a request joins the race when it arrives, also while it waits for the
+     * opening. That is safe: this only promotes or drops the held value and leaves the signal they wait on alone.
      *
      * @param promote `true` after a call that replayed no history: the held value was current, so it takes effect.
      * `false` after a load: it was history, so no foreground work is confirmed.

@@ -107,6 +107,18 @@ public class Client(
     init {
         // Set up request handlers for incoming agent requests
         protocol.setRequestHandler(AcpMethod.ClientMethods.V1.SessionRequestPermission) { params: RequestPermissionRequest ->
+            /*
+             * A subagent's request joins its cancel race before the handler first suspends, so before any later
+             * notification is handled: a later `idle` with `cancelled`, a cancel or a close answers it even while it
+             * waits for the subagent's holder.
+             */
+            val subagentPermissions = sessions.subagentPermissionsOrNull(params.sessionId)
+            if (subagentPermissions != null) {
+                return@setRequestHandler subagentPermissions.answerPermissionRequest(params.toolCall, params.options, params._meta) {
+                    sessions.getSessionOrThrow(params.sessionId)
+                }
+            }
+
             val session = sessions.getSessionOrThrow(params.sessionId)
             return@setRequestHandler session.executeWithSession {
                 session.answerPermissionRequest(params.toolCall, params.options, params._meta)
@@ -594,7 +606,8 @@ public class Client(
     /**
      * Creates the session with [factory] after the answer, and delivers the updates buffered in [sessionHolder] to it:
      * the history, then the marker, then the live updates, see [ClientSessionHolder.completeOpening]. If the factory
-     * or the delivery fails, or the caller is cancelled, the holder fails, even if the operations got the marker.
+     * or the delivery fails, or the caller is cancelled, the holder fails, even if the operations got the marker. A
+     * cancellation that the factory throws while the caller is active becomes an [IllegalStateException].
      */
     private suspend fun createSession(
         sessionHolder: ClientSessionHolder,
@@ -604,7 +617,13 @@ public class Client(
         factory: ClientOperationsFactory,
     ): ClientSession {
         return runCatching {
-            val operations = factory.createClientOperations(sessionId, sessionResponse)
+            val operations = try {
+                factory.createClientOperations(sessionId, sessionResponse)
+            } catch (ce: CancellationException) {
+                // As for `notify`, a cancellation the factory throws while the caller is active fails the opening.
+                currentCoroutineContext().ensureActive()
+                throw IllegalStateException("createClientOperations was cancelled", ce)
+            }
             val session = createClientSession(sessionHolder, sessionId, sessionParameters, operations, sessionResponse)
             val opened = sessionHolder.drainHistory(session)
             sessionHolder.completeOpening(session, opened)

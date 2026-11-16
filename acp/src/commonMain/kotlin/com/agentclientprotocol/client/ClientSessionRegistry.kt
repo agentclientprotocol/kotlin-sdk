@@ -103,11 +103,23 @@ internal class ClientSessionRegistry(
     /**
      * Answers the pending and the later permission requests of every subagent below the root session [rootId] with
      * `cancelled`, when its close starts. Each close only completes a signal, so the order doesn't matter.
+     *
+     * The root is marked closing first, and [registerChild] reads the mark after it added a subagent to its parent.
+     * So a subagent that this walk misses has its permissions closed by its own registration. The mark stays if the
+     * close fails, as the closed permissions do.
      */
     fun closeDescendantPermissions(rootId: SessionId) {
         val root = rootHolderOrNull(rootId) ?: return
+        root.markClosing()
         root.forEachDescendant { it.subagentPermissions?.close() }
     }
+
+    /**
+     * Returns the pending permission requests of the subagent [sessionId], or `null` if the id has no subagent holder.
+     * Doesn't suspend, so a request handler can join the race before anything else changes the subagent's state.
+     */
+    fun subagentPermissionsOrNull(sessionId: SessionId): SubagentPendingPermissions? =
+        _sessions.value.sessions[sessionId]?.takeIf { it.blocksId }?.subagentPermissions
 
     /**
      * Removes the root session [rootId] and every subagent below it, after the agent answered its `session/close`.
@@ -117,10 +129,11 @@ internal class ClientSessionRegistry(
      * for a subagent's `notify` to react to cancellation. The consumer that the close runs in, because a subagent's
      * own operations called it there, is not joined, which would never finish, and is cancelled at the end instead.
      * Then the holders leave the session map in one compare-and-set, each only if its id still maps to it, so no
-     * half-removed tree is visible. Last, the permission requests of each subagent are answered `cancelled`, which
-     * also covers a subagent announced after [closeDescendantPermissions] ran, each subagent object is closed, and
-     * each subagent holder that hasn't completed fails with a "closed" error, so its waiting requests get the error
-     * and its queue goes to [globalSessionUpdateHandler].
+     * half-removed tree is visible, and a subagent registered after that compare-and-set stays out of the map. Last,
+     * the permission requests of each subagent are answered `cancelled`, which changes nothing if
+     * [closeDescendantPermissions] ran first, each subagent object is closed, and each subagent holder that hasn't
+     * completed fails with a "closed" error, so its waiting requests get the error and its queue goes to
+     * [globalSessionUpdateHandler].
      *
      * The removal finishes even if the caller is cancelled while it joins the consumers, because the agent has
      * already dropped the sessions.
@@ -147,6 +160,12 @@ internal class ClientSessionRegistry(
             for (job in consumers) if (job !== ownConsumer) job.join()
         } finally {
             withContext(NonCancellable) {
+                /*
+                 * A registration can only add its subagent to a parent before the walk above closed the parent's
+                 * subagents, so the subagent is in the subtree, and the registration reads this mark inside its own
+                 * update of the map. So it either enters the map before this update, which removes it, or stays out.
+                 */
+                root.markRemoved()
                 _sessions.update { storage ->
                     removed.clear()
                     val sessions = storage.sessions.mutate { map ->
@@ -271,7 +290,9 @@ internal class ClientSessionRegistry(
      * the parent as a plain update. Only a cascade can have seen it, and failing a holder that never reached the map
      * does no harm.
      *
-     * A subagent registered after the root's answer gets its marker as its first item.
+     * A subagent registered after the root's answer gets its marker as its first item. One registered after the
+     * root's close started has its permission requests answered `cancelled` from the start, see
+     * [closeDescendantPermissions].
      *
      * @return the child's holder, or `null` if nothing was registered
      */
@@ -282,21 +303,27 @@ internal class ClientSessionRegistry(
         val root = parent.root
         if (root.isAnswered) child.markSubagentOpened(promote = root.replayRequested != true)
         if (!parent.addChild(child)) return null
+        // Read after the child is reachable from the root, see [closeDescendantPermissions].
+        if (root.isClosing) child.subagentPermissions?.close()
 
-        var rootFailed = false
+        var rootEnded = false
         var blocked = false
         _sessions.update { storage ->
             /*
              * A failed root's subagents leave the map once its cascade has closed every holder's subagents, see
-             * [withInitializingSession] and [replacing]. Reading the root's failure here keeps a registration that
-             * comes after that removal out of the map.
+             * [withInitializingSession] and [replacing], and a closed root's tree leaves it in [removeSessionTree].
+             * Reading the root's failure and removal here keeps a registration that comes after that removal out
+             * of the map.
              */
-            rootFailed = root.isFailed
-            blocked = !rootFailed && storage.sessions[childId]?.blocksId == true
-            if (rootFailed || blocked) storage else storage.copy(sessions = storage.sessions.replacing(childId, child))
+            rootEnded = root.isFailed || root.isRemoved
+            blocked = !rootEnded && storage.sessions[childId]?.blocksId == true
+            if (rootEnded || blocked) storage else storage.copy(sessions = storage.sessions.replacing(childId, child))
         }
-        // The cascade of the failed root fails the child, which is already among its parent's subagents.
-        if (rootFailed) return null
+        /*
+         * The cascade of the failed root, or the removal of the closed root's tree, fails the child, which is already
+         * among its parent's subagents.
+         */
+        if (rootEnded) return null
         if (blocked) {
             parent.removeChild(childId)
             logger.warn {
@@ -356,8 +383,9 @@ internal class ClientSessionRegistry(
      * same for every subagent below it, parent first.
      *
      * Every failure of a holder goes through here, so a failed holder keeps no updates. Each holder stops taking
-     * subagents and its consumer is stopped first, so no consumer starts after its holder has failed. A failure of the
-     * handler is logged per update, so it neither stops the drain nor replaces the failure that the caller sees.
+     * subagents and its consumer is stopped first, so no consumer starts after its holder has failed. A subagent's
+     * session object is closed, and stays in its parent's subagents. A failure of the handler is logged per update, so
+     * it neither stops the drain nor replaces the failure that the caller sees.
      *
      * A running consumer is cancelled, not joined: this runs under [NonCancellable] and must not wait for the
      * application's `notify`. A consumer checks for cancellation before it takes each item, so once the `notify` it is
@@ -373,6 +401,8 @@ internal class ClientSessionRegistry(
     private suspend fun failSessionTree(holder: ClientSessionHolder, cause: Throwable) {
         val children = holder.closeChildren()
         holder.stopConsumer()?.cancel()
+        // After the stop, so a setup that attaches the subagent later finds no consumer and closes it itself.
+        holder.subagent?.markClosed()
         holder.failAndDrainQueue(cause) { update, meta ->
             runCatching { handleUnconnectedSessionUpdate(holder.sessionId, update, meta) }
                 .onFailure { logger.error(it) { "Unconnected session update handler failed for ${holder.sessionId}" } }

@@ -624,6 +624,32 @@ class ClientSessionOpenedTest {
     }
 
     @Test
+    fun `a factory that throws a cancellation fails the opening`() = withUnconnectedRecorder { client, agent, unconnected ->
+        val factory = ClientOperationsFactory { _, _ -> throw CancellationException("createClientOperations cancelled itself") }
+        for (opening in allOpenings.filter { it.factory }) {
+            val sessionId = SessionId("cancelling-factory-$opening")
+            val open = async {
+                runCatching {
+                    when (opening) {
+                        loadWithFactory -> client.loadSession(sessionId, parameters, factory)
+                        resumeWithFactory -> client.resumeSession(sessionId, parameters, factory)
+                        newWithFactory -> client.newSession(parameters, factory)
+                        else -> client.forkSession(SessionId("fork-source"), parameters, factory)
+                    }
+                }
+            }
+            opening.answer(agent, agent.receiveRequest(opening.method), sessionId, "$opening")
+
+            // On the JVM a CancellationException is an IllegalStateException too, so the type check excludes it.
+            val failure = open.await().exceptionOrNull()
+            assertTrue(failure is IllegalStateException && failure !is CancellationException, "$opening: the opening must fail, got $failure")
+            assertEquals("createClientOperations was cancelled", failure.message, "$opening")
+
+            assertHolderFailed(opening, client, agent, unconnected, sessionId)
+        }
+    }
+
+    @Test
     fun `a notify that throws for an update queued after the marker fails the opening`() =
         withUnconnectedRecorder { client, agent, unconnected ->
             /*

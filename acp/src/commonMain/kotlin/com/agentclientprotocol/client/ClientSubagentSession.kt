@@ -29,10 +29,16 @@ import kotlinx.atomicfu.atomic
  * [BaseClientSession.subagents], with its operations and the announced values. The subagent's own stream gets
  * its history, then exactly one [com.agentclientprotocol.common.SessionEvent.Opened] without a response, at the
  * place of the root's answer, then its live updates. The live updates, and the agent's requests for the subagent,
- * wait until the opening call of the root session has completed.
+ * wait until the opening call of the root session has completed. A permission request that waits there is still
+ * answered `cancelled`, without reaching [operations], if the subagent's work is cancelled or its root is closed
+ * meanwhile, see [cancel].
  *
  * The client never prompts a subagent, so there is no prompt, mode, model, configuration or close here. A subagent is
- * closed together with its root session, see [ClientSession.close]. Every update of the subagent reaches its
+ * closed together with its root session, see [ClientSession.close]. It is also closed when its own stream fails: when
+ * its [ClientSessionOperations.notify] throws before its [com.agentclientprotocol.common.SessionEvent.Opened], its
+ * later updates go to the [GlobalSessionUpdateHandler] and the agent's requests for it fail. A closed subagent stays in
+ * its parent's [BaseClientSession.subagents] with the values it had: [canCancel] is `false`, [cancel] throws, and
+ * later `subagent_update`s don't change it. Every update of the subagent reaches its
  * [operations] through [ClientSessionOperations.notify], including `config_option_update` and `current_mode_update`,
  * and none of them changes a root session's mode or options.
  *
@@ -147,11 +153,14 @@ public class ClientSubagentSession internal constructor(
      * `additionalDirectories` fall back to the parent's when cleared, each on its own. `capabilities` is replaced as a
      * whole.
      *
-     * Only the parent's consumer calls it, so there is one writer.
+     * Only the parent's consumer calls it, so there is one writer. A closed session ignores it, so it keeps the
+     * values it had when it was closed.
      *
      * @param parentOpened whether the parent's [com.agentclientprotocol.common.SessionEvent.Opened] was already delivered
      */
     internal fun applyPatch(update: SessionUpdate.SubagentUpdate, parentOpened: Boolean) {
+        if (closed.value) return
+
         _title.value = update.title.update(_title.value)
         _description.value = update.description.update(_description.value)
         ownCwd.value = update.cwd.update(ownCwd.value)
@@ -171,10 +180,10 @@ public class ClientSubagentSession internal constructor(
      * [com.agentclientprotocol.common.SessionEvent.Opened] is delivered.
      *
      * @param promote `true` after a call that replayed no history: the held values were current, so they are applied.
-     * `false` after a load: they were history, and they are dropped.
+     * `false` after a load: they were history, and they are dropped. A closed session drops them too.
      */
     internal fun onParentOpened(promote: Boolean) {
-        if (promote) {
+        if (promote && !closed.value) {
             applyCapabilities(heldCapabilities)
             applyState(heldState)
         }
@@ -183,7 +192,8 @@ public class ClientSubagentSession internal constructor(
     }
 
     /**
-     * Ends this session: [canCancel] becomes `false`, and [cancel] throws.
+     * Ends this session, because its holder failed or its root was closed: [canCancel] becomes `false`, [cancel]
+     * throws, and later patches are not applied.
      */
     internal fun markClosed() {
         closed.value = true

@@ -40,11 +40,27 @@ internal suspend fun BaseClientSession.answerPermissionRequest(
     meta: JsonElement?,
 ): RequestPermissionResponse = when (this) {
     is ClientSession -> (this as ClientSessionImpl).handlePermissionResponse(toolCall, permissions, meta)
-    is ClientSubagentSession -> pendingPermissions.answerUnlessCancelled(
-        cancelledAnswer = { RequestPermissionResponse(RequestPermissionOutcome.Cancelled) },
-    ) {
-        operations.requestPermissions(toolCall, permissions, meta)
-    }
+    is ClientSubagentSession -> pendingPermissions.answerPermissionRequest(toolCall, permissions, meta) { this }
+}
+
+/**
+ * Answers the agent's permission request for a subagent through the operations of the session that [session]
+ * returns, unless the subagent's work is cancelled or it is closed first.
+ *
+ * The request joins the race when this is called, before anything suspends, so call it when the request arrives:
+ * a cancel that comes while [session] still waits for the subagent's holder answers it too. The application sees the
+ * request only once [session] has returned.
+ */
+internal suspend fun SubagentPendingPermissions.answerPermissionRequest(
+    toolCall: SessionUpdate.ToolCallUpdate,
+    permissions: List<PermissionOption>,
+    meta: JsonElement?,
+    session: suspend () -> BaseClientSession,
+): RequestPermissionResponse = answerUnlessCancelled(
+    cancelledAnswer = { RequestPermissionResponse(RequestPermissionOutcome.Cancelled) },
+) {
+    val subagent = session()
+    subagent.executeWithSession { subagent.operations.requestPermissions(toolCall, permissions, meta) }
 }
 
 /**

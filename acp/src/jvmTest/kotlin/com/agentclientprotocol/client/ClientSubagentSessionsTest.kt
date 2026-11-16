@@ -58,6 +58,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
@@ -446,6 +447,70 @@ class ClientSubagentSessionsTest {
         assertFalse(release.isCompleted, "the request is answered while the parent's notify is still blocked")
         release.complete(Unit)
     }
+
+    @Test
+    fun `a permission request that waits for its subagent's setup is answered cancelled when the subagent reports idle cancelled`() =
+        withClient { client, agent ->
+            val world = SubagentWorld()
+            val root = SessionId("root")
+            val child = SessionId("child")
+            val factoryEntered = CompletableDeferred<Unit>()
+            val releaseFactory = CompletableDeferred<Unit>()
+            world.configure = { operations ->
+                if (operations.id == root) operations.createChild = { id ->
+                    factoryEntered.complete(Unit)
+                    releaseFactory.await()
+                    world.create(id)
+                }
+            }
+            openLive(client, agent, root, world)
+            agent.sendUpdate(root, announce(child, state = StateUpdate.Running()))
+            factoryEntered.await()
+
+            // The request arrives before the cancelled state, so it is pending when the work is cancelled.
+            val permission = agent.sendRequest(AcpMethod.ClientMethods.V1.SessionRequestPermission, permissionRequest(child, "cancelled-work"))
+            agent.sendUpdate(root, announce(child, state = StateUpdate.Idle(IdleStopReason.Cancelled)))
+            assertEquals(
+                RequestPermissionResponse(RequestPermissionOutcome.Cancelled),
+                decode(agent.awaitResponse(permission), AcpMethod.ClientMethods.V1.SessionRequestPermission.responseSerializer),
+                "answered without waiting for the subagent's setup",
+            )
+
+            releaseFactory.complete(Unit)
+            world.awaitOperations(child).awaitEvent(TreeOperations.OPENED)
+            agent.awaitHandled()
+            assertTrue(world.awaitOperations(child).permissionRequests.value.isEmpty())
+        }
+
+    @Test
+    fun `a permission request that waits for its subagent's holder is answered cancelled by a cancel in the root's Opened`() =
+        withClient { client, agent ->
+            val world = SubagentWorld()
+            val root = SessionId("root")
+            val child = SessionId("child")
+            world.configure = { operations ->
+                if (operations.id == root) operations.onNotify = { event, session ->
+                    if (event is SessionEvent.Opened) session!!.subagents.single().cancel()
+                }
+            }
+            val open = async { resumeWithOperations.open(client, root, parameters, world) }
+            val request = agent.receiveRequest(resumeWithOperations.method)
+            agent.sendUpdate(root, announce(child, capabilities = cancelGrant, state = StateUpdate.Idle(IdleStopReason.EndTurn)))
+            world.awaitOperations(child)
+            val permission = agent.sendRequest(AcpMethod.ClientMethods.V1.SessionRequestPermission, permissionRequest(child, "before-cancel"))
+            agent.awaitHandled()
+            assertNull(agent.responseOrNull(permission), "the request waits until the root's opening has completed")
+
+            resumeWithOperations.answer(agent, request, root)
+            open.await()
+
+            assertEquals(child, cancelledSessionId(agent))
+            assertEquals(
+                RequestPermissionResponse(RequestPermissionOutcome.Cancelled),
+                decode(agent.awaitResponse(permission), AcpMethod.ClientMethods.V1.SessionRequestPermission.responseSerializer),
+            )
+            assertTrue(world.awaitOperations(child).permissionRequests.value.isEmpty())
+        }
 
     @Test
     fun `requests on a subagent reach its operations once its holder completes`() = withClient { client, agent ->
@@ -872,6 +937,38 @@ class ClientSubagentSessionsTest {
             agent.sendUpdate(root, text("root-update"))
             world.awaitOperations(root).awaitEvent(text("root-update"))
             assertTrue(unconnected.value.none { it.first == live }, "nothing of the live subagent is unconnected")
+        }
+
+    @Test
+    fun `a subagent whose notify fails before its Opened stays listed but is closed`() =
+        withUnconnectedRecorder { client, agent, unconnected ->
+            val world = SubagentWorld()
+            val root = SessionId("root")
+            val failed = SessionId("failed")
+            world.configure = { operations ->
+                if (operations.id == failed) operations.onNotify = { event, _ ->
+                    if (event is SessionEvent.Update && event.update == text("history")) error("notify failed")
+                }
+            }
+            val open = async { loadWithOperations.open(client, root, parameters, world) }
+            val request = agent.receiveRequest(loadWithOperations.method)
+            agent.sendUpdate(root, announce(failed, title = "announced"))
+            agent.sendUpdate(failed, text("history"))
+            loadWithOperations.answer(agent, request, root)
+            val session = open.await()
+            agent.sendUpdate(failed, text("after-failure"))
+            awaitUnconnected(unconnected, failed, text("after-failure"))
+
+            val patch = announce(failed, title = "patched", capabilities = cancelGrant, state = StateUpdate.Running())
+            agent.sendUpdate(root, patch)
+            world.awaitOperations(root).awaitEvent(patch)
+
+            val subagent = session.subagents.single()
+            assertEquals(failed, subagent.sessionId)
+            assertEquals("announced", subagent.title, "a later patch is not applied")
+            assertNull(subagent.state)
+            assertFalse(subagent.canCancel)
+            assertFailsWith<IllegalStateException> { subagent.cancel() }
         }
 
     @Test

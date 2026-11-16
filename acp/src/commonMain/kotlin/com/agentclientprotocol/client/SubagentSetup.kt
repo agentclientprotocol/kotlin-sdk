@@ -37,7 +37,8 @@ internal class SubagentSetup(
      * If [parentOperations] don't implement [SubagentOperations], or the factory throws, only the subagent's holder
      * fails, and the failure is logged. A [CancellationException] from the factory while the caller is active counts
      * as such a failure. A cancellation of the caller is rethrown. If the parent failed or was closed while the
-     * factory ran, the subagent is neither added nor started.
+     * factory ran, the subagent is neither added nor started. If only the subagent's holder failed or was removed
+     * meanwhile, the subagent is added closed and not started.
      *
      * @param parentOpened whether the marker of the parent's stream has been delivered
      */
@@ -91,7 +92,11 @@ internal class SubagentSetup(
             session.markClosed()
             return
         }
-        child.startConsumer(scope) { consume(child, session) }
+        /*
+         * The subagent's holder has failed or was removed, perhaps before the attach, so the failure may have missed
+         * the session object. It stays in the list, closed, as after any failure of its holder.
+         */
+        if (!child.startConsumer(scope) { consume(child, session) }) session.markClosed()
     }
 
     private suspend fun failSetup(child: ClientSessionHolder, cause: Throwable) {
