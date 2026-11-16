@@ -188,23 +188,21 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   is gone); deterministic timeout test; 7 regression tests failed before; `check` green (JS flake again); no API
   change. Not done: nit 12 (unreachable from a test).
 
-## Next
-The user stopped the session on 2026-11-16 for a restart. Nothing is running; the working tree is clean; the last
-product commit is `1bb9dcc`. Continue here:
+- M4.5b M4 review decisions — `f684ec3` — (1) `Client.kt` takes `subagentPermissionsOrNull` at arrival and
+  `SubagentPendingPermissions.answerPermissionRequest` runs `getSessionOrThrow` inside the race; (2) `closing` flag
+  on the root holder (`isClosing`, `markClosing()`); (3) `failSessionTree` and `SubagentSetup.setUp` (when
+  `startConsumer` returns false) call `markClosed()`, `applyPatch`/`onParentOpened` no-ops on a closed child; gap a
+  factory CE → ISE; gap b post-marker loop takes an item only after `ensureActive()`; gap c separate `removed`
+  flag read inside `registerChild`'s update. Six regression tests failed before; the gap b test guards the new
+  loop only; gap c has no test (needs real parallelism); `check` green (JS flake, sixth occurrence); no API
+  change. Residual for a reviewer: an update handed to a pre-marker consumer's suspended `receiveCatching` and
+  then cancelled is dropped by the channel (would need `onUndeliveredElement`); a waiting request whose holder
+  fails at the moment its signal completes can get an error instead of `cancelled`.
 
-1. M4.5b (programmer, model `opus`), one commit: decisions (1), (2), (3) of the M4 review answers above, each with
-   a regression test that fails before the fix. Reference: `.agents/research/review-m4-client.md` findings 1, 2, 4.
-   Notes for the brief:
-   - `ClientSubagentCloseTest` "the removal answers the permission requests of a subagent announced after the
-     close started" waits for the request to reach the app in the close window; it must change with (2).
-   - The spec's sentence "No request is pending then" (about `onOpened`) becomes false with (1); `onOpened` only
-     promotes or drops the held-back active-work value, so that is safe; say so in a comment.
-   - Fold in three small gaps reported by M4.5a: a `CancellationException` from the app's
-     `ClientOperationsFactory.createClientOperations` reaches an active caller unwrapped; an item taken by a child
-     consumer cancelled just after its marker is neither delivered nor handed to the global handler; a child
-     registered at the moment of a root close can enter the map after `removeSessionTree`'s update (read a flag
-     inside the update).
-   - No API change expected; `./gradlew check` (rerun once if the Kotlin/JS internal compiler error appears).
+## Next
+Last product commit is `f684ec3`. Continue here:
+
+1. (done) M4.5b.
 2. M6b (programmer, default model), docs, one commit:
    - `AGENTS.md` client-side subagent lifecycle rules (M4 review finding 3; topics in the spec's "Deliverables"):
      per-child holder and tree, synchronous sorting and registration at arrival, setup by the parent's consumer
@@ -226,7 +224,7 @@ product commit is `1bb9dcc`. Continue here:
 3. Final checks (orchestrator): review the cumulative `acp/api/acp.api` and `acp-model/api/acp-model.api` diffs
    against `39ecba6`; run `./gradlew check`; run
    `git grep -nE '\.agents/(research|state\.md|prompt\.md)' -- ':!.agents' ':!AGENTS.md'` (clean so far).
-4. Optional, ask the user: a final review of the commits after `ced95e7` (`1bb9dcc`, M4.5b, M6b), since reviews
+4. Optional, ask the user: a final review of the commits after `ced95e7` (`1bb9dcc`, `f684ec3`, M6b), since reviews
    are on per milestone and these fix slices are unreviewed.
 5. Tell the user the goal is done; remind them to delete `.agents/prompt.md`, `.agents/state.md` and
    `.agents/research/` before the PR merges. Do not push or open a PR unless asked. PR description, when asked:
@@ -234,7 +232,7 @@ product commit is `1bb9dcc`. Continue here:
 
 Notes:
 - Flaky build: `./gradlew check` fails now and then with a Kotlin/JS "Internal compiler error" in
-  `:acp:compileTestDevelopmentExecutableKotlinJs` (five occurrences); it passes on rerun; cause unknown.
+  `:acp:compileTestDevelopmentExecutableKotlinJs` (six occurrences); it passes on rerun; cause unknown.
 - `commonTest` test names must not contain commas (native targets reject them).
 - Not covered end to end: a terminal call from a child. No regression test for agent nit N3 (unreachable).
 - Follow-ups outside this goal (do not fix unless the user asks): `Agent.kt` registers `session/resume` twice;
