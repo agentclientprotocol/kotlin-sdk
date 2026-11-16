@@ -10,6 +10,7 @@ import com.agentclientprotocol.client.Client
 import com.agentclientprotocol.client.ClientInfo
 import com.agentclientprotocol.model.AgentAuthCapabilities
 import com.agentclientprotocol.model.AgentCapabilities
+import com.agentclientprotocol.model.AuthStatusCapabilities
 import com.agentclientprotocol.model.AuthStatusResponse
 import com.agentclientprotocol.model.Implementation
 import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
@@ -64,7 +65,7 @@ suspend fun main() = coroutineScope {
  */
 private class AuthStatusV1AgentSupport : AgentSupport by SimpleAgentSupport() {
     override suspend fun initialize(clientInfo: ClientInfo) = AgentInfo(
-        capabilities = AgentCapabilities(auth = AgentAuthCapabilities(status = true)),
+        capabilities = AgentCapabilities(auth = AgentAuthCapabilities(status = AuthStatusCapabilities())),
         implementation = Implementation("auth-status-agent", "1.0.0"),
     )
 
@@ -80,7 +81,7 @@ private class AuthStatusV2AgentSupport : V2AgentSupport by SimpleV2AgentSupport(
         implementation = Implementation("v2-auth-status-agent", "1.0.0"),
         capabilities = V2AgentCapabilities(
             session = SessionCapabilities(),
-            auth = V2AgentAuthCapabilities(status = true),
+            auth = V2AgentAuthCapabilities(status = AuthStatusCapabilities()),
         ),
     )
 
@@ -103,7 +104,7 @@ private suspend fun CoroutineScope.queryV1AuthStatus(transport: Transport) {
 
     try {
         val agentInfo = client.initialize(ClientInfo(implementation = Implementation("sample-client", "1.0.0")))
-        if (agentInfo.capabilities.auth.status == true) {
+        if (agentInfo.capabilities.auth.status != null) {
             val status = client.authStatus()
             println("ACP v1 auth/status: authenticated=${status.authenticated}, message=${status.message}")
         } else {
@@ -121,7 +122,7 @@ private suspend fun CoroutineScope.queryV2AuthStatus(transport: Transport) {
 
     try {
         val agentInfo = client.initialize(V2ClientInfo(PROTOCOL_VERSION_V2, Implementation("sample-client", "2.0.0")))
-        if (agentInfo.capabilities.auth?.status == true) {
+        if (agentInfo.capabilities.auth?.status != null) {
             val status = client.authStatus()
             println("ACP v2 auth/status: authenticated=${status.authenticated}, message=${status.message}")
         } else {

@@ -100,12 +100,15 @@ class AuthStatusSerializationTest {
     }
 
     @Test
-    fun `status capabilities encode absent false and true in their versioned agent paths`() {
+    fun `status capabilities encode absent and object markers in their versioned agent paths`() {
         assertEquals("{}", ACPJson.encodeToString(AgentAuthCapabilities.serializer(), AgentAuthCapabilities()))
         assertEquals("{}", ACPJson.encodeToString(V2AgentAuthCapabilities.serializer(), V2AgentAuthCapabilities()))
 
-        for (status in listOf(false, true)) {
-            val authJson = """{"status":$status,"_meta":{"source":"test"}}"""
+        for ((status, statusJson) in listOf(
+            AuthStatusCapabilities() to "{}",
+            AuthStatusCapabilities(meta) to """{"_meta":{"source":"test"}}""",
+        )) {
+            val authJson = """{"status":$statusJson,"_meta":{"source":"test"}}"""
             assertEquals(
                 authJson,
                 ACPJson.encodeToString(AgentAuthCapabilities.serializer(), AgentAuthCapabilities(status = status, _meta = meta)),
@@ -134,8 +137,16 @@ class AuthStatusSerializationTest {
             )
             assertEquals(
                 V2AgentCapabilities(auth = V2AgentAuthCapabilities(status = status)),
-                ACPJson.decodeFromString(V2AgentCapabilities.serializer(), """{"auth":{"status":$status}}"""),
+                ACPJson.decodeFromString(V2AgentCapabilities.serializer(), """{"auth":{"status":$statusJson}}"""),
             )
         }
+    }
+
+    @Test
+    fun `v1 agent capabilities decode the auth object claude-agent-acp advertises`() {
+        assertEquals(
+            AgentAuthCapabilities(logout = LogoutCapabilities(), status = AuthStatusCapabilities()),
+            ACPJson.decodeFromString(AgentCapabilities.serializer(), """{"auth":{"logout":{},"status":{}}}""").auth,
+        )
     }
 }

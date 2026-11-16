@@ -334,9 +334,8 @@ dedicated modes remain available in the SDK's v1 API.
 
 ### Authentication status (unstable)
 
-An agent can advertise the draft `auth/status` query with `auth.status = true` in its initialize response.
+An agent can advertise the draft `auth/status` query with `auth.status = {}` (`AuthStatusCapabilities()`) in its initialize response. Omitted or `null` means unsupported.
 V1 uses `agentCapabilities.auth.status`. V2 uses `capabilities.auth.status`, independent of `authMethods`.
-This V2 location follows the V2 authentication model; the draft RFD does not yet define a V2 schema entry.
 The capability, request and response types, methods, and runtime hooks require `@OptIn(UnstableApi::class)`.
 
 After initialization, `Client.authStatus` queries the agent without a session or prompt. Agents answer through
