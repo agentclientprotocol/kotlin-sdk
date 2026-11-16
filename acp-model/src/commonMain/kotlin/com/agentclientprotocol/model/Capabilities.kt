@@ -224,16 +224,31 @@ public data class LogoutCapabilities(
  *
  * This capability is not part of the spec yet, and may be removed or changed at any point.
  *
+ * Auth status capabilities supported by the agent.
+ *
+ * By supplying `{}` it means that the agent supports the `auth/status` method.
+ */
+@UnstableApi
+@Serializable
+public data class AuthStatusCapabilities(
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
+ * **UNSTABLE**
+ *
+ * This capability is not part of the spec yet, and may be removed or changed at any point.
+ *
  * Authentication-related capabilities supported by the agent.
  *
- * @property status only `true` advertises support for the `auth/status` query
+ * @property status a non-null value advertises support for the `auth/status` query
  */
 @UnstableApi
 @Serializable
 public data class AgentAuthCapabilities(
     val logout: LogoutCapabilities? = null,
     @property:UnstableApi
-    val status: Boolean? = null,
+    val status: AuthStatusCapabilities? = null,
     override val _meta: JsonElement? = null
 ) : AcpWithMeta
 

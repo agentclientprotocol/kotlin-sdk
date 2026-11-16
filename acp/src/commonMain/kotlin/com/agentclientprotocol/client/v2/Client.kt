@@ -400,7 +400,7 @@ public class Client(
     /**
      * Queries whether credentials are configured, not whether they are valid.
      *
-     * Requires a completed [initialize] call and `capabilities.auth.status == true`.
+     * Requires a completed [initialize] call and a non-null `capabilities.auth.status`.
      * This query is independent of [AgentInfo.authMethods] and needs no session.
      * Unadvertised calls fail locally without sending a request.
      */
@@ -410,7 +410,7 @@ public class Client(
         if (!_agentInfo.isCompleted) {
             acpFail("Cannot call ${method.methodName.name} before initialization completes")
         }
-        if (_agentInfo.await().capabilities.auth?.status != true) {
+        if (_agentInfo.await().capabilities.auth?.status == null) {
             acpFail("Cannot call ${method.methodName.name}: the agent did not advertise auth.status")
         }
         return method(protocol, StatusAuthRequest(_meta))

@@ -30,8 +30,8 @@ import com.agentclientprotocol.client.v2.ClientInfo as V2ClientInfo
 
 class AuthStatusClientTest {
     @Test
-    fun `v1 status refuses absent and false capabilities without wire dispatch`() {
-        for (status in listOf(null, false)) {
+    fun `v1 status refuses absent and null capabilities without wire dispatch`() {
+        for (status in listOf(null, "null")) {
             withV1Client(status) { client, transport ->
                 val sentBefore = transport.sent.toList()
                 val failure = assertFailsWith<AcpExpectedError> { client.authStatus() }
@@ -43,8 +43,8 @@ class AuthStatusClientTest {
     }
 
     @Test
-    fun `v2 status refuses absent and false capabilities without wire dispatch`() {
-        for (status in listOf(null, false)) {
+    fun `v2 status refuses absent and null capabilities without wire dispatch`() {
+        for (status in listOf(null, "null")) {
             withV2Client(status) { client, transport ->
                 val sentBefore = transport.sent.toList()
                 val failure = assertFailsWith<AcpExpectedError> { client.authStatus() }
@@ -57,12 +57,12 @@ class AuthStatusClientTest {
 
     @Test
     fun `status before initialization fails locally in both versions`() {
-        withV1Client(true, initialize = false) { client, transport ->
+        withV1Client("{}", initialize = false) { client, transport ->
             val failure = assertFailsWith<AcpExpectedError> { client.authStatus() }
             assertTrue(failure.message.contains("initialization"))
             assertTrue(transport.sent.isEmpty())
         }
-        withV2Client(true, initialize = false) { client, transport ->
+        withV2Client("{}", initialize = false) { client, transport ->
             val failure = assertFailsWith<AcpExpectedError> { client.authStatus() }
             assertTrue(failure.message.contains("initialization"))
             assertTrue(transport.sent.isEmpty())
@@ -70,7 +70,7 @@ class AuthStatusClientTest {
     }
 
     @Test
-    fun `v1 advertised status can be queried repeatedly without a session`() = withV1Client(true) { client, transport ->
+    fun `v1 advertised status can be queried repeatedly without a session`() = withV1Client("{}") { client, transport ->
         val meta = ACPJson.parseToJsonElement("""{"trace":"v1"}""")
         assertEquals(false, client.authStatus(meta).authenticated)
         val second = client.authStatus()
@@ -83,7 +83,7 @@ class AuthStatusClientTest {
     }
 
     @Test
-    fun `v2 advertised status works without auth methods or a session`() = withV2Client(true) { client, transport ->
+    fun `v2 advertised status works without auth methods or a session`() = withV2Client("{}") { client, transport ->
         val meta = ACPJson.parseToJsonElement("""{"trace":"v2"}""")
         assertEquals(false, client.authStatus(meta).authenticated)
         val second = client.authStatus()
@@ -97,12 +97,12 @@ class AuthStatusClientTest {
 
     @Test
     fun `advertised status reports remote method not found in both versions`() {
-        withV1Client(true, statusImplemented = false) { client, transport ->
+        withV1Client("{}", statusImplemented = false) { client, transport ->
             val failure = assertFailsWith<JsonRpcException> { client.authStatus() }
             assertEquals(JsonRpcErrorCode.METHOD_NOT_FOUND.code, failure.code)
             assertEquals(listOf("initialize", "auth/status"), transport.requests.map { it.method.name })
         }
-        withV2Client(true, statusImplemented = false) { client, transport ->
+        withV2Client("{}", statusImplemented = false) { client, transport ->
             val failure = assertFailsWith<JsonRpcException> { client.authStatus() }
             assertEquals(JsonRpcErrorCode.METHOD_NOT_FOUND.code, failure.code)
             assertEquals(listOf("initialize", "auth/status"), transport.requests.map { it.method.name })
@@ -110,7 +110,7 @@ class AuthStatusClientTest {
     }
 
     private fun withV1Client(
-        status: Boolean?,
+        status: String?,
         initialize: Boolean = true,
         statusImplemented: Boolean = true,
         block: suspend (Client, StatusTransport) -> Unit,
@@ -127,7 +127,7 @@ class AuthStatusClientTest {
     }
 
     private fun withV2Client(
-        status: Boolean?,
+        status: String?,
         initialize: Boolean = true,
         statusImplemented: Boolean = true,
         block: suspend (V2Client, StatusTransport) -> Unit,
@@ -143,7 +143,7 @@ class AuthStatusClientTest {
         block(client, transport)
     }
 
-    private fun capabilities(status: Boolean?): String =
+    private fun capabilities(status: String?): String =
         if (status == null) "{}" else """{"auth":{"status":$status}}"""
 
     private fun withClient(

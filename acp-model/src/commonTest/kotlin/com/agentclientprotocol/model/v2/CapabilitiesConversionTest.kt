@@ -4,6 +4,7 @@ package com.agentclientprotocol.model.v2
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.AuthMethodId
+import com.agentclientprotocol.model.AuthStatusCapabilities
 import com.agentclientprotocol.model.ElicitationCapabilities
 import com.agentclientprotocol.model.FileSystemCapability
 import com.agentclientprotocol.model.Implementation
@@ -204,13 +205,13 @@ class CapabilitiesConversionTest {
     }
 
     @Test
-    fun `auth status preserves absent false and true in both directions`() {
+    fun `auth status preserves absent and object markers in both directions`() {
         val baselineV1 = baselineV1AgentCapabilities()
         val baselineV2 = baselineV2AgentCapabilities()
         assertNull(baselineV1.toV2().auth)
         assertNull(baselineV2.toV1().auth.status)
 
-        for (status in listOf(false, true)) {
+        for (status in listOf(AuthStatusCapabilities(), AuthStatusCapabilities(buildJsonObject { put("k", JsonPrimitive("v")) }))) {
             val v1 = baselineV1.copy(auth = V1AgentAuthCapabilities(status = status))
             val v2 = baselineV2.copy(auth = AgentAuthCapabilities(status = status))
             assertEquals(v2, v1.toV2())
@@ -224,7 +225,7 @@ class CapabilitiesConversionTest {
     fun `auth status is independent of auth methods when converting initialization`() {
         val info = Implementation(name = "acme-agent", version = "2.0.0")
         val authMethod = AuthMethod.Agent(methodId = AuthMethodId("oauth"), name = "OAuth")
-        for (status in listOf(false, true)) {
+        for (status in listOf(AuthStatusCapabilities(), AuthStatusCapabilities(buildJsonObject { put("k", JsonPrimitive("v")) }))) {
             for (methods in listOf(emptyList(), listOf(authMethod))) {
                 val v2 = InitializeResponse(
                     protocolVersion = 1,

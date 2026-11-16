@@ -5,6 +5,7 @@ package com.agentclientprotocol.model.v2
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.AcpCapabilities
 import com.agentclientprotocol.model.AcpWithMeta
+import com.agentclientprotocol.model.AuthStatusCapabilities
 import com.agentclientprotocol.model.ClientNesCapabilities
 import com.agentclientprotocol.model.ElicitationCapabilities
 import com.agentclientprotocol.model.NesCapabilities
@@ -188,7 +189,7 @@ public data class SessionCapabilities(
 @Serializable
 public data class AgentAuthCapabilities(
     @property:UnstableApi
-    val status: Boolean? = null,
+    val status: AuthStatusCapabilities? = null,
     override val _meta: JsonElement? = null,
 ) : AcpWithMeta
 
