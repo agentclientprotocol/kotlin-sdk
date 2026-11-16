@@ -236,7 +236,7 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 
 ## Next
 The goal is done. The branch is pushed and the PR is open against `eugenethedev/permission-cancellation-fix`
-(stacked on #156); see the PR number in the last state commit message or `gh pr list --head eugenethedev/subagents`.
+(stacked on #156): PR #158.
 Remaining for the user: delete `.agents/state.md` and `.agents/research/` before the PR merges; retarget the PR to
 `master` once #156 merges. Follow-up candidates: review finding 4; the fresh-context close deadlock; the dropped
 pre-marker update; regression test for agent nit N3; stale Kotlin file:line cites in the spec.
