@@ -626,7 +626,8 @@ abstract class SubagentsTest(protocolDriver: ProtocolDriver) : ProtocolDriver by
         val fresh = announcement(childId, capabilities = cancelGrant, state = running)
         rootOps.awaitUpdate { it == fresh }
         childOps.awaitUpdate { it == agentTextChunk("child live") }
-        grandchildOps.awaitUpdate { it == agentTextChunk("grandchild history") }
+        // The grandchild's marker is the last thing it gets, after its replayed history.
+        grandchildOps.awaitOpened()
 
         // The root's stream: history, the response, then the fresh snapshot.
         val rootEvents = rootOps.events
@@ -818,6 +819,7 @@ abstract class SubagentsTest(protocolDriver: ProtocolDriver) : ProtocolDriver by
             assertEquals(listOf(child), session.subagents, "the old object's list doesn't change")
             val reloadedOps = world[childId]
             reloadedOps.awaitUpdate { it == agentTextChunk("recorded again") }
+            reloadedOps.awaitOpened()
             assertEquals(1, reloadedOps.events.count { it is SessionEvent.Opened })
             assertEquals(2, world.all.count { it.sessionId == childId })
         }

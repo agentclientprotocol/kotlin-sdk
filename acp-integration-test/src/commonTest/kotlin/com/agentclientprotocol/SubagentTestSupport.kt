@@ -277,6 +277,12 @@ open class RecordingOps(val sessionId: SessionId) : ClientSessionOperations {
     suspend fun awaitUpdate(predicate: (SessionUpdate) -> Boolean): Delivered =
         awaitDelivered { it.update?.let(predicate) == true }
 
+    /**
+     * Waits for the [SessionEvent.Opened] marker. A subagent's marker follows the items queued before it, so awaiting
+     * one of those items does not mean the marker has been delivered.
+     */
+    suspend fun awaitOpened(): Delivered = awaitDelivered { it.event is SessionEvent.Opened }
+
     suspend fun awaitPermissionRequest(): PermissionRequest =
         withTimeout(subagentTimeout) { permissionRequests.first { it.isNotEmpty() } }.first()
 }
