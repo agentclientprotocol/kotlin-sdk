@@ -210,14 +210,25 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   `ClientSessionOperations.notify(SessionUpdate, JsonElement)` with `notify(SessionEvent)` plus an extension (the
   intended `feat!` break); `acp-model.api` moves `MaybeUndefined` out of `model.v2` and adds the new types.
 
-## Next
-All planned slices are done; the last product commit is `0bd1962`.
+- Final review — `.agents/research/review-final-fixes.md` — 0 blocker, 2 should-fix, 9 nit. (1) a close called
+  from a subagent's own `notify` inside `withContext(NonCancellable)` (or another scope) leaves the consumer's job
+  tree, joins its own consumer and hangs (regression from `1bb9dcc`'s job-ancestry detection); (2) on a resume, an
+  `idle(cancelled)` arriving before the answer never answers permission requests already waiting. Nits: 3 and 4
+  residual risks (leave / optional), 5 permission handler looks the id up again inside the race, 6 handler
+  start order undocumented, 7 spec `:2318` names the wrong side for `removed`, 8 `AGENTS.md:168` + KDoc misstate
+  when a child is marked closed, 9 accept, 10 N3 test still open, 11 stale Kotlin cites (known).
+- User instruction 2026-11-16: fix the review findings (bring only judgement calls to the user), then push and
+  open a PR, stacked on #156 (base `eugenethedev/permission-cancellation-fix`), comprehensive but not verbose.
+- Orchestrator choices for the fix slice (reported to the user): (1) own-consumer detection = job ancestry OR a
+  context element (a false "own consumer" only skips a join; a missed one deadlocks); (2) a held cancellation is
+  promoted when a non-replaying opening is answered, like the held active-work value.
 
-1. Waiting on the user: whether to run a final review of the unreviewed commits after `ced95e7` (`1bb9dcc`,
-   `f684ec3`, `0bd1962`). Findings become new slices.
-2. Then tell the user the goal is done; remind them to delete `.agents/prompt.md`, `.agents/state.md` and
-   `.agents/research/` before the PR merges. Do not push or open a PR unless asked. PR description, when asked:
-   the release-note text from the commit body of `2f35a77` (it replaces the one in `d505b25`), plus that reminder.
+## Next
+1. M7 (programmer, `opus`), running: review findings 1, 2, 5, 6, 7, 8 (4 if simple), docs kept in step.
+2. Orchestrator: `./gradlew check`, `.agents/` grep, push `eugenethedev/subagents`, open the PR against
+   `eugenethedev/permission-cancellation-fix` (stacked on #156). Description: summary per layer, the release-note
+   text from the commit body of `2f35a77`, known limitations, and the reminder to delete `.agents/state.md` and
+   `.agents/research/` before merge.
 
 Notes:
 - Flaky build: `./gradlew check` fails now and then with a Kotlin/JS "Internal compiler error" in
@@ -233,4 +244,4 @@ Notes:
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
-- Final review of `1bb9dcc`, `f684ec3`, `0bd1962`: yes or no?
+(none)
