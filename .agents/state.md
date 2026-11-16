@@ -234,12 +234,16 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   `PendingPermissionCancellation.answerUnlessCancelled`, also used by v2). `check` green at `28348bb`
   (programmer and orchestrator); no API change; `.agents/` grep empty.
 
+- Rebase onto `master` (2026-11-16) — #156 was squash-merged as `ed806e0`; the branch was rebased with
+  `git rebase --onto origin/master 9941000`, so every commit hash above is the pre-rebase one (match by subject).
+  One conflict, in `PendingPermissionCancellation.kt` at M3.1: upstream landed the same fix under the name
+  `startTurn`; our `clearCancellation` version was kept. Upstream's three v2 `ClientSessionTest` tests came in and
+  pass. `check` green after the rebase.
+
 ## Next
-The goal is done. The branch is pushed and the PR is open against `eugenethedev/permission-cancellation-fix`
-(stacked on #156): PR #158.
-Remaining for the user: delete `.agents/state.md` and `.agents/research/` before the PR merges; retarget the PR to
-`master` once #156 merges. Follow-up candidates: review finding 4; the fresh-context close deadlock; the dropped
-pre-marker update; regression test for agent nit N3; stale Kotlin file:line cites in the spec.
+The goal is done. PR #158 targets `master`. Remaining for the user: delete `.agents/state.md` and
+`.agents/research/` before the PR merges. Follow-up candidates: review finding 4; the fresh-context close
+deadlock; the dropped pre-marker update; regression test for agent nit N3; stale Kotlin file:line cites in the spec.
 
 Notes:
 - Flaky build: `./gradlew check` fails now and then with a Kotlin/JS "Internal compiler error" in
