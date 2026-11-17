@@ -104,6 +104,14 @@ class SessionUpdateConversionTest {
         assertFailsWith<ProtocolConversionException> { update.toV1() }
     }
 
+    @Test
+    fun `replay completion has no standard v1 form`() {
+        val error = assertFailsWith<ProtocolConversionException> {
+            SessionUpdate.ReplayComplete(ReplayComplete()).toV1()
+        }
+        assertEquals("v2 SessionUpdate variant `replay_complete` cannot be represented in v1", error.message)
+    }
+
     // Variants with no v1 representation
 
     @Test

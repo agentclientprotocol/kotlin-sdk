@@ -216,6 +216,7 @@ private fun MaybeUndefined<JsonElement>.metaValueOrThrow(context: String): JsonE
  * variant yields exactly one update.
  *
  * @throws ProtocolConversionException if this update has no v1 representation:
+ * [SessionUpdate.ReplayComplete] (v1 has no standard replay marker),
  * [SessionUpdate.StateUpdate] (v1 reports completion in the `session/prompt` response),
  * [SessionUpdate.ToolCallContentChunk] (v1 content updates replace rather than append),
  * [SessionUpdate.TerminalUpdate] and [SessionUpdate.TerminalOutputChunk] (v1 terminals are
@@ -256,6 +257,10 @@ public fun SessionUpdate.toV1(): List<V1SessionUpdate> = when (this) {
         content = thought.content,
         meta = thought._meta,
         wrap = V1SessionUpdate::AgentThoughtChunk,
+    )
+
+    is SessionUpdate.ReplayComplete -> throw ProtocolConversionException(
+        "v2 SessionUpdate variant `replay_complete` cannot be represented in v1"
     )
 
     is SessionUpdate.StateUpdate -> throw ProtocolConversionException(

@@ -32,6 +32,7 @@ import kotlinx.serialization.json.jsonObject
 @OptIn(UnstableApi::class) private typealias AgentMessagePayload = AgentMessage
 @OptIn(UnstableApi::class) private typealias AgentThoughtPayload = AgentThought
 @OptIn(UnstableApi::class) private typealias StateUpdatePayload = StateUpdate
+@OptIn(UnstableApi::class) private typealias ReplayCompletePayload = ReplayComplete
 @OptIn(UnstableApi::class) private typealias ToolCallContentChunkPayload = ToolCallContentChunk
 @OptIn(UnstableApi::class) private typealias ToolCallUpdatePayload = ToolCallUpdate
 @OptIn(UnstableApi::class) private typealias TerminalUpdatePayload = TerminalUpdate
@@ -211,6 +212,23 @@ public data class UsageUpdate(
      * Cumulative session cost.
      */
     val cost: Cost? = null,
+    override val _meta: JsonElement? = null,
+) : AcpWithMeta
+
+/**
+ * The requested history replay for this session is complete, including an empty history.
+ *
+ * Sent exactly once after the session's last replayed update and before the successful resume
+ * response when a non-null `replayFrom` was requested, even when the history is empty. The agent
+ * sends none without a requested replay or when it cannot finish the replay. Updates before the
+ * marker are replayed history; updates after it are not.
+ *
+ * This does not make the session active or confirm that resume will succeed. Each announced
+ * subagent session ends its own replay with its own marker.
+ */
+@UnstableApi
+@Serializable
+public data class ReplayComplete(
     override val _meta: JsonElement? = null,
 ) : AcpWithMeta
 
@@ -735,6 +753,15 @@ public sealed class SessionUpdate {
     }
 
     /**
+     * The session's requested history replay has ended.
+     */
+    public data class ReplayComplete(val complete: ReplayCompletePayload) : SessionUpdate() {
+        internal companion object {
+            internal const val DISCRIMINATOR: String = "replay_complete"
+        }
+    }
+
+    /**
      * The agent's session state has changed.
      */
     public data class StateUpdate(val state: StateUpdatePayload) : SessionUpdate() {
@@ -944,6 +971,10 @@ internal object SessionUpdateSerializer : OpenTaggedUnionSerializer<SessionUpdat
             "AgentThought", AgentThoughtPayload.serializer(),
             SessionUpdate::AgentThought, SessionUpdate.AgentThought::thought,
         ),
+        SessionUpdate.ReplayComplete.DISCRIMINATOR to SessionUpdateVariantSerializer(
+            "ReplayComplete", ReplayCompletePayload.serializer(),
+            SessionUpdate::ReplayComplete, SessionUpdate.ReplayComplete::complete,
+        ),
         SessionUpdate.StateUpdate.DISCRIMINATOR to SessionUpdateVariantSerializer(
             "StateUpdate", StateUpdatePayload.serializer(),
             SessionUpdate::StateUpdate, SessionUpdate.StateUpdate::state,
@@ -1009,6 +1040,7 @@ internal object SessionUpdateSerializer : OpenTaggedUnionSerializer<SessionUpdat
             is SessionUpdate.AgentMessage -> SessionUpdate.AgentMessage.DISCRIMINATOR
             is SessionUpdate.AgentThoughtChunk -> SessionUpdate.AgentThoughtChunk.DISCRIMINATOR
             is SessionUpdate.AgentThought -> SessionUpdate.AgentThought.DISCRIMINATOR
+            is SessionUpdate.ReplayComplete -> SessionUpdate.ReplayComplete.DISCRIMINATOR
             is SessionUpdate.StateUpdate -> SessionUpdate.StateUpdate.DISCRIMINATOR
             is SessionUpdate.ToolCallContentChunk -> SessionUpdate.ToolCallContentChunk.DISCRIMINATOR
             is SessionUpdate.ToolCallUpdate -> SessionUpdate.ToolCallUpdate.DISCRIMINATOR
