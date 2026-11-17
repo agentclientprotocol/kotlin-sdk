@@ -12001,6 +12001,35 @@ public final class com/agentclientprotocol/model/v2/ProviderInfo$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class com/agentclientprotocol/model/v2/ReplayComplete : com/agentclientprotocol/model/AcpWithMeta {
+	public static final field Companion Lcom/agentclientprotocol/model/v2/ReplayComplete$Companion;
+	public fun <init> ()V
+	public fun <init> (Lkotlinx/serialization/json/JsonElement;)V
+	public synthetic fun <init> (Lkotlinx/serialization/json/JsonElement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Lkotlinx/serialization/json/JsonElement;)Lcom/agentclientprotocol/model/v2/ReplayComplete;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/v2/ReplayComplete;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lcom/agentclientprotocol/model/v2/ReplayComplete;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun get_meta ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/agentclientprotocol/model/v2/ReplayComplete$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/agentclientprotocol/model/v2/ReplayComplete$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/agentclientprotocol/model/v2/ReplayComplete;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/agentclientprotocol/model/v2/ReplayComplete;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/agentclientprotocol/model/v2/ReplayComplete$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public abstract class com/agentclientprotocol/model/v2/ReplayFrom {
 	public static final field Companion Lcom/agentclientprotocol/model/v2/ReplayFrom$Companion;
 }
@@ -12887,6 +12916,17 @@ public final class com/agentclientprotocol/model/v2/SessionUpdate$PlanUpdate : c
 	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/v2/SessionUpdate$PlanUpdate;Lcom/agentclientprotocol/model/v2/PlanUpdate;ILjava/lang/Object;)Lcom/agentclientprotocol/model/v2/SessionUpdate$PlanUpdate;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getUpdate ()Lcom/agentclientprotocol/model/v2/PlanUpdate;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/agentclientprotocol/model/v2/SessionUpdate$ReplayComplete : com/agentclientprotocol/model/v2/SessionUpdate {
+	public fun <init> (Lcom/agentclientprotocol/model/v2/ReplayComplete;)V
+	public final fun component1 ()Lcom/agentclientprotocol/model/v2/ReplayComplete;
+	public final fun copy (Lcom/agentclientprotocol/model/v2/ReplayComplete;)Lcom/agentclientprotocol/model/v2/SessionUpdate$ReplayComplete;
+	public static synthetic fun copy$default (Lcom/agentclientprotocol/model/v2/SessionUpdate$ReplayComplete;Lcom/agentclientprotocol/model/v2/ReplayComplete;ILjava/lang/Object;)Lcom/agentclientprotocol/model/v2/SessionUpdate$ReplayComplete;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getComplete ()Lcom/agentclientprotocol/model/v2/ReplayComplete;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }

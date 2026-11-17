@@ -14,6 +14,27 @@ import kotlin.test.assertIs
 
 class SessionUpdateTest {
 
+    @Test
+    fun `round-trips replay completion with optional metadata`() {
+        val cases = listOf(
+            """{"sessionUpdate":"replay_complete"}""",
+            """{"sessionUpdate":"replay_complete","_meta":{"cursor":"c1","extra":{"value":true}}}""",
+        )
+
+        cases.forEach { json ->
+            val update = assertIs<SessionUpdate.ReplayComplete>(decode(json))
+            assertEquals(json, encode(update))
+        }
+        assertIs<SessionUpdate.ReplayComplete>(
+            decode("""{"sessionUpdate":"replay_complete","_meta":false,"futureField":1}"""),
+        )
+        assertEquals(SessionUpdate.ReplayComplete(ReplayComplete()), decode(cases.first()))
+        assertEquals(
+            SessionUpdate.ReplayComplete(ReplayComplete()),
+            decode("""{"sessionUpdate":"replay_complete","_meta":null}"""),
+        )
+    }
+
     // Every known variant flattens its payload next to the discriminator
 
     @Test
