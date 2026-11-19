@@ -1122,9 +1122,10 @@ can't host a child: `getOrCreateSessionHolderOrNull` creates one only while an o
   update. Only the handler adds children, so only a cascade can see that entry, and failing a holder that never
   reached the map does no harm. `markOpened`, the failure
   cascade and close walk this list.
-  - The same update of the map reads two facts about the root: that its holder has failed, and that the removal of
-    its tree from the map has started (the `removed` flag, see "Close and connection end"). A registration that
-    comes after either stays out of the map. Without it, a subagent registered between the removal and the end of
+  - The same update of the map checks that the root's holder is still the one its id maps to. The close, the
+    reaping and the replacement of a failed root take the root's entry out of the map no later than its
+    descendants (see "Close and connection end"), so a registration that comes after stays out of the map, and one
+    that comes before is removed with them. Without it, a subagent registered between the removal and the end of
     the close would stay in the map with nothing left to remove it.
   - The close of the root is also visible through the root holder's `closing` flag, which `registerChild` reads
     after the `addChild` (see "Close and connection end").
@@ -1290,10 +1291,10 @@ root can be closed.
      call `close()` from their `notify`, and joining that consumer would wait for itself. The close doesn't join
      it, and cancels it at the end;
   3. the rest runs under `NonCancellable`, so a cancelled caller can't leave a half-removed tree, because the agent
-     has already dropped the sessions. It sets the root's `removed` flag, and then removes the root and every
-     descendant from the session map in one compare-and-set, each only if its id still maps to that holder, so no
-     half-removed tree is ever visible. A registration reads the `removed` flag inside its own update of the map
-     (see "Holders"), so it either enters the map before this update, and is removed, or stays out of it;
+     has already dropped the sessions. It removes the root and every descendant from the session map in one
+     compare-and-set, each only if its id still maps to that holder, so no half-removed tree is ever visible. A
+     registration checks the root's entry inside its own update of the map (see "Holders"), so it either enters
+     the map before this update, and is removed, or stays out of it;
   4. outside that update, bottom-up, because it calls app code or suspends: it closes each child's pending
      permissions (which changes nothing if the first step ran, and answers the requests of a child that was
      announced after it), marks each child object closed, and fails each child holder that hasn't completed
@@ -1417,8 +1418,7 @@ suspend fun removeSessionTree(rootId: SessionId): Set<SessionId> {
         for ((_, job) in consumers) if (job !in ownConsumers) job.join()
     } finally {
         withContext(NonCancellable) {
-            root.markRemoved()  // registerChild reads it inside its own update of the map
-            _sessions.update { storage ->
+            _sessions.update { storage ->  // registerChild checks the root's entry inside its own update
                 storage.copy(sessions = storage.sessions.mutate { map ->
                     for (holder in subtree) if (map[holder.sessionId] === holder) map.remove(holder.sessionId)
                 })
@@ -1447,7 +1447,6 @@ internal class ClientSessionHolder(val sessionId: SessionId, val parent: ClientS
 
     private val answered = atomic(false)  // the root's marker was queued
     private val closing = atomic(false)   // the root's close started; stays set if it fails
-    private val removed = atomic(false)   // the root's tree is about to leave the map
 
     val subagentPermissions: SubagentPendingPermissions? = if (parent != null) SubagentPendingPermissions() else null
 
@@ -1464,7 +1463,6 @@ internal class ClientSessionHolder(val sessionId: SessionId, val parent: ClientS
     fun closeChildren(): Collection<ClientSessionHolder>  // closes the map and `subagents`
     fun forEachDescendant(action: (ClientSessionHolder) -> Unit)
     fun markClosing()
-    fun markRemoved()
 
     fun startConsumer(scope: CoroutineScope, block: suspend CoroutineScope.() -> Unit): Boolean {
         val job = scope.launch(start = CoroutineStart.LAZY, block = block)
@@ -1866,8 +1864,8 @@ cover externally observable behaviour.
 - A child announced after `closeDescendantPermissions` and before the close response has its permission requests
   answered `cancelled` (the `closing` flag), and after the removal too (the removal closes every subagent's
   permissions).
-- A child registered while the removal runs stays out of the session map (the `removed` flag), and its subagent
-  object is closed.
+- A child registered while the removal runs stays out of the session map (the root's entry is gone), and its
+  subagent object is closed.
 - A close that a child's own `notify` starts returns without joining that consumer, and cancels the consumer at the
   end, also when `notify` waits for it under `withContext(NonCancellable)`, `withContext(Job())` or another scope's
   context. A close that an app coroutine starts after copying the consumer's context into another scope doesn't
@@ -1930,8 +1928,8 @@ cover externally observable behaviour.
   - root close: descendants' permissions answered before the request, the subtree removed in one update after a
     successful response, and sessions reach the client only through callbacks, never through `Client`;
   - the root holder's `closing` flag (set first by `closeDescendantPermissions`, read by `registerChild` after
-    `addChild`, kept after a failed close) and its separate `removed` flag (read inside `registerChild`'s update of
-    the map), the close order, own-consumer detection by job ancestry or the consumer's context element, and that a
+    `addChild`, kept after a failed close) and the check of the root's entry inside `registerChild`'s update of the
+    map, the close order, own-consumer detection by job ancestry or the consumer's context element, and that a
     failed child is marked closed and stays in `subagents`;
   - a child's consumer waits for its parent's holder before it switches to synchronous delivery.
 - A release note for the breaking `ClientSessionOperations.notify(SessionEvent)` change, and the samples moved to
@@ -2351,8 +2349,8 @@ The design moved through several shapes before landing on the factory-based `ann
     - The root's holder has a `closing` flag. `closeDescendantPermissions` sets it first, and `registerChild` reads it
       after `addChild` and closes the new child's permissions, so a child announced during the walk, or after it and
       before the response, gets closed permissions. It stays set after a failed close, as the closed permissions do,
-      and it needs no lock. The removal sets a separate `removed` flag, and the registration reads it inside its own
-      update of the map.
+      and it needs no lock. The registration checks inside its own update of the map that the root's entry is still
+      there, which the removal takes out.
       The removal also closes every subagent's permissions. Narrowing the KDoc to the subagents that existed when the
       close started was rejected: the RFD says the client cleans up the requests together with the parent's.
     - A close that a child's own `notify` starts doesn't join that child's consumer. It detects the consumer by job

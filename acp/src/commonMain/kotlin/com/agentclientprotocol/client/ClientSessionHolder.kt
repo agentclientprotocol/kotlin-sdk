@@ -126,7 +126,6 @@ internal class ClientSessionHolder(
     private val opening = atomic<Opening?>(null)
     private val answered = atomic(false)
     private val closing = atomic(false)
-    private val removed = atomic(false)
     // The delivery of the last update that missed the closed queue, see [handleOrQueue].
     private val lateDeliveries = atomic<Job>(Job().apply { complete() })
     private val children = atomic(Children())
@@ -211,24 +210,11 @@ internal class ClientSessionHolder(
     val isClosing: Boolean get() = closing.value
 
     /**
-     * Whether the removal of this root's tree from the session map has started, see [markRemoved]. Only a root has it.
-     */
-    val isRemoved: Boolean get() = removed.value
-
-    /**
      * Records that the close of this root has started, before the subagents' permissions are closed, so a subagent
      * registered from now on has its permissions closed by its registration.
      */
     fun markClosing() {
         closing.value = true
-    }
-
-    /**
-     * Records that this root's tree is about to leave the session map, so a subagent registered from now on stays out
-     * of it.
-     */
-    fun markRemoved() {
-        removed.value = true
     }
 
     /**

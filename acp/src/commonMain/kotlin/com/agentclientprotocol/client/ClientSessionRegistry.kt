@@ -164,10 +164,10 @@ internal class ClientSessionRegistry(
             withContext(NonCancellable) {
                 /*
                  * A registration can only add its subagent to a parent before the walk above closed the parent's
-                 * subagents, so the subagent is in the subtree, and the registration reads this mark inside its own
-                 * update of the map. So it either enters the map before this update, which removes it, or stays out.
+                 * subagents, so the subagent is in the subtree, and the registration checks the root's entry inside
+                 * its own update of the map. So it either enters the map before this update, which removes it with
+                 * the root, or sees the root gone and stays out.
                  */
-                root.markRemoved()
                 _sessions.update { storage ->
                     removed.clear()
                     val sessions = storage.sessions.mutate { map ->
@@ -296,8 +296,9 @@ internal class ClientSessionRegistry(
     /**
      * Registers the holder of the subagent [childId] that the agent announced in the stream of [parent].
      *
-     * The child goes into the parent's subagents first, so a parent that fails at the same moment can't miss it, and
-     * into the session map second, in one compare-and-set that checks the id. If another holder blocks the id, the
+     * The child goes into the parent's subagents first, so a parent that fails at the same moment can't miss it, and a
+     * parent that has failed, which closed its subagents first, takes none. It goes into the session map second, in one
+     * compare-and-set that checks the id and that the root is still registered. If another holder blocks the id, the
      * announcement is malformed: it names the parent itself, an ancestor, another parent's subagent, or a root that
      * is open or being opened. The child is then removed from the parent again, and the announcement is delivered to
      * the parent as a plain update. Only a cascade can have seen it, and failing a holder that never reached the map
@@ -310,8 +311,6 @@ internal class ClientSessionRegistry(
      * @return the child's holder, or `null` if nothing was registered
      */
     private fun registerChild(parent: ClientSessionHolder, childId: SessionId): ClientSessionHolder? {
-        if (parent.isFailed) return null
-
         val child = ClientSessionHolder(childId, parent, subagentSetup)
         val root = parent.root
         if (root.isAnswered) child.markSubagentOpened(promote = root.replayRequested != true)
@@ -323,18 +322,18 @@ internal class ClientSessionRegistry(
         var blocked = false
         _sessions.update { storage ->
             /*
-             * A failed root's subagents leave the map once its cascade has closed every holder's subagents, see
-             * [withInitializingSession] and [replacing], and a closed root's tree leaves it in [removeSessionTree].
-             * Reading the root's failure and removal here keeps a registration that comes after that removal out
-             * of the map.
+             * The close in [removeSessionTree], the reaping in [withInitializingSession] and [replacing] take the
+             * root's entry out of this map no later than the subagents below it. The child is already among its
+             * parent's subagents, so a registration that commits first is removed with them, and a later one sees
+             * the root gone.
              */
-            rootEnded = root.isFailed || root.isRemoved
+            rootEnded = storage.sessions[root.sessionId] !== root
             blocked = !rootEnded && storage.sessions[childId]?.blocksId == true
             if (rootEnded || blocked) storage else storage.copy(sessions = storage.sessions.replacing(childId, child))
         }
         /*
-         * The cascade of the failed root, or the removal of the closed root's tree, fails the child, which is already
-         * among its parent's subagents.
+         * The removal of the closed root's tree, or the cascade of the reaped or replaced root, fails the child, which
+         * is already among its parent's subagents.
          */
         if (rootEnded) return null
         if (blocked) {
