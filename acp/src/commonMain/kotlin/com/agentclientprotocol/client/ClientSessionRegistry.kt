@@ -3,6 +3,7 @@
 package com.agentclientprotocol.client
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.client.RootSessionHolder.Stage
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.AcpCreatedSessionResponse
 import com.agentclientprotocol.model.MaybeUndefined
@@ -76,7 +77,7 @@ internal class ClientSessionRegistry(
                     currentStorage
                 }
                 currentStorage.initializingSessionsCount > 0 -> {
-                    val newHolder = ClientSessionHolder(sessionId, parent = null, subagentSetup)
+                    val newHolder = RootSessionHolder(sessionId, subagentSetup)
                     clientSessionHolder = newHolder
                     currentStorage.copy(sessions = currentStorage.sessions.replacing(sessionId, newHolder))
                 }
@@ -98,8 +99,8 @@ internal class ClientSessionRegistry(
     /**
      * Returns the holder of the root session [rootId], or `null` if the id is unknown or belongs to a subagent.
      */
-    private fun rootHolderOrNull(rootId: SessionId): ClientSessionHolder? =
-        _sessions.value.sessions[rootId]?.takeIf { it.parent == null }
+    private fun rootHolderOrNull(rootId: SessionId): RootSessionHolder? =
+        _sessions.value.sessions[rootId] as? RootSessionHolder
 
     /**
      * Answers the pending and the later permission requests of every subagent below the root session [rootId] with
@@ -112,7 +113,7 @@ internal class ClientSessionRegistry(
     fun closeDescendantPermissions(rootId: SessionId) {
         val root = rootHolderOrNull(rootId) ?: return
         root.markClosing()
-        root.forEachDescendant { it.subagentPermissions?.close() }
+        root.forEachDescendant { it.permissions.close() }
     }
 
     /**
@@ -120,8 +121,8 @@ internal class ClientSessionRegistry(
      * create a holder, so a request handler can join the subagent's race before anything else changes its state, and
      * then wait for this holder rather than for whatever the id maps to later.
      */
-    fun subagentHolderOrNull(sessionId: SessionId): ClientSessionHolder? =
-        _sessions.value.sessions[sessionId]?.takeIf { it.blocksId && it.parent != null }
+    fun subagentHolderOrNull(sessionId: SessionId): SubagentSessionHolder? =
+        (_sessions.value.sessions[sessionId] as? SubagentSessionHolder)?.takeIf { it.blocksId }
 
     /**
      * Removes the root session [rootId] and every subagent below it, after the agent answered its `session/close`.
@@ -154,7 +155,9 @@ internal class ClientSessionRegistry(
         }
 
         val context = currentCoroutineContext()
-        val consumers = subtree.mapNotNull { holder -> holder.stopConsumer()?.let { holder to it } }
+        val consumers = subtree.mapNotNull { holder ->
+            (holder as? SubagentSessionHolder)?.let { subagent -> subagent.stopConsumer()?.let { subagent to it } }
+        }
         val ownConsumers = consumers.filter { (holder, job) -> context.runsIn(holder, job) }.map { it.second }.toSet()
         val removed = mutableSetOf<SessionId>()
         try {
@@ -183,8 +186,8 @@ internal class ClientSessionRegistry(
 
                 // Bottom-up, so each holder fails with its own error rather than with its parent's.
                 for (holder in subtree.asReversed()) {
-                    if (holder === root) continue
-                    holder.subagentPermissions?.close()
+                    if (holder !is SubagentSessionHolder) continue
+                    holder.permissions.close()
                     holder.subagent?.markClosed()
                     if (!holder.session.isCompleted) failSessionHolder(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
                 }
@@ -204,7 +207,7 @@ internal class ClientSessionRegistry(
      * without reacting to its cancellation, and is no longer above it. A false match only skips a join, for example
      * for a coroutine that copied the context into another scope, while a missed one deadlocks.
      */
-    private fun CoroutineContext.runsIn(holder: ClientSessionHolder, consumer: Job): Boolean =
+    private fun CoroutineContext.runsIn(holder: SubagentSessionHolder, consumer: Job): Boolean =
         this[SubagentConsumer]?.holder === holder || this[Job]?.let { consumer.isSelfOrAncestorOf(it) } == true
 
     /**
@@ -287,9 +290,9 @@ internal class ClientSessionRegistry(
         return QueuedItem.Announcement(update, meta, child)
     }
 
-    private fun followSubagentState(parent: ClientSessionHolder, child: ClientSessionHolder, update: SessionUpdate.SubagentUpdate) {
+    private fun followSubagentState(parent: ClientSessionHolder, child: SubagentSessionHolder, update: SessionUpdate.SubagentUpdate) {
         if (update.state != MaybeUndefined.Undefined) {
-            child.subagentPermissions?.onState(update.state.valueOrNull(), live = parent.root.isAnswered)
+            child.permissions.onState(update.state.valueOrNull(), live = parent.root.phase.isAtLeast(Stage.ANSWERED))
         }
     }
 
@@ -310,13 +313,14 @@ internal class ClientSessionRegistry(
      *
      * @return the child's holder, or `null` if nothing was registered
      */
-    private fun registerChild(parent: ClientSessionHolder, childId: SessionId): ClientSessionHolder? {
-        val child = ClientSessionHolder(childId, parent, subagentSetup)
+    private fun registerChild(parent: ClientSessionHolder, childId: SessionId): SubagentSessionHolder? {
+        val child = SubagentSessionHolder(childId, parent, subagentSetup)
         val root = parent.root
-        if (root.isAnswered) child.markSubagentOpened(promote = root.replayRequested != true)
+        val phase = root.phase
+        if (phase.isAtLeast(Stage.ANSWERED)) child.markSubagentOpened(promote = phase.opening?.replayRequested != true)
         if (!parent.addChild(child)) return null
         // Read after the child is reachable from the root, see [closeDescendantPermissions].
-        if (root.isClosing) child.subagentPermissions?.close()
+        if (root.phase.isAtLeast(Stage.CLOSING)) child.permissions.close()
 
         var rootEnded = false
         var blocked = false
@@ -354,9 +358,11 @@ internal class ClientSessionRegistry(
      *
      * @throws IllegalStateException if the session is open or being opened
      */
-    fun claimSessionHolder(sessionId: SessionId, replayRequested: Boolean, parameters: SessionCreationParameters): ClientSessionHolder {
+    fun claimSessionHolder(sessionId: SessionId, replayRequested: Boolean, parameters: SessionCreationParameters): RootSessionHolder {
         val sessionHolder = getOrCreateSessionHolder(sessionId)
-        check(sessionHolder.claimForOpening(replayRequested, parameters)) { "Session $sessionId is already open or being opened" }
+        check(sessionHolder is RootSessionHolder && sessionHolder.claimForOpening(replayRequested, parameters)) {
+            "Session $sessionId is already open or being opened"
+        }
         return sessionHolder
     }
 
@@ -374,8 +380,8 @@ internal class ClientSessionRegistry(
         sessionId: SessionId,
         response: AcpCreatedSessionResponse,
         parameters: SessionCreationParameters,
-    ): ClientSessionHolder? {
-        val sessionHolder = getOrCreateSessionHolderOrNull(sessionId) ?: return null
+    ): RootSessionHolder? {
+        val sessionHolder = getOrCreateSessionHolderOrNull(sessionId) as? RootSessionHolder ?: return null
         if (!sessionHolder.claimForOpening(replayRequested = false, parameters)) return null
         sessionHolder.markOpened(response)
         return sessionHolder
@@ -412,9 +418,11 @@ internal class ClientSessionRegistry(
 
     private suspend fun failSessionTree(holder: ClientSessionHolder, cause: Throwable) {
         val children = holder.closeChildren()
-        holder.stopConsumer()?.cancel()
-        // After the stop, so a setup that attaches the subagent later finds no consumer and closes it itself.
-        holder.subagent?.markClosed()
+        if (holder is SubagentSessionHolder) {
+            holder.stopConsumer()?.cancel()
+            // After the stop, so a setup that attaches the subagent later finds no consumer and closes it itself.
+            holder.subagent?.markClosed()
+        }
         holder.failAndDrainQueue(cause) { update, meta ->
             runCatching { handleUnconnectedSessionUpdate(holder.sessionId, update, meta) }
                 .onFailure { logger.error(it) { "Unconnected session update handler failed for ${holder.sessionId}" } }
@@ -447,7 +455,7 @@ internal class ClientSessionRegistry(
                      */
                     hangingSessions = currentStorage.sessions.filterValues {
                         @OptIn(ExperimentalCoroutinesApi::class)
-                        it.parent == null && (!it.session.isCompleted || it.session.getCompletionExceptionOrNull() != null)
+                        it is RootSessionHolder && (!it.session.isCompleted || it.session.getCompletionExceptionOrNull() != null)
                     }
                     var aliveSessions: PersistentMap<SessionId, ClientSessionHolder> = currentStorage.sessions
                     for ((id, _) in hangingSessions) {

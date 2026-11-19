@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -90,12 +91,12 @@ class ClientSessionRegistryTest {
             val lateHolder = assertNotNull(rootHolder.childOrNull(late))
             registry.deliverSessionUpdate(late, text("late-live"), null)
 
-            assertNull(assertNotNull(grandchildHolder.deliverEarly(Recorder())).response, "a grandchild gets its marker too")
-            val childOperations = Recorder()
-            assertNull(assertNotNull(childHolder.deliverEarly(childOperations)).response)
+            assertEquals(1, consumeUntilOpened(grandchildHolder).openedCount, "a grandchild gets its marker too")
+            val childOperations = consumeUntilOpened(childHolder)
+            assertEquals(1, childOperations.openedCount)
             assertEquals(listOf<SessionUpdate>(text("child-history"), announce(grandchild)), childOperations.updates)
-            val lateOperations = Recorder()
-            assertNotNull(lateHolder.deliverEarly(lateOperations), "a subagent registered after the answer has its marker first")
+            val lateOperations = consumeUntilOpened(lateHolder)
+            assertEquals(1, lateOperations.openedCount, "a subagent registered after the answer has its marker first")
             assertTrue(lateOperations.updates.isEmpty())
 
             assertSame(rootHolder, grandchildHolder.root)
@@ -162,7 +163,7 @@ class ClientSessionRegistryTest {
             assertFalse(started, "a setup that returns after the failure starts no consumer")
 
             // A failed parent takes no subagents any more.
-            assertFalse(childHolder.addChild(ClientSessionHolder(grandchild, childHolder, SubagentSetup(protocol, scope) { _, _ -> })))
+            assertFalse(childHolder.addChild(SubagentSessionHolder(grandchild, childHolder, SubagentSetup(protocol, scope) { _, _ -> })))
         }
     }
 
@@ -193,13 +194,13 @@ class ClientSessionRegistryTest {
             grandchildHolder.startConsumer(this@runTest) { started = true }
             runCurrent()
             assertFalse(started, "a setup that returns after the removal starts no consumer")
-            assertFalse(rootHolder.addChild(ClientSessionHolder(SessionId("late"), rootHolder, SubagentSetup(protocol, scope) { _, _ -> })))
+            assertFalse(rootHolder.addChild(SubagentSessionHolder(SessionId("late"), rootHolder, SubagentSetup(protocol, scope) { _, _ -> })))
         }
     }
 
     @Test
     fun `a consumer starts once and stopping it returns the running one`() = runTest {
-        val holder = ClientSessionHolder(child, ClientSessionHolder(root, null, SubagentSetup(protocol, scope) { _, _ -> }), SubagentSetup(protocol, scope) { _, _ -> })
+        val holder = SubagentSessionHolder(child, RootSessionHolder(root, SubagentSetup(protocol, scope) { _, _ -> }), SubagentSetup(protocol, scope) { _, _ -> })
         var runs = 0
         holder.startConsumer(this) {
             runs++
@@ -339,8 +340,24 @@ class ClientSessionRegistryTest {
         }
     }
 
+    /**
+     * Runs the consumer of [holder]'s queue until it has delivered the marker, and returns what its operations got.
+     * The consumer then waits for the parent's holder to complete, which these tests don't do, so it is cancelled.
+     */
+    private suspend fun TestScope.consumeUntilOpened(holder: SubagentSessionHolder): Recorder {
+        val operations = Recorder()
+        val session = ClientSubagentSession(
+            holder.sessionId, holder.parent.sessionId, operations, protocol, { "/root" }, { emptyList() }, holder.subagents, holder.permissions,
+        )
+        val consumer = launch { holder.consumeSubagentQueue(session) }
+        runCurrent()
+        consumer.cancel()
+        return operations
+    }
+
     private class Recorder : ClientSessionOperations {
         val updates = mutableListOf<SessionUpdate>()
+        var openedCount = 0
 
         override suspend fun requestPermissions(
             toolCall: SessionUpdate.ToolCallUpdate,
@@ -349,7 +366,10 @@ class ClientSessionRegistryTest {
         ): RequestPermissionResponse = error("not expected in this test")
 
         override suspend fun notify(event: SessionEvent) {
-            if (event is SessionEvent.Update) updates += event.update
+            when (event) {
+                is SessionEvent.Update -> updates += event.update
+                is SessionEvent.Opened -> openedCount++
+            }
         }
     }
 

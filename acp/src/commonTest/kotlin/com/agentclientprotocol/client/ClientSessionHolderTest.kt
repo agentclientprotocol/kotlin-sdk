@@ -1,6 +1,7 @@
 package com.agentclientprotocol.client
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.client.RootSessionHolder.Stage
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.common.SessionEvent
@@ -29,6 +30,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -126,6 +128,7 @@ class ClientSessionHolderTest {
         val holder = holder()
         val releaseFirst = CompletableDeferred<Unit>()
         val operations = RecordingOperations(beforeEach = { update -> if (update == queuedUpdate) releaseFirst.await() })
+        assertTrue(holder.claimForOpening(replayRequested = true, parameters))
         val delivery = launch { holder.deliverEarly(operations) }
 
         assertTrue(holder.handleOrQueue(QueuedItem.Update(queuedUpdate, null)))
@@ -194,32 +197,65 @@ class ClientSessionHolderTest {
         holder.failAndDrainQueue(IllegalStateException("load failed")) { _, _ -> }
 
         assertFalse(holder.markOpened(response))
-        assertFalse(holder.isAnswered)
+        assertFalse(holder.phase.isAtLeast(Stage.ANSWERED))
     }
 
     @Test
     fun `marking a holder opened records the answer`() {
         val holder = holder()
         assertTrue(holder.claimForOpening(replayRequested = false, parameters))
-        assertFalse(holder.isAnswered)
+        assertFalse(holder.phase.isAtLeast(Stage.ANSWERED))
 
         assertTrue(holder.markOpened(response))
-        assertTrue(holder.isAnswered)
+        assertTrue(holder.phase.isAtLeast(Stage.ANSWERED))
+        assertFalse(holder.phase.isAtLeast(Stage.CLOSING))
+        assertSame(parameters, holder.phase.opening?.parameters, "the answer keeps the claim's opening")
+    }
+
+    @Test
+    fun `an answer without a claim or a second answer is refused`() {
+        val unclaimed = holder()
+        assertFailsWith<IllegalStateException> { unclaimed.markOpened(response) }
+        assertFalse(unclaimed.phase.isAtLeast(Stage.CLAIMED))
+
+        val answered = holder()
+        assertTrue(answered.claimForOpening(replayRequested = false, parameters))
+        assertTrue(answered.markOpened(response))
+        assertFailsWith<IllegalStateException> { answered.markOpened(response) }
+    }
+
+    @Test
+    fun `a close marks only an answered holder and a later close keeps it closing`() {
+        val unclaimed = holder()
+        unclaimed.markClosing()
+        assertFalse(unclaimed.phase.isAtLeast(Stage.CLAIMED), "a close that finds an unclaimed holder leaves it so")
+
+        val claimed = holder()
+        assertTrue(claimed.claimForOpening(replayRequested = true, parameters))
+        claimed.markClosing()
+        assertFalse(claimed.phase.isAtLeast(Stage.ANSWERED), "a close that finds an unanswered holder leaves it so")
+        assertTrue(claimed.markOpened(response), "the opening that owns it is still answered")
+
+        claimed.markClosing()
+        assertTrue(claimed.phase.isAtLeast(Stage.CLOSING))
+        claimed.markClosing()
+        assertTrue(claimed.phase.isAtLeast(Stage.CLOSING), "a close after a failed close")
+        assertEquals(true, claimed.phase.opening?.replayRequested, "closing keeps the claim's opening")
     }
 
     @Test
     fun `one opening call owns a holder`() = runTest {
         val load = holder()
-        assertNull(load.replayRequested)
+        assertNull(load.phase.opening)
         assertTrue(load.claimForOpening(replayRequested = true, parameters))
-        assertEquals(true, load.replayRequested)
+        assertEquals(true, load.phase.opening?.replayRequested)
         assertFalse(load.claimForOpening(replayRequested = true, parameters), "a second load")
         assertFalse(load.claimForOpening(replayRequested = false, parameters), "a resume of a holder that a load owns")
-        assertEquals(true, load.replayRequested, "a refused claim leaves the holder unchanged")
+        assertEquals(true, load.phase.opening?.replayRequested, "a refused claim leaves the holder unchanged")
 
         val resume = holder()
         assertTrue(resume.claimForOpening(replayRequested = false, parameters))
-        assertEquals(false, resume.replayRequested)
+        assertEquals(false, resume.phase.opening?.replayRequested)
         assertFalse(resume.claimForOpening(replayRequested = false, parameters), "a second resume")
         assertFalse(resume.claimForOpening(replayRequested = true, parameters), "a load of a holder that a resume owns")
 
@@ -227,10 +263,10 @@ class ClientSessionHolderTest {
         failed.failAndDrainQueue(IllegalStateException("load failed")) { _, _ -> }
         assertTrue(failed.isFailed)
         assertFalse(failed.claimForOpening(replayRequested = true, parameters), "an opening of a failed holder")
-        assertNull(failed.replayRequested)
+        assertNull(failed.phase.opening)
     }
 
-    private fun holder() = ClientSessionHolder(SessionId("session"), parent = null, SubagentSetup(protocol, scope) { _, _ -> })
+    private fun holder() = RootSessionHolder(SessionId("session"), SubagentSetup(protocol, scope) { _, _ -> })
 
     private class RecordingOperations(
         private val beforeEach: suspend (SessionUpdate) -> Unit = {},

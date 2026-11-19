@@ -73,7 +73,7 @@ public class Client(
     }
 
     private fun createClientSession(
-        sessionHolder: ClientSessionHolder,
+        sessionHolder: RootSessionHolder,
         sessionId: SessionId,
         sessionParameters: SessionCreationParameters,
         operations: ClientSessionOperations,
@@ -114,9 +114,8 @@ public class Client(
              * never looks the id up again.
              */
             val subagent = sessions.subagentHolderOrNull(params.sessionId)
-            val subagentPermissions = subagent?.subagentPermissions
-            if (subagent != null && subagentPermissions != null) {
-                return@setRequestHandler subagentPermissions.answerPermissionRequest(params.toolCall, params.options, params._meta) {
+            if (subagent != null) {
+                return@setRequestHandler subagent.permissions.answerPermissionRequest(params.toolCall, params.options, params._meta) {
                     subagent.session.await()
                 }
             }
@@ -607,12 +606,12 @@ public class Client(
 
     /**
      * Creates the session with [factory] after the answer, and delivers the updates buffered in [sessionHolder] to it:
-     * the history, then the marker, then the live updates, see [ClientSessionHolder.completeOpening]. If the factory
+     * the history, then the marker, then the live updates, see [RootSessionHolder.completeOpening]. If the factory
      * or the delivery fails, or the caller is cancelled, the holder fails, even if the operations got the marker. A
      * cancellation that the factory throws while the caller is active becomes an [IllegalStateException].
      */
     private suspend fun createSession(
-        sessionHolder: ClientSessionHolder,
+        sessionHolder: RootSessionHolder,
         sessionId: SessionId,
         sessionParameters: SessionCreationParameters,
         sessionResponse: AcpCreatedSessionResponse,
@@ -684,7 +683,7 @@ public class Client(
         sessionIdOf: (R) -> SessionId,
         request: suspend (onResponse: (R) -> Unit) -> R,
     ): ClientSession = sessions.withInitializingSession {
-        val claimed = CompletableDeferred<Pair<SessionId, ClientSessionHolder>?>()
+        val claimed = CompletableDeferred<Pair<SessionId, RootSessionHolder>?>()
         val sessionResponse = try {
             request { response ->
                 val sessionId = sessionIdOf(response)

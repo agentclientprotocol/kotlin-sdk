@@ -903,11 +903,11 @@ ordered response handling, but without a barrier: Kotlin's read loop calls it in
 overload:
 - For load and resume, the hook calls `markOpened(response)` on the root's holder. For new and fork, the id first
   appears in the response, so the hook finds the holder by `response.sessionId`, claims it and marks it in one step.
-- `markOpened` enqueues `Opened(response)` into the root's queue with `trySend`, sets the root holder's atomic
-  `answered` flag, and enqueues `Opened(null)` into every open descendant holder.
+- `markOpened` enqueues `Opened(response)` into the root's queue with `trySend`, moves the root holder's atomic
+  `RootPhase` to the `ANSWERED` stage, and enqueues `Opened(null)` into every open descendant holder.
 - The hook runs on the read loop's coroutine, not on `handlerDispatcher`, so it touches only the queues and the
   atomic registry.
-- A child registered after `answered` is set gets `Opened(null)` as its first queue item, enqueued by the
+- A child registered once the root is `ANSWERED` gets `Opened(null)` as its first queue item, enqueued by the
   `session/update` handler at registration. The handler and the hook both run in read-loop order, so each child gets
   its marker exactly once.
 - **Invariant:** when the hook runs, every descendant holder is still queuing. A child's queue closes only after
@@ -966,7 +966,7 @@ arrival (see "Pending permission requests").
 
 - **Registration.** The client's `session/update` handler (`client/Client.kt:183`) calls
   `ClientSessionRegistry.deliverSessionUpdate` (see "Session registry"). That function sorts each update when it
-  arrives, synchronously, before anything that can suspend, and registers a `ClientSessionHolder` for a newly
+  arrives, synchronously, before anything that can suspend, and registers a `SubagentSessionHolder` for a newly
   announced child as part of it. The update is then enqueued into the parent's holder, tagged with the result (see
   "Sorting at arrival"). The parent's consumer creates the `ClientSubagentSession` when it reaches the announcement
   (see "Setup"), and applies later patches just before they're delivered (see "History and live updates").
@@ -1080,7 +1080,8 @@ arrival (see "Pending permission requests").
 
 ### Holders
 
-Every session id, root or child, has one `ClientSessionHolder` (`client/ClientSessionHolder.kt`). Today's holder
+Every session id, root or child, has one `ClientSessionHolder` (`client/ClientSessionHolder.kt`): a
+`RootSessionHolder` for a root, a `SubagentSessionHolder` for a child. Today's holder
 can't host a child: `getOrCreateSessionHolderOrNull` creates one only while an opening is in progress
 (`client/Client.kt:60-90`), the reaping at the end of the last opening fails every holder that hasn't completed
 (`:845-866`), and the holder is typed to `ClientSessionImpl`. The rules below fix that and keep the invariant of
@@ -1127,7 +1128,7 @@ can't host a child: `getOrCreateSessionHolderOrNull` creates one only while an o
     descendants (see "Close and connection end"), so a registration that comes after stays out of the map, and one
     that comes before is removed with them. Without it, a subagent registered between the removal and the end of
     the close would stay in the map with nothing left to remove it.
-  - The close of the root is also visible through the root holder's `closing` flag, which `registerChild` reads
+  - The close of the root is also visible through the root holder's `CLOSING` stage, which `registerChild` reads
     after the `addChild` (see "Close and connection end").
   - A failed root's descendants leave the map when the root is reaped or replaced by a new holder, so failed
     subagents of repeated failed loads don't pile up under fresh ids.
@@ -1274,9 +1275,9 @@ root can be closed.
 - **Before the request:** every descendant's `SubagentPendingPermissions` is closed, at the same point as the
   root's `PendingPermissionCancellation` today, and for the same reason: the agent's close may wait for child work
   that waits for a permission answer. Each close only completes a signal, so the order doesn't matter.
-  - `closeDescendantPermissions` first sets the **`closing` flag** on the root's holder (next to `answered`, and
-    read through `root`), and then walks the descendants. `registerChild` reads the flag after it has added the new
-    child to its parent, and closes the new child's permissions if it is set. So a child that the walk misses,
+  - `closeDescendantPermissions` first moves the root's holder to the **`CLOSING` stage** of its `RootPhase` (after
+    `ANSWERED`, and read through `root`), and then walks the descendants. `registerChild` reads the stage after it
+    has added the new child to its parent, and closes the new child's permissions if the root is closing. So a child that the walk misses,
     because it was registered while the walk ran, has its permissions closed by its own registration: one of the
     two sees the other's write. It needs no lock.
   - The flag stays set if the close fails, as the closed permissions do, so a child announced after a failed close
@@ -1323,7 +1324,7 @@ root can be closed.
   waits for it without reacting to cancellation, neither finishes. The `ClientSession.close` KDoc states that
   limitation.
 - **If the request fails,** nothing is removed, as for a root today and as on the agent side. The permissions stay
-  closed, as the root's do, and so does the `closing` flag.
+  closed, as the root's do, and the root stays `CLOSING`.
 - **Closed child objects keep their last values.** `subagents` on the closed parent stays as it was. `canCancel`
   becomes `false`, and `cancel()` throws `IllegalStateException`, so a closed child never sends `session/cancel` for
   an id the agent has dropped. Later `subagent_update`s are not applied to it. The removal marks every child of the
@@ -1395,7 +1396,7 @@ ClientSessionImpl(
 fun closeDescendantPermissions(rootId: SessionId) {
     val root = rootHolderOrNull(rootId) ?: return
     root.markClosing()  // first: registerChild reads it after addChild
-    root.forEachDescendant { it.subagentPermissions?.close() }
+    root.forEachDescendant { it.permissions.close() }
 }
 
 suspend fun removeSessionTree(rootId: SessionId): Set<SessionId> {
@@ -1410,7 +1411,7 @@ suspend fun removeSessionTree(rootId: SessionId): Set<SessionId> {
     }
 
     val context = currentCoroutineContext()
-    val consumers = subtree.mapNotNull { holder -> holder.stopConsumer()?.let { holder to it } }
+    val consumers = subtree.mapNotNull { holder -> (holder as? SubagentSessionHolder)?.stopConsumer()?.let { holder to it } }
     // the consumer's SubagentConsumer element, or job ancestry
     val ownConsumers = consumers.filter { (holder, job) -> context.runsIn(holder, job) }.map { it.second }.toSet()
     try {
@@ -1425,8 +1426,8 @@ suspend fun removeSessionTree(rootId: SessionId): Set<SessionId> {
             }
 
             for (holder in subtree.asReversed()) {  // bottom-up
-                if (holder === root) continue
-                holder.subagentPermissions?.close()
+                if (holder !is SubagentSessionHolder) continue
+                holder.permissions.close()
                 holder.subagent?.markClosed()
                 if (!holder.session.isCompleted) failSessionHolder(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
             }
@@ -1436,19 +1437,34 @@ suspend fun removeSessionTree(rootId: SessionId): Set<SessionId> {
     return removedIds
 }
 
-// ClientSessionHolder, which now knows its own id and parent
-internal class ClientSessionHolder(val sessionId: SessionId, val parent: ClientSessionHolder?, setup: SubagentSetup) {
+// ClientSessionHolder, which now knows its own id, with a subclass per kind of session
+internal sealed class ClientSessionHolder(val sessionId: SessionId, setup: SubagentSetup) {
     private data class Children(
-        val byId: PersistentMap<SessionId, ClientSessionHolder> = persistentMapOf(),
+        val byId: PersistentMap<SessionId, SubagentSessionHolder> = persistentMapOf(),
         val closed: Boolean = false,
     )
     private val children = atomic(Children())
     val subagents = SubagentList()  // the public BaseClientSession.subagents, closable
 
-    private val answered = atomic(false)  // the root's marker was queued
-    private val closing = atomic(false)   // the root's close started; stays set if it fails
+    fun addChild(child: SubagentSessionHolder): Boolean   // false once closed
+    fun removeChild(id: SessionId)
+    fun childOrNull(id: SessionId): SubagentSessionHolder?
+    fun closeChildren(): Collection<SubagentSessionHolder>  // closes the map and `subagents`
+    fun forEachDescendant(action: (SubagentSessionHolder) -> Unit)
+}
 
-    val subagentPermissions: SubagentPendingPermissions? = if (parent != null) SubagentPendingPermissions() else null
+internal class RootSessionHolder(sessionId: SessionId, setup: SubagentSetup) : ClientSessionHolder(sessionId, setup) {
+    // UNCLAIMED, CLAIMED, ANSWERED (the root's marker was queued), CLOSING (the close started; stays if it fails),
+    // with the claim's opening, in one atomic snapshot
+    private val _phase = atomic(RootPhase.UNCLAIMED)
+    val phase: RootPhase get() = _phase.value
+
+    fun markClosing()
+}
+
+internal class SubagentSessionHolder(sessionId: SessionId, val parent: ClientSessionHolder, setup: SubagentSetup) :
+    ClientSessionHolder(sessionId, setup) {
+    val permissions = SubagentPendingPermissions()
 
     private sealed class ConsumerState {
         object NotStarted : ConsumerState()
@@ -1456,13 +1472,6 @@ internal class ClientSessionHolder(val sessionId: SessionId, val parent: ClientS
         object Stopped : ConsumerState()
     }
     private val consumer = atomic<ConsumerState>(ConsumerState.NotStarted)
-
-    fun addChild(child: ClientSessionHolder): Boolean   // false once closed
-    fun removeChild(id: SessionId)
-    fun childOrNull(id: SessionId): ClientSessionHolder?
-    fun closeChildren(): Collection<ClientSessionHolder>  // closes the map and `subagents`
-    fun forEachDescendant(action: (ClientSessionHolder) -> Unit)
-    fun markClosing()
 
     fun startConsumer(scope: CoroutineScope, block: suspend CoroutineScope.() -> Unit): Boolean {
         val job = scope.launch(start = CoroutineStart.LAZY, block = block)
@@ -1596,7 +1605,7 @@ elicitation requests are unaffected (see "Side findings" for elicitation).
     it remembers that value, and an `idle(cancelled)` sets aside the requests pending at its arrival
     (`PendingPermissionCancellation.setPendingAside()`: the signal they wait on is replaced by a fresh one, which
     completes the old one when it completes, so the next cancel or close still answers them). "Live" comes from
-    question 18's `answered` flag, which the response hook sets in wire order.
+    question 18's `ANSWERED` stage of the root, which the response hook reaches in wire order.
   - `onOpened(promote)`: after a resume, `activeWork` takes the held-back value, and the requests set aside by a
     held `idle(cancelled)` are answered `cancelled`, as that `idle` would have answered them live; a later held
     state doesn't undo that, and a request that arrived after the `idle` isn't answered by it. After a load,
@@ -1859,10 +1868,10 @@ cover externally observable behaviour.
   reacted to the cancellation.
 - An announcement that arrives during the removal registers nothing.
 - A failed close removes nothing, and the permissions stay closed: later requests on the root and its children are
-  still answered `cancelled`. The `closing` flag stays set too: a child announced after a failed close has its
+  still answered `cancelled`. The root stays `CLOSING` too: a child announced after a failed close has its
   permissions closed.
 - A child announced after `closeDescendantPermissions` and before the close response has its permission requests
-  answered `cancelled` (the `closing` flag), and after the removal too (the removal closes every subagent's
+  answered `cancelled` (the `CLOSING` stage), and after the removal too (the removal closes every subagent's
   permissions).
 - A child registered while the removal runs stays out of the session map (the root's entry is gone), and its
   subagent object is closed.
@@ -1927,7 +1936,7 @@ cover externally observable behaviour.
     pending-permission rule is updated for `clearCancellation()`;
   - root close: descendants' permissions answered before the request, the subtree removed in one update after a
     successful response, and sessions reach the client only through callbacks, never through `Client`;
-  - the root holder's `closing` flag (set first by `closeDescendantPermissions`, read by `registerChild` after
+  - the root holder's `CLOSING` stage (reached first by `closeDescendantPermissions`, read by `registerChild` after
     `addChild`, kept after a failed close) and the check of the root's entry inside `registerChild`'s update of the
     map, the close order, own-consumer detection by job ancestry or the consumer's context element, and that a
     failed child is marked closed and stays in `subagents`;
@@ -2346,9 +2355,9 @@ The design moved through several shapes before landing on the factory-based `ann
     elicitation entries; a failed close removes nothing; on connection end nothing more happens (see "Close and
     connection end"). `ClientSessionImpl` gets two callbacks instead of calling `Client`, and
     `ClientSession.client` is deprecated.
-    - The root's holder has a `closing` flag. `closeDescendantPermissions` sets it first, and `registerChild` reads it
-      after `addChild` and closes the new child's permissions, so a child announced during the walk, or after it and
-      before the response, gets closed permissions. It stays set after a failed close, as the closed permissions do,
+    - The root's holder has a `CLOSING` stage. `closeDescendantPermissions` reaches it first, and `registerChild` reads
+      it after `addChild` and closes the new child's permissions, so a child announced during the walk, or after it and
+      before the response, gets closed permissions. It stays after a failed close, as the closed permissions do,
       and it needs no lock. The registration checks inside its own update of the map that the root's entry is still
       there, which the removal takes out.
       The removal also closes every subagent's permissions. Narrowing the KDoc to the subagents that existed when the

@@ -34,7 +34,7 @@ internal class ClientSessionImpl(
     private val protocol: Protocol,
     private val onClosing: () -> Unit,
     private val onClosed: suspend () -> Unit,
-    private val holder: ClientSessionHolder,
+    private val holder: RootSessionHolder,
 ) : ClientSession {
 
     private class PromptSession(

@@ -80,7 +80,7 @@ internal class SubagentSetup(
             parentCwd = parent::sessionCwd,
             parentAdditionalDirectories = parent::sessionAdditionalDirectories,
             children = child.subagents,
-            pendingPermissions = checkNotNull(child.subagentPermissions) { "Session $childId is not a subagent" },
+            pendingPermissions = child.permissions,
         )
         session.applyPatch(announcement.update, parentOpened)
         child.attachSubagent(session)
@@ -99,12 +99,12 @@ internal class SubagentSetup(
         if (!child.startConsumer(scope) { consume(child, session) }) session.markClosed()
     }
 
-    private suspend fun failSetup(child: ClientSessionHolder, cause: Throwable) {
+    private suspend fun failSetup(child: SubagentSessionHolder, cause: Throwable) {
         logger.error(cause) { "Failed to create the operations of subagent session ${child.sessionId}" }
         failHolder(child, IllegalStateException("Failed to set up subagent session ${child.sessionId}", cause))
     }
 
-    private suspend fun consume(child: ClientSessionHolder, session: ClientSubagentSession) {
+    private suspend fun consume(child: SubagentSessionHolder, session: ClientSubagentSession) {
         try {
             child.consumeSubagentQueue(session)
         } catch (ce: CancellationException) {

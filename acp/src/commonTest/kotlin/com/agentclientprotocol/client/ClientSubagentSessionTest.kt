@@ -548,7 +548,7 @@ class ClientSubagentSessionTest {
         assertTrue(root.subagents.isEmpty())
         assertEquals("/project", root.cwd)
         assertEquals(listOf("/lib"), root.additionalDirectories)
-        assertSame(parameters, holder.rootParameters, "a child can read the parameters before the root session exists")
+        assertSame(parameters, holder.phase.opening?.parameters, "a child can read the parameters before the root session exists")
     }
 
     @Test
@@ -616,9 +616,9 @@ class ClientSubagentSessionTest {
         assertFailsWith<IllegalStateException> { currentCoroutineContext().baseClientSession }
     }
 
-    private fun rootHolder() = ClientSessionHolder(SessionId("root"), parent = null, SubagentSetup(protocol, scope) { _, _ -> })
+    private fun rootHolder() = RootSessionHolder(SessionId("root"), SubagentSetup(protocol, scope) { _, _ -> })
 
-    private fun rootSession(holder: ClientSessionHolder, parameters: SessionCreationParameters) = ClientSessionImpl(
+    private fun rootSession(holder: RootSessionHolder, parameters: SessionCreationParameters) = ClientSessionImpl(
         client = Client(protocol),
         sessionId = SessionId("root"),
         parameters = parameters,
