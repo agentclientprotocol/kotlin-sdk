@@ -37,6 +37,7 @@ import com.agentclientprotocol.model.v2.SetProviderResponse
 import com.agentclientprotocol.model.v2.StatusAuthRequest
 import com.agentclientprotocol.model.v2.StatusAuthResponse
 import com.agentclientprotocol.model.v2.UpdateSessionNotification
+import com.agentclientprotocol.protocol.JsonRpcException
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.acpFail
 import com.agentclientprotocol.protocol.invoke
@@ -44,6 +45,7 @@ import com.agentclientprotocol.protocol.readProtocolVersionOrNull
 import com.agentclientprotocol.protocol.setNotificationHandler
 import com.agentclientprotocol.protocol.setRequestHandler
 import com.agentclientprotocol.rpc.ACPJson
+import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
@@ -445,10 +447,22 @@ public class Client(
      * Deletes a session with `session/delete`, dropping it from what [listSessions] reports.
      *
      * Takes an id rather than a session object because a session can be deleted without ever being open on
-     * this connection.
+     * this connection. If it is open here, it is forgotten locally and a later [ClientSession.close] of it
+     * returns an empty response without sending anything.
+     *
+     * An agent that answers `-32002` (resource not found) has no such session, which ACP asks the client to treat
+     * as a successful delete
+     * ([session/delete](https://agentclientprotocol.com/protocol/v2/session-delete#semantics)): the local
+     * session is forgotten and this function returns an empty [DeleteSessionResponse]. Any other error is thrown
+     * and nothing is forgotten.
      */
     public suspend fun deleteSession(sessionId: SessionId, _meta: JsonElement? = null): DeleteSessionResponse {
-        val response = AcpMethod.AgentMethods.V2.SessionDelete(protocol, DeleteSessionRequest(sessionId, _meta))
+        val response = try {
+            AcpMethod.AgentMethods.V2.SessionDelete(protocol, DeleteSessionRequest(sessionId, _meta))
+        } catch (e: JsonRpcException) {
+            if (e.code != JsonRpcErrorCode.RESOURCE_NOT_FOUND.code) throw e
+            DeleteSessionResponse()
+        }
         removeSession(sessionId)
         return response
     }
@@ -627,14 +641,18 @@ public class Client(
      * Forgets a session locally; the wire call is [ClientSession.close] or [deleteSession].
      *
      * Closing the inbox ends the session's [ClientSession.updates] flow, so a collector finishes instead of
-     * waiting for updates that can no longer come.
+     * waiting for updates that can no longer come. The removed session object is marked ended, so its own
+     * `close` sends nothing afterwards.
      */
     private fun removeSession(sessionId: SessionId) {
         var inbox: Inbox? = null
+        var removed: ClientSession? = null
         _sessions.update { current ->
             inbox = current.inboxes[sessionId]
+            removed = current.sessions[sessionId]
             current.copy(inboxes = current.inboxes.remove(sessionId), sessions = current.sessions.remove(sessionId))
         }
+        removed?.markEnded()
         inbox?.updates?.close()
     }
 }
