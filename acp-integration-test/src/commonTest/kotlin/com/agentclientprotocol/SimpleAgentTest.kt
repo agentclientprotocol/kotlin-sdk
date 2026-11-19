@@ -222,6 +222,66 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
     }
 
     @Test
+    fun `updates sent before a failing prompt answer still reach the prompt flow`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = object : AgentSupport {
+            override suspend fun initialize(clientInfo: ClientInfo): AgentInfo {
+                return AgentInfo(clientInfo.protocolVersion)
+            }
+
+            override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
+                return object : AgentSession {
+                    override val sessionId: SessionId = SessionId("test-session-id")
+
+                    override suspend fun prompt(
+                        content: List<ContentBlock>,
+                        _meta: JsonElement?,
+                    ): Flow<Event> = flow {
+                        repeat(FAILING_TURN_CHUNKS) {
+                            emit(Event.SessionUpdateEvent(SessionUpdate.AgentMessageChunk(ContentBlock.Text("chunk $it"))))
+                        }
+                        jsonRpcInvalidParams("the turn failed")
+                    }
+                }
+            }
+
+            override suspend fun loadSession(
+                sessionId: SessionId,
+                sessionParameters: SessionCreationParameters,
+            ): AgentSession {
+                TODO("Not yet implemented")
+            }
+        })
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+        val session = client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ ->
+            object : ClientSessionOperations {
+                override suspend fun requestPermissions(
+                    toolCall: SessionUpdate.ToolCallUpdate,
+                    permissions: List<PermissionOption>,
+                    _meta: JsonElement?,
+                ): RequestPermissionResponse = error("not expected in this test")
+
+                override suspend fun notify(notification: SessionUpdate, _meta: JsonElement?): Unit =
+                    error("an update of a running prompt belongs to the prompt flow")
+            }
+        }
+
+        val received = mutableListOf<String>()
+        val failure = assertFailsWith<AcpExpectedError> {
+            session.prompt(listOf(ContentBlock.Text("work on it"))).collect { event ->
+                // A real collector does work per update, so the agent's answer overtakes it. Hold the first
+                // update long enough for every later update and the failing answer to arrive meanwhile.
+                if (received.isEmpty()) delay(300)
+                received.add(((event as Event.SessionUpdateEvent).update as SessionUpdate.AgentMessageChunk).let {
+                    (it.content as ContentBlock.Text).text
+                })
+            }
+        }
+        assertEquals("the turn failed", failure.message)
+        assertContentEquals(List(FAILING_TURN_CHUNKS) { "chunk $it" }, received)
+    }
+
+    @Test
     fun `cancel simple prompt from client`() = testWithProtocols { clientProtocol, agentProtocol ->
         val client = Client(protocol = clientProtocol)
 
@@ -2606,4 +2666,11 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
         assertEquals("help", command.name)
     }
 
+    private companion object {
+        /*
+         * More chunks than the prompt flow's own buffer, so a lost update is a lost update and not a scheduling
+         * accident of a single buffered send.
+         */
+        const val FAILING_TURN_CHUNKS = 100
+    }
 }

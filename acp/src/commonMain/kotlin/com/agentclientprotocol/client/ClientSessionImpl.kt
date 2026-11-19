@@ -9,12 +9,16 @@ import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.invoke
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
@@ -58,36 +62,62 @@ internal class ClientSessionImpl(
     override suspend fun prompt(
         content: List<ContentBlock>,
         _meta: JsonElement?,
-    ): Flow<Event> = channelFlow {
-        val promptSession = PromptSession(Channel(Channel.UNLIMITED))
-        if (!activePrompt.compareAndSet(null, promptSession)) error("There is active prompt execution")
-        pendingPermissions.startTurn()
-        logger.trace { "Starting channel collection for prompt" }
-        val channelJob = launch {
-            for (update in promptSession.updateChannel) {
-                logger.trace { "Received update for prompt: $update" }
-                send(Event.SessionUpdateEvent(update))
+    ): Flow<Event> = flow {
+        /*
+         * A failing answer must not take the turn's updates with it. The agent puts every update of a turn on the
+         * wire before it answers, so the caller has to see them even when the answer is an error. An exception
+         * thrown out of channelFlow cancels the collection together with whatever is still buffered, so the
+         * failure leaves the producer as a value and is rethrown only after every update has been emitted.
+         */
+        var failure: Throwable? = null
+        emitAll(channelFlow {
+            val promptSession = PromptSession(Channel(Channel.UNLIMITED))
+            if (!activePrompt.compareAndSet(null, promptSession)) error("There is active prompt execution")
+            pendingPermissions.startTurn()
+            logger.trace { "Starting channel collection for prompt" }
+            val channelJob = launch {
+                for (update in promptSession.updateChannel) {
+                    logger.trace { "Received update for prompt: $update" }
+                    send(Event.SessionUpdateEvent(update))
+                }
             }
-        }
-        try {
-            logger.trace { "Sending prompt request: $content" }
-            val promptResponse = AcpMethod.AgentMethods.V1.SessionPrompt(protocol, PromptRequest(sessionId, content, _meta = _meta))
-            logger.trace { "Received prompt response: $promptResponse" }
+            try {
+                logger.trace { "Sending prompt request: $content" }
+                val promptResponse = AcpMethod.AgentMethods.V1.SessionPrompt(protocol, PromptRequest(sessionId, content, _meta = _meta))
+                logger.trace { "Received prompt response: $promptResponse" }
 
-            // after receiving prompt response we immediately close the current prompt channel
-            // and then waiting for draining all the updates that were sent during prompt execution
-            // only after that we emit the PromptResponseEvent to the outbound flow
-            logger.trace { "Closing prompt channel" }
-            activePrompt.getAndSet(null)?.updateChannel?.close()
-            logger.trace { "Waiting for prompt channel to close" }
-            channelJob.join()
+                // after receiving prompt response we immediately close the current prompt channel
+                // and then waiting for draining all the updates that were sent during prompt execution
+                // only after that we emit the PromptResponseEvent to the outbound flow
+                drainUpdates(channelJob)
 
-            send(Event.PromptResponseEvent(promptResponse))
-            close()
-        } finally {
-            activePrompt.getAndSet(null)?.updateChannel?.close()
-            channelJob.cancel()
-        }
+                send(Event.PromptResponseEvent(promptResponse))
+                close()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                /*
+                 * The same drain as the success path, so an error answer and an END_TURN answer deliver the same
+                 * updates. The failure then ends the flow after them.
+                 */
+                logger.trace(e) { "Prompt failed; draining the updates of the turn before the failure" }
+                failure = e
+                drainUpdates(channelJob)
+                close()
+            } finally {
+                activePrompt.getAndSet(null)?.updateChannel?.close()
+                channelJob.cancel()
+            }
+        })
+        failure?.let { throw it }
+    }
+
+    /** Closes the turn's update channel and waits until every update it still holds has reached the prompt flow. */
+    private suspend fun drainUpdates(channelJob: Job) {
+        logger.trace { "Closing prompt channel" }
+        activePrompt.getAndSet(null)?.updateChannel?.close()
+        logger.trace { "Waiting for prompt channel to close" }
+        channelJob.join()
     }
 
     override suspend fun cancel() {
