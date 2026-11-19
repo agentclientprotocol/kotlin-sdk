@@ -262,10 +262,18 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 - R2 direct sends — `e5b28b5` — built on the user's own edit; `sendOnStream` and
   `RemoteClientSessionOperations.sendUpdate` deleted; both wrapper sends and the root `notify` call
   `AcpMethod.ClientMethods.V1.SessionUpdate` directly; `check` and `apiCheck` green; no API change.
+- R3 agent single snapshot — `29e3516` — `_sessions = atomic(SessionTable(roots, subagents))`; one update per
+  open/register/close/failed load/re-open; `removeRoot` by identity; `cancelSubtreeScope()`; flag, `replaced` and
+  `resolveParent` check gone; a root opened under a subagent's id fails ("... as a subagent"); 2 regression tests
+  (re-open during close, id collision) failed before; `AGENTS.md` + spec step 2; `check` green; no API change.
+- Client race check — `.agents/research/client-register-child-race.md` — no hole: every client removal/reap update
+  returns `storage.copy(...)` (always a new reference); `closing` is a correct Dekker pair; `isAnswered` read before
+  `addChild` is safe only by read-loop order (documented). Fragility: correctness rests on `copy` allocating.
+  Out of scope: a failed subagent whose parent failed stops blocking its id; the speculative path may reuse it.
 
 ## Next
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
-R1 done (`51c0349`), R2 done (`e5b28b5`). In progress: R3 agent single session snapshot (Decisions, round 2).
+R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). Open: client fragility decision (see Open questions).
 
 Earlier: the goal is done. PR #158 targets `master`. Remaining for the user: delete `.agents/state.md` and
 `.agents/research/` before the PR merges. Follow-up candidates: review finding 4; the fresh-context close
@@ -285,4 +293,5 @@ Notes:
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
-(none)
+- Client fragility: comment at `ClientSessionRegistry.kt:181`/`:480` (recommended), fold `removed` into
+  `SessionsStorage`, or nothing.
