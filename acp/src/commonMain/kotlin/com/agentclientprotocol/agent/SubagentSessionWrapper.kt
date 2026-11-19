@@ -4,12 +4,15 @@ package com.agentclientprotocol.agent
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.notify
+import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.SessionId
+import com.agentclientprotocol.model.SessionNotification
 import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.model.StateUpdate
 import com.agentclientprotocol.model.update
 import com.agentclientprotocol.protocol.Protocol
+import com.agentclientprotocol.protocol.invoke
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -26,7 +29,7 @@ import kotlinx.serialization.json.JsonElement
 private val logger = KotlinLogging.logger {}
 
 /**
- * The [AgentSubagents] of [bound], a root session or a subagent.
+ * The [AgentSubagents] of [bound], a root session or a subagent with its own subagents.
  */
 internal class SessionSubagents(private val bound: SessionWrapper) : AgentSubagents {
     override suspend fun <S : AgentSubagentSession> announce(
@@ -436,7 +439,7 @@ internal class SubagentSessionWrapper(
         // Under the lock, so nothing is sent for the child once subtree cleanup has removed it.
         synchronized(lock) {
             checkAnnounced()
-            subagentOperations.sendOnStream(sessionId, notification, _meta)
+            AcpMethod.ClientMethods.V1.SessionUpdate(protocol, SessionNotification(sessionId, notification, _meta))
         }
     }
 
@@ -488,7 +491,7 @@ internal class SubagentSessionWrapper(
             }
         }
         try {
-            subagentOperations.sendOnStream(parent.sessionId, update, _meta)
+            AcpMethod.ClientMethods.V1.SessionUpdate(protocol, SessionNotification(parent.sessionId, update, _meta))
         } catch (e: Throwable) {
             _cancelGranted.value = wasGranted
             throw e

@@ -56,7 +56,7 @@ internal open class RemoteClientSessionOperations(
         if (clientCapabilities.subagents == null && notification.needsSubagentsCapability()) {
             error("Client does not support subagents capability")
         }
-        sendUpdate(sessionId, notification, _meta)
+        AcpMethod.ClientMethods.V1.SessionUpdate(rpc, SessionNotification(sessionId, notification, _meta))
     }
 
     override suspend fun fsReadTextFile(
@@ -182,14 +182,6 @@ internal open class RemoteClientSessionOperations(
         _meta: JsonElement? = null
     ) {
         completeElicitation(CompleteElicitationNotification(elicitationId, _meta))
-    }
-
-    /**
-     * Sends [update] on the stream of [target] without any check. The send is accepted into the transport's queue
-     * before this returns.
-     */
-    protected fun sendUpdate(target: SessionId, update: SessionUpdate, _meta: JsonElement?) {
-        AcpMethod.ClientMethods.V1.SessionUpdate(rpc, SessionNotification(target, update, _meta))
     }
 }
 

@@ -8,7 +8,6 @@ import com.agentclientprotocol.model.ClientCapabilities
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.protocol.Protocol
-import kotlinx.serialization.json.JsonElement
 
 /**
  * The client operations of [subagent]: requests for the child's session, gated until the announcement, and the
@@ -33,13 +32,5 @@ internal class SubagentClientOperations(
         } else {
             subagent.sendPlainUpdate(notification, _meta)
         }
-    }
-
-    /**
-     * Sends [update] on the stream of [target], without any of the checks of [notify]: the wrapper makes them under
-     * its lock.
-     */
-    fun sendOnStream(target: SessionId, update: SessionUpdate, _meta: JsonElement?) {
-        sendUpdate(target, update, _meta)
     }
 }
