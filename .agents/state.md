@@ -297,10 +297,14 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   v1's registered-holder rule; `-32002` → success for `close` and `deleteSession`. v2 agent: unknown-id close goes to
   the app (default `-32602`), `-32602` instead of `-32002` for prompt/set_config_option, re-resume overwrites the
   wrapper without closing the old `AgentSession`; replaced client object's `updates` ends but can still close.
+- R9 v2 client close — `4ae65f2` — private `ended` flag set by `removeSession` on the object it removes and by a
+  successful `close()` on its own object (beyond brief: a replaced object would otherwise close a later resume);
+  ended → empty locally; `-32002` success for `close` and `deleteSession`; KDoc incl. replaced-by-resume; 10 tests
+  (6 failed before); `check` green; no API change. v2 agent untouched.
 
 ## Next
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
-R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). R4 (`a211818`) and R5 (`a4403b8`) done. R6-R8 done. In progress: R9 v2 client close. Open: v1 close family `@UnstableApi`; v2 agent items 1-3.
+R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). R4 (`a211818`) and R5 (`a4403b8`) done. R6-R9 done. Open: v1 close family `@UnstableApi`; v2 agent items 1-3.
 
 Earlier: the goal is done. PR #158 targets `master`. Remaining for the user: delete `.agents/state.md` and
 `.agents/research/` before the PR merges. Follow-up candidates: review finding 4; the fresh-context close
