@@ -6,6 +6,7 @@ import com.agentclientprotocol.agent.*
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.Client
 import com.agentclientprotocol.client.ClientInfo
+import com.agentclientprotocol.client.ClientSession
 import com.agentclientprotocol.client.UnsupportedProtocolVersionException
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
@@ -2606,4 +2607,138 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
         assertEquals("help", command.name)
     }
 
+    @Test
+    fun `system prompt reaches the agent on every session lifecycle method`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val received = mutableListOf<SystemPrompt?>()
+        val overrideSupported = SessionSystemPromptCapabilities(
+            mode = SessionSystemPromptModeCapabilities(override = SessionSystemPromptOverrideCapabilities())
+        )
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = SystemPromptRecordingAgent(received, overrideSupported))
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val append = SystemPrompt(SystemPromptMode.APPEND, textBlocks("Be concise."))
+        val override = SystemPrompt(SystemPromptMode.OVERRIDE, textBlocks("You are a code reviewer."))
+        val custom = SystemPrompt(SystemPromptMode("_vendor"), textBlocks("Vendor prompt."))
+        client.newSession(systemPromptParameters(append)) { _, _ -> SystemPromptTestOperations }
+        client.loadSession(SessionId("loaded"), systemPromptParameters(override)) { _, _ -> SystemPromptTestOperations }
+        client.resumeSession(SessionId("resumed"), systemPromptParameters(custom)) { _, _ -> SystemPromptTestOperations }
+        client.forkSession(SessionId("loaded"), systemPromptParameters(append)) { _, _ -> SystemPromptTestOperations }
+        client.newSession(SessionCreationParameters("/test/path", emptyList())) { _, _ -> SystemPromptTestOperations }
+
+        assertEquals(listOf(append, override, custom, append, null), received)
+    }
+
+    @Test
+    fun `system prompt is refused locally when the agent does not advertise it`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val received = mutableListOf<SystemPrompt?>()
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = SystemPromptRecordingAgent(received, systemPrompt = null))
+        val parameters = systemPromptParameters(SystemPrompt(SystemPromptMode.APPEND, textBlocks("Be concise.")))
+
+        val beforeInitialize = assertFailsWith<AcpExpectedError> {
+            client.newSession(parameters) { _, _ -> SystemPromptTestOperations }
+        }
+        assertEquals("Cannot send systemPrompt before initialization completes", beforeInitialize.message)
+
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+        val calls: List<suspend () -> ClientSession> = listOf(
+            { client.newSession(parameters) { _, _ -> SystemPromptTestOperations } },
+            { client.loadSession(SessionId("s"), parameters) { _, _ -> SystemPromptTestOperations } },
+            { client.loadSession(SessionId("s"), parameters, SystemPromptTestOperations) },
+            { client.resumeSession(SessionId("s"), parameters) { _, _ -> SystemPromptTestOperations } },
+            { client.resumeSession(SessionId("s"), parameters, SystemPromptTestOperations) },
+            { client.forkSession(SessionId("s"), parameters) { _, _ -> SystemPromptTestOperations } },
+        )
+        for (call in calls) {
+            val error = assertFailsWith<AcpExpectedError> { call() }
+            assertEquals("Cannot send systemPrompt: the agent did not advertise sessionCapabilities.systemPrompt", error.message)
+        }
+        assertTrue(received.isEmpty())
+    }
+
+    @Test
+    fun `system prompt override and empty content are refused locally when only append is supported`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val received = mutableListOf<SystemPrompt?>()
+        val appendOnly = SessionSystemPromptCapabilities(mode = SessionSystemPromptModeCapabilities(override = null))
+        val client = Client(protocol = clientProtocol)
+        Agent(protocol = agentProtocol, agentSupport = SystemPromptRecordingAgent(received, appendOnly))
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+
+        val overrideRefused =
+            "Cannot send systemPrompt in override mode: the agent did not advertise sessionCapabilities.systemPrompt.mode.override"
+        val refused = listOf(
+            SystemPrompt(SystemPromptMode.OVERRIDE, textBlocks("Replace your instructions.")) to overrideRefused,
+            // A mode built from the raw wire value is still the override mode.
+            SystemPrompt(SystemPromptMode("override"), textBlocks("Replace your instructions.")) to overrideRefused,
+            SystemPrompt(SystemPromptMode.APPEND, emptyList()) to "Cannot send systemPrompt with empty content",
+        )
+        for ((prompt, message) in refused) {
+            val error = assertFailsWith<AcpExpectedError> {
+                client.newSession(systemPromptParameters(prompt)) { _, _ -> SystemPromptTestOperations }
+            }
+            assertEquals(message, error.message)
+        }
+        assertTrue(received.isEmpty())
+
+        val append = SystemPrompt(SystemPromptMode.APPEND, textBlocks("Be concise."))
+        client.newSession(systemPromptParameters(append)) { _, _ -> SystemPromptTestOperations }
+        assertEquals(listOf<SystemPrompt?>(append), received)
+    }
+}
+
+private fun systemPromptParameters(systemPrompt: SystemPrompt) =
+    SessionCreationParameters("/test/path", emptyList(), systemPrompt = systemPrompt)
+
+/**
+ * Records the system prompt of every session it opens, and advertises [systemPrompt] as its capability.
+ */
+private class SystemPromptRecordingAgent(
+    private val received: MutableList<SystemPrompt?>,
+    private val systemPrompt: SessionSystemPromptCapabilities?,
+) : AgentSupport {
+    private var opened = 0
+
+    override suspend fun initialize(clientInfo: ClientInfo): AgentInfo = AgentInfo(
+        clientInfo.protocolVersion,
+        capabilities = AgentCapabilities(
+            loadSession = true,
+            sessionCapabilities = SessionCapabilities(
+                fork = SessionForkCapabilities(),
+                resume = SessionResumeCapabilities(),
+                systemPrompt = systemPrompt,
+            ),
+        ),
+    )
+
+    override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession =
+        record(sessionParameters, SessionId("created-${++opened}"))
+
+    override suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters): AgentSession =
+        record(sessionParameters, sessionId)
+
+    override suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters): AgentSession =
+        record(sessionParameters, sessionId)
+
+    override suspend fun forkSession(sessionId: SessionId, sessionParameters: SessionCreationParameters): AgentSession =
+        record(sessionParameters, SessionId("forked-${++opened}"))
+
+    private fun record(sessionParameters: SessionCreationParameters, id: SessionId): AgentSession {
+        received += sessionParameters.systemPrompt
+        return object : AgentSession {
+            override val sessionId: SessionId = id
+
+            override suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement?): Flow<Event> = emptyFlow()
+        }
+    }
+}
+
+private object SystemPromptTestOperations : ClientSessionOperations {
+    override suspend fun requestPermissions(
+        toolCall: SessionUpdate.ToolCallUpdate,
+        permissions: List<PermissionOption>,
+        _meta: JsonElement?,
+    ): RequestPermissionResponse = RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
+
+    override suspend fun notify(notification: SessionUpdate, _meta: JsonElement?) {}
 }
