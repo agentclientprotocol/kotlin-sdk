@@ -290,12 +290,20 @@ class CapabilitiesConversionTest {
     }
 
     @Test
-    fun `converting v2 terminal auth support to v1 fails because v1 has no such field`() {
-        val exception = assertFailsWith<ProtocolConversionException> {
-            AuthCapabilities(terminal = TerminalAuthCapabilities()).toV1()
-        }
+    fun `client terminal auth support converts in both directions`() {
+        val meta = buildJsonObject { put("fixture", JsonPrimitive(true)) }
+        val v1 = V1ClientCapabilities(auth = V1AuthCapabilities(_meta = meta, terminal = true))
+        val v2 = ClientCapabilities(auth = AuthCapabilities(terminal = TerminalAuthCapabilities(), _meta = meta))
 
-        assertEquals("v2 AuthCapabilities.terminal cannot be represented in v1", exception.message)
+        assertEquals(v1, v2.toV1())
+        assertEquals(v2, v1.toV2())
+        assertEquals(AuthCapabilities(_meta = meta), V1AuthCapabilities(_meta = meta, terminal = false).toV2())
+    }
+
+    @Test
+    fun `terminal marker metadata cannot be represented by the v1 boolean`() {
+        val marker = TerminalAuthCapabilities(_meta = buildJsonObject { put("fixture", JsonPrimitive(true)) })
+        assertFailsWith<ProtocolConversionException> { AuthCapabilities(terminal = marker).toV1() }
     }
 
     @Test
