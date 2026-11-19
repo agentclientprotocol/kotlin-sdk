@@ -79,7 +79,8 @@ public interface AgentSession {
      * The agent must cancel any ongoing work (as if `cancel` was called)
      * and then free up any resources associated with the session.
      *
-     * Only called if the agent advertises the `session.close` capability.
+     * Only called if the agent advertises the `session.close` capability. A `session/close` for a session id that
+     * is unknown or already closed doesn't call it: the agent answers it with an empty [CloseSessionResponse].
      *
      * Corresponds to the [AcpMethod.AgentMethods.V1.SessionClose]
      */

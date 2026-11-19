@@ -55,6 +55,7 @@ import com.agentclientprotocol.model.ToolCallContent
 import com.agentclientprotocol.model.ToolCallId
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.rpc.ACPJson
+import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import com.agentclientprotocol.rpc.JsonRpcErrorResponse
 import com.agentclientprotocol.rpc.JsonRpcMessage
 import com.agentclientprotocol.rpc.JsonRpcNotification
@@ -65,6 +66,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.ContinuationInterceptor
 import kotlin.coroutines.CoroutineContext
 import kotlin.test.Test
@@ -1240,7 +1242,8 @@ class AgentSubagentsTest {
         val unknownId = SessionId("unknown")
 
         for (id in listOf(childId, unknownId)) {
-            for ((name, request) in sessionRequests(f, id)) {
+            // An unknown id's close is answered, see `a close of an unknown or closed id answers an empty result`.
+            for ((name, request) in sessionRequests(f, id).filter { id == childId || it.first != "close" }) {
                 val response = assertIs<JsonRpcErrorResponse>(request(), "$name on $id")
                 val isSubagentError = response.error.message == "Session $id is a subagent"
                 assertEquals(id == childId, isSubagentError, "$name on $id: ${response.error}")
@@ -1251,9 +1254,34 @@ class AgentSubagentsTest {
     }
 
     @Test
+    fun `a close of a child id is rejected with invalid params`() = withSubagents { f ->
+        announceChild(f, childId)
+
+        val response = assertIs<JsonRpcErrorResponse>(f.request(AcpMethod.AgentMethods.V1.SessionClose, CloseSessionRequest(childId)))
+        assertEquals(JsonRpcErrorCode.INVALID_PARAMS.code, response.error.code)
+        assertEquals("Session $childId is a subagent", response.error.message)
+        assertTrue(assertNotNull(f.agent.subagentOrNull(childId)).isAnnounced)
+        f.assertNothingMoreSent()
+    }
+
+    @Test
+    fun `a close of an unknown or closed id answers an empty result`() = withSubagents { f ->
+        val unknownId = SessionId("unknown")
+        assertEquals(CloseSessionResponse(), closeResult(f.close(unknownId).single()))
+
+        val closing = RootSession(closingId)
+        f.newRoot(closing)
+        val closes = AtomicInteger()
+        closing.onClose = { closes.incrementAndGet() }
+        repeat(2) { assertEquals(CloseSessionResponse(), closeResult(f.close(closingId).single()), "close ${it + 1}") }
+        assertEquals(1, closes.get(), "only the first close reaches the app")
+        f.assertNothingMoreSent()
+    }
+
+    @Test
     fun `session methods that look sessions up keep answering not found for an unknown id`() = withSubagents { f ->
         val unknownId = SessionId("unknown")
-        val lookups = setOf("prompt", "set_mode", "set_model", "set_config_option", "close")
+        val lookups = setOf("prompt", "set_mode", "set_model", "set_config_option")
 
         for ((name, request) in sessionRequests(f, unknownId).filter { it.first in lookups }) {
             val response = assertIs<JsonRpcErrorResponse>(request(), name)
@@ -2428,6 +2456,11 @@ class AgentSubagentsTest {
         )
     }
 
+
+    private fun closeResult(response: JsonRpcMessage): CloseSessionResponse = ACPJson.decodeFromJsonElement(
+        AcpMethod.AgentMethods.V1.SessionClose.responseSerializer,
+        assertIs<JsonRpcSuccessResponse>(response, "an answer, got $response").result,
+    )
 
     private suspend fun announceChild(f: Fixture, sessionId: SessionId): AgentSubagentContext {
         lateinit var context: AgentSubagentContext

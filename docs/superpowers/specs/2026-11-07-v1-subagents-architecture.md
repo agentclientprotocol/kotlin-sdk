@@ -558,6 +558,8 @@ collector sends through the same path:
     Updates are the only guarantee. A request that a child already had in flight (permission, fs, terminal or
     elicitation), and the `$/cancel_request` the SDK sends for one whose call the cleanup cancelled, are accepted
     and may still reach the client after the response. This is documented in the KDoc of `AgentSubagents`.
+    A close of an id that is neither a root nor a subagent, unknown or already closed, gets an empty result without
+    any app code, since ACP makes close idempotent (`docs/protocol/v1/session-setup.mdx`, "Closing a session").
   - **`session/load` or `session/resume` of an id that is still open:** the SDK keeps accepting it, as the agent
     did before subagents, and the new root replaces the old one. Once the app's `loadSession` or `resumeSession`
     has returned, before the replay and the response, the same cleanup runs for the old root's subtree, so the

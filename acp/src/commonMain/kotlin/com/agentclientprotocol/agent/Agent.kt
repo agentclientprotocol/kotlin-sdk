@@ -247,7 +247,15 @@ public class Agent(
 
         @OptIn(UnstableApi::class)
         protocol.setRequestHandler(AcpMethod.AgentMethods.V1.SessionClose) { params: CloseSessionRequest ->
-            val session = getSessionOrThrow(params.sessionId)
+            /*
+             * Closing is idempotent: an unknown id, or one already closed, gets the empty result without calling the
+             * app (https://agentclientprotocol.com/protocol/v1/session-setup#closing-active-sessions). A subagent's id
+             * is still rejected, because the client may only cancel a subagent.
+             */
+            val session = _sessions.value.roots[params.sessionId] ?: run {
+                checkNotSubagent(params.sessionId)
+                return@setRequestHandler CloseSessionResponse()
+            }
             val response = session.executeWithSession {
                 session.agentSession.close(params._meta)
             }
