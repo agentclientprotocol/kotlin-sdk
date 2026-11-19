@@ -277,6 +277,14 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   lookups and queued items; one file (709 lines); 2 new holder tests; `check` green (JS flake once); no API change.
   `markClosing` left tolerant: `closeDescendantPermissions(rootId)` looks the root up by id, so a stale session's
   close can reach a later unanswered holder of the id; it's now left unchanged (before: its `closing` flag was set).
+- Close identity research — `.agents/research/client-close-identity.md` — v1 `session/close` is keyed by id only;
+  an id may be active again after a later load/resume; close is idempotent (agent SHOULD answer empty for unknown/
+  closed id, client SHOULD treat `-32002` as success). `ClientSessionImpl.close()` has no guard: a stale object's
+  close marks/removes the newer holder AND sends `session/close`, closing the newer session on the agent.
+  Recommended (b): send only while `sessions[id] === holder && holder.blocksId`, callbacks on the holder; stale close
+  after a successful close returns an empty response locally; open choice for an object whose opening failed (b1
+  throw ISE, recommended; b2 send if no other holder owns the id). Adjacent: client fails on `-32002`; agent answers
+  `-32602` for an unknown id; `close` KDoc says "not part of the spec yet"; v2 client also removes by id.
 
 ## Next
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
