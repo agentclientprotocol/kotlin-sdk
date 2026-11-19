@@ -548,6 +548,24 @@ class AgentSubagentsTest {
     }
 
     @Test
+    fun `a session opened with a subagent's id fails and the subagent stays registered`() = withSubagents { f ->
+        val child = announceChild(f, childId)
+        val wrapper = assertNotNull(f.agent.subagentOrNull(childId))
+
+        f.openable.created.add(RootSession(childId))
+        assertIs<JsonRpcErrorResponse>(f.request(AcpMethod.AgentMethods.V1.SessionNew, NewSessionRequest(".", emptyList())))
+
+        assertSame(wrapper, f.agent.subagentOrNull(childId))
+        child.client.notify(text("still registered"))
+        assertEquals(SessionNotification(childId, text("still registered")), f.nextNotification())
+        val prompt = assertIs<JsonRpcErrorResponse>(
+            f.request(AcpMethod.AgentMethods.V1.SessionPrompt, PromptRequest(childId, listOf(ContentBlock.Text("go"))))
+        )
+        assertEquals("Session $childId is a subagent", prompt.error.message)
+        f.assertNothingMoreSent()
+    }
+
+    @Test
     fun `a first events item that is not the child's announcement fails announce`() = withSubagents { f ->
         assertFailsWith<IllegalStateException> {
             f.rootSubagents.announce(childId, { TestSubagent(flowOf(text("too early"), announcement(childId))) })
@@ -2071,6 +2089,52 @@ class AgentSubagentsTest {
     }
 
     @Test
+    fun `a re-open while the old root's close runs keeps the new root and its subagents`() = withSubagents { f ->
+        val first = RootSession(loadedId)
+        assertIs<JsonRpcSuccessResponse>(f.resume(first))
+        val closeStarted = CompletableDeferred<Unit>()
+        val releaseClose = CompletableDeferred<Unit>()
+        first.onClose = {
+            closeStarted.complete(Unit)
+            releaseClose.await()
+        }
+        val closeId = RequestId.create("close-old")
+        f.transport.fireTestRequestWithoutReply(
+            AcpMethod.AgentMethods.V1.SessionClose.methodName,
+            ACPJson.encodeToJsonElement(AcpMethod.AgentMethods.V1.SessionClose.requestSerializer, CloseSessionRequest(loadedId)),
+            closeId,
+        )
+        withTimeout(5.seconds) { closeStarted.await() }
+
+        val second = RootSession(loadedId)
+        assertIs<JsonRpcSuccessResponse>(f.resume(second))
+        val events = Channel<SessionUpdate>(Channel.UNLIMITED)
+        val cancels = Channel<SessionId>(Channel.UNLIMITED)
+        assertNotNull(second.wrapper().subagents).announce(childId, {
+            it.client.notify(announcement(childId, granted = true))
+            TestSubagent(events.consumeAsFlow(), onCancel = { cancels.send(childId) })
+        })
+        assertEquals(SessionNotification(loadedId, announcement(childId, granted = true)), f.nextNotification())
+        val child = assertNotNull(f.agent.subagentOrNull(childId))
+
+        releaseClose.complete(Unit)
+        val closeResponse = assertIs<JsonRpcSuccessResponse>(f.transport.receiveTestMessages(1).single())
+        assertEquals(closeId, closeResponse.id)
+
+        assertIs<JsonRpcSuccessResponse>(
+            f.request(AcpMethod.AgentMethods.V1.SessionPrompt, PromptRequest(loadedId, listOf(ContentBlock.Text("go"))))
+        )
+        assertSame(child, f.agent.subagentOrNull(childId))
+        events.send(text("still collected"))
+        assertEquals(SessionNotification(childId, text("still collected")), f.nextNotification())
+        f.fireCancel(childId)
+        assertEquals(childId, withTimeout(5.seconds) { cancels.receive() })
+        assertNotNull(second.wrapper().subagents).announce(siblingId, { TestSubagent(flowOf(announcement(siblingId))) })
+        assertEquals(SessionNotification(loadedId, announcement(siblingId)), f.nextNotification())
+        events.close()
+    }
+
+    @Test
     fun `an announce on a replaced root fails, including one whose factory was running`() = withSubagents { f ->
         val first = RootSession(loadedId)
         assertIs<JsonRpcSuccessResponse>(f.resume(first))
@@ -2117,8 +2181,8 @@ class AgentSubagentsTest {
             TestSubagent(flow {
                 suspendCancellableCoroutine<Unit> { continuation ->
                     /*
-                     * Runs synchronously while the re-opening's cleanup cancels the old root's collections: after it
-                     * marked the old subtree closed, and before it removes the old subagents from the table.
+                     * Runs synchronously while the re-opening's cleanup cancels the old root's collections: after the
+                     * old subagents left the table, and before they are marked removed.
                      */
                     continuation.invokeOnCancellation {
                         testScope.launch(start = CoroutineStart.UNDISPATCHED) {

@@ -44,7 +44,6 @@ internal class SessionSubagents(private val bound: SessionWrapper) : AgentSubage
     }
 
     private fun resolveParent(parent: SessionId?): SessionWrapper {
-        check(!bound.subtreeRoot.isSubtreeClosed) { "Session ${bound.subtreeRoot.sessionId} is closed" }
         /*
          * A child that isn't announced yet must not announce grandchildren: their announcements would put traffic on
          * a stream the client doesn't know.
@@ -279,7 +278,7 @@ internal class SubagentSessionWrapper(
     }
 
     /**
-     * Subtree cleanup for this child, after the caller removed it from the child table: every operation fails from
+     * Subtree cleanup for this child, after the caller removed it from the session table: every operation fails from
      * now on, and an `announce` still waiting for an announcement that wasn't sent fails.
      */
     fun remove() {

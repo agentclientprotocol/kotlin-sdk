@@ -536,8 +536,9 @@ collector sends through the same path:
   1. cancels the collection of its `events` (one cancel of the root's supervisor scope). No `unknown` is sent,
      because the feed ended by cancellation. For an in-process child whose flow is the work, this also stops the
      work. For a relay it only stops forwarding;
-  2. removes it from the child table: its id is free, `session/cancel` for it is ignored, and it can't be named as
-     a `parent`;
+  2. removes it from the session table, in the same atomic update that removes or replaces the root, so no child can
+     be registered under a root that is gone: its id is free, `session/cancel` for it is ignored, and it can't be
+     named as a `parent`. This update runs first, and steps 1 and 3 follow it;
   3. makes its `AgentSubagents` and client operations fail with `IllegalStateException`.
 
   The SDK calls no app code for the children: not `cancel()`, and there is no per-child close hook. Stopping the

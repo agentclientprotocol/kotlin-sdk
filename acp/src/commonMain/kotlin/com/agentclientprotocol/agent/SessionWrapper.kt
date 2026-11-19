@@ -89,14 +89,6 @@ internal class RootSessionWrapper(
      */
     val subtreeScope: CoroutineScope by lazy { protocol.newConnectionScope("Subagents of session $sessionId") }
 
-    private val _isSubtreeClosed = atomic(false)
-
-    /**
-     * Whether this root's subtree was cleaned up, because the session was closed, its `session/load` failed, or
-     * a re-opening of its id replaced it. No subagent can be registered under it any more.
-     */
-    val isSubtreeClosed: Boolean get() = _isSubtreeClosed.value
-
     /**
      * Guards [_isReplaying] and [replayedCollections] together, so a collection is either deferred before the
      * window closes or started by its caller.
@@ -139,10 +131,10 @@ internal class RootSessionWrapper(
     }
 
     /**
-     * Marks the subtree closed and cancels its collections. The caller removes the subagents themselves.
+     * Cancels the collections of this root's subtree, once the session was closed, its `session/load` failed, or a
+     * re-opening of its id replaced it. The caller removes the subagents themselves.
      */
-    fun closeSubtree() {
-        _isSubtreeClosed.value = true
+    fun cancelSubtreeScope() {
         subtreeScope.cancel()
     }
 
