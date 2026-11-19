@@ -285,10 +285,22 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   after a successful close returns an empty response locally; open choice for an object whose opening failed (b1
   throw ISE, recommended; b2 send if no other holder owns the id). Adjacent: client fails on `-32002`; agent answers
   `-32602` for an unknown id; `close` KDoc says "not part of the spec yet"; v2 client also removes by id.
+- R6 client close by own holder — `ca58895` — `ClientSessionRegistry.isOpen(root)`; stale close after success →
+  empty locally; failed opening → ISE; callbacks take the holder; `rootHolderOrNull` gone; `markClosing` strict;
+  `removeClosedSession` drops elicitations only for removed ids; tests failed before; `check` green (JS flake once).
+- R7 `-32002` as success — `a015588` — catch `RESOURCE_NOT_FOUND` in `close()`; KDoc drops "not part of the spec
+  yet"; `@UnstableApi` kept (`CloseSessionResponse` is unstable); `check` green.
+- R8 agent unknown-id close → empty result — `0da96b6` — subagent id still `-32602`; `check` green; e2e READMEs and
+  TCK (ACP-CLOSE-001/002) don't conflict.
+- v2 close research — `.agents/research/v2-close-identity.md` — same bug in the v2 client; v2 allows re-resume of an
+  active id (two objects, one live session), so the fix is an internal "ended" flag set by `removeSession`, not
+  v1's registered-holder rule; `-32002` → success for `close` and `deleteSession`. v2 agent: unknown-id close goes to
+  the app (default `-32602`), `-32602` instead of `-32002` for prompt/set_config_option, re-resume overwrites the
+  wrapper without closing the old `AgentSession`; replaced client object's `updates` ends but can still close.
 
 ## Next
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
-R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). R4 (`a211818`) and R5 (`a4403b8`) done. In progress: R6-R8 (one programmer), v2 close research; then R9.
+R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). R4 (`a211818`) and R5 (`a4403b8`) done. R6-R8 done. In progress: R9 v2 client close. Open: v1 close family `@UnstableApi`; v2 agent items 1-3.
 
 Earlier: the goal is done. PR #158 targets `master`. Remaining for the user: delete `.agents/state.md` and
 `.agents/research/` before the PR merges. Follow-up candidates: review finding 4; the fresh-context close
@@ -308,3 +320,6 @@ Notes:
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
+- Promote the v1 close family out of `@UnstableApi` (`CloseSessionRequest`/`Response`, `SessionClose`,
+  `AgentSession.close`, `ClientSession.close`)? It's in the stable v1 schema.
+- v2 agent items 1-3 (see v2 close research): this PR or a follow-up (suggested)?
