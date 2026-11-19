@@ -34,6 +34,15 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   listed child may be closed because its stream failed or its root closed.
   (4) Update the design spec file so it is accurate with every decision taken after it was written.
 
+- PR review round 1 (user, 2026-11-19), agent wrappers, refactor only (no behaviour or API change):
+  `Agent.SessionWrapper` → top-level `RootSessionWrapper`; `Agent.ChatSessionWrapper` → top-level `SessionWrapper`;
+  `SubagentWrapper` → `SubagentSessionWrapper` (file `SubagentSessionWrapper.kt`); `SessionSubagents` keeps its
+  name; `root` → `subtreeRoot` with KDoc "the root of the subtree this session belongs to: itself for a root";
+  `BaseSessionWrapper`, `SessionWrapper`, `RootSessionWrapper`, `NesSessionWrapper` and `PromptSession`
+  (file-private) at top level in new `agent/SessionWrapper.kt`, with the internal context helpers; public
+  `CoroutineContext.agent/clientInfo/client` stay in `Agent.kt` (`AgentKt` facade); `SubagentClientOperations`
+  moves to its own file. Note 2 (re-open KDoc) dropped by the user.
+
 ## Plan
 - M0 research: wire shapes of the RFD and Rust v1 models at current upstream vs the spec's pinned `c392d7e9`
   → `.agents/research/subagents-wire-shapes.md`.
@@ -241,7 +250,10 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   pass. `check` green after the rebase.
 
 ## Next
-The goal is done. PR #158 targets `master`. Remaining for the user: delete `.agents/state.md` and
+Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
+In progress: R1 agent wrapper renames and file split (see Decisions, "PR review round 1").
+
+Earlier: the goal is done. PR #158 targets `master`. Remaining for the user: delete `.agents/state.md` and
 `.agents/research/` before the PR merges. Follow-up candidates: review finding 4; the fresh-context close
 deadlock; the dropped pre-marker update; regression test for agent nit N3; stale Kotlin file:line cites in the spec.
 
