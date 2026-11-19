@@ -41,12 +41,16 @@ public class Agent(
 ) {
 
     private val _clientInfo = CompletableDeferred<ClientInfo>()
-    private val _sessions = atomic(persistentMapOf<SessionId, RootSessionWrapper>())
+
+    /**
+     * Root sessions registered on this connection.
+     */
+    private val _rootSessions = atomic(persistentMapOf<SessionId, RootSessionWrapper>())
 
     /**
      * The subagents registered on this connection, at every depth, by their own session id.
      */
-    private val _subagents = atomic(persistentMapOf<SessionId, SubagentSessionWrapper>())
+    private val _subagentSessions = atomic(persistentMapOf<SessionId, SubagentSessionWrapper>())
 
     private val _nesSessions = atomic(persistentMapOf<SessionId, NesSessionWrapper>())
 
@@ -236,7 +240,7 @@ public class Agent(
             val response = session.executeWithSession {
                 session.agentSession.close(params._meta)
             }
-            _sessions.update { it.remove(params.sessionId) }
+            _rootSessions.update { it.remove(params.sessionId) }
             /*
              * Clean the subtree up before answering, so no update for the children reaches the client after the
              * response. Requests the children have in flight, and their $/cancel_request, may still follow it.
@@ -399,7 +403,7 @@ public class Agent(
          * update for an old subagent follows the response. The old root's own turn and AgentSession are left as they
          * are. If this load fails later, the old root isn't restored.
          */
-        val replaced = _sessions.getAndUpdate { it.put(session.sessionId, sessionWrapper) }[session.sessionId]
+        val replaced = _rootSessions.getAndUpdate { it.put(session.sessionId, sessionWrapper) }[session.sessionId]
         replaced?.let { closeSubtree(it) }
 
         if (replayHistory != null) {
@@ -434,14 +438,14 @@ public class Agent(
      */
     private fun discardFailedLoad(sessionWrapper: RootSessionWrapper) {
         val sessionId = sessionWrapper.sessionId
-        _sessions.update { sessions ->
+        _rootSessions.update { sessions ->
             if (sessions[sessionId] === sessionWrapper) sessions.remove(sessionId) else sessions
         }
         closeSubtree(sessionWrapper)
     }
 
     private fun getSessionOrThrow(sessionId: SessionId): RootSessionWrapper {
-        _sessions.value[sessionId]?.let { return it }
+        _rootSessions.value[sessionId]?.let { return it }
         checkNotSubagent(sessionId)
         acpFail("Session $sessionId not found")
     }
@@ -451,10 +455,10 @@ public class Agent(
      * reserved for root sessions.
      */
     private fun checkNotSubagent(sessionId: SessionId) {
-        if (sessionId in _subagents.value) acpFail("Session $sessionId is a subagent")
+        if (sessionId in _subagentSessions.value) acpFail("Session $sessionId is a subagent")
     }
 
-    internal fun subagentOrNull(sessionId: SessionId): SubagentSessionWrapper? = _subagents.value[sessionId]
+    internal fun subagentOrNull(sessionId: SessionId): SubagentSessionWrapper? = _subagentSessions.value[sessionId]
 
     /**
      * Registers [child] under its own id.
@@ -468,10 +472,10 @@ public class Agent(
      */
     internal fun registerSubagent(child: SubagentSessionWrapper) {
         var replaced: SubagentSessionWrapper? = null
-        _subagents.update { subagents ->
+        _subagentSessions.update { subagents ->
             val registered = subagents[child.sessionId]
             replaced = registered?.takeIf { it.subtreeRoot.isSubtreeClosed }
-            require((registered == null || replaced != null) && child.sessionId !in _sessions.value) {
+            require((registered == null || replaced != null) && child.sessionId !in _rootSessions.value) {
                 "Session ${child.sessionId} is already registered on this connection"
             }
             /*
@@ -486,7 +490,7 @@ public class Agent(
     }
 
     internal fun unregisterSubagent(child: SubagentSessionWrapper) {
-        _subagents.update { subagents ->
+        _subagentSessions.update { subagents ->
             if (subagents[child.sessionId] === child) subagents.remove(child.sessionId) else subagents
         }
     }
@@ -500,7 +504,7 @@ public class Agent(
         root.closeSubtree()
 
         var removed = emptyList<SubagentSessionWrapper>()
-        _subagents.update { subagents ->
+        _subagentSessions.update { subagents ->
             removed = subagents.values.filter { it.subtreeRoot === root }
             subagents.mutate { table -> removed.forEach { table.remove(it.sessionId) } }
         }
