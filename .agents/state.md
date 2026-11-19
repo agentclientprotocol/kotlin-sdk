@@ -249,9 +249,14 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   `startTurn`; our `clearCancellation` version was kept. Upstream's three v2 `ClientSessionTest` tests came in and
   pass. `check` green after the rebase.
 
+- R1 agent wrapper renames and split — `51c0349` — `SessionWrapper.kt` (base, `SessionWrapper`,
+  `RootSessionWrapper`, NES, file-private `PromptSession`, context helpers), `SubagentSessionWrapper.kt`,
+  thin `SubagentClientOperations.kt` (send state and locked sends stay in the wrapper; internal `sendOnStream`
+  pass-through); `subtreeRoot`; spec symbol names; `check` and `apiCheck` green; no API change.
+
 ## Next
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
-In progress: R1 agent wrapper renames and file split (see Decisions, "PR review round 1").
+R1 done (`51c0349`). Waiting for the user's next review notes.
 
 Earlier: the goal is done. PR #158 targets `master`. Remaining for the user: delete `.agents/state.md` and
 `.agents/research/` before the PR merges. Follow-up candidates: review finding 4; the fresh-context close
