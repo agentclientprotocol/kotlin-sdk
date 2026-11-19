@@ -273,7 +273,7 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 
 ## Next
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
-R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). Open: client fragility decision (see Open questions).
+R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). Next: R4 client `registerChild` (Decisions, round 3), after the holder-state question.
 
 Earlier: the goal is done. PR #158 targets `master`. Remaining for the user: delete `.agents/state.md` and
 `.agents/research/` before the PR merges. Follow-up candidates: review finding 4; the fresh-context close
@@ -293,5 +293,4 @@ Notes:
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
-- Client fragility: comment at `ClientSessionRegistry.kt:181`/`:480` (recommended), fold `removed` into
-  `SessionsStorage`, or nothing.
+- Merge the root holder's `opening`/`answered`/`closing` into one sealed phase atomic? (asked 2026-11-19)
