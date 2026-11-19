@@ -187,7 +187,7 @@ class AgentSubagentsTest {
         /**
          * Waits until every collection of [root]'s subtree has ended, including the SDK's feed-end handling.
          */
-        suspend fun awaitCollectionsEnded(root: Agent.SessionWrapper = rootWrapper) {
+        suspend fun awaitCollectionsEnded(root: RootSessionWrapper = rootWrapper) {
             withTimeout(5.seconds) { root.subtreeScope.coroutineContext.job.children.forEach { it.join() } }
         }
 
@@ -324,7 +324,7 @@ class AgentSubagentsTest {
             override val nesSessionId = SessionId("nes")
             override suspend fun suggest(request: SuggestNesRequest): SuggestNesResponse = error("Not called")
         }
-        val nesContext = Agent.NesSessionWrapper(f.agent, nesSession, f.protocol).asContextElement()
+        val nesContext = NesSessionWrapper(f.agent, nesSession, f.protocol).asContextElement()
 
         val failure = assertFailsWith<IllegalStateException> { nesContext.subagents }
         assertTrue(failure.message!!.contains("NES"), failure.message)
@@ -1941,8 +1941,8 @@ class AgentSubagentsTest {
         oldTree.awaitStopped()
         val newChild = assertNotNull(f.agent.subagentOrNull(childId))
         assertNotSame(oldChild, newChild)
-        assertSame(second.wrapper(), newChild.root)
-        assertSame(second.wrapper(), assertNotNull(f.agent.subagentOrNull(grandchildId)).root)
+        assertSame(second.wrapper(), newChild.subtreeRoot)
+        assertSame(second.wrapper(), assertNotNull(f.agent.subagentOrNull(grandchildId)).subtreeRoot)
         for (context in listOf(oldTree.child, oldTree.grandchild)) {
             for (operation in childOperations(context)) {
                 assertFailsWith<IllegalStateException> { operation() }
@@ -2136,10 +2136,10 @@ class AgentSubagentsTest {
 
         val announced = withTimeout(5.seconds) { reannounced.await() }
         assertTrue(announced.isSuccess, "the id is free once the old subtree is closed: ${announced.exceptionOrNull()}")
-        assertSame(f.rootWrapper, assertNotNull(f.agent.subagentOrNull(childId)).root)
+        assertSame(f.rootWrapper, assertNotNull(f.agent.subagentOrNull(childId)).subtreeRoot)
         assertFailsWith<IllegalStateException> { oldChild.client.notify(text("late")) }
         f.awaitCollectionsEnded(first.wrapper())
-        assertSame(f.rootWrapper, assertNotNull(f.agent.subagentOrNull(childId)).root, "the old root's cleanup keeps the new entry")
+        assertSame(f.rootWrapper, assertNotNull(f.agent.subagentOrNull(childId)).subtreeRoot, "the old root's cleanup keeps the new entry")
     }
 
     /*
@@ -2193,7 +2193,7 @@ class AgentSubagentsTest {
     /**
      * This root's wrapper, once its postInitialize ran.
      */
-    private suspend fun RootSession.wrapper(): Agent.SessionWrapper = withTimeout(5.seconds) { context.await() }.rootWrapper
+    private suspend fun RootSession.wrapper(): RootSessionWrapper = withTimeout(5.seconds) { context.await() }.rootWrapper
 
     /**
      * Announces a child that reports itself running in hot events that never complete, and completes [stopped] when
@@ -2434,8 +2434,8 @@ private fun assertWrapsCancellation(failure: Throwable) {
     assertTrue(failure.causes().any { it is CancellationException }, failure.stackTraceToString())
 }
 
-private val CoroutineContext.rootWrapper: Agent.SessionWrapper
-    get() = this[SessionWrapperContextElement.Key]!!.sessionWrapper as Agent.SessionWrapper
+private val CoroutineContext.rootWrapper: RootSessionWrapper
+    get() = this[SessionWrapperContextElement.Key]!!.sessionWrapper as RootSessionWrapper
 
 private fun announcement(
     sessionId: SessionId,

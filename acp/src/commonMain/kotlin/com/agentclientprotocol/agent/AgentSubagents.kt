@@ -215,4 +215,4 @@ public interface AgentSubagents {
  */
 @UnstableApi
 public val CoroutineContext.subagents: AgentSubagents?
-    get() = chatSessionWrapper("Subagents").subagents
+    get() = sessionWrapper("Subagents").subagents

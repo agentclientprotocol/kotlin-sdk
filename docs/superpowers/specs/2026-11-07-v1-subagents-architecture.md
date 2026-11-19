@@ -323,7 +323,7 @@ public val CoroutineContext.subagents: AgentSubagents?
      factory could announce a grandchild before its own announcement and put traffic on an unannounced stream.
 3. Check that `sessionId` is not registered on the connection, root sessions included, or
    `IllegalArgumentException`.
-4. Register a `SubagentWrapper` (below) under the parent, and call `factory.createSubagent(context)` in the child's
+4. Register a `SubagentSessionWrapper` (below) under the parent, and call `factory.createSubagent(context)` in the child's
    context.
 5. **Enforce the announcement first.** The first thing sent for the child must be a `SubagentUpdate` whose
    `sessionId` is the child's, whether it goes through `context.client.notify` inside the factory or comes as the
@@ -392,7 +392,7 @@ collector sends through the same path:
   ("Client does not support subagents capability") when the client didn't advertise `subagents`. The RFD says a v1
   agent MUST NOT send the updates it defines without the capability (`:76-78`).
   - The check sits in the root's `RemoteClientSessionOperations.notify`. `client.notify`, the prompt flow's
-    `Event.SessionUpdateEvent` (`agent/Agent.kt`, `SessionWrapper.prompt`) and replay all go through it, so one
+    `Event.SessionUpdateEvent` (`agent/SessionWrapper.kt`, `RootSessionWrapper.prompt`) and replay all go through it, so one
     check covers every path. It follows the fs, terminal and elicitation checks in the same file, which use
     `error(...)` with the same message format.
   - It throws rather than dropping with a log: the app made an explicit call that breaks a MUST NOT, and a silent
@@ -409,7 +409,7 @@ collector sends through the same path:
 - Each send goes through `RemoteClientSessionOperations`/`Protocol` immediately, in emission order, so per-session
   ordering holds.
 
-### What the SDK tracks per child (`SubagentWrapper`)
+### What the SDK tracks per child (`SubagentSessionWrapper`)
 
 - **`grant`:** whether cancel is currently granted. It's updated from each `SubagentUpdate` for the child that went
   out live:
@@ -427,17 +427,17 @@ collector sends through the same path:
   path. Used only when the factory throws after the announcement (see "`announce` semantics", step 5).
 - **`state`:** the last `state` snapshot sent **through `events`**: none, a state, or cleared. Used only to decide
   whether a feed that ends owes `unknown`. State sent through `client.notify` is not seen. This follows the existing
-  runtimes: v1's `SessionWrapper.prompt` and v2's `runTurn` (`terminalIdleSent`) inspect only the flow they collect,
+  runtimes: v1's `RootSessionWrapper.prompt` and v2's `runTurn` (`terminalIdleSent`) inspect only the flow they collect,
   and `client.notify` goes straight to the wire.
 - **Its parent and children,** for nesting checks and subtree cleanup (see "Lifetimes").
-- **The child's context.** `SubagentWrapper` extends `Agent.BaseSessionWrapper`, so `.agent` works in the child's
-  context. `CoroutineContext.client` doesn't work yet: today it casts to `Agent.SessionWrapper` and reads its
+- **The child's context.** `SubagentSessionWrapper` extends `BaseSessionWrapper`, so `.agent` works in the child's
+  context. `CoroutineContext.client` doesn't work yet: today it casts to `RootSessionWrapper` and reads its
   `clientOperations` (`agent/Agent.kt:582`), and `BaseSessionWrapper` has no `clientOperations`. Make the accessor
-  resolve a `SubagentWrapper` too, for example by moving the operations to a shared supertype that NES sessions
+  resolve a `SubagentSessionWrapper` too, for example by moving the operations to a shared supertype that NES sessions
   don't implement. `.subagents` needs the same. The child's `client` is a `RemoteClientSessionOperations` for the
   child's id, gated until the announcement is sent, and applies the routing rule.
 
-`Agent` keeps one table per connection, from the child id to its `SubagentWrapper`, next to `_sessions`.
+`Agent` keeps one table per connection, from the child id to its `SubagentSessionWrapper`, next to `_sessions`.
 
 ### Incoming requests on a child id
 
@@ -508,7 +508,7 @@ collector sends through the same path:
 
 ### Lifetimes
 
-- Each root `SessionWrapper` owns a supervisor scope for its subtree's collections. It's cancelled when the root
+- Each `RootSessionWrapper` owns a supervisor scope for its subtree's collections. It's cancelled when the root
   session is closed, after `AgentSession.close()` returns, when a re-opening of its id or a failed load drops it, and
   when the connection ends. One child's collection
   failing doesn't affect others.
@@ -736,7 +736,7 @@ details below (decision log, question 7).
 
 ### Types
 
-- `BaseClientSession` is a sealed v1 interface. The name follows the `Base` prefix of `Agent.BaseSessionWrapper`.
+- `BaseClientSession` is a sealed v1 interface. The name follows the `Base` prefix of `BaseSessionWrapper`.
   Its direct subtypes are the `ClientSession` interface and the `ClientSubagentSession` class.
   - Members: `sessionId`, `operations`, `subagents` (the children, named the same on both), and the effective
     `cwd`/`additionalDirectories` (inherited from the parent unless set).
@@ -2050,8 +2050,8 @@ cover externally observable behaviour.
   them.
 
 - **Both root runtimes treat a `CancellationException` thrown by the app's own flow as a cancellation** (a
-  follow-up PR, not this change; the fix ideas are in `FIXME` comments in `SessionWrapper.prompt` in
-  `agent/Agent.kt` and in `runTurn` in `agent/v2/Agent.kt`). The v1 `SessionWrapper.prompt` rethrows it, so the turn's job counts as cancelled and
+  follow-up PR, not this change; the fix ideas are in `FIXME` comments in `RootSessionWrapper.prompt` in
+  `agent/SessionWrapper.kt` and in `runTurn` in `agent/v2/Agent.kt`). The v1 `RootSessionWrapper.prompt` rethrows it, so the turn's job counts as cancelled and
   `session/prompt` answers `stopReason: cancelled` (`agent/Agent.kt:137`, `:157`). The v2 `runTurn` reports
   `idle(cancelled)` for any `CancellationException` and rethrows it (`agent/v2/Agent.kt`, the
   `is CancellationException` branch). So an uncaught `withTimeout` inside a root's flow tells the client the user
