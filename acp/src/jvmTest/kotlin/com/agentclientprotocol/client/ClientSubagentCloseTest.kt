@@ -26,8 +26,10 @@ import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.model.StateUpdate
 import com.agentclientprotocol.model.SubagentSessionCapabilities
 import com.agentclientprotocol.model.ToolCallId
+import com.agentclientprotocol.protocol.AcpExpectedError
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.rpc.ACPJson
+import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import com.agentclientprotocol.rpc.JsonRpcErrorResponse
 import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.rpc.JsonRpcResponse
@@ -583,6 +585,39 @@ class ClientSubagentCloseTest {
             c.agent.sendUpdate(id, text("after-$id"))
             awaitUnconnected(c, id, text("after-$id"))
         }
+    }
+
+    @Test
+    fun `a close answered with resource not found counts as a successful close`() = withConnection { c ->
+        val world = SubagentWorld()
+        val session = openLive(c, root, world)
+        c.agent.sendUpdate(root, announce(child))
+        world.awaitOperations(child).awaitEvent(TreeOperations.OPENED)
+
+        val closing = async { session.close() }
+        c.agent.fail(c.agent.receiveRequest(CLOSE.methodName), JsonRpcErrorCode.RESOURCE_NOT_FOUND)
+        assertEquals(CloseSessionResponse(), withTimeout(5.seconds) { closing.await() })
+
+        for (id in listOf(root, child)) {
+            c.agent.sendUpdate(id, text("after-$id"))
+            awaitUnconnected(c, id, text("after-$id"))
+        }
+        assertReloadRegisters(c, root to child)
+    }
+
+    @Test
+    fun `a close answered with another error fails and leaves the session registered`() = withConnection { c ->
+        val world = SubagentWorld()
+        val session = openLive(c, root, world)
+
+        val closing = async { runCatching { session.close() } }
+        c.agent.fail(c.agent.receiveRequest(CLOSE.methodName), JsonRpcErrorCode.INVALID_PARAMS)
+        assertIs<AcpExpectedError>(withTimeout(5.seconds) { closing.await() }.exceptionOrNull())
+
+        assertSame(session, c.client.getSession(root))
+        c.agent.sendUpdate(root, text("after"))
+        world.awaitOperations(root).awaitEvent(text("after"))
+        assertTrue(c.unconnected.value.isEmpty(), "nothing is unconnected, got ${c.unconnected.value}")
     }
 
     @Test

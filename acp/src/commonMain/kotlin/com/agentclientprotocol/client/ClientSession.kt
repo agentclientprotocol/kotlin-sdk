@@ -52,7 +52,7 @@ public interface ClientSession : BaseClientSession {
     /**
      * **UNSTABLE**
      *
-     * This capability is not part of the spec yet, and may be removed or changed at any point.
+     * This API may change at any point.
      *
      * Closes the session and frees up any resources associated with it.
      * The agent must cancel any ongoing work (as if `session/cancel` was called)
@@ -75,7 +75,9 @@ public interface ClientSession : BaseClientSession {
      * lists stay as they were. This function cancels the deliveries to the subagents that haven't finished opening
      * and waits for them to end, so it returns only once each [ClientSessionOperations.notify] or
      * [SubagentOperations.createSubagentOperations] call in progress for such a subagent reacts to the cancellation.
-     * If the request fails, nothing is removed.
+     * An answer with `-32002` (resource not found) means the agent no longer knows the session, so it counts as a
+     * successful close, as ACP asks: the tree is removed and this function returns an empty [CloseSessionResponse].
+     * If the request fails with any other error, nothing is removed.
      *
      * Such a call may close the root itself. Then this function doesn't wait for that subagent's delivery, which
      * would wait for itself, and cancels it before returning. It recognizes the call when this function runs in the

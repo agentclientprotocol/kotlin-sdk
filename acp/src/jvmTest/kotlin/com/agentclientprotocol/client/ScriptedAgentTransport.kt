@@ -187,8 +187,8 @@ internal class ScriptedAgentTransport : BaseTransport() {
         fireFrame(TransportFrame.Single(JsonRpcSuccessResponse(request.id, result)))
     }
 
-    fun fail(request: JsonRpcRequest) {
-        val error = JsonRpcError(JsonRpcErrorCode.INTERNAL_ERROR.code, "load failed")
+    fun fail(request: JsonRpcRequest, code: JsonRpcErrorCode = JsonRpcErrorCode.INTERNAL_ERROR) {
+        val error = JsonRpcError(code.code, "load failed")
         fireFrame(TransportFrame.Single(JsonRpcErrorResponse(request.id, error)))
     }
 

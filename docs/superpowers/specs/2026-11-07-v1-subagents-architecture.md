@@ -1323,7 +1323,10 @@ root can be closed.
   consumer: if `notify` awaits it cancellably, the cancellation ends that wait and the close completes; if `notify`
   waits for it without reacting to cancellation, neither finishes. The `ClientSession.close` KDoc states that
   limitation.
-- **If the request fails,** nothing is removed, as for a root today and as on the agent side. The permissions stay
+- **If the request fails,** nothing is removed, as for a root today and as on the agent side. An answer with
+  `-32002` (resource not found) is not a failure: the agent no longer knows the session, and ACP asks the client to
+  treat it as a successful close (`docs/protocol/v1/session-setup.mdx`, "Closing a session"), so the subtree is
+  removed and `close()` returns an empty response. The permissions stay
   closed, as the root's do, and the root stays `CLOSING`.
 - **Closed child objects keep their last values.** `subagents` on the closed parent stays as it was. `canCancel`
   becomes `false`, and `cancel()` throws `IllegalStateException`, so a closed child never sends `session/cancel` for

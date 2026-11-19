@@ -7,8 +7,10 @@ import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.common.notify
 import com.agentclientprotocol.model.*
+import com.agentclientprotocol.protocol.JsonRpcException
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.invoke
+import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -126,7 +128,16 @@ internal class ClientSessionImpl(
         pendingPermissions.close()
         onClosing()
 
-        val response = AcpMethod.AgentMethods.V1.SessionClose(protocol, CloseSessionRequest(sessionId, _meta))
+        val response = try {
+            AcpMethod.AgentMethods.V1.SessionClose(protocol, CloseSessionRequest(sessionId, _meta))
+        } catch (e: JsonRpcException) {
+            /*
+             * An agent that doesn't know the session any more has closed it. ACP asks the client to treat `-32002` as a
+             * successful close: https://agentclientprotocol.com/protocol/v1/session-setup#closing-active-sessions
+             */
+            if (e.code != JsonRpcErrorCode.RESOURCE_NOT_FOUND.code) throw e
+            CloseSessionResponse()
+        }
         onClosed()
         return response
     }
