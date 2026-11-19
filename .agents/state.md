@@ -43,7 +43,13 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   `CoroutineContext.agent/clientInfo/client` stay in `Agent.kt` (`AgentKt` facade); `SubagentClientOperations`
   moves to its own file. Note 2 (re-open KDoc) dropped by the user.
 
-## Plan
+- PR review round 2 (user, 2026-11-19): `registerSubagent` reads `isSubtreeClosed` inside its update of
+  `_subagentSessions`, but `closeSubtree`'s update is a no-op CAS (same `PersistentMap` instance) when the root has
+  no registered child, so a first child racing a close can be registered after the cleanup (orphan, updates after
+  the close response). Fix (user's choice): replace `_rootSessions`, `_subagentSessions` and the subtree-closed flag
+  with ONE atomic snapshot of both maps; every registration/opening/close/failed-load/re-open is one CAS; the flag,
+  the `replaced` workaround and the `resolveParent` check go; close removes the root by identity. No stress test.
+  Orchestrator choice (reported to the user): a root whose id is already a registered subagent's fails its opening.
 - M0 research: wire shapes of the RFD and Rust v1 models at current upstream vs the spec's pinned `c392d7e9`
   → `.agents/research/subagents-wire-shapes.md`.
 - M1 model (`:acp-model`): (1) move `MaybeUndefined` to `model`; (2) capability, `StateUpdate`, `IdleStopReason`
@@ -259,7 +265,7 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 
 ## Next
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
-R1 done (`51c0349`), R2 done (`e5b28b5`). Waiting for the user's next review notes.
+R1 done (`51c0349`), R2 done (`e5b28b5`). In progress: R3 agent single session snapshot (Decisions, round 2).
 
 Earlier: the goal is done. PR #158 targets `master`. Remaining for the user: delete `.agents/state.md` and
 `.agents/research/` before the PR merges. Follow-up candidates: review finding 4; the fresh-context close
