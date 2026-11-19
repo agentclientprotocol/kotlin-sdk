@@ -158,7 +158,7 @@ public class Agent(
 
         /**
          * Closes the replay window and starts the collections deferred until then. Called once the transport has
-         * accepted the load response. Doesn't suspend or block.
+         * accepted the load response.
          */
         fun endReplay() {
             val starts = synchronized(replayLock) {
