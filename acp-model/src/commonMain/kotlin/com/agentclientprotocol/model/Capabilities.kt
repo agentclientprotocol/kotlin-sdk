@@ -188,6 +188,38 @@ public data class SessionAdditionalDirectoriesCapabilities(
 ) : AcpWithMeta
 
 /**
+ * Capabilities for the `override` system prompt mode.
+ *
+ * By supplying `{}` it means that the agent supports replacing its built-in default instructions
+ * with the client-provided system prompt.
+ */
+@Serializable
+public data class SessionSystemPromptOverrideCapabilities(
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
+ * System prompt modes the agent supports in addition to `append`.
+ */
+@Serializable
+public data class SessionSystemPromptModeCapabilities(
+    val override: SessionSystemPromptOverrideCapabilities? = null,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
+ * Capabilities for client-provided system prompts.
+ *
+ * By supplying `{}` it means that the agent supports the `systemPrompt` field on session lifecycle
+ * requests in [SystemPromptMode.APPEND] mode.
+ */
+@Serializable
+public data class SessionSystemPromptCapabilities(
+    val mode: SessionSystemPromptModeCapabilities? = null,
+    override val _meta: JsonElement? = null
+) : AcpWithMeta
+
+/**
  * Session capabilities supported by the agent.
  */
 @OptIn(UnstableApi::class)
@@ -201,6 +233,7 @@ public data class SessionCapabilities(
     val close: SessionCloseCapabilities? = null,
     @property:UnstableApi
     val additionalDirectories: SessionAdditionalDirectoriesCapabilities? = null,
+    val systemPrompt: SessionSystemPromptCapabilities? = null,
     override val _meta: JsonElement? = null
 ) : AcpWithMeta
 

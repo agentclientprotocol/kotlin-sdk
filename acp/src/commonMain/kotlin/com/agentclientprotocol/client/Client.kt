@@ -413,8 +413,12 @@ public class Client(
      * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
      * See [ClientOperationsFactory.createClientOperations] for more details.
      * @return a [ClientSession] instance for the new session
+     * @throws AcpExpectedError before the request, if [SessionCreationParameters.systemPrompt] is set but the agent
+     *   did not advertise `sessionCapabilities.systemPrompt` (and `mode.override` for [SystemPromptMode.OVERRIDE]),
+     *   or its content is empty
      */
     public suspend fun newSession(sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
+        requireSystemPromptSupport(sessionParameters.systemPrompt)
         return withInitializingSession {
             val newSessionResponse = AcpMethod.AgentMethods.V1.SessionNew(
                 protocol,
@@ -422,6 +426,7 @@ public class Client(
                     sessionParameters.cwd,
                     sessionParameters.mcpServers,
                     sessionParameters.additionalDirectories,
+                    sessionParameters.systemPrompt,
                     sessionParameters._meta
                 )
             )
@@ -441,8 +446,12 @@ public class Client(
      * @return a [ClientSession] instance for the new session
      * @throws IllegalStateException before the request, if a call with ready operations has opened [sessionId] or
      *   is opening it
+     * @throws AcpExpectedError before the request, if [SessionCreationParameters.systemPrompt] is set but the agent
+     *   did not advertise `sessionCapabilities.systemPrompt` (and `mode.override` for [SystemPromptMode.OVERRIDE]),
+     *   or its content is empty
      */
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
+        requireSystemPromptSupport(sessionParameters.systemPrompt)
         return withFactoryInitializingSession(sessionId, sessionParameters, operationsFactory) {
             AcpMethod.AgentMethods.V1.SessionLoad(
                 protocol,
@@ -471,8 +480,12 @@ public class Client(
      * @return a [ClientSession] instance for the loaded session
      * @throws IllegalStateException before the request, if [sessionId] already has a session in this client or
      *   another call is opening it
+     * @throws AcpExpectedError before the request, if [SessionCreationParameters.systemPrompt] is set but the agent
+     *   did not advertise `sessionCapabilities.systemPrompt` (and `mode.override` for [SystemPromptMode.OVERRIDE]),
+     *   or its content is empty
      */
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operations: ClientSessionOperations): ClientSession {
+        requireSystemPromptSupport(sessionParameters.systemPrompt)
         return withEarlyInitializingSession(sessionId, sessionParameters, operations) {
             AcpMethod.AgentMethods.V1.SessionLoad(
                 protocol,
@@ -535,9 +548,13 @@ public class Client(
      * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
      * See [ClientOperationsFactory.createClientOperations] for more details.
      * @return a [ClientSession] instance for the forked session
+     * @throws AcpExpectedError before the request, if [SessionCreationParameters.systemPrompt] is set but the agent
+     *   did not advertise `sessionCapabilities.systemPrompt` (and `mode.override` for [SystemPromptMode.OVERRIDE]),
+     *   or its content is empty
      */
     @UnstableApi
     public suspend fun forkSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
+        requireSystemPromptSupport(sessionParameters.systemPrompt)
         return withInitializingSession {
             val forkSessionResponse = AcpMethod.AgentMethods.V1.SessionFork(
                 protocol,
@@ -546,6 +563,7 @@ public class Client(
                     sessionParameters.cwd,
                     sessionParameters.mcpServers,
                     sessionParameters.additionalDirectories,
+                    sessionParameters.systemPrompt,
                     sessionParameters._meta
                 )
             )
@@ -571,9 +589,13 @@ public class Client(
      * @return a [ClientSession] instance for the resumed session
      * @throws IllegalStateException before the request, if a call with ready operations has opened [sessionId] or
      *   is opening it
+     * @throws AcpExpectedError before the request, if [SessionCreationParameters.systemPrompt] is set but the agent
+     *   did not advertise `sessionCapabilities.systemPrompt` (and `mode.override` for [SystemPromptMode.OVERRIDE]),
+     *   or its content is empty
      */
     @UnstableApi
     public suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
+        requireSystemPromptSupport(sessionParameters.systemPrompt)
         return withFactoryInitializingSession(sessionId, sessionParameters, operationsFactory) {
             AcpMethod.AgentMethods.V1.SessionResume(
                 protocol,
@@ -599,9 +621,13 @@ public class Client(
      * @param operations the operations of the session. It must also implement the interfaces for the extra
      * capabilities that the client declares, like file system or terminal support.
      * @return a [ClientSession] instance for the resumed session
+     * @throws AcpExpectedError before the request, if [SessionCreationParameters.systemPrompt] is set but the agent
+     *   did not advertise `sessionCapabilities.systemPrompt` (and `mode.override` for [SystemPromptMode.OVERRIDE]),
+     *   or its content is empty
      */
     @UnstableApi
     public suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operations: ClientSessionOperations): ClientSession {
+        requireSystemPromptSupport(sessionParameters.systemPrompt)
         return withEarlyInitializingSession(sessionId, sessionParameters, operations) {
             AcpMethod.AgentMethods.V1.SessionResume(
                 protocol,
@@ -765,12 +791,35 @@ public class Client(
         }
     }
 
+    /**
+     * Fails locally, before any request is sent, when [systemPrompt] cannot be sent to this agent: its content is
+     * empty, the agent did not advertise `sessionCapabilities.systemPrompt`, or it uses [SystemPromptMode.OVERRIDE]
+     * without `sessionCapabilities.systemPrompt.mode.override`. Other modes are passed through as is.
+     */
+    private suspend fun requireSystemPromptSupport(systemPrompt: SystemPrompt?) {
+        if (systemPrompt == null) return
+
+        if (systemPrompt.content.isEmpty()) {
+            acpFail("Cannot send systemPrompt with empty content")
+        }
+        // _agentInfo only completes on successful initialization, so awaiting it earlier could hang forever.
+        if (!_agentInfo.isCompleted) {
+            acpFail("Cannot send systemPrompt before initialization completes")
+        }
+        val capability = _agentInfo.await().capabilities.sessionCapabilities.systemPrompt
+            ?: acpFail("Cannot send systemPrompt: the agent did not advertise sessionCapabilities.systemPrompt")
+        if (systemPrompt.mode == SystemPromptMode.OVERRIDE && capability.mode?.override == null) {
+            acpFail("Cannot send systemPrompt in override mode: the agent did not advertise sessionCapabilities.systemPrompt.mode.override")
+        }
+    }
+
     private fun loadSessionRequest(sessionId: SessionId, sessionParameters: SessionCreationParameters): LoadSessionRequest =
         LoadSessionRequest(
             sessionId,
             sessionParameters.cwd,
             sessionParameters.mcpServers,
             sessionParameters.additionalDirectories,
+            sessionParameters.systemPrompt,
             sessionParameters._meta
         )
 
@@ -780,6 +829,7 @@ public class Client(
             sessionParameters.cwd,
             sessionParameters.mcpServers,
             sessionParameters.additionalDirectories,
+            sessionParameters.systemPrompt,
             sessionParameters._meta
         )
 

@@ -2,6 +2,7 @@ package com.agentclientprotocol.common
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.McpServer
+import com.agentclientprotocol.model.SystemPrompt
 import kotlinx.serialization.json.JsonElement
 
 @Deprecated("Use SessionCreationParameters instead")
@@ -12,5 +13,6 @@ public class SessionCreationParameters(
     public val mcpServers: List<McpServer>,
     @property:UnstableApi
     public val additionalDirectories: List<String>? = null,
+    public val systemPrompt: SystemPrompt? = null,
     public val _meta: JsonElement? = null
 )

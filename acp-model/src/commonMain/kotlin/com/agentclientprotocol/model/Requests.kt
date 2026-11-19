@@ -393,6 +393,7 @@ public data class NewSessionRequest(
     val mcpServers: List<@Polymorphic McpServer>,
     @property:UnstableApi
     val additionalDirectories: List<String>? = null,
+    val systemPrompt: SystemPrompt? = null,
     override val _meta: JsonElement? = null
 ) : AcpRequest
 
@@ -411,6 +412,7 @@ public data class LoadSessionRequest(
     val mcpServers: List<@Polymorphic McpServer>,
     @property:UnstableApi
     val additionalDirectories: List<String>? = null,
+    val systemPrompt: SystemPrompt? = null,
     override val _meta: JsonElement? = null
 ) : AcpRequest, AcpWithSessionId
 
@@ -953,6 +955,7 @@ public data class ForkSessionRequest(
     val cwd: String,
     val mcpServers: List<McpServer>,
     val additionalDirectories: List<String>? = null,
+    val systemPrompt: SystemPrompt? = null,
     override val _meta: JsonElement? = null
 ) : AcpRequest, AcpWithSessionId
 
@@ -1022,6 +1025,7 @@ public data class ResumeSessionRequest(
     val cwd: String,
     val mcpServers: List<McpServer> = emptyList(),
     val additionalDirectories: List<String>? = null,
+    val systemPrompt: SystemPrompt? = null,
     override val _meta: JsonElement? = null
 ) : AcpRequest, AcpWithSessionId
 

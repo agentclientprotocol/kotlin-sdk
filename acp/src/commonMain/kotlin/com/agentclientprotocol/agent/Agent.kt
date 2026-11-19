@@ -311,7 +311,7 @@ public class Agent(
         }
 
         protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V1.SessionNew) { params: NewSessionRequest ->
-            val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
+            val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params.systemPrompt, params._meta)
             val created = createSession(sessionParameters) { agentSupport.createSession(it) }
 
             @OptIn(UnstableApi::class)
@@ -326,7 +326,7 @@ public class Agent(
         }
 
         protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V1.SessionLoad) { params: LoadSessionRequest ->
-            val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
+            val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params.systemPrompt, params._meta)
             val created = createSession(
                 sessionParameters,
                 beforeResponse = { session -> session.replayHistory() },
@@ -344,7 +344,7 @@ public class Agent(
         }
 
         protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V1.SessionResume) { params: ResumeSessionRequest ->
-            val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
+            val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params.systemPrompt, params._meta)
             val created = createSession(sessionParameters) { agentSupport.resumeSession(params.sessionId, sessionParameters) }
             return@setRequestOutcomeHandler created.mapResponse { session ->
                 ResumeSessionResponse(
@@ -394,7 +394,7 @@ public class Agent(
 
         @OptIn(UnstableApi::class)
         protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V1.SessionFork) { params: ForkSessionRequest ->
-            val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
+            val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params.systemPrompt, params._meta)
             val created = createSession(sessionParameters) { agentSupport.forkSession(params.sessionId, sessionParameters) }
             return@setRequestOutcomeHandler created.mapResponse { session ->
                 ForkSessionResponse(
@@ -408,7 +408,7 @@ public class Agent(
 
         @OptIn(UnstableApi::class)
         protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V1.SessionResume) { params: ResumeSessionRequest ->
-            val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
+            val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params.systemPrompt, params._meta)
             val created = createSession(sessionParameters) { agentSupport.resumeSession(params.sessionId, sessionParameters) }
             return@setRequestOutcomeHandler created.mapResponse { session ->
                 ResumeSessionResponse(
