@@ -6,8 +6,16 @@ package com.agentclientprotocol.model
 import com.agentclientprotocol.annotations.UnstableApi
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.nullable
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * File system capabilities that a client may support.
@@ -38,21 +46,44 @@ public data class PromptCapabilities(
 ) : AcpWithMeta
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * Authentication capabilities supported by the client.
  *
- * Advertised during initialization to inform the agent which authentication
- * method types the client can handle. This governs opt-in types that require
- * additional client-side support.
+ * @property terminal whether the client can reproduce the configured agent invocation in an
+ * interactive terminal. Only `true` opts in to terminal authentication methods
  */
 @UnstableApi
 @Serializable
 public data class AuthCapabilities(
-    override val _meta: JsonElement? = null
-): AcpWithMeta
+    override val _meta: JsonElement? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    @Serializable(with = TerminalAuthFlagSerializer::class)
+    val terminal: Boolean? = null,
+) : AcpWithMeta {
+    /**
+     * Keeps the original JVM constructor available to existing callers.
+     */
+    public constructor(_meta: JsonElement? = null) : this(_meta, terminal = null)
+
+    /**
+     * Copies metadata through the original JVM signature and preserves the terminal flag.
+     */
+    public fun copy(_meta: JsonElement? = this._meta): AuthCapabilities = AuthCapabilities(_meta, terminal)
+}
+
+private object TerminalAuthFlagSerializer : KSerializer<Boolean?> {
+    private val delegate = Boolean.serializer().nullable
+    override val descriptor: SerialDescriptor = delegate.descriptor
+
+    override fun deserialize(decoder: Decoder): Boolean? {
+        if (decoder !is JsonDecoder) return delegate.deserialize(decoder)
+        val value = decoder.decodeJsonElement() as? JsonPrimitive
+        return value?.takeUnless { it.isString }?.content?.toBooleanStrictOrNull()
+    }
+
+    override fun serialize(encoder: Encoder, value: Boolean?) {
+        delegate.serialize(encoder, value)
+    }
+}
 
 /**
  * **UNSTABLE**

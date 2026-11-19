@@ -20,6 +20,7 @@ import com.agentclientprotocol.model.v2.PromptCapabilities
 import com.agentclientprotocol.model.v2.PromptEmbeddedContextCapabilities
 import com.agentclientprotocol.model.v2.PromptImageCapabilities
 import com.agentclientprotocol.model.v2.SessionCapabilities
+import com.agentclientprotocol.model.v2.TerminalAuthCapabilities
 import com.agentclientprotocol.model.v2.SessionDeleteCapabilities as V2SessionDeleteCapabilities
 import com.agentclientprotocol.model.AgentAuthCapabilities as V1AgentAuthCapabilities
 import com.agentclientprotocol.model.AgentCapabilities as V1AgentCapabilities
@@ -296,23 +297,25 @@ public fun V1AgentCapabilities.toV2(): AgentCapabilities = AgentCapabilities(
 /**
  * Converts these v2 client auth capabilities to their v1 equivalent.
  *
- * @throws ProtocolConversionException if [AuthCapabilities.terminal] is set — the v1
- * Kotlin model has no `terminal` field
+ * A present terminal marker becomes `true`. An absent marker leaves the v1 flag unset.
+ *
+ * @throws ProtocolConversionException if the terminal marker carries `_meta`, which a
+ * v1 boolean cannot represent
  */
 @UnstableApi
 public fun AuthCapabilities.toV1(): V1AuthCapabilities {
-    if (terminal != null) throw unrepresentableV2Field("AuthCapabilities", "terminal")
-    return V1AuthCapabilities(_meta = _meta)
+    rejectV2MarkerMeta("AuthCapabilities", "terminal", terminal?._meta)
+    return V1AuthCapabilities(_meta = _meta, terminal = terminal?.let { true })
 }
 
 /**
  * Converts these v1 client auth capabilities to their v2 equivalent.
  *
- * This conversion is total: every v1 value has a v2 representation.
+ * Only `true` becomes a terminal marker. Both `false` and omission leave the marker unset.
  */
 @UnstableApi
 public fun V1AuthCapabilities.toV2(): AuthCapabilities = AuthCapabilities(
-    terminal = null,
+    terminal = if (terminal == true) TerminalAuthCapabilities() else null,
     _meta = _meta,
 )
 
