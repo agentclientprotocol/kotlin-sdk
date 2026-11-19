@@ -288,7 +288,7 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 
 ## Next
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
-R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). R4 (`a211818`) and R5 (`a4403b8`) done. Proposed next: close callbacks act on the session's own holder (see Open questions).
+R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). R4 (`a211818`) and R5 (`a4403b8`) done. In progress: R6-R8 (one programmer), v2 close research; then R9.
 
 Earlier: the goal is done. PR #158 targets `master`. Remaining for the user: delete `.agents/state.md` and
 `.agents/research/` before the PR merges. Follow-up candidates: review finding 4; the fresh-context close
@@ -308,5 +308,3 @@ Notes:
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
-- Make `onClosing`/`onClosed` act on the session's own holder (not by id), so `markClosing` can be strict and
-  `removeClosedSession` can't remove a later holder of the id (pre-existing follow-up)? Behaviour change.
