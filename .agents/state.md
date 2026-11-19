@@ -253,10 +253,13 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   `RootSessionWrapper`, NES, file-private `PromptSession`, context helpers), `SubagentSessionWrapper.kt`,
   thin `SubagentClientOperations.kt` (send state and locked sends stay in the wrapper; internal `sendOnStream`
   pass-through); `subtreeRoot`; spec symbol names; `check` and `apiCheck` green; no API change.
+- R2 direct sends — `e5b28b5` — built on the user's own edit; `sendOnStream` and
+  `RemoteClientSessionOperations.sendUpdate` deleted; both wrapper sends and the root `notify` call
+  `AcpMethod.ClientMethods.V1.SessionUpdate` directly; `check` and `apiCheck` green; no API change.
 
 ## Next
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
-R1 done (`51c0349`). Waiting for the user's next review notes.
+R1 done (`51c0349`), R2 done (`e5b28b5`). Waiting for the user's next review notes.
 
 Earlier: the goal is done. PR #158 targets `master`. Remaining for the user: delete `.agents/state.md` and
 `.agents/research/` before the PR merges. Follow-up candidates: review finding 4; the fresh-context close
