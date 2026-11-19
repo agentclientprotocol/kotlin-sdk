@@ -302,4 +302,3 @@ Notes:
 ## Open questions (waiting on the user)
 - Make `onClosing`/`onClosed` act on the session's own holder (not by id), so `markClosing` can be strict and
   `removeClosedSession` can't remove a later holder of the id (pre-existing follow-up)? Behaviour change.
-- Rename `root` → `treeRoot` on both sides (agent `subtreeRoot`, client `root`)? Asked twice, unanswered.
