@@ -85,9 +85,19 @@ public interface ClientSession : BaseClientSession {
      * like any other: if the call waits for that close without reacting to cancellation, for example under
      * `NonCancellable`, neither of them ever finishes.
      *
+     * Only this session object sends `session/close` for its id, and only while the session is open. After a
+     * successful close, a later call returns an empty [CloseSessionResponse] at once, sends nothing and touches no
+     * other session, even if the id has been opened again since: the request carries only the id, so it would close
+     * the new session. A call after a failed close sends the request again, and calls made while a close is in flight
+     * send their own requests. If the opening of this session failed, which a call of [operations] that reads this
+     * session from its context during the opening can see, this function throws [IllegalStateException] and sends
+     * nothing. The agent's session then stays open until the connection ends.
+     *
      * Only available if the agent advertises the `session.close` capability.
      *
      * Corresponds to the [com.agentclientprotocol.model.AcpMethod.AgentMethods.V1.SessionClose]
+     *
+     * @throws IllegalStateException if the opening of this session failed
      */
     @UnstableApi
     public suspend fun close(_meta: JsonElement? = null): CloseSessionResponse

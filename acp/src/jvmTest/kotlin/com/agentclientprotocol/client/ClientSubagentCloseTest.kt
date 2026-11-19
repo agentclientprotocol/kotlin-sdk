@@ -60,12 +60,14 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 /**
  * Closing a v1 root session closes its subagents with it: their permission requests are answered `cancelled` when
- * the close starts, and the whole tree is removed after a successful response. The tests play the agent on a scripted
+ * the close starts, and the whole tree is removed after a successful response. A close acts only on its own session:
+ * once that is closed, or failed to open, nothing is sent for its id again. The tests play the agent on a scripted
  * transport, so they control the exact wire order, and they hold the app's calls on deferreds to pin each race.
  */
 class ClientSubagentCloseTest {
@@ -562,6 +564,104 @@ class ClientSubagentCloseTest {
         }
         assertEquals(listOf(child), session.subagents.map { it.sessionId })
         assertTrue(c.unconnected.value.isEmpty(), "nothing is unconnected, got ${c.unconnected.value}")
+    }
+
+    @Test
+    fun `a retry after a failed close sends the close again and removes the tree`() = withConnection { c ->
+        val world = SubagentWorld()
+        val session = openLive(c, root, world)
+        c.agent.sendUpdate(root, announce(child))
+        world.awaitOperations(child).awaitEvent(TreeOperations.OPENED)
+
+        val failing = async { runCatching { session.close() } }
+        c.agent.fail(c.agent.receiveRequest(CLOSE.methodName))
+        assertTrue(failing.await().isFailure)
+
+        closeSession(c, session)
+
+        for (id in listOf(root, child)) {
+            c.agent.sendUpdate(id, text("after-$id"))
+            awaitUnconnected(c, id, text("after-$id"))
+        }
+    }
+
+    @Test
+    fun `a second close of a closed session returns an empty response without sending anything`() = withConnection { c ->
+        val session = openLive(c, root, SubagentWorld())
+        closeSession(c, session)
+
+        assertEquals(CloseSessionResponse(), withTimeout(5.seconds) { session.close() })
+        c.agent.assertNoRequest()
+    }
+
+    @Test
+    fun `a second close after the id was opened again sends nothing and leaves the new session working`() = withConnection { c ->
+        val first = openLive(c, root, SubagentWorld())
+        closeSession(c, first)
+
+        val world = SubagentWorld()
+        val second = openLive(c, root, world)
+        c.agent.sendUpdate(root, announce(child))
+        world.awaitOperations(child).awaitEvent(TreeOperations.OPENED)
+
+        assertEquals(CloseSessionResponse(), withTimeout(5.seconds) { first.close() })
+        c.agent.assertNoRequest()
+
+        // The new session and its subagent still get their permission requests, requests and updates.
+        for (id in listOf(root, child)) {
+            val permission = c.agent.sendRequest(PERMISSION, permissionRequest(id, "after-$id"))
+            assertEquals(TreeOperations.ALLOWED, decodePermission(c.agent.awaitResponse(permission)), "$id")
+            assertEquals(1, world.awaitOperations(id).permissionRequests.value.size, "$id")
+            val read = decode(c.agent.awaitResponse(c.agent.sendRequest(READ, ReadTextFileRequest(id, "/file"))), READ.responseSerializer)
+            assertEquals("$id in $id", read.content)
+            c.agent.sendUpdate(id, text("after-$id"))
+            world.awaitOperations(id).awaitEvent(text("after-$id"))
+        }
+        assertSame(second, c.client.getSession(root))
+        assertTrue(c.unconnected.value.isEmpty(), "nothing is unconnected, got ${c.unconnected.value}")
+
+        // The new session's own close still goes out.
+        closeSession(c, second)
+    }
+
+    @Test
+    fun `two closes in flight both send and the second removal leaves the id free`() = withConnection { c ->
+        val session = openLive(c, root, SubagentWorld())
+
+        val firstClose = async { session.close() }
+        val firstRequest = c.agent.receiveRequest(CLOSE.methodName)
+        val secondClose = async { session.close() }
+        val secondRequest = c.agent.receiveRequest(CLOSE.methodName)
+        c.agent.answer(firstRequest, CLOSE.responseSerializer, CloseSessionResponse())
+        withTimeout(5.seconds) { firstClose.await() }
+        c.agent.answer(secondRequest, CLOSE.responseSerializer, CloseSessionResponse())
+        withTimeout(5.seconds) { secondClose.await() }
+
+        c.agent.sendUpdate(root, text("after"))
+        awaitUnconnected(c, root, text("after"))
+        assertReloadRegisters(c, root to child)
+    }
+
+    @Test
+    fun `a close of a session whose opening failed throws and sends nothing`() = withConnection { c ->
+        val world = SubagentWorld()
+        val captured = CompletableDeferred<ClientSession>()
+        world.configure = { operations ->
+            operations.onNotify = { event, _ ->
+                if (event is SessionEvent.Opened) {
+                    captured.complete(currentCoroutineContext().clientSession)
+                    error("the opening fails")
+                }
+            }
+        }
+        val opening = async { runCatching { c.client.loadSession(root, parameters, world.root(root)) } }
+        loadResponse(c.agent, c.agent.receiveRequest(LOAD.methodName))
+        assertTrue(opening.await().isFailure)
+
+        val session = withTimeout(5.seconds) { captured.await() }
+        val failure = assertFailsWith<IllegalStateException> { withTimeout(5.seconds) { session.close() } }
+        assertEquals("Session $root failed to open and can't be closed", failure.message)
+        c.agent.assertNoRequest()
     }
 
     @Test

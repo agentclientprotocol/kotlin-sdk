@@ -1350,11 +1350,19 @@ internal class ClientSessionImpl(
     @Deprecated(...) override val client: Client,   // only for the deprecated getter
     ...,
     private val protocol: Protocol,
+    private val isOpen: () -> Boolean,              // whether its holder is still the registered, live one
     private val onClosing: () -> Unit,              // answers the descendants' permission requests
     private val onClosed: suspend () -> Unit,       // removes the subtree and its elicitation entries
+    private val holder: RootSessionHolder,
 ) : ClientSession {
 
     override suspend fun close(_meta: JsonElement?): CloseSessionResponse {
+        // A session that is gone sends nothing: the request carries only the id.
+        if (!isOpen()) {
+            check(!holder.isFailed) { "Session $sessionId failed to open and can't be closed" }
+            return CloseSessionResponse()
+        }
+
         /*
          * Answer before waiting for the response: an agent whose close waits for its work to end (a child's
          * included) would otherwise wait for a permission answer while the client waits for the close response.
@@ -1371,18 +1379,35 @@ internal class ClientSessionImpl(
 // Client, where it creates the session
 ClientSessionImpl(
     this, sessionId, sessionParameters, operations, sessionResponse, protocol,
-    onClosing = { sessions.closeDescendantPermissions(sessionId) },
-    onClosed = { removeClosedSession(sessionId) },
+    isOpen = { sessions.isOpen(sessionHolder) },
+    onClosing = { sessions.closeDescendantPermissions(sessionHolder) },
+    onClosed = { removeClosedSession(sessionHolder) },
+    holder = sessionHolder,
 )
 ```
 
+- **A close acts on its own holder, not on the id.** v1 `session/close` carries only the id, and the id can be
+  opened again after a close, so a close found by id from a session object that is gone would close the later
+  session of that id. The session sends the request only while its holder is the registered holder of the id and
+  blocks it (`ClientSessionRegistry.isOpen`), read once at the start; the callbacks then take the holder itself.
+  While that holds, `claimForOpening` refuses every other opening of the id, so no later holder can appear while
+  the close is in flight. Otherwise nothing is sent and nothing is touched:
+  - the holder has failed: the opening failed, and only `notify` could have read the session from its context
+    during the opening. `close()` throws `IllegalStateException`; the agent's session stays open until the
+    connection ends, as for any opening that fails on the client after the answer;
+  - otherwise the session was closed: a root's holder that blocks its id leaves the map only through
+    `removeSessionTree`, because the reaping and a replacement take only holders that haven't completed or have
+    failed. `close()` returns an empty `CloseSessionResponse`, the answer an agent gives for a closed id.
+
+  A retry after a failed close finds its holder still registered and `CLOSING`, and sends again. Two closes in
+  flight on the open session both send, and the second removal removes nothing.
 - The session keeps the order: answer permissions, send the request, clean up only on success. `Client` decides
   what cleanup means, because it has the registry and the elicitation store. `removeClosedSession` is a private
   `Client` function that calls `sessions.removeSessionTree` and the store.
 - Passing the registry to the session was rejected: it would give the session claiming, sorting, reaping and every
   other session's holders, and keep a cycle (registry → holder → session → registry). A single `onClose(_meta)`
-  doing all of close was rejected: the request would move into a map component. Passing the session its holder was
-  rejected: removal still needs the registry, so it would be the holder plus a callback.
+  doing all of close was rejected: the request would move into a map component. The session gets its holder too, for
+  `subagents` and for the guard above, and the callbacks still do the registry's part.
 - **`ClientSession.client` is deprecated** at WARNING level, on the interface member. Nothing in the repo reads it,
   the app already has the `Client` it opened the session with, v2 has no such member, and it makes a cycle
   (`Client` → map → holder → session → `Client`). The message says to keep that `Client`. `ClientSessionImpl`
@@ -1393,15 +1418,14 @@ ClientSessionImpl(
 
 ```kotlin
 // ClientSessionRegistry
-fun closeDescendantPermissions(rootId: SessionId) {
-    val root = rootHolderOrNull(rootId) ?: return
+fun isOpen(root: RootSessionHolder): Boolean = _sessions.value.sessions[root.sessionId] === root && root.blocksId
+
+fun closeDescendantPermissions(root: RootSessionHolder) {
     root.markClosing()  // first: registerChild reads it after addChild
     root.forEachDescendant { it.permissions.close() }
 }
 
-suspend fun removeSessionTree(rootId: SessionId): Set<SessionId> {
-    val root = rootHolderOrNull(rootId) ?: return emptySet()
-
+suspend fun removeSessionTree(root: RootSessionHolder): Set<SessionId> {
     val subtree = buildList {
         fun visit(holder: ClientSessionHolder) {
             add(holder)
@@ -1459,7 +1483,7 @@ internal class RootSessionHolder(sessionId: SessionId, setup: SubagentSetup) : C
     private val _phase = atomic(RootPhase.UNCLAIMED)
     val phase: RootPhase get() = _phase.value
 
-    fun markClosing()
+    fun markClosing()  // ANSWERED or CLOSING to CLOSING; throws for an unanswered root
 }
 
 internal class SubagentSessionHolder(sessionId: SessionId, val parent: ClientSessionHolder, setup: SubagentSetup) :

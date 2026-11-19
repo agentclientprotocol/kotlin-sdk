@@ -97,21 +97,21 @@ internal class ClientSessionRegistry(
         getOrCreateSessionHolderOrNull(sessionId) ?: acpFail("Session $sessionId not found")
 
     /**
-     * Returns the holder of the root session [rootId], or `null` if the id is unknown or belongs to a subagent.
+     * Whether [root] is the registered holder of its id and blocks it, so the session that [root] serves is still
+     * open on the agent and its close may be sent. While that holds no other opening of the id can start, see
+     * [RootSessionHolder.claimForOpening], so a close of [root] reaches no other session.
      */
-    private fun rootHolderOrNull(rootId: SessionId): RootSessionHolder? =
-        _sessions.value.sessions[rootId] as? RootSessionHolder
+    fun isOpen(root: RootSessionHolder): Boolean = _sessions.value.sessions[root.sessionId] === root && root.blocksId
 
     /**
-     * Answers the pending and the later permission requests of every subagent below the root session [rootId] with
-     * `cancelled`, when its close starts. Each close only completes a signal, so the order doesn't matter.
+     * Answers the pending and the later permission requests of every subagent below [root] with `cancelled`, when its
+     * close starts. Each close only completes a signal, so the order doesn't matter.
      *
      * The root is marked closing first, and [registerChild] reads the mark after it added a subagent to its parent.
      * So a subagent that this walk misses has its permissions closed by its own registration. The mark stays if the
      * close fails, as the closed permissions do.
      */
-    fun closeDescendantPermissions(rootId: SessionId) {
-        val root = rootHolderOrNull(rootId) ?: return
+    fun closeDescendantPermissions(root: RootSessionHolder) {
         root.markClosing()
         root.forEachDescendant { it.permissions.close() }
     }
@@ -125,7 +125,7 @@ internal class ClientSessionRegistry(
         (_sessions.value.sessions[sessionId] as? SubagentSessionHolder)?.takeIf { it.blocksId }
 
     /**
-     * Removes the root session [rootId] and every subagent below it, after the agent answered its `session/close`.
+     * Removes [root] and every subagent below it, after the agent answered its `session/close`.
      *
      * Each holder first stops taking subagents, top-down, so a late announcement registers no subagent that no close
      * would reach. Then every consumer is stopped and joined, so none starts or delivers afterwards. The joins wait
@@ -139,13 +139,12 @@ internal class ClientSessionRegistry(
      * [globalSessionUpdateHandler].
      *
      * The removal finishes even if the caller is cancelled while it joins the consumers, because the agent has
-     * already dropped the sessions.
+     * already dropped the sessions. A second removal of [root], after a second close that was sent while the first
+     * was in flight, removes nothing from the map.
      *
      * @return the ids that were removed from the session map
      */
-    suspend fun removeSessionTree(rootId: SessionId): Set<SessionId> {
-        val root = rootHolderOrNull(rootId) ?: return emptySet()
-
+    suspend fun removeSessionTree(root: RootSessionHolder): Set<SessionId> {
         val subtree = buildList {
             fun visit(holder: ClientSessionHolder) {
                 add(holder)

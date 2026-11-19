@@ -355,7 +355,7 @@ internal class RootSessionHolder(sessionId: SessionId, setup: SubagentSetup) : C
 
         /**
          * The phase once the close has started, or `null` if the root isn't answered yet. A closing root stays as it
-         * is, for a close that follows a failed one.
+         * is, for a close that follows a failed one or runs beside another.
          */
         fun closing(): RootPhase? = when (stage) {
             Stage.UNCLAIMED, Stage.CLAIMED -> null
@@ -406,13 +406,13 @@ internal class RootSessionHolder(sessionId: SessionId, setup: SubagentSetup) : C
      * Records that the close of this root has started, before the subagents' permissions are closed, so a subagent
      * registered from now on has its permissions closed by its registration. The root stays closing if the close
      * fails, and a later close leaves it so.
+     *
+     * Only the close of this root's own [ClientSession] calls this, and that session exists only after the answer.
+     *
+     * @throws IllegalStateException if the root isn't answered yet
      */
     fun markClosing() {
-        /*
-         * The close finds the root by its id, so the close of a session object whose holder already left the map,
-         * closed or failed, can reach a later holder of the id that isn't answered yet. That holder is left as it is.
-         */
-        _phase.update { current -> current.closing() ?: current }
+        _phase.update { current -> checkNotNull(current.closing()) { "Root session $sessionId is closed before its answer" } }
     }
 
     /**

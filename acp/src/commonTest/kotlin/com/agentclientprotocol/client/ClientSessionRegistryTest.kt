@@ -177,8 +177,8 @@ class ClientSessionRegistryTest {
             val grandchildHolder = assertNotNull(childHolder.childOrNull(grandchild))
             registry.deliverSessionUpdate(grandchild, text("grandchild-queued"), null)
 
-            assertEquals(setOf(root, child, grandchild), registry.removeSessionTree(root))
-            assertEquals(emptySet(), registry.removeSessionTree(root), "a removed tree is removed once")
+            assertEquals(setOf(root, child, grandchild), registry.removeSessionTree(rootHolder))
+            assertEquals(emptySet(), registry.removeSessionTree(rootHolder), "a removed tree is removed once")
 
             for (holder in listOf(childHolder, grandchildHolder)) {
                 assertEquals("Session ${holder.sessionId} closed", holder.session.getCompletionExceptionOrNull()?.message)

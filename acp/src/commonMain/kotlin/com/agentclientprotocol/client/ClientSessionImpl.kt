@@ -32,6 +32,7 @@ internal class ClientSessionImpl(
     override val operations: ClientSessionOperations,
     private val createdResponse: AcpCreatedSessionResponse,
     private val protocol: Protocol,
+    private val isOpen: () -> Boolean,
     private val onClosing: () -> Unit,
     private val onClosed: suspend () -> Unit,
     private val holder: RootSessionHolder,
@@ -107,6 +108,17 @@ internal class ClientSessionImpl(
 
     @UnstableApi
     override suspend fun close(_meta: JsonElement?): CloseSessionResponse {
+        /*
+         * Only the registered, live holder of the id may close it: the request carries only the id, so the close of a
+         * session that is gone would close whatever the id is open as now. A root's holder leaves the map while it
+         * blocks its id only through a successful close, because the reaping and a replacement take only holders that
+         * haven't completed or have failed. So a holder that is gone and hasn't failed was closed.
+         */
+        if (!isOpen()) {
+            check(!holder.isFailed) { "Session $sessionId failed to open and can't be closed" }
+            return CloseSessionResponse()
+        }
+
         /*
          * Answer before waiting for the response: an agent whose close waits for its work to end, a subagent's
          * included, would otherwise wait for the permission answer while the client waits for the close response.

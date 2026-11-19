@@ -625,6 +625,7 @@ class ClientSubagentSessionTest {
         operations = NoOperations,
         createdResponse = NewSessionResponse(SessionId("root")),
         protocol = protocol,
+        isOpen = { true },
         onClosing = {},
         onClosed = {},
         holder = holder,
