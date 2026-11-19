@@ -270,10 +270,17 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   returns `storage.copy(...)` (always a new reference); `closing` is a correct Dekker pair; `isAnswered` read before
   `addChild` is safe only by read-loop order (documented). Fragility: correctness rests on `copy` allocating.
   Out of scope: a failed subagent whose parent failed stops blocking its id; the speculative path may reuse it.
+- R4 client `registerChild` — `a211818` — `removed` flag and both `isFailed` reads gone; root check
+  `storage.sessions[root.sessionId] !== root`; invariant verified path by path; `check` green; no API change.
+- R5 client holder split — `a4403b8` — `sealed class ClientSessionHolder`, `RootSessionHolder` (`RootPhase`/`Stage`,
+  `phase.isAtLeast`, `markOpened` strict), `SubagentSessionHolder` (non-null `parent`, `permissions`, consumer), typed
+  lookups and queued items; one file (709 lines); 2 new holder tests; `check` green (JS flake once); no API change.
+  `markClosing` left tolerant: `closeDescendantPermissions(rootId)` looks the root up by id, so a stale session's
+  close can reach a later unanswered holder of the id; it's now left unchanged (before: its `closing` flag was set).
 
 ## Next
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
-R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). In progress: R4 client `registerChild`, then R5 holder split (Decisions, round 3), one programmer, two commits.
+R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). R4 (`a211818`) and R5 (`a4403b8`) done. Proposed next: close callbacks act on the session's own holder (see Open questions).
 
 Earlier: the goal is done. PR #158 targets `master`. Remaining for the user: delete `.agents/state.md` and
 `.agents/research/` before the PR merges. Follow-up candidates: review finding 4; the fresh-context close
@@ -293,4 +300,6 @@ Notes:
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
+- Make `onClosing`/`onClosed` act on the session's own holder (not by id), so `markClosing` can be strict and
+  `removeClosedSession` can't remove a later holder of the id (pre-existing follow-up)? Behaviour change.
 - Rename `root` → `treeRoot` on both sides (agent `subtreeRoot`, client `root`)? Asked twice, unanswered.
