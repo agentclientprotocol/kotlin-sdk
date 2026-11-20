@@ -349,7 +349,33 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 
 ## Next
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
-R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). R4 (`a211818`) and R5 (`a4403b8`) done. R6-R9 done. R10 done (`41a88a9`), R11 done (`640fade`), R12 done (`b086a68`). R13 done (`4a32688`). R14 done (`acc6937`). R15 done (`53f3fb9`). Deferred to the next v2 PR: v2 agent close items 1-3 — unknown-id close default (goes to app `AgentSupport.closeSession`, `-32602`), `-32002` instead of `-32602` for unknown sessions in `prompt`/`set_config_option`, re-resume overwriting the wrapper without closing the old `AgentSession`.
+R1-R15 done. Deferred to the next v2 PR: v2 agent close items 1-3 — unknown-id close default (goes to app `AgentSupport.closeSession`, `-32602`), `-32002` instead of `-32602` for unknown sessions in `prompt`/`set_config_option`, re-resume overwriting the wrapper without closing the old `AgentSession`.
+
+Review round 16 (2026-11-20, client notes). Plan shown to the user; no programmer started yet.
+- R16 (agreed, no discussion), refactor only, no API change:
+  1. `ClientSessionImpl.handlePermissionResponse` → `answerPermissionRequest`.
+  2. Subagent `answerPermissionRequest`: receiver `SubagentSessionHolder` (not `ClientSubagentSession`, which doesn't
+     exist yet when the request arrives), no `session` lambda; it uses the holder's `permissions` and awaits its
+     `session`. The `ClientSubagentSession` branch of `BaseClientSession.answerPermissionRequest` looks unreachable
+     (the handler routes every subagent id through `subagentHolderOrNull` first): verify, then drop it.
+  3. Remove the spec references `ClientOperationsFactory.kt:39` and `agent/SessionWrapper.kt:201`; grep code for
+     `docs/superpowers`.
+  4. Inline the one-line `ClientSessionImpl.deliverOpened` at its only call site.
+  5. `removeSessionTree`: no `removed` side effect inside the CAS lambda (it may run more than once, hence `clear()`);
+     use `getAndUpdate` and derive the removed ids from the previous snapshot.
+  6. `failSessionHolder` → `failSessionTree`, its recursion as a local function.
+  7. `runsIn` and `isSelfOrAncestorOf` → private top-level functions at the bottom of `ClientSessionRegistry.kt`.
+  8. Registry `getSession` → `getRootSession` (public `Client.getSession` unchanged).
+- Answered, no change: note 3 (registration racing `removeSessionTree` is covered: `addChild` before the parent's
+  `closeChildren` ⇒ in the subtree; after ⇒ refused; the map CAS conflicts because every update allocates);
+  note 11 (only a root can be closed: `ClientSubagentSession` has no close and the agent rejects a subagent id).
+- Discussion, one by one (outcome → R17, which also rewrites the KDoc of `removeSessionTree` and `registerChild` per
+  "Structuring long comments", registry notes 1 and 8):
+  D1 holder `Children` vs `SubagentList`, `closeChildren`/`close` names that only mark, and a holder method for the
+     three per-subagent close steps (holder note, registry note 4);
+  D2 `registerChild` simplification (registry note 9);
+  D3 `runsIn`: drop the `SubagentConsumer` element? (registry note 5);
+  D4 `getSessionOrThrow` name (registry note 7, second half).
 
 Earlier: the goal is done. PR #158 targets `master`. Remaining for the user: delete `.agents/state.md` and
 `.agents/research/` before the PR merges. Follow-up candidates: review finding 4; the fresh-context close
