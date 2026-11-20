@@ -316,17 +316,24 @@ Use:
 
 ```kotlin
 /**
- * Closes the session.
+ * Closes the session and frees its id.
  *
  * ### Pending requests
  *
- * Requests in flight when the call starts are answered before it returns.
+ * Requests in flight when the call starts are answered before it returns. Requests that arrive later fail with
+ * [IllegalStateException].
  *
  * ### Failure
  *
  * The call throws when:
  * - the session is already closed;
  * - the transport rejects the request.
+ *
+ * Nothing is removed then, and the session can be closed again.
+ *
+ * ### Cancellation
+ *
+ * If the caller is cancelled, the request is still sent, and the session counts as closed once the agent answers.
  */
 ```
 
@@ -334,7 +341,7 @@ Avoid:
 
 ```kotlin
 /**
- * Closes the session. Requests in flight when the call starts are answered before it returns, and the call throws when the session is already closed or when the transport rejects the request, in which case nothing is removed and the session can be closed again.
+ * Closes the session and frees its id. Requests in flight when the call starts are answered before it returns, and requests that arrive later fail with [IllegalStateException]. The call throws when the session is already closed or when the transport rejects the request, in which case nothing is removed and the session can be closed again, and if the caller is cancelled, the request is still sent, and the session counts as closed once the agent answers.
  */
 ```
 
