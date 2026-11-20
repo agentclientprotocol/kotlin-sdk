@@ -311,10 +311,12 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   types changing shape, no constructors; KDoc restructured (Removal/Replay run-in headings, `announce` before/after
   bullets), every fact kept, but not much shorter (class doc 33→30, `announce` 39→38 lines); spec updated;
   `check` green.
+- R11 KDoc subheaders — `640fade` — `**Removal.**`/`**Replay.**` → `### Removal`/`### Replay` in the `AgentSubagents`
+  class doc (first `#` headers in repo KDoc; level 3 under Dokka's headings); KDoc only, `apiCheck` green.
 
 ## Next
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
-R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). R4 (`a211818`) and R5 (`a4403b8`) done. R6-R9 done. R10 done (`41a88a9`). Open: v1 close family `@UnstableApi`; v2 agent items 1-3.
+R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). R4 (`a211818`) and R5 (`a4403b8`) done. R6-R9 done. R10 done (`41a88a9`), R11 done (`640fade`). Open: v1 close family `@UnstableApi`; v2 agent items 1-3.
 
 Earlier: the goal is done. PR #158 targets `master`. Remaining for the user: delete `.agents/state.md` and
 `.agents/research/` before the PR merges. Follow-up candidates: review finding 4; the fresh-context close
