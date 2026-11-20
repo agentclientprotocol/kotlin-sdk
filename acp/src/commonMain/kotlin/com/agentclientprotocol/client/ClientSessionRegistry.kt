@@ -155,10 +155,16 @@ internal class ClientSessionRegistry(
 
         val context = currentCoroutineContext()
         val consumers = subtree.mapNotNull { holder ->
-            (holder as? SubagentSessionHolder)?.let { subagent -> subagent.stopConsumer()?.let { subagent to it } }
+            (holder as? SubagentSessionHolder)
+                ?.let { subagentHolder ->
+                    subagentHolder.stopConsumer()?.let { consumer -> subagentHolder to consumer }
+                }
         }
-        val ownConsumers = consumers.filter { (holder, job) -> context.runsIn(holder, job) }.map { it.second }.toSet()
+        val ownConsumers = consumers
+            .filter { (holder, job) -> context.runsIn(holder, job) }
+            .map { it.second }.toSet()
         val removed = mutableSetOf<SessionId>()
+
         try {
             for ((_, job) in consumers) if (job !in ownConsumers) job.cancel()
             for ((_, job) in consumers) if (job !in ownConsumers) job.join()
@@ -170,17 +176,17 @@ internal class ClientSessionRegistry(
                  * its own update of the map. So it either enters the map before this update, which removes it with
                  * the root, or sees the root gone and stays out.
                  */
-                _sessions.update { storage ->
+                _sessions.update { sessionsStorage ->
                     removed.clear()
-                    val sessions = storage.sessions.mutate { map ->
+                    val sessions = sessionsStorage.sessions.mutate { sessions ->
                         for (holder in subtree) {
-                            if (map[holder.sessionId] === holder) {
-                                map.remove(holder.sessionId)
+                            if (sessions[holder.sessionId] === holder) {
+                                sessions.remove(holder.sessionId)
                                 removed += holder.sessionId
                             }
                         }
                     }
-                    storage.copy(sessions = sessions)
+                    sessionsStorage.copy(sessions = sessions)
                 }
 
                 // Bottom-up, so each holder fails with its own error rather than with its parent's.
@@ -490,23 +496,24 @@ internal class ClientSessionRegistry(
         }
     }
 
-    /**
-     * Returns these sessions with [holder] under [sessionId], replacing a holder that no longer blocks the id. The
-     * subagents below the replaced holder leave the map with it: they failed with it, and they no longer block their
-     * ids either.
-     */
-    private fun PersistentMap<SessionId, ClientSessionHolder>.replacing(
-        sessionId: SessionId,
-        holder: ClientSessionHolder,
-    ): PersistentMap<SessionId, ClientSessionHolder> = mutate { map ->
-        map[sessionId]?.let { map.removeDescendantsOf(it) }
-        map[sessionId] = holder
-    }
+}
 
-    /**
-     * Removes every subagent below [holder], each only if its id still maps to it.
-     */
-    private fun MutableMap<SessionId, ClientSessionHolder>.removeDescendantsOf(holder: ClientSessionHolder) {
-        holder.forEachDescendant { if (this[it.sessionId] === it) remove(it.sessionId) }
-    }
+/**
+ * Returns these sessions with [holder] under [sessionId], replacing a holder that no longer blocks the id. The
+ * subagents below the replaced holder leave the map with it: they failed with it, and they no longer block their
+ * ids either.
+ */
+private fun PersistentMap<SessionId, ClientSessionHolder>.replacing(
+    sessionId: SessionId,
+    holder: ClientSessionHolder,
+): PersistentMap<SessionId, ClientSessionHolder> = mutate { map ->
+    map[sessionId]?.let { oldHolder -> map.removeDescendantsOf(oldHolder) }
+    map[sessionId] = holder
+}
+
+/**
+ * Removes every subagent below [holder], each only if its id still maps to it.
+ */
+private fun MutableMap<SessionId, ClientSessionHolder>.removeDescendantsOf(holder: ClientSessionHolder) {
+    holder.forEachDescendant { if (this[it.sessionId] === it) remove(it.sessionId) }
 }

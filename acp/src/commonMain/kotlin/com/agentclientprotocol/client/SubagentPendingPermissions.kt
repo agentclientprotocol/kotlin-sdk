@@ -12,7 +12,7 @@ import kotlinx.coroutines.CompletableDeferred
  * Answers a subagent's pending permission requests with `cancelled` when its work is cancelled, by the client or by
  * anyone, or when it is closed.
  *
- * A subagent has no prompt, so the work it does is known only from the `state` its parent's stream reports. The RFD
+ * A subagent has no prompt, so the work it does is known only from the `state` its parent's stream reports. The specs
  * requires the client to answer a session's pending requests when it cancels the session's work, and to clean up a
  * subagent's requests once it reports `idle` with `cancelled`. Until then the user can still answer them, so the
  * client never denies a tool use of work that continues.
