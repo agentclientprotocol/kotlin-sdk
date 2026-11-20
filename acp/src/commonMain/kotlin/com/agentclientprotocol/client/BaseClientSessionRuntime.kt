@@ -14,8 +14,11 @@ import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 
 /*
- * The behaviours of the runtime that differ between the kinds of [BaseClientSession]. They are extension functions,
- * because an interface can't have internal members, and each one switches exhaustively over the sealed type.
+ * The behaviours of the runtime that differ between the kinds of [BaseClientSession]. [BaseClientSession] has to be an
+ * interface, because [ClientSession], an existing public interface, extends it: an interface can only extend
+ * interfaces, and making [ClientSession] a class would break every compiled caller and implementer. An interface
+ * can't have internal members. So each behaviour is an extension function that switches exhaustively over the
+ * sealed type.
  */
 
 /**

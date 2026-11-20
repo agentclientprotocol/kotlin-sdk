@@ -2290,7 +2290,9 @@ The design moved through several shapes before landing on the factory-based `ann
     - Letting a reload replace the open session (detach the old one without `session/close`, then open a fresh
       holder) was considered and not chosen: the strict rule is simpler, and a reload can be added later as an
       explicit API.
-    - Internal members on `BaseClientSession` were rejected because Kotlin forbids them in interfaces.
+    - Internal members on `BaseClientSession` were rejected because Kotlin forbids them in interfaces, and
+      `BaseClientSession` must be an interface: the existing public interface `ClientSession` extends it, and turning
+      `ClientSession` into a class would break compiled callers and implementers.
     - A child's consumer waits for its parent's holder to complete before it closes its queue and completes its own
       holder. Completing at once after `Opened` was rejected: the root's opening can still fail after its answer,
       and a child that had completed could not be failed with it. The cost is that a child's live updates and

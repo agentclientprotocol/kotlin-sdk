@@ -8,7 +8,8 @@ import kotlin.coroutines.CoroutineContext
 /**
  * **UNSTABLE**
  *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
+ * Part of the SDK's Kotlin API for client-side subagents, which are not part of the spec yet. It may change or be
+ * removed at any point.
  *
  * What every session of the client has: a [ClientSession] that the application opened, and a
  * [ClientSubagentSession] that the agent started under another session.
@@ -47,7 +48,6 @@ public sealed interface BaseClientSession {
      *
      * See [ClientSubagentSession] for when the value is up to date.
      */
-    @UnstableApi
     public val subagents: List<ClientSubagentSession>
 
     /**
@@ -73,7 +73,8 @@ public sealed interface BaseClientSession {
 /**
  * **UNSTABLE**
  *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
+ * Part of the SDK's Kotlin API for client-side subagents, which are not part of the spec yet. It may change or be
+ * removed at any point.
  *
  * The session that the current call of a session's operations belongs to: a [ClientSession], or a
  * [ClientSubagentSession] inside the operations that [SubagentOperations.createSubagentOperations] returned.
