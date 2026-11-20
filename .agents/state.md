@@ -297,7 +297,7 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   empty locally; failed opening → ISE; callbacks take the holder; `rootHolderOrNull` gone; `markClosing` strict;
   `removeClosedSession` drops elicitations only for removed ids; tests failed before; `check` green (JS flake once).
 - R7 `-32002` as success — `a015588` — catch `RESOURCE_NOT_FOUND` in `close()`; KDoc drops "not part of the spec
-  yet"; `@UnstableApi` kept (`CloseSessionResponse` is unstable); `check` green.
+  yet"; `@UnstableApi` kept (later removed in R13); `check` green.
 - R8 agent unknown-id close → empty result — `0da96b6` — subagent id still `-32602`; `check` green; e2e READMEs and
   TCK (ACP-CLOSE-001/002) don't conflict.
 - v2 close research — `.agents/research/v2-close-identity.md` — same bug in the v2 client; v2 allows re-resume of an
@@ -319,10 +319,15 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 - R12 AGENTS.md long-comment rule — `b086a68` — new "Structuring long comments" subsection in Comments and KDoc:
   no wall of text, short paragraphs, bullets for case matrices, `###`/`####` headings for long KDoc, short comments
   plain prose, block comments structured without headings; Use/Avoid example.
+- AGENTS.md example fix — `0f54be5` — orchestrator, at the user's request: three-section Use example, same content in Avoid.
+- R13 v1 close stable — `4a32688` — `@UnstableApi` and banners removed from `CloseSessionRequest`/`Response`,
+  `SessionCloseCapabilities`, `SessionCapabilities.close`, `AcpMethod.AgentMethods.V1.SessionClose` and its deprecated
+  alias, `AgentSession.close`, `ClientSession.close`(+impl); upstream v1 schema `d98a032`; one opt-in removed (Agent.kt
+  close handler); `.api` dumps unchanged; v2 untouched; `check` green.
 
 ## Next
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
-R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). R4 (`a211818`) and R5 (`a4403b8`) done. R6-R9 done. R10 done (`41a88a9`), R11 done (`640fade`), R12 done (`b086a68`). R13 (v1 close stable) in progress. Deferred to the next v2 PR: v2 agent close items 1-3 — unknown-id close default (goes to app `AgentSupport.closeSession`, `-32602`), `-32002` instead of `-32602` for unknown sessions in `prompt`/`set_config_option`, re-resume overwriting the wrapper without closing the old `AgentSession`.
+R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). R4 (`a211818`) and R5 (`a4403b8`) done. R6-R9 done. R10 done (`41a88a9`), R11 done (`640fade`), R12 done (`b086a68`). R13 done (`4a32688`). Deferred to the next v2 PR: v2 agent close items 1-3 — unknown-id close default (goes to app `AgentSupport.closeSession`, `-32602`), `-32002` instead of `-32602` for unknown sessions in `prompt`/`set_config_option`, re-resume overwriting the wrapper without closing the old `AgentSession`.
 
 Earlier: the goal is done. PR #158 targets `master`. Remaining for the user: delete `.agents/state.md` and
 `.agents/research/` before the PR merges. Follow-up candidates: review finding 4; the fresh-context close
