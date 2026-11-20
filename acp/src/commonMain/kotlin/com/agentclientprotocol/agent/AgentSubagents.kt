@@ -121,8 +121,10 @@ public fun interface AgentSubagentFactory<out S : AgentSubagentSession> {
  * is bound to its session and stays valid for that session's lifetime, not only inside the call that obtained it.
  * There is no update method: patches to a child are ordinary events of the child.
  *
- * **Removal.** Every subagent belongs to a root session. The SDK removes every subagent below a root, at every depth,
- * and calls no app code for them:
+ * ### Removal
+ *
+ * Every subagent belongs to a root session. The SDK removes every subagent below a root, at every depth, and calls no
+ * app code for them:
  * - on `session/close`, after the root's [AgentSession.close] returns and before the response. Stopping their work
  *   and freeing their resources belongs to that `close`. If it throws, the root and its subagents stay registered;
  * - when `session/load` or `session/resume` re-opens a root that is still open, once [AgentSupport.loadSession] or
@@ -135,11 +137,13 @@ public fun interface AgentSubagentFactory<out S : AgentSubagentSession> {
  * the close response: a request one already had in flight, or the `$/cancel_request` the SDK sends when the removal
  * cancels that call, may still reach the client after it.
  *
- * **Replay.** During the root's `session/load`, until the transport has accepted its response, announcements made
- * from its [AgentSession.replayHistory], or from a factory called from there, replay recorded subagents. Every update
- * sent for them then is history, as the subagents spec defines it: a cancel grant is never in effect, and a state
- * doesn't count as active. If the load fails, including when its response can't be built or sent, every subagent
- * announced during it is removed with the root. Subagents announced at any other time are live.
+ * ### Replay
+ *
+ * During the root's `session/load`, until the transport has accepted its response, announcements made from its
+ * [AgentSession.replayHistory], or from a factory called from there, replay recorded subagents. Every update sent for
+ * them then is history, as the subagents spec defines it: a cancel grant is never in effect, and a state doesn't
+ * count as active. If the load fails, including when its response can't be built or sent, every subagent announced
+ * during it is removed with the root. Subagents announced at any other time are live.
  */
 @UnstableApi
 public class AgentSubagents internal constructor(private val bound: SessionWrapper) {
