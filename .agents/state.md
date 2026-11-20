@@ -342,10 +342,14 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   and spec; compiler: type marker doesn't reach members read via `ClientSession`, so `cwd`/`additionalDirectories`
   keep `@UnstableApi`; `subagents` lost it (warns via its element type) — restore suggested to the user; `check` green
   (orchestrator rerun).
+- R15 review bundle — `53f3fb9` — `@UnstableApi` back on `BaseClientSession.subagents`; `subagentOperations` merged
+  into narrowed `clientOperations`; `isReplayed` KDoc (snapshot); agent `subtreeRoot` → `root`; new public
+  `CoroutineContext.clientSubagentSession` in `BaseClientSession.kt` (+3 tests, `acp.api` +1 getter); `check` green
+  (2nd run, 1st JS flake).
 
 ## Next
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
-R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). R4 (`a211818`) and R5 (`a4403b8`) done. R6-R9 done. R10 done (`41a88a9`), R11 done (`640fade`), R12 done (`b086a68`). R13 done (`4a32688`). R14 done (`acc6937`). R15 in progress. Deferred to the next v2 PR: v2 agent close items 1-3 — unknown-id close default (goes to app `AgentSupport.closeSession`, `-32602`), `-32002` instead of `-32602` for unknown sessions in `prompt`/`set_config_option`, re-resume overwriting the wrapper without closing the old `AgentSession`.
+R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). R4 (`a211818`) and R5 (`a4403b8`) done. R6-R9 done. R10 done (`41a88a9`), R11 done (`640fade`), R12 done (`b086a68`). R13 done (`4a32688`). R14 done (`acc6937`). R15 done (`53f3fb9`). Deferred to the next v2 PR: v2 agent close items 1-3 — unknown-id close default (goes to app `AgentSupport.closeSession`, `-32602`), `-32002` instead of `-32602` for unknown sessions in `prompt`/`set_config_option`, re-resume overwriting the wrapper without closing the old `AgentSession`.
 
 Earlier: the goal is done. PR #158 targets `master`. Remaining for the user: delete `.agents/state.md` and
 `.agents/research/` before the PR merges. Follow-up candidates: review finding 4; the fresh-context close
