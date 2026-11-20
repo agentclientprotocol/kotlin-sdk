@@ -57,7 +57,7 @@ public class Agent(
         val subagents: PersistentMap<SessionId, SubagentSessionWrapper>,
     ) {
         fun subagentsOf(root: RootSessionWrapper): List<SubagentSessionWrapper> =
-            subagents.values.filter { it.subtreeRoot === root }
+            subagents.values.filter { it.root === root }
 
         fun withoutSubagents(removed: List<SubagentSessionWrapper>): PersistentMap<SessionId, SubagentSessionWrapper> =
             subagents.mutate { map -> removed.forEach { map.remove(it.sessionId) } }
@@ -495,7 +495,7 @@ public class Agent(
      * failed, or a re-opening of its id replaced it
      */
     internal fun registerSubagent(child: SubagentSessionWrapper) {
-        val root = child.subtreeRoot
+        val root = child.root
         _sessions.update { table ->
             check(table.roots[root.sessionId] === root) { "Session ${root.sessionId} is closed" }
             require(child.sessionId !in table.roots && child.sessionId !in table.subagents) {

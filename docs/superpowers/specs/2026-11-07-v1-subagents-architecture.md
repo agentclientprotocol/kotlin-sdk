@@ -765,7 +765,8 @@ details below (decision log, question 7).
   - Shared KDoc lives on `BaseClientSession` and its members. Overrides add KDoc only where their behaviour differs
     in an important way.
   - A new context accessor returns `BaseClientSession`. `coroutineContext.clientSession`
-    (`client/ClientSessionImpl.kt:230`) stays as it is.
+    (`client/ClientSessionImpl.kt:230`) stays as it is. A third, `coroutineContext.clientSubagentSession`, returns
+    the `ClientSubagentSession` and throws for a root session or none.
   - Adding `subagents` to `ClientSession` breaks external implementations of that interface. This is accepted
     because the member is `@UnstableApi`.
 - `ClientSubagentSession` has no prompt, mode, model, config or close, and no config or mode state either (decision

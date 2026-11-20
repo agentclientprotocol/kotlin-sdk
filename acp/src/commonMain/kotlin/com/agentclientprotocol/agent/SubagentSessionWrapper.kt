@@ -101,19 +101,22 @@ internal class SubagentSessionWrapper(
 
     private val _session = atomic<AgentSubagentSession?>(null)
 
-    override val subtreeRoot: RootSessionWrapper = parent.subtreeRoot
+    override val root: RootSessionWrapper = parent.root
 
     /**
      * Whether this child was announced in its root's replay window.
+     *
+     * It is read once when the child is created and never changes: unlike [RootSessionWrapper.isReplaying], it stays
+     * `true` after the replay window closes.
      */
-    private val isReplayed = subtreeRoot.isReplaying
+    private val isReplayed = root.isReplaying
 
-    private val subagentOperations = SubagentClientOperations(protocol, sessionId, agent.getClientInfoOrThrow().capabilities, this)
-    override val clientOperations: RemoteClientSessionOperations get() = subagentOperations
+    override val clientOperations: SubagentClientOperations =
+        SubagentClientOperations(protocol, sessionId, agent.getClientInfoOrThrow().capabilities, this)
 
     override val subagents: AgentSubagents = AgentSubagents(this)
 
-    private val context = AgentSubagentContext(sessionId, subagentOperations, subagents)
+    private val context = AgentSubagentContext(sessionId, clientOperations, subagents)
 
     val isAnnounced: Boolean get() = _phase.value == Phase.ANNOUNCED
 
@@ -136,7 +139,7 @@ internal class SubagentSessionWrapper(
         when (_phase.value) {
             Phase.PENDING, Phase.ANNOUNCED -> {}
             Phase.DROPPED -> error("Subagent $sessionId is not registered")
-            Phase.REMOVED -> error("Subagent $sessionId is not registered: its root session ${subtreeRoot.sessionId} is closed")
+            Phase.REMOVED -> error("Subagent $sessionId is not registered: its root session ${root.sessionId} is closed")
         }
     }
 
@@ -182,7 +185,7 @@ internal class SubagentSessionWrapper(
                         "the announcement"
                 )
             }
-            subtreeRoot.startAfterReplay { startCollection(session) }
+            root.startAfterReplay { startCollection(session) }
             return session
         }
 
@@ -266,7 +269,7 @@ internal class SubagentSessionWrapper(
          */
         if (wasPending) {
             announcement.completeExceptionally(
-                IllegalStateException("Subagent $sessionId is not announced: its root session ${subtreeRoot.sessionId} is closed")
+                IllegalStateException("Subagent $sessionId is not announced: its root session ${root.sessionId} is closed")
             )
         }
     }
@@ -281,16 +284,16 @@ internal class SubagentSessionWrapper(
      * grants are never in effect, and the client treats the child's state as unconfirmed after the load anyway.
      */
     private fun reportFactoryFailure() {
-        if (subtreeRoot.isReplaying || !subtreeRoot.subtreeScope.isActive) return
+        if (root.isReplaying || !root.subtreeScope.isActive) return
         runCatching { sendFactoryFailureCorrection() }
             .onFailure { logger.debug(it) { "Could not correct subagent $sessionId after its factory failed" } }
     }
 
     private fun startCollection(session: AgentSubagentSession): Job {
-        val collection = subtreeRoot.subtreeScope.launch(asContextElement() + CoroutineName("Subagent $sessionId events")) {
+        val collection = root.subtreeScope.launch(asContextElement() + CoroutineName("Subagent $sessionId events")) {
             val failure = try {
                 session.events.collect { update ->
-                    subagentOperations.notify(update)
+                    clientOperations.notify(update)
                     if (update is SessionUpdate.SubagentUpdate) eventsState = update.state.update(eventsState)
                 }
                 null
@@ -377,7 +380,7 @@ internal class SubagentSessionWrapper(
      * Delivers a `session/cancel` latched while the factory ran, if the cancel grant is still in effect.
      */
     private fun deliverLatchedCancel(session: AgentSubagentSession) {
-        subtreeRoot.subtreeScope.launch(asContextElement() + CoroutineName("Subagent $sessionId cancel")) {
+        root.subtreeScope.launch(asContextElement() + CoroutineName("Subagent $sessionId cancel")) {
             if (!isCancelGranted) {
                 logger.info { "Dropping the session/cancel latched for subagent $sessionId: cancel is no longer granted" }
                 return@launch
@@ -445,7 +448,7 @@ internal class SubagentSessionWrapper(
     private fun sendOwnUpdateLocked(update: SessionUpdate.SubagentUpdate, _meta: JsonElement?) {
         checkRegistered()
 
-        val isLive = !subtreeRoot.isReplaying
+        val isLive = !root.isReplaying
         val wasGranted = _cancelGranted.value
         if (isLive) {
             _cancelGranted.value = when (val capabilities = update.capabilities) {

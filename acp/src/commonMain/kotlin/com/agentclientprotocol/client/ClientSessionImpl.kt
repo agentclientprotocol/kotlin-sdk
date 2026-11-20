@@ -269,7 +269,7 @@ internal class ClientSessionImpl(
  * The root session that the current call of a session's operations belongs to.
  *
  * @throws IllegalStateException if the context belongs to no session, or to a subagent session. Use
- * [baseClientSession] where the operations may serve subagents.
+ * [clientSubagentSession] for a subagent session, and [baseClientSession] where the operations may serve both.
  */
 public val CoroutineContext.clientSession: ClientSession
     get() = this[ClientSessionContextElement.Key]?.session as? ClientSession ?: error("No client session data found in context")

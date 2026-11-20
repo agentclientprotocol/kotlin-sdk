@@ -1987,8 +1987,8 @@ class AgentSubagentsTest {
         oldTree.awaitStopped()
         val newChild = assertNotNull(f.agent.subagentOrNull(childId))
         assertNotSame(oldChild, newChild)
-        assertSame(second.wrapper(), newChild.subtreeRoot)
-        assertSame(second.wrapper(), assertNotNull(f.agent.subagentOrNull(grandchildId)).subtreeRoot)
+        assertSame(second.wrapper(), newChild.root)
+        assertSame(second.wrapper(), assertNotNull(f.agent.subagentOrNull(grandchildId)).root)
         for (context in listOf(oldTree.child, oldTree.grandchild)) {
             for (operation in childOperations(context)) {
                 assertFailsWith<IllegalStateException> { operation() }
@@ -2228,10 +2228,10 @@ class AgentSubagentsTest {
 
         val announced = withTimeout(5.seconds) { reannounced.await() }
         assertTrue(announced.isSuccess, "the id is free once the old subtree is closed: ${announced.exceptionOrNull()}")
-        assertSame(f.rootWrapper, assertNotNull(f.agent.subagentOrNull(childId)).subtreeRoot)
+        assertSame(f.rootWrapper, assertNotNull(f.agent.subagentOrNull(childId)).root)
         assertFailsWith<IllegalStateException> { oldChild.client.notify(text("late")) }
         f.awaitCollectionsEnded(first.wrapper())
-        assertSame(f.rootWrapper, assertNotNull(f.agent.subagentOrNull(childId)).subtreeRoot, "the old root's cleanup keeps the new entry")
+        assertSame(f.rootWrapper, assertNotNull(f.agent.subagentOrNull(childId)).root, "the old root's cleanup keeps the new entry")
     }
 
     /*

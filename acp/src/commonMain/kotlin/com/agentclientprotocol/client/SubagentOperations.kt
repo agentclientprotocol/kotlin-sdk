@@ -35,7 +35,8 @@ public interface SubagentOperations {
      * session of these operations.
      *
      * The operations do not hold their session: inside every call of the returned operations,
-     * [kotlin.coroutines.CoroutineContext.baseClientSession] names the subagent session.
+     * [kotlin.coroutines.CoroutineContext.clientSubagentSession] and
+     * [kotlin.coroutines.CoroutineContext.baseClientSession] return the subagent session.
      *
      * This call itself runs with the parent session in the coroutine context, with one exception. When
      * [Client.loadSession] or [Client.resumeSession] gets ready [ClientSessionOperations], the subagents announced in

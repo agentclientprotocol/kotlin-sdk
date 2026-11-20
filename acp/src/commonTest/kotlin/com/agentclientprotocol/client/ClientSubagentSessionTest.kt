@@ -616,6 +616,31 @@ class ClientSubagentSessionTest {
         assertFailsWith<IllegalStateException> { currentCoroutineContext().baseClientSession }
     }
 
+    @Test
+    fun `clientSubagentSession returns the subagent in a subagent's calls`() = runTest {
+        val child = child()
+
+        child.executeWithSession {
+            assertSame(child, currentCoroutineContext().clientSubagentSession)
+        }
+    }
+
+    @Test
+    fun `clientSubagentSession refuses a root's calls`() = runTest {
+        val holder = rootHolder()
+        val parameters = SessionCreationParameters(cwd = "/project", mcpServers = emptyList())
+        val root = rootSession(holder, parameters)
+
+        root.executeWithSession {
+            assertFailsWith<IllegalStateException> { currentCoroutineContext().clientSubagentSession }
+        }
+    }
+
+    @Test
+    fun `clientSubagentSession refuses a context without a session`() = runTest {
+        assertFailsWith<IllegalStateException> { currentCoroutineContext().clientSubagentSession }
+    }
+
     private fun rootHolder() = RootSessionHolder(SessionId("root"), SubagentSetup(protocol, scope) { _, _ -> })
 
     private fun rootSession(holder: RootSessionHolder, parameters: SessionCreationParameters) = ClientSessionImpl(

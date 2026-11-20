@@ -48,6 +48,7 @@ public sealed interface BaseClientSession {
      *
      * See [ClientSubagentSession] for when the value is up to date.
      */
+    @UnstableApi
     public val subagents: List<ClientSubagentSession>
 
     /**
@@ -84,3 +85,23 @@ public sealed interface BaseClientSession {
 @UnstableApi
 public val CoroutineContext.baseClientSession: BaseClientSession
     get() = this[ClientSessionContextElement.Key]?.session ?: error("No client session data found in context")
+
+/**
+ * **UNSTABLE**
+ *
+ * Part of the SDK's Kotlin API for client-side subagents, which are not part of the spec yet. It may change or be
+ * removed at any point.
+ *
+ * The subagent session that the current call of a subagent's operations belongs to: the operations that
+ * [SubagentOperations.createSubagentOperations] returned.
+ *
+ * Inside [SubagentOperations.createSubagentOperations] itself, the context names the parent of the new subagent, so
+ * there this returns the parent if it is a subagent, and throws if it is a root session.
+ *
+ * @throws IllegalStateException if the context belongs to no session, or to a root session. Use [clientSession] for
+ * a root session, and [baseClientSession] where the operations may serve both.
+ */
+@UnstableApi
+public val CoroutineContext.clientSubagentSession: ClientSubagentSession
+    get() = this[ClientSessionContextElement.Key]?.session as? ClientSubagentSession
+        ?: error("No client subagent session data found in context")

@@ -50,9 +50,9 @@ internal abstract class SessionWrapper(
     abstract val clientOperations: ClientSessionOperations
 
     /**
-     * The root of the subtree this session belongs to: itself for a root.
+     * The root session at the top of this session's tree: itself for a root session.
      */
-    abstract val subtreeRoot: RootSessionWrapper
+    abstract val root: RootSessionWrapper
 
     /**
      * This session's subagents, or `null` when the client did not advertise `subagents`.
@@ -76,7 +76,7 @@ internal class RootSessionWrapper(
     replaying: Boolean = false,
 ) : SessionWrapper(agent, protocol) {
     override val sessionId: SessionId get() = agentSession.sessionId
-    override val subtreeRoot: RootSessionWrapper get() = this
+    override val root: RootSessionWrapper get() = this
 
     @OptIn(UnstableApi::class)
     override val subagents: AgentSubagents? = if (subagentsSupported) AgentSubagents(this) else null
