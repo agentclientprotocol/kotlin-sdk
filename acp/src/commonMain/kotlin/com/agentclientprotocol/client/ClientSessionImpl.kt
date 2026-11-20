@@ -142,7 +142,7 @@ internal class ClientSessionImpl(
 
     @UnstableApi
     override val subagents: List<ClientSubagentSession>
-        get() = holder.subagents.snapshot
+        get() = holder.subagents
 
     @UnstableApi
     override val cwd: String

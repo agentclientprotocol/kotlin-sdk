@@ -67,7 +67,7 @@ public class ClientSubagentSession internal constructor(
     private val protocol: Protocol,
     private val parentCwd: () -> String,
     private val parentAdditionalDirectories: () -> List<String>,
-    private val children: SubagentList,
+    private val children: () -> List<ClientSubagentSession>,
     internal val pendingPermissions: SubagentPendingPermissions,
 ) : BaseClientSession {
     private val _title = atomic<String?>(null)
@@ -116,7 +116,7 @@ public class ClientSubagentSession internal constructor(
      */
     public val canCancel: Boolean get() = !closed.value && capabilities.value?.cancel != null
 
-    override val subagents: List<ClientSubagentSession> get() = children.snapshot
+    override val subagents: List<ClientSubagentSession> get() = children()
 
     override val cwd: String get() = ownCwd.value ?: parentCwd()
 

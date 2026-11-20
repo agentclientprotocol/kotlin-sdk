@@ -3,6 +3,7 @@
 package com.agentclientprotocol.client
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.client.RootSessionHolder.Stage
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.common.SessionEvent
@@ -14,7 +15,9 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.getAndUpdate
 import kotlinx.atomicfu.update
+import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -92,8 +95,10 @@ internal class SubagentConsumer(val holder: SubagentSessionHolder) : AbstractCor
  * before it is delivered, and then goes to the session. So the updates keep the order in which their handlers reach
  * the holder, and the marker keeps its place among them.
  *
- * Each holder keeps the subagents registered under it, failed ones included, so [RootSessionHolder.markOpened], the
- * failure cascade of [ClientSessionRegistry.failSessionTree] and the close of the root can walk the tree.
+ * Each holder keeps its subagents in two collections of one state, see [Children]:
+ * - the holders by id, failed ones included, which [RootSessionHolder.markOpened], the failure cascade of
+ *   [ClientSessionRegistry.failSessionTree] and the close of the root walk;
+ * - the [subagents] that the application sees, in announcement order.
  *
  * @property sessionId the id of this holder's session
  * @param setup sets up the subagents announced in this holder's stream
@@ -102,9 +107,19 @@ internal sealed class ClientSessionHolder(
     val sessionId: SessionId,
     private val setup: SubagentSetup,
 ) {
+    /**
+     * The subagents of a holder, in one atomic state, so [sealChildren] stops both collections in one update.
+     *
+     * @property byId the holders that the `session/update` handler registered when their announcements arrived,
+     * failed ones included
+     * @property listed the subagent sessions that the parent's consumer set up when it reached their announcements,
+     * in that order
+     * @property sealed whether the holder takes no subagents any more, because it failed or its root was closed
+     */
     private data class Children(
         val byId: PersistentMap<SessionId, SubagentSessionHolder> = persistentMapOf(),
-        val closed: Boolean = false,
+        val listed: PersistentList<ClientSubagentSession> = persistentListOf(),
+        val sealed: Boolean = false,
     )
 
     protected val sessionDeferred: CompletableDeferred<BaseClientSession> = CompletableDeferred()
@@ -120,10 +135,13 @@ internal sealed class ClientSessionHolder(
     val session: Deferred<BaseClientSession> get() = sessionDeferred
 
     /**
-     * The [BaseClientSession.subagents] of this holder's session. It lives here, because children are added while the
-     * history of a loading root is delivered, before the root's [ClientSession] exists.
+     * The [BaseClientSession.subagents] of this holder's session, in announcement order. It lives here, because
+     * subagents are set up while the history of a loading root is delivered, before the root's [ClientSession]
+     * exists.
+     *
+     * It only grows, until [sealChildren] runs, and a later listing does not change a returned list.
      */
-    val subagents = SubagentList()
+    val subagents: List<ClientSubagentSession> get() = children.value.listed
 
     /**
      * The holder of the root session this holder belongs to, itself for a root.
@@ -160,17 +178,24 @@ internal sealed class ClientSessionHolder(
     fun childOrNull(id: SessionId): SubagentSessionHolder? = children.value.byId[id]
 
     /**
-     * Adds [child] to this holder's subagents.
+     * Adds [child] to this holder's subagents, and closes its permissions if the close of the root has started.
      *
-     * @return `false` if this holder has failed, so it takes no subagents any more
+     * The add and [RootSessionHolder.markClosing] each write first and read the other's write second: this reads the
+     * root's stage after the add, and [ClientSessionRegistry.closeDescendantPermissions] walks the tree after the
+     * mark. So a child that the walk misses sees the mark here, and has its permissions closed from the start.
+     *
+     * @return `false` if this holder is sealed, so [child] was not added
      */
     fun addChild(child: SubagentSessionHolder): Boolean {
         var added = false
         children.update { current ->
-            added = !current.closed
+            added = !current.sealed
             if (added) current.copy(byId = current.byId.put(child.sessionId, child)) else current
         }
-        return added
+        if (!added) return false
+
+        if (root.phase.isAtLeast(Stage.CLOSING)) child.permissions.close()
+        return true
     }
 
     /**
@@ -181,12 +206,23 @@ internal sealed class ClientSessionHolder(
     }
 
     /**
-     * Stops taking subagents, both in the tree and in [subagents], and returns the ones registered so far.
+     * Adds the set-up [subagent] to [subagents].
+     *
+     * @return `false` if this holder is sealed, so [subagent] was not listed
      */
-    fun closeChildren(): Collection<SubagentSessionHolder> {
-        subagents.close()
-        return children.getAndUpdate { it.copy(closed = true) }.byId.values
+    fun listSubagent(subagent: ClientSubagentSession): Boolean {
+        var listed = false
+        children.update { current ->
+            listed = !current.sealed
+            if (listed) current.copy(listed = current.listed.add(subagent)) else current
+        }
+        return listed
     }
+
+    /**
+     * Stops taking subagents, both by [addChild] and by [listSubagent], and returns the holders registered so far.
+     */
+    fun sealChildren(): Collection<SubagentSessionHolder> = children.getAndUpdate { it.copy(sealed = true) }.byId.values
 
     /**
      * Runs [action] on every subagent below this holder, failed ones included, each before its own subagents.
@@ -230,7 +266,7 @@ internal sealed class ClientSessionHolder(
      */
     protected fun resolveHeldSubagentState() {
         val promote = root.phase.opening?.replayRequested != true
-        for (child in subagents.snapshot) child.onParentOpened(promote)
+        for (child in subagents) child.onParentOpened(promote)
     }
 
     /**
@@ -566,6 +602,10 @@ internal class RootSessionHolder(sessionId: SessionId, setup: SubagentSetup) : C
 /**
  * The holder of a subagent session, registered under the holder of the session it was announced in.
  *
+ * A holder created after the root's answer takes its [QueuedItem.Opened] marker at once, as its first item, before
+ * it is added to [parent] or the session map. A holder created before the answer gets it from
+ * [RootSessionHolder.markOpened]. Both run in read-loop order, so each subagent gets its marker exactly once.
+ *
  * @property parent the holder of the session this subagent was announced in
  * @param setup sets up the subagents announced in this subagent's stream
  */
@@ -589,6 +629,11 @@ internal class SubagentSessionHolder(
      * with fresh ones. The registry drives them at arrival, and the setup hands them to the [ClientSubagentSession].
      */
     val permissions: SubagentPendingPermissions = SubagentPendingPermissions()
+
+    init {
+        val phase = root.phase
+        if (phase.isAtLeast(Stage.ANSWERED)) markSubagentOpened(promote = phase.opening?.replayRequested != true)
+    }
 
     override val root: RootSessionHolder get() = parent.root
 

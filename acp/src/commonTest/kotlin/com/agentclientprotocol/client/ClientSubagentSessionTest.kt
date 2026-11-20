@@ -142,7 +142,7 @@ class ClientSubagentSessionTest {
         parentId: String = "root",
         parentCwd: () -> String = { rootCwd },
         parentDirectories: () -> List<String> = { rootDirectories },
-        children: SubagentList = SubagentList(),
+        children: () -> List<ClientSubagentSession> = { emptyList() },
         operations: ClientSessionOperations = NoOperations,
         pendingPermissions: SubagentPendingPermissions = SubagentPendingPermissions(),
     ) = ClientSubagentSession(
@@ -525,13 +525,13 @@ class ClientSubagentSessionTest {
     }
 
     @Test
-    fun `the subagents of a subagent are the list it was given`() {
-        val children = SubagentList()
-        val parent = child(id = "parent", children = children)
+    fun `the subagents of a subagent are read from the view it was given`() {
+        var listed = emptyList<ClientSubagentSession>()
+        val parent = child(id = "parent", children = { listed })
         val grandchild = child(id = "grandchild", parentId = "parent")
         assertTrue(parent.subagents.isEmpty())
 
-        children.add(grandchild)
+        listed = listOf(grandchild)
 
         assertEquals(listOf(grandchild), parent.subagents)
     }
@@ -563,16 +563,35 @@ class ClientSubagentSessionTest {
         val holder = rootHolder()
         val parameters = SessionCreationParameters(cwd = "/project", mcpServers = emptyList())
         assertTrue(holder.claimForOpening(replayRequested = false, parameters))
-        val first = child(id = "first", parentId = "root", children = SubagentList())
-        val second = child(id = "second", parentId = "root", children = SubagentList())
+        val first = child(id = "first", parentId = "root")
+        val second = child(id = "second", parentId = "root")
 
-        holder.subagents.add(first)
+        assertTrue(holder.listSubagent(first))
         val root = rootSession(holder, parameters)
         val beforeSecond = root.subagents
-        holder.subagents.add(second)
+        assertTrue(holder.listSubagent(second))
 
         assertEquals(listOf(first), beforeSecond)
         assertEquals(listOf(first, second), root.subagents)
+    }
+
+    @Test
+    fun `a sealed holder keeps its subagents and refuses later children and listings`() {
+        val holder = rootHolder()
+        val setup = SubagentSetup(protocol, scope) { _, _ -> }
+        val registered = SubagentSessionHolder(SessionId("first"), holder, setup)
+        val first = child(id = "first", parentId = "root")
+        assertTrue(holder.addChild(registered))
+        assertTrue(holder.listSubagent(first))
+
+        assertEquals(listOf(registered), holder.sealChildren().toList())
+
+        assertFalse(holder.addChild(SubagentSessionHolder(SessionId("late"), holder, setup)))
+        assertFalse(holder.listSubagent(child(id = "late", parentId = "root")))
+        assertNull(holder.childOrNull(SessionId("late")))
+        assertSame(registered, holder.childOrNull(SessionId("first")))
+        assertEquals(listOf(first), holder.subagents)
+        assertEquals(listOf(registered), holder.sealChildren().toList(), "a second seal returns the same holders")
     }
 
     @Test

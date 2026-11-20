@@ -104,6 +104,27 @@ class ClientSessionRegistryTest {
     }
 
     @Test
+    fun `a subagent registered after the close started has its permission requests answered cancelled`() = runTest {
+        registry.withInitializingSession {
+            val rootHolder = registry.claimSessionHolder(root, replayRequested = false, parameters)
+            assertTrue(rootHolder.markOpened(LoadSessionResponse()))
+            registry.deliverSessionUpdate(root, announce(child), null)
+            val childHolder = assertNotNull(rootHolder.childOrNull(child))
+            assertEquals("answered", answerOf(childHolder), "before the close, a request reaches the app")
+
+            registry.closeDescendantPermissions(rootHolder)
+            assertEquals("cancelled", answerOf(childHolder), "the walk closes the subagents it finds")
+
+            val late = SessionId("late")
+            registry.deliverSessionUpdate(root, announce(late), null)
+            registry.deliverSessionUpdate(child, announce(grandchild), null)
+            for (holder in listOf(assertNotNull(rootHolder.childOrNull(late)), assertNotNull(childHolder.childOrNull(grandchild)))) {
+                assertEquals("cancelled", answerOf(holder), "${holder.sessionId}: its registration closes its permissions")
+            }
+        }
+    }
+
+    @Test
     fun `a failed subagent keeps its id while its parent lives and its subtree fails with it`() = runTest {
         registry.withInitializingSession {
             val rootHolder = registry.claimSessionHolder(root, replayRequested = true, parameters)
@@ -341,13 +362,19 @@ class ClientSessionRegistryTest {
     }
 
     /**
+     * Returns `cancelled` if a permission request of [holder] would be answered `cancelled` without reaching the app.
+     */
+    private suspend fun answerOf(holder: SubagentSessionHolder): String =
+        holder.permissions.answerUnlessCancelled({ "cancelled" }) { "answered" }
+
+    /**
      * Runs the consumer of [holder]'s queue until it has delivered the marker, and returns what its operations got.
      * The consumer then waits for the parent's holder to complete, which these tests don't do, so it is cancelled.
      */
     private suspend fun TestScope.consumeUntilOpened(holder: SubagentSessionHolder): Recorder {
         val operations = Recorder()
         val session = ClientSubagentSession(
-            holder.sessionId, holder.parent.sessionId, operations, protocol, { "/root" }, { emptyList() }, holder.subagents, holder.permissions,
+            holder.sessionId, holder.parent.sessionId, operations, protocol, { "/root" }, { emptyList() }, holder::subagents, holder.permissions,
         )
         val consumer = launch { holder.consumeSubagentQueue(session) }
         runCurrent()

@@ -54,7 +54,7 @@ public class Client(
         crossinline call: suspend Ops.(P) -> R,
     ) {
         protocol.setRequestHandler(method) { params ->
-            val session = sessions.getSessionOrThrow(sessionIdOf(params))
+            val session = sessions.awaitSession(sessionIdOf(params))
             val ops = session.operations as? Ops ?: sessionMethodNotFound<Ops>(method)
             session.executeWithSession { ops.call(params) }
         }
@@ -62,7 +62,7 @@ public class Client(
 
     @OptIn(UnstableApi::class)
     private suspend fun createSessionElicitation(params: CreateElicitationRequest, sessionId: SessionId): CreateElicitationResponse {
-        val session = sessions.getSessionOrThrow(sessionId)
+        val session = sessions.awaitSession(sessionId)
         val ops = session.operations as? ElicitationOperations
             ?: sessionMethodNotFound<ElicitationOperations>(AcpMethod.ClientMethods.V1.ElicitationCreate)
         val response = session.executeWithSession { ops.createElicitation(params) }
@@ -120,7 +120,7 @@ public class Client(
                 return@setRequestHandler subagent.answerPermissionRequest(params.toolCall, params.options, params._meta)
             }
 
-            val session = sessions.getSessionOrThrow(params.sessionId) as? ClientSessionImpl
+            val session = sessions.awaitSession(params.sessionId) as? ClientSessionImpl
                 ?: error("Session ${params.sessionId} is not a root session")
             return@setRequestHandler session.executeWithSession {
                 session.answerPermissionRequest(params.toolCall, params.options, params._meta)
@@ -183,7 +183,7 @@ public class Client(
             val sessionId = _elicitationToSession.remove(params.elicitationId)
             if (sessionId != null && sessions.isSessionCompleted(sessionId)) {
                 // The session may have been closed between the elicitation and the completion.
-                val session = runCatching { sessions.getSessionOrThrow(sessionId) }.getOrNull()
+                val session = runCatching { sessions.awaitSession(sessionId) }.getOrNull()
                 val ops = session?.operations as? ElicitationOperations
                 if (session != null && ops != null) {
                     session.executeWithSession { ops.completeElicitation(params) }

@@ -79,7 +79,7 @@ internal class SubagentSetup(
             protocol = protocol,
             parentCwd = parent::sessionCwd,
             parentAdditionalDirectories = parent::sessionAdditionalDirectories,
-            children = child.subagents,
+            children = child::subagents,
             pendingPermissions = child.permissions,
         )
         session.applyPatch(announcement.update, parentOpened)
@@ -88,7 +88,7 @@ internal class SubagentSetup(
          * The parent failed or was closed while the factory ran. That failure or close also ends the subagent's
          * holder, so the subagent is dropped: the parent's list stays as it was, and the subagent gets no consumer.
          */
-        if (!parent.subagents.add(session)) {
+        if (!parent.listSubagent(session)) {
             session.markClosed()
             return
         }
