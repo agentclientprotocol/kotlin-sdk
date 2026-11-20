@@ -299,6 +299,45 @@ public data class TerminalOutputChunk(
 
 Phrase `@property` and `@param` text as a lowercase continuation with no trailing period, matching the existing `@param` and `@throws` style. Not every property needs a tag: document the ones whose contract is not evident from the name and type, and leave the rest to the class prose.
 
+### Structuring long comments
+
+A long comment must be easy to scan. Never write a wall of text.
+
+- Keep paragraphs short, with one idea each.
+- Put enumerations, alternatives, and case matrices, such as "before X / after X" or a list of failure cases, in bullet lists instead of chained clauses.
+- Split a long KDoc, meaning several paragraphs or several distinct topics, into sections with Markdown headings. Use `###` for a section and `####` for a subsection. Level 3 keeps them below the page headings that Dokka generates.
+- Put a heading on its own line, followed by a blank KDoc line.
+- Keep a short comment, one or two paragraphs, as plain prose without headings.
+- A long non-KDoc block comment does not render Markdown. Give it the same structure with separate paragraphs and lists; headings are optional.
+
+The `AgentSubagents` class KDoc is the example for sections (`### Removal`, `### Replay`), and `AgentSubagents.announce` is the example for bulleted failure cases.
+
+Use:
+
+```kotlin
+/**
+ * Closes the session.
+ *
+ * ### Pending requests
+ *
+ * Requests in flight when the call starts are answered before it returns.
+ *
+ * ### Failure
+ *
+ * The call throws when:
+ * - the session is already closed;
+ * - the transport rejects the request.
+ */
+```
+
+Avoid:
+
+```kotlin
+/**
+ * Closes the session. Requests in flight when the call starts are answered before it returns, and the call throws when the session is already closed or when the transport rejects the request, in which case nothing is removed and the session can be closed again.
+ */
+```
+
 ## Testing Strategy
 
 Use proportional verification while keeping core changes well covered.
