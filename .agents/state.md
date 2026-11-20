@@ -65,6 +65,11 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   and `SubagentPendingPermissions`; (4) close and subtree removal.
 - M5 end-to-end tests in `:acp-integration-test`.
 - M6 docs and checks: `Protocol` KDoc, `CLAUDE.md` rules, final `:acp:apiDump` review, `./gradlew check`.
+- R10 (AgentSubagents.kt review): `AgentSubagentContext` and `AgentSubagents` become final classes with internal
+  constructors, both in `AgentSubagents.kt` (SDK implements, apps consume; matches `ClientSubagentSession`).
+  `SessionSubagents` is merged into `AgentSubagents`. Same slice: restructure the subagent KDoc (bullet the
+  `announce` failure matrix, state replay/removal once and link, trim `@throws` repetition, headings in the
+  `AgentSubagents` class doc), no information lost.
 
 ## Done
 - M0 research — report `.agents/research/subagents-wire-shapes.md` (upstream `13b76582`): no wire-shape change since
@@ -304,7 +309,7 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 
 ## Next
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
-R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). R4 (`a211818`) and R5 (`a4403b8`) done. R6-R9 done. Open: v1 close family `@UnstableApi`; v2 agent items 1-3.
+R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). R4 (`a211818`) and R5 (`a4403b8`) done. R6-R9 done. R10 in progress. Open: v1 close family `@UnstableApi`; v2 agent items 1-3.
 
 Earlier: the goal is done. PR #158 targets `master`. Remaining for the user: delete `.agents/state.md` and
 `.agents/research/` before the PR merges. Follow-up candidates: review finding 4; the fresh-context close
