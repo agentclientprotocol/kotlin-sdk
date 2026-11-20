@@ -351,7 +351,7 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
 R1-R15 done. Deferred to the next v2 PR: v2 agent close items 1-3 — unknown-id close default (goes to app `AgentSupport.closeSession`, `-32602`), `-32002` instead of `-32602` for unknown sessions in `prompt`/`set_config_option`, re-resume overwriting the wrapper without closing the old `AgentSession`.
 
-Review round 16 (2026-11-20, client notes). Plan shown to the user; no programmer started yet.
+Review round 16 (2026-11-20, client notes). Plan agreed; R16 then R17.
 - R16 (agreed, no discussion), refactor only, no API change:
   1. `ClientSessionImpl.handlePermissionResponse` → `answerPermissionRequest`.
   2. Subagent `answerPermissionRequest`: receiver `SubagentSessionHolder` (not `ClientSubagentSession`, which doesn't
@@ -369,13 +369,20 @@ Review round 16 (2026-11-20, client notes). Plan shown to the user; no programme
 - Answered, no change: note 3 (registration racing `removeSessionTree` is covered: `addChild` before the parent's
   `closeChildren` ⇒ in the subtree; after ⇒ refused; the map CAS conflicts because every update allocates);
   note 11 (only a root can be closed: `ClientSubagentSession` has no close and the agent rejects a subagent id).
-- Discussion, one by one (outcome → R17, which also rewrites the KDoc of `removeSessionTree` and `registerChild` per
-  "Structuring long comments", registry notes 1 and 8):
-  D1 holder `Children` vs `SubagentList`, `closeChildren`/`close` names that only mark, and a holder method for the
-     three per-subagent close steps (holder note, registry note 4);
-  D2 `registerChild` simplification (registry note 9);
-  D3 `runsIn`: drop the `SubagentConsumer` element? (registry note 5);
-  D4 `getSessionOrThrow` name (registry note 7, second half).
+- Discussion outcomes (user, 2026-11-20, final) → R17, which also rewrites the KDoc of `removeSessionTree` and
+  `registerChild` per "Structuring long comments" (registry notes 1 and 8; restate the note-3 race argument plainly):
+  D1 one atomic `Children(byId, listed, sealed)` state in `ClientSessionHolder` replaces the `SubagentList` class
+     (`addChild` and the listing of a set-up `ClientSubagentSession` check the same `sealed` flag; sealing is one
+     update); `closeChildren()` → `sealChildren()`. Both collections stay: holders at arrival vs session objects at
+     delivery. No holder close helper (registry note 4): it would serve only the removal path; the cascade keeps
+     its behaviour.
+  D2 `registerChild`: the answered check (marker) moves into the `SubagentSessionHolder` constructor (`init`); the
+     closing check (read after the add, pairs with `markClosing`) moves into `addChild`; the session-map CAS moves
+     into a private helper returning `Registered`/`RootEnded`/`Blocked`; add-then-remove on `Blocked` stays.
+  D3 `runsIn` keeps both signs (element for `withContext(NonCancellable)`, ancestry for a fresh context around a
+     child job). No change.
+  D4 registry `getSessionOrThrow` → `awaitSession` (KDoc: throws for an unknown id, may create a speculative holder
+     during an opening, never a session).
 
 Earlier: the goal is done. PR #158 targets `master`. Remaining for the user: delete `.agents/state.md` and
 `.agents/research/` before the PR merges. Follow-up candidates: review finding 4; the fresh-context close
