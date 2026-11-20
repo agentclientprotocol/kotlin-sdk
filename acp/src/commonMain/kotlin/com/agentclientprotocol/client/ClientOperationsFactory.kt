@@ -36,7 +36,7 @@ public typealias ClientSupport = ClientOperationsFactory
  *
  * History versus live updates is solved separately, by `SessionEvent.Opened` in the update stream, which also keeps
  * this path in the right order. Children keep a genuine factory, `createSubagentOperations`, because the agent
- * creates them. See "Side findings" and decision 18 in docs/superpowers/specs/2026-11-07-v1-subagents-architecture.md.
+ * creates them.
  */
 
 /**

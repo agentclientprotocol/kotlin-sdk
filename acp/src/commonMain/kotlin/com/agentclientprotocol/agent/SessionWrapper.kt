@@ -197,8 +197,7 @@ internal class RootSessionWrapper(
                      *  cancel answers with an error; an app CE after `session/cancel` answers `cancelled`;
                      *  `RootSessionWrapper.cancel()` and protocol close still answer or stop as today. The v2
                      *  counterpart is the FIXME in `agent/v2/Agent.kt` `runTurn`. Subagent feeds use the
-                     *  same `isActive` rule ("Feed end and failure" in
-                     *  `docs/superpowers/specs/2026-11-07-v1-subagents-architecture.md`).
+                     *  same `isActive` rule.
                      */
                     throw e
                 } catch (e: Throwable) {

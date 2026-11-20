@@ -4,7 +4,6 @@ import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
-import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.common.notify
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.JsonRpcException
@@ -226,14 +225,6 @@ internal class ClientSessionImpl(
         }
     }
 
-    /**
-     * Delivers the marker of the opening call's [response] to the operations. No prompt can be active yet, so it
-     * always goes to [ClientSessionOperations.notify].
-     */
-    internal suspend fun deliverOpened(response: AcpCreatedSessionResponse) {
-        operations.notify(SessionEvent.Opened(response))
-    }
-
     // TODO remove together with the deprecated ClientSession.currentMode and ClientSession.configOptions.
     /**
      * Applies the session state that [notification] carries to [currentMode] and [configOptions].
@@ -254,9 +245,9 @@ internal class ClientSessionImpl(
         }
     }
 
-    internal suspend fun handlePermissionResponse(toolCall: SessionUpdate.ToolCallUpdate,
-                                                  permissions: List<PermissionOption>,
-                                                  _meta: JsonElement?,): RequestPermissionResponse {
+    internal suspend fun answerPermissionRequest(toolCall: SessionUpdate.ToolCallUpdate,
+                                                 permissions: List<PermissionOption>,
+                                                 _meta: JsonElement?,): RequestPermissionResponse {
         return pendingPermissions.answerUnlessCancelled(
             cancelledAnswer = { RequestPermissionResponse(RequestPermissionOutcome.Cancelled) },
         ) {

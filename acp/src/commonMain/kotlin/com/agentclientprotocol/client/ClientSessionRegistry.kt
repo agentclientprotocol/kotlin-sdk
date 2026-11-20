@@ -14,6 +14,7 @@ import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.acpFail
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.getAndUpdate
 import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.mutate
@@ -46,7 +47,7 @@ internal class ClientSessionRegistry(
     private data class SessionsStorage(val initializingSessionsCount: Int = 0, val sessions: PersistentMap<SessionId, ClientSessionHolder> = persistentMapOf())
 
     private val _sessions = atomic(SessionsStorage())
-    private val subagentSetup = SubagentSetup(protocol, subagentScope, ::failSessionHolder)
+    private val subagentSetup = SubagentSetup(protocol, subagentScope, ::failSessionTree)
 
     /**
      * Looks up the holder for [sessionId], creating a new entry only if there are some currently initializing
@@ -56,7 +57,7 @@ internal class ClientSessionRegistry(
      *
      * A failed holder counts as missing and is replaced while sessions initialize, so a retry of a failed opening
      * gets a fresh holder, unless it still blocks its id, see [ClientSessionHolder.blocksId]. Dropping a failed holder
-     * loses nothing, because [failSessionHolder] drains it at once, and its subagents leave the map with it, see
+     * loses nothing, because [failSessionTree] drains it at once, and its subagents leave the map with it, see
      * [replacing]. A subagent's id never gets a speculative holder: it has its own while its parent lives.
      */
     private fun getOrCreateSessionHolderOrNull(sessionId: SessionId): ClientSessionHolder? {
@@ -163,7 +164,7 @@ internal class ClientSessionRegistry(
         val ownConsumers = consumers
             .filter { (holder, job) -> context.runsIn(holder, job) }
             .map { it.second }.toSet()
-        val removed = mutableSetOf<SessionId>()
+        lateinit var previousSessions: SessionsStorage
 
         try {
             for ((_, job) in consumers) if (job !in ownConsumers) job.cancel()
@@ -176,14 +177,10 @@ internal class ClientSessionRegistry(
                  * its own update of the map. So it either enters the map before this update, which removes it with
                  * the root, or sees the root gone and stays out.
                  */
-                _sessions.update { sessionsStorage ->
-                    removed.clear()
+                previousSessions = _sessions.getAndUpdate { sessionsStorage ->
                     val sessions = sessionsStorage.sessions.mutate { sessions ->
                         for (holder in subtree) {
-                            if (sessions[holder.sessionId] === holder) {
-                                sessions.remove(holder.sessionId)
-                                removed += holder.sessionId
-                            }
+                            if (sessions[holder.sessionId] === holder) sessions.remove(holder.sessionId)
                         }
                     }
                     sessionsStorage.copy(sessions = sessions)
@@ -194,38 +191,20 @@ internal class ClientSessionRegistry(
                     if (holder !is SubagentSessionHolder) continue
                     holder.permissions.close()
                     holder.subagent?.markClosed()
-                    if (!holder.session.isCompleted) failSessionHolder(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
+                    if (!holder.session.isCompleted) failSessionTree(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
                 }
             }
             for (job in ownConsumers) job.cancel()
         }
-        return removed
+        return subtree.filter { previousSessions.sessions[it.sessionId] === it }.mapTo(mutableSetOf()) { it.sessionId }
     }
-
-    /**
-     * Whether the close with this context may run in [consumer], the consumer of [holder]'s queue, so joining it could
-     * wait for itself.
-     *
-     * Either sign counts. The close runs below the consumer's job when the subagent's `notify` calls it directly or in
-     * a coroutine it started, even one whose context lost the [SubagentConsumer] element. The element is still there
-     * when `notify` replaced the job, as `withContext(NonCancellable)` does: the consumer then waits for the close
-     * without reacting to its cancellation, and is no longer above it. A false match only skips a join, for example
-     * for a coroutine that copied the context into another scope, while a missed one deadlocks.
-     */
-    private fun CoroutineContext.runsIn(holder: SubagentSessionHolder, consumer: Job): Boolean =
-        this[SubagentConsumer]?.holder === holder || this[Job]?.let { consumer.isSelfOrAncestorOf(it) } == true
-
-    /**
-     * Whether [job] is this job or a job below it.
-     */
-    private fun Job.isSelfOrAncestorOf(job: Job): Boolean = this === job || children.any { it.isSelfOrAncestorOf(job) }
 
     /**
      * Returns the opened session [sessionId], without creating a holder.
      *
      * @throws IllegalStateException if the session is not registered or not initialized yet, or is a subagent session
      */
-    fun getSession(sessionId: SessionId): ClientSession {
+    fun getRootSession(sessionId: SessionId): ClientSession {
         val sessionHolder = _sessions.value.sessions[sessionId] ?: error("Session $sessionId not found")
         if (!sessionHolder.session.isCompleted) error("Session $sessionId not initialized yet")
         @OptIn(ExperimentalCoroutinesApi::class)
@@ -415,25 +394,25 @@ internal class ClientSessionRegistry(
      * in returns, the rest of the queue goes to [globalSessionUpdateHandler]. Only a consumer that passed that check
      * just before the cancellation can still take one more item and hand it to its `notify`.
      */
-    suspend fun failSessionHolder(holder: ClientSessionHolder, cause: Throwable) {
-        withContext(NonCancellable) {
-            failSessionTree(holder, cause)
+    suspend fun failSessionTree(holder: ClientSessionHolder, cause: Throwable) {
+        suspend fun fail(failing: ClientSessionHolder, reason: Throwable) {
+            val children = failing.closeChildren()
+            if (failing is SubagentSessionHolder) {
+                failing.stopConsumer()?.cancel()
+                // After the stop, so a setup that attaches the subagent later finds no consumer and closes it itself.
+                failing.subagent?.markClosed()
+            }
+            failing.failAndDrainQueue(reason) { update, meta ->
+                runCatching { handleUnconnectedSessionUpdate(failing.sessionId, update, meta) }
+                    .onFailure { logger.error(it) { "Unconnected session update handler failed for ${failing.sessionId}" } }
+            }
+            for (child in children) {
+                fail(child, IllegalStateException("Session ${failing.sessionId}, the parent of subagent session ${child.sessionId}, failed", reason))
+            }
         }
-    }
 
-    private suspend fun failSessionTree(holder: ClientSessionHolder, cause: Throwable) {
-        val children = holder.closeChildren()
-        if (holder is SubagentSessionHolder) {
-            holder.stopConsumer()?.cancel()
-            // After the stop, so a setup that attaches the subagent later finds no consumer and closes it itself.
-            holder.subagent?.markClosed()
-        }
-        holder.failAndDrainQueue(cause) { update, meta ->
-            runCatching { handleUnconnectedSessionUpdate(holder.sessionId, update, meta) }
-                .onFailure { logger.error(it) { "Unconnected session update handler failed for ${holder.sessionId}" } }
-        }
-        for (child in children) {
-            failSessionTree(child, IllegalStateException("Session ${holder.sessionId}, the parent of subagent session ${child.sessionId}, failed", cause))
+        withContext(NonCancellable) {
+            fail(holder, cause)
         }
     }
 
@@ -480,7 +459,7 @@ internal class ClientSessionRegistry(
                      * belong to this (or another concurrent) initialization; since none claimed `id`, it's an
                      * unconnected session, same as if no initialization had been in progress when they arrived.
                      */
-                    failSessionHolder(holder, AcpExpectedError("Session $id not found"))
+                    failSessionTree(holder, AcpExpectedError("Session $id not found"))
                 }
                 /*
                  * The subagents of the reaped roots have failed with them, and the cascade has closed every holder's
@@ -517,3 +496,21 @@ private fun PersistentMap<SessionId, ClientSessionHolder>.replacing(
 private fun MutableMap<SessionId, ClientSessionHolder>.removeDescendantsOf(holder: ClientSessionHolder) {
     holder.forEachDescendant { if (this[it.sessionId] === it) remove(it.sessionId) }
 }
+
+/**
+ * Whether the close with this context may run in [consumer], the consumer of [holder]'s queue, so joining it could
+ * wait for itself.
+ *
+ * Either sign counts. The close runs below the consumer's job when the subagent's `notify` calls it directly or in
+ * a coroutine it started, even one whose context lost the [SubagentConsumer] element. The element is still there
+ * when `notify` replaced the job, as `withContext(NonCancellable)` does: the consumer then waits for the close
+ * without reacting to its cancellation, and is no longer above it. A false match only skips a join, for example
+ * for a coroutine that copied the context into another scope, while a missed one deadlocks.
+ */
+private fun CoroutineContext.runsIn(holder: SubagentSessionHolder, consumer: Job): Boolean =
+    this[SubagentConsumer]?.holder === holder || this[Job]?.let { consumer.isSelfOrAncestorOf(it) } == true
+
+/**
+ * Whether [job] is this job or a job below it.
+ */
+private fun Job.isSelfOrAncestorOf(job: Job): Boolean = this === job || children.any { it.isSelfOrAncestorOf(job) }

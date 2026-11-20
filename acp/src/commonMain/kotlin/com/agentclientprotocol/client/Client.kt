@@ -117,12 +117,11 @@ public class Client(
              */
             val subagent = sessions.subagentHolderOrNull(params.sessionId)
             if (subagent != null) {
-                return@setRequestHandler subagent.permissions.answerPermissionRequest(params.toolCall, params.options, params._meta) {
-                    subagent.session.await()
-                }
+                return@setRequestHandler subagent.answerPermissionRequest(params.toolCall, params.options, params._meta)
             }
 
-            val session = sessions.getSessionOrThrow(params.sessionId)
+            val session = sessions.getSessionOrThrow(params.sessionId) as? ClientSessionImpl
+                ?: error("Session ${params.sessionId} is not a root session")
             return@setRequestHandler session.executeWithSession {
                 session.answerPermissionRequest(params.toolCall, params.options, params._meta)
             }
@@ -633,7 +632,7 @@ public class Client(
             session
         }.getOrElse { throwable ->
             // throw IllegalStateException to pass it as INTERNAL_ERROR to the other side (see in Protocol)
-            sessions.failSessionHolder(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
+            sessions.failSessionTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             // cleanup of this sessionId entry will be done in finally of withInitializingSession
             throw throwable
         }
@@ -663,7 +662,7 @@ public class Client(
              * The hook may have put the marker into the queue before a cancellation won. Failing the holder drops
              * the marker, so nothing delivers it.
              */
-            sessions.failSessionHolder(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
+            sessions.failSessionTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             throw throwable
         }
         createSession(sessionHolder, sessionId, sessionParameters, sessionResponse, factory)
@@ -700,7 +699,7 @@ public class Client(
             val claimedHolder = if (claimed.isCompleted) claimed.getCompleted() else null
             if (claimedHolder != null) {
                 val (sessionId, holder) = claimedHolder
-                sessions.failSessionHolder(holder, IllegalStateException("Failed to create session $sessionId", throwable))
+                sessions.failSessionTree(holder, IllegalStateException("Failed to create session $sessionId", throwable))
             }
             throw throwable
         }
@@ -754,7 +753,7 @@ public class Client(
             session
         } catch (throwable: Throwable) {
             // The cleanup of this sessionId entry is done in finally of withInitializingSession.
-            sessions.failSessionHolder(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
+            sessions.failSessionTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             throw throwable
         }
     }
@@ -778,7 +777,7 @@ public class Client(
         )
 
     public fun getSession(sessionId: SessionId): ClientSession {
-        return sessions.getSession(sessionId)
+        return sessions.getRootSession(sessionId)
     }
 
     @OptIn(UnstableApi::class)

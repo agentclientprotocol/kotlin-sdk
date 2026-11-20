@@ -20,7 +20,7 @@ private val logger = KotlinLogging.logger {}
  * @param protocol the connection, for the subagents' `session/cancel`
  * @param scope the scope of the subagents' consumers. It belongs to the connection, so they end with it, and they
  * don't run on the protocol's handler thread.
- * @param failHolder fails a holder and the holders below it, see [ClientSessionRegistry.failSessionHolder]
+ * @param failHolder fails a holder and the holders below it, see [ClientSessionRegistry.failSessionTree]
  */
 internal class SubagentSetup(
     private val protocol: Protocol,

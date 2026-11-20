@@ -469,17 +469,16 @@ class ClientSubagentSessionTest {
     @Test
     fun `cancel answers the pending permission requests and blocks later ones while work is confirmed`() = runTest {
         val operations = WaitingChildOperations()
-        val pendingPermissions = SubagentPendingPermissions()
-        val child = child(operations = operations, pendingPermissions = pendingPermissions)
+        val (holder, child) = openChild(operations)
         child.applyPatch(patch(capabilities = cancelGrant), parentOpened = true)
-        pendingPermissions.onState(StateUpdate.Running(), live = true)
-        val pending = backgroundScope.async { child.answerPermissionRequest(toolCall("pending"), emptyList(), null) }
+        holder.permissions.onState(StateUpdate.Running(), live = true)
+        val pending = backgroundScope.async { holder.answerPermissionRequest(toolCall("pending"), emptyList(), null) }
         operations.started.receive()
 
         child.cancel()
 
         assertEquals(RequestPermissionResponse(RequestPermissionOutcome.Cancelled), pending.await())
-        val later = child.answerPermissionRequest(toolCall("later"), emptyList(), null)
+        val later = holder.answerPermissionRequest(toolCall("later"), emptyList(), null)
         assertEquals(RequestPermissionResponse(RequestPermissionOutcome.Cancelled), later)
         assertEquals(listOf(toolCall("pending")), operations.requests, "the later request never reached the app")
     }
@@ -487,9 +486,9 @@ class ClientSubagentSessionTest {
     @Test
     fun `cancel answers the pending permission requests even if sending session cancel fails`() = runTest {
         val operations = WaitingChildOperations()
-        val child = child(operations = operations)
+        val (holder, child) = openChild(operations)
         child.applyPatch(patch(capabilities = cancelGrant), parentOpened = true)
-        val pending = backgroundScope.async { child.answerPermissionRequest(toolCall("pending"), emptyList(), null) }
+        val pending = backgroundScope.async { holder.answerPermissionRequest(toolCall("pending"), emptyList(), null) }
         operations.started.receive()
         transport.sendFailure = IllegalStateException("writer closed")
 
@@ -503,20 +502,19 @@ class ClientSubagentSessionTest {
     fun `cancel that throws for a missing grant or a closed session leaves the permission requests alone`() = runTest {
         for (closed in listOf(false, true)) {
             val operations = WaitingChildOperations()
-            val pendingPermissions = SubagentPendingPermissions()
-            val child = child(operations = operations, pendingPermissions = pendingPermissions)
-            pendingPermissions.onState(StateUpdate.Running(), live = true)
+            val (holder, child) = openChild(operations)
+            holder.permissions.onState(StateUpdate.Running(), live = true)
             if (closed) {
                 child.applyPatch(patch(capabilities = cancelGrant), parentOpened = true)
                 child.markClosed()
             }
-            val pending = backgroundScope.async { child.answerPermissionRequest(toolCall("pending"), emptyList(), null) }
+            val pending = backgroundScope.async { holder.answerPermissionRequest(toolCall("pending"), emptyList(), null) }
             operations.started.receive()
 
             assertFailsWith<IllegalStateException> { child.cancel() }
 
             assertFalse(pending.isCompleted, "the pending request still waits for the user, closed = $closed")
-            val later = backgroundScope.async { child.answerPermissionRequest(toolCall("later"), emptyList(), null) }
+            val later = backgroundScope.async { holder.answerPermissionRequest(toolCall("later"), emptyList(), null) }
             operations.started.receive()
             operations.answers.send(ALLOWED)
             operations.answers.send(ALLOWED)
@@ -580,14 +578,16 @@ class ClientSubagentSessionTest {
     @Test
     fun `a subagent's updates go to its operations' notify and its permission requests to its operations`() = runTest {
         val operations = RecordingChildOperations()
-        val child = child(operations = operations)
+        val (holder, child) = openChild(operations)
         val update = SessionUpdate.CurrentModeUpdate(SessionModeId("mode"))
         val toolCall = SessionUpdate.ToolCallUpdate(ToolCallId("tool"))
 
         child.deliverUpdate(update, null)
-        val response = child.answerPermissionRequest(toolCall, emptyList(), null)
+        val response = holder.answerPermissionRequest(toolCall, emptyList(), null)
 
-        val event = assertIs<SessionEvent.Update>(operations.events.single())
+        assertNull(assertIs<SessionEvent.Opened>(operations.events.first()).response)
+        val event = assertIs<SessionEvent.Update>(operations.events.last())
+        assertEquals(2, operations.events.size)
         assertSame(update, event.update)
         assertEquals(listOf(toolCall), operations.permissionRequests)
         assertEquals(RequestPermissionResponse(RequestPermissionOutcome.Cancelled), response)
@@ -640,6 +640,28 @@ class ClientSubagentSessionTest {
     fun `clientSubagentSession refuses a context without a session`() = runTest {
         assertFailsWith<IllegalStateException> { currentCoroutineContext().clientSubagentSession }
     }
+
+    /**
+     * A subagent's holder that has completed with a session over [operations], as after the root's opening: the
+     * holder's permissions are the session's.
+     */
+    private suspend fun openChild(operations: ClientSessionOperations): OpenChild {
+        val root = rootHolder()
+        val parameters = SessionCreationParameters(cwd = rootCwd, mcpServers = emptyList(), additionalDirectories = rootDirectories)
+        assertTrue(root.claimForOpening(replayRequested = false, parameters))
+        val holder = SubagentSessionHolder(SessionId("child"), root, SubagentSetup(protocol, scope) { _, _ -> })
+        val child = child(operations = operations, pendingPermissions = holder.permissions)
+        holder.attachSubagent(child)
+
+        val rootSession = rootSession(root, parameters)
+        assertTrue(root.markOpened(NewSessionResponse(SessionId("root"))))
+        root.completeOpening(rootSession, root.drainHistory(rootSession))
+        holder.markSubagentOpened(promote = true)
+        holder.consumeSubagentQueue(child)
+        return OpenChild(holder, child)
+    }
+
+    private data class OpenChild(val holder: SubagentSessionHolder, val session: ClientSubagentSession)
 
     private fun rootHolder() = RootSessionHolder(SessionId("root"), SubagentSetup(protocol, scope) { _, _ -> })
 

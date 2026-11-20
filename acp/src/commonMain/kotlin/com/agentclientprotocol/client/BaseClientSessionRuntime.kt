@@ -34,35 +34,22 @@ internal suspend fun BaseClientSession.deliverUpdate(update: SessionUpdate, meta
 }
 
 /**
- * Answers the agent's permission request for this session through its operations, unless the client cancels or
- * closes the session first.
- */
-internal suspend fun BaseClientSession.answerPermissionRequest(
-    toolCall: SessionUpdate.ToolCallUpdate,
-    permissions: List<PermissionOption>,
-    meta: JsonElement?,
-): RequestPermissionResponse = when (this) {
-    is ClientSession -> (this as ClientSessionImpl).handlePermissionResponse(toolCall, permissions, meta)
-    is ClientSubagentSession -> pendingPermissions.answerPermissionRequest(toolCall, permissions, meta) { this }
-}
-
-/**
- * Answers the agent's permission request for a subagent through the operations of the session that [session]
- * returns, unless the subagent's work is cancelled or it is closed first.
+ * Answers the agent's permission request for the subagent of this holder through the operations of its session, unless
+ * the subagent's work is cancelled or it is closed first.
  *
  * The request joins the race when this is called, before anything suspends, so call it when the request arrives:
- * a cancel that comes while [session] still waits for the subagent's holder answers it too. The application sees the
- * request only once [session] has returned.
+ * a cancel that comes while the holder is still incomplete answers it too. The application sees the request only once
+ * the holder's session has completed. The receiver is the holder, because the subagent's session doesn't exist yet
+ * when the request arrives.
  */
-internal suspend fun SubagentPendingPermissions.answerPermissionRequest(
+internal suspend fun SubagentSessionHolder.answerPermissionRequest(
     toolCall: SessionUpdate.ToolCallUpdate,
     permissions: List<PermissionOption>,
     meta: JsonElement?,
-    session: suspend () -> BaseClientSession,
-): RequestPermissionResponse = answerUnlessCancelled(
+): RequestPermissionResponse = this.permissions.answerUnlessCancelled(
     cancelledAnswer = { RequestPermissionResponse(RequestPermissionOutcome.Cancelled) },
 ) {
-    val subagent = session()
+    val subagent = session.await()
     subagent.executeWithSession { subagent.operations.requestPermissions(toolCall, permissions, meta) }
 }
 

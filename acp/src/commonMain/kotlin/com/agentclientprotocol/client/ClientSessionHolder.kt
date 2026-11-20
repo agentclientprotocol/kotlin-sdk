@@ -93,7 +93,7 @@ internal class SubagentConsumer(val holder: SubagentSessionHolder) : AbstractCor
  * the holder, and the marker keeps its place among them.
  *
  * Each holder keeps the subagents registered under it, failed ones included, so [RootSessionHolder.markOpened], the
- * failure cascade of [ClientSessionRegistry.failSessionHolder] and the close of the root can walk the tree.
+ * failure cascade of [ClientSessionRegistry.failSessionTree] and the close of the root can walk the tree.
  *
  * @property sessionId the id of this holder's session
  * @param setup sets up the subagents announced in this holder's stream
@@ -527,7 +527,7 @@ internal class RootSessionHolder(sessionId: SessionId, setup: SubagentSetup) : C
      * [drainHistory], returned [opened]. The operations run in the caller's coroutine, so this can be cancelled. If
      * the caller is cancelled or the operations throw, this throws and the opening fails, even though the operations
      * may already have the marker: the caller must then fail the holder with
-     * [ClientSessionRegistry.failSessionHolder], which hands the rest of the queue on. A cancellation that the
+     * [ClientSessionRegistry.failSessionTree], which hands the rest of the queue on. A cancellation that the
      * operations throw while the caller is active becomes an [IllegalStateException], so the caller sees a failed
      * opening rather than a cancellation of its own.
      */
@@ -535,7 +535,8 @@ internal class RootSessionHolder(sessionId: SessionId, setup: SubagentSetup) : C
         val response = checkNotNull(opened.response) { "The opening marker of root session ${session.sessionId} has no answer" }
         deliverOpening(session) {
             resolveHeldSubagentState()
-            session.deliverOpened(response)
+            // No prompt can be active yet, so the marker goes to `notify`.
+            session.operations.notify(SessionEvent.Opened(response))
         }
         queue.close()
         for (item in queue) {

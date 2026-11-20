@@ -113,7 +113,7 @@ class ClientSessionRegistryTest {
             val grandchildHolder = assertNotNull(childHolder.childOrNull(grandchild))
             registry.deliverSessionUpdate(grandchild, text("grandchild-queued"), null)
 
-            registry.failSessionHolder(childHolder, IllegalStateException("setup failed"))
+            registry.failSessionTree(childHolder, IllegalStateException("setup failed"))
             assertTrue(childHolder.isFailed)
             assertTrue(grandchildHolder.isFailed, "the cascade fails the subtree")
             assertFalse(rootHolder.isFailed)
@@ -156,7 +156,7 @@ class ClientSessionRegistryTest {
             registry.deliverSessionUpdate(root, announce(child), null)
             val childHolder = assertNotNull(rootHolder.childOrNull(child))
 
-            registry.failSessionHolder(rootHolder, IllegalStateException("load failed"))
+            registry.failSessionTree(rootHolder, IllegalStateException("load failed"))
             var started = false
             childHolder.startConsumer(this@runTest) { started = true }
             runCurrent()
@@ -249,7 +249,7 @@ class ClientSessionRegistryTest {
                 registry.deliverSessionUpdate(root, announce(attemptChild), null)
                 registry.deliverSessionUpdate(attemptChild, announce(attemptGrandchild), null)
                 assertNotNull(rootHolder.childOrNull(attemptChild)?.childOrNull(attemptGrandchild))
-                registry.failSessionHolder(rootHolder, IllegalStateException("load failed"))
+                registry.failSessionTree(rootHolder, IllegalStateException("load failed"))
             }
             for (id in listOf(root, attemptChild, attemptGrandchild)) {
                 assertFalse(registry.isSessionCompleted(id), "$id is still in the map after attempt $attempt")
@@ -273,7 +273,7 @@ class ClientSessionRegistryTest {
                 val rootHolder = registry.claimSessionHolder(root, replayRequested = true, parameters)
                 registry.deliverSessionUpdate(root, announce(child), null)
                 registry.deliverSessionUpdate(child, announce(grandchild), null)
-                registry.failSessionHolder(rootHolder, IllegalStateException("load failed"))
+                registry.failSessionTree(rootHolder, IllegalStateException("load failed"))
                 rootHolder
             }
             assertTrue(registry.isSessionCompleted(child), "the failed subagent stays while its root isn't replaced")
@@ -327,7 +327,7 @@ class ClientSessionRegistryTest {
             assertNotNull(rootHolder.deliverEarly(rootOperations))
             val consumer = notifyEntered.await()
 
-            val failing = launch { drainingRegistry.failSessionHolder(rootHolder, IllegalStateException("load failed")) }
+            val failing = launch { drainingRegistry.failSessionTree(rootHolder, IllegalStateException("load failed")) }
             // The cascade has cancelled the consumer, and hands the queue on while the consumer is still in notify.
             drainEntered.await()
             releaseNotify.complete(Unit)
