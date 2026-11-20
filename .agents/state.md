@@ -353,13 +353,19 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   holder (`openChild`); `check` green (2nd run, JS flake); no API change. `runCatching` in `failSessionTree` kept
   (runs under `NonCancellable`; user accepted as is).
 
+- R17 children state + `registerChild` — `e618862` — one atomic `Children(byId, listed, sealed)` in the holder,
+  `SubagentList` deleted, `listSubagent`, `sealChildren()`; marker taken in the `SubagentSessionHolder` `init`; closing
+  check in `addChild`; map CAS inline in `registerChild` (user dropped the `enterSessionMap`/`MapEntry` helper after
+  review); `ClientSubagentSession(children: () -> List<…>)`; `awaitSession`; KDoc restructured; AGENTS.md; 2 new
+  tests; `check` green (2nd run, JS flake); no API change.
+
 ## Next
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
 R1-R15 done. Deferred to the next v2 PR: v2 agent close items 1-3 — unknown-id close default (goes to app `AgentSupport.closeSession`, `-32602`), `-32002` instead of `-32602` for unknown sessions in `prompt`/`set_config_option`, re-resume overwriting the wrapper without closing the old `AgentSession`.
 
 Review round 16 (2026-11-20, client notes). Plan agreed; R16 then R17.
 Workflow (user, 2026-11-20): one slice at a time; programmers leave changes UNCOMMITTED; the user reviews the diff
-and tells the orchestrator to commit and continue. R16 committed (`b3e320b`); R17 in progress.
+and tells the orchestrator to commit and continue. R16 (`b3e320b`) and R17 (`e618862`) committed; round 16 done. Waiting for the user's next review round.
 - R16 (agreed, no discussion), refactor only, no API change:
   1. `ClientSessionImpl.handlePermissionResponse` → `answerPermissionRequest`.
   2. Subagent `answerPermissionRequest`: receiver `SubagentSessionHolder` (not `ClientSubagentSession`, which doesn't
