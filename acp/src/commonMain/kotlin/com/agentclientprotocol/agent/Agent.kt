@@ -245,7 +245,6 @@ public class Agent(
             }
         }
 
-        @OptIn(UnstableApi::class)
         protocol.setRequestHandler(AcpMethod.AgentMethods.V1.SessionClose) { params: CloseSessionRequest ->
             /*
              * Closing is idempotent: an unknown id, or one already closed, gets the empty result without calling the

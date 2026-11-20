@@ -2210,7 +2210,7 @@ The design moved through several shapes before landing on the factory-based `ann
     internal `Protocol.newConnectionScope(name)`, parented on `protocolJob` and running on the dispatcher of the
     scope the app passed to `Protocol` (see "Lifetimes").
     - Calling the app's `close()` on disconnect was rejected. It doesn't stop the SDK's own collections, and a hot
-      `events` never completes. `AgentSupport` has no `close`, and `AgentSession.close` is the unstable
+      `events` never completes. `AgentSupport` has no `close`, and `AgentSession.close` is the
       `session/close` handler, which throws by default. v1 calls no app code on disconnect today, so a hook would
       be a separate change for roots too.
     - A callback on `protocolJob` was rejected: the job's cancellation already stops the scope.

@@ -101,7 +101,6 @@ public interface ClientSession : BaseClientSession {
      *
      * @throws IllegalStateException if the opening of this session failed
      */
-    @UnstableApi
     public suspend fun close(_meta: JsonElement? = null): CloseSessionResponse
 
     /**

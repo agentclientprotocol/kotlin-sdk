@@ -108,7 +108,6 @@ internal class ClientSessionImpl(
         }
     }
 
-    @UnstableApi
     override suspend fun close(_meta: JsonElement?): CloseSessionResponse {
         /*
          * Only the registered, live holder of the id may close it: the request carries only the id, so the close of a

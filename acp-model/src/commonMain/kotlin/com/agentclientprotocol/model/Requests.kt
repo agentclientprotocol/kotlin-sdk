@@ -905,10 +905,6 @@ public data class DeleteSessionResponse(
 ) : AcpResponse
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * Request parameters for closing an active session.
  *
  * If supported, the agent must cancel any ongoing work related to the session
@@ -917,7 +913,6 @@ public data class DeleteSessionResponse(
  *
  * Only available if the agent supports the `session.close` capability.
  */
-@UnstableApi
 @Serializable
 public data class CloseSessionRequest(
     override val sessionId: SessionId,
@@ -925,13 +920,8 @@ public data class CloseSessionRequest(
 ) : AcpRequest, AcpWithSessionId
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * Response from closing a session.
  */
-@UnstableApi
 @Serializable
 public data class CloseSessionResponse(
     override val _meta: JsonElement? = null
