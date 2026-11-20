@@ -70,6 +70,9 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   `SessionSubagents` is merged into `AgentSubagents`. Same slice: restructure the subagent KDoc (bullet the
   `announce` failure matrix, state replay/removal once and link, trim `@throws` repetition, headings in the
   `AgentSubagents` class doc), no information lost.
+- R13: promote the v1 `session/close` family out of `@UnstableApi` (user decision 2026-11-20).
+- v2 agent close items 1-3 (v2 close research) are deferred to the next v2 PR, not this one.
+- AGENTS.md long-comment example fixed by the orchestrator in place at the user's explicit request (`0f54be5`).
 
 ## Done
 - M0 research — report `.agents/research/subagents-wire-shapes.md` (upstream `13b76582`): no wire-shape change since
@@ -319,7 +322,7 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 
 ## Next
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
-R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). R4 (`a211818`) and R5 (`a4403b8`) done. R6-R9 done. R10 done (`41a88a9`), R11 done (`640fade`), R12 done (`b086a68`). Open: v1 close family `@UnstableApi`; v2 agent items 1-3.
+R1 done (`51c0349`), R2 done (`e5b28b5`). R3 done (`29e3516`). R4 (`a211818`) and R5 (`a4403b8`) done. R6-R9 done. R10 done (`41a88a9`), R11 done (`640fade`), R12 done (`b086a68`). R13 (v1 close stable) in progress. Deferred to the next v2 PR: v2 agent close items 1-3 — unknown-id close default (goes to app `AgentSupport.closeSession`, `-32602`), `-32002` instead of `-32602` for unknown sessions in `prompt`/`set_config_option`, re-resume overwriting the wrapper without closing the old `AgentSession`.
 
 Earlier: the goal is done. PR #158 targets `master`. Remaining for the user: delete `.agents/state.md` and
 `.agents/research/` before the PR merges. Follow-up candidates: review finding 4; the fresh-context close
@@ -339,6 +342,4 @@ Notes:
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
-- Promote the v1 close family out of `@UnstableApi` (`CloseSessionRequest`/`Response`, `SessionClose`,
-  `AgentSession.close`, `ClientSession.close`)? It's in the stable v1 schema.
-- v2 agent items 1-3 (see v2 close research): this PR or a follow-up (suggested)?
+- None.
