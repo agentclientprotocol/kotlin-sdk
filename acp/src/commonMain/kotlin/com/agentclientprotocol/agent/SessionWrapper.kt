@@ -79,7 +79,7 @@ internal class RootSessionWrapper(
     override val subtreeRoot: RootSessionWrapper get() = this
 
     @OptIn(UnstableApi::class)
-    override val subagents: AgentSubagents? = if (subagentsSupported) SessionSubagents(this) else null
+    override val subagents: AgentSubagents? = if (subagentsSupported) AgentSubagents(this) else null
 
     /**
      * The supervisor scope of this root's subtree: the collections of its subagents' events run here.

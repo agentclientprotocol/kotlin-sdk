@@ -86,10 +86,10 @@ public final class com/agentclientprotocol/agent/AgentSessionKt {
 	public static synthetic fun setConfigOption-lh9iGNw$default (Lcom/agentclientprotocol/agent/AgentSession;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
-public abstract interface class com/agentclientprotocol/agent/AgentSubagentContext {
-	public abstract fun getClient ()Lcom/agentclientprotocol/common/ClientSessionOperations;
-	public abstract fun getSessionId-7EW-EgU ()Ljava/lang/String;
-	public abstract fun getSubagents ()Lcom/agentclientprotocol/agent/AgentSubagents;
+public final class com/agentclientprotocol/agent/AgentSubagentContext {
+	public final fun getClient ()Lcom/agentclientprotocol/common/ClientSessionOperations;
+	public final fun getSessionId-7EW-EgU ()Ljava/lang/String;
+	public final fun getSubagents ()Lcom/agentclientprotocol/agent/AgentSubagents;
 }
 
 public abstract interface class com/agentclientprotocol/agent/AgentSubagentFactory {
@@ -107,12 +107,8 @@ public final class com/agentclientprotocol/agent/AgentSubagentSession$DefaultImp
 	public static fun getEvents (Lcom/agentclientprotocol/agent/AgentSubagentSession;)Lkotlinx/coroutines/flow/Flow;
 }
 
-public abstract interface class com/agentclientprotocol/agent/AgentSubagents {
-	public abstract fun announce-LQdhiks (Ljava/lang/String;Lcom/agentclientprotocol/agent/AgentSubagentFactory;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public static synthetic fun announce-LQdhiks$default (Lcom/agentclientprotocol/agent/AgentSubagents;Ljava/lang/String;Lcom/agentclientprotocol/agent/AgentSubagentFactory;Ljava/lang/String;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
-}
-
-public final class com/agentclientprotocol/agent/AgentSubagents$DefaultImpls {
+public final class com/agentclientprotocol/agent/AgentSubagents {
+	public final fun announce-LQdhiks (Ljava/lang/String;Lcom/agentclientprotocol/agent/AgentSubagentFactory;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun announce-LQdhiks$default (Lcom/agentclientprotocol/agent/AgentSubagents;Ljava/lang/String;Lcom/agentclientprotocol/agent/AgentSubagentFactory;Ljava/lang/String;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 

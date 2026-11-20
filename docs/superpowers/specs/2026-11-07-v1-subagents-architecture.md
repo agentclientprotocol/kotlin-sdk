@@ -212,22 +212,17 @@ parent's replay, the factory replays the child's history through those operation
 ```kotlin
 /**
  * What the SDK gives the factory that builds a child: the child's own operations, bound to its id.
+ *
+ * @property client the child's operations. They apply the routing rule (see "Routing"), and fail until the child's
+ * announcement has been sent, except for sending the announcement itself
+ * @property subagents the child's own subagents, for announcing grandchildren
  */
 @UnstableApi
-public interface AgentSubagentContext {
-    public val sessionId: SessionId
-
-    /**
-     * The child's operations. They apply the routing rule (see "Routing"), and fail until the child's
-     * announcement has been sent, except for sending the announcement itself.
-     */
-    public val client: ClientSessionOperations
-
-    /**
-     * The child's own subagents, for announcing grandchildren.
-     */
-    public val subagents: AgentSubagents
-}
+public class AgentSubagentContext internal constructor(
+    public val sessionId: SessionId,
+    public val client: ClientSessionOperations,
+    public val subagents: AgentSubagents,
+)
 
 /**
  * A subagent the app exposes to the client. Built by an [AgentSubagentFactory].
@@ -265,7 +260,7 @@ public fun interface AgentSubagentFactory<out S : AgentSubagentSession> {
 }
 
 @UnstableApi
-public interface AgentSubagents {
+public class AgentSubagents internal constructor(/* the session it is bound to */) {
     /**
      * Registers [sessionId] under [parent], calls [factory] with the child's context, then collects the returned
      * session's events. Returns the session once the child's announcement has been sent and [factory] has returned.
@@ -277,7 +272,7 @@ public interface AgentSubagents {
         sessionId: SessionId,
         factory: AgentSubagentFactory<S>,
         parent: SessionId? = null,
-    ): S
+    ): S { /* ... */ }
 }
 
 /**
@@ -287,6 +282,10 @@ public interface AgentSubagents {
 public val CoroutineContext.subagents: AgentSubagents?
 ```
 
+- `AgentSubagentContext` and `AgentSubagents` are final classes with internal constructors, like the client's
+  `ClientSubagentSession`: only the SDK creates them, the app only consumes them, and no SDK API takes either
+  as input, so a final class can gain members later without breaking apps. The types the app implements,
+  `AgentSubagentSession` and `AgentSubagentFactory`, are interfaces.
 - The accessor is nullable instead of an `isSupported` flag, so the compiler forces the capability check. No other
   SDK API uses a support flag. It also matches the provisional v2 shape, a nullable `subagents` parameter (see
   "Looking ahead to v2"). `AgentSubagentContext.subagents` stays non-null, because a child exists only when the

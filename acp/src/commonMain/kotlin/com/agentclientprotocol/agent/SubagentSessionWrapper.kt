@@ -29,37 +29,6 @@ import kotlinx.serialization.json.JsonElement
 private val logger = KotlinLogging.logger {}
 
 /**
- * The [AgentSubagents] of [bound], a root session or a subagent with its own subagents.
- */
-internal class SessionSubagents(private val bound: SessionWrapper) : AgentSubagents {
-    override suspend fun <S : AgentSubagentSession> announce(
-        sessionId: SessionId,
-        factory: AgentSubagentFactory<S>,
-        parent: SessionId?,
-    ): S {
-        val parentWrapper = resolveParent(parent)
-        val child = SubagentSessionWrapper(bound.agent, bound.protocol, sessionId, parentWrapper)
-        bound.agent.registerSubagent(child)
-        return child.announce(factory)
-    }
-
-    private fun resolveParent(parent: SessionId?): SessionWrapper {
-        /*
-         * A child that isn't announced yet must not announce grandchildren: their announcements would put traffic on
-         * a stream the client doesn't know.
-         */
-        if (bound is SubagentSessionWrapper) bound.checkAnnounced()
-        if (parent == null || parent == bound.sessionId) return bound
-
-        val candidate = bound.agent.subagentOrNull(parent)
-        require(candidate != null && candidate.isAnnounced && candidate.isDescendantOf(bound)) {
-            "Parent $parent is neither session ${bound.sessionId} nor an announced subagent below it"
-        }
-        return candidate
-    }
-}
-
-/**
  * A subagent registered on the connection: its client operations, its own [AgentSubagents], and what the SDK tracks
  * about it.
  *
@@ -142,13 +111,9 @@ internal class SubagentSessionWrapper(
     private val subagentOperations = SubagentClientOperations(protocol, sessionId, agent.getClientInfoOrThrow().capabilities, this)
     override val clientOperations: RemoteClientSessionOperations get() = subagentOperations
 
-    override val subagents: AgentSubagents = SessionSubagents(this)
+    override val subagents: AgentSubagents = AgentSubagents(this)
 
-    private val context = object : AgentSubagentContext {
-        override val sessionId: SessionId get() = this@SubagentSessionWrapper.sessionId
-        override val client: RemoteClientSessionOperations get() = subagentOperations
-        override val subagents: AgentSubagents get() = this@SubagentSessionWrapper.subagents
-    }
+    private val context = AgentSubagentContext(sessionId, subagentOperations, subagents)
 
     val isAnnounced: Boolean get() = _phase.value == Phase.ANNOUNCED
 
