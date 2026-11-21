@@ -15,6 +15,7 @@ import com.agentclientprotocol.model.v2.AgentCapabilities
 import com.agentclientprotocol.model.v2.CloseSessionResponse
 import com.agentclientprotocol.model.v2.ContentBlock
 import com.agentclientprotocol.model.v2.ContentChunk
+import com.agentclientprotocol.model.v2.DeleteSessionResponse
 import com.agentclientprotocol.model.v2.ForkSessionResponse
 import com.agentclientprotocol.model.v2.InitializeResponse
 import com.agentclientprotocol.model.v2.NewSessionResponse
@@ -103,6 +104,33 @@ class ClientSessionTest {
 
         assertEquals(ALLOWED.outcome, agent.permissionOutcome(permission))
     }
+
+    @Test
+    fun `a request still waiting when the next prompt is sent is answered by a later cancel`() =
+        withV2Client { client, agent, _ ->
+            val user = WaitingUser()
+            val sessionId = SessionId("session")
+            agent.onNewSession(sessionId) { }
+            agent.onPrompt(MessageId("user-1")) { }
+            val session = client.newSession(cwd = ".", operations = user)
+            val permission = agent.requestPermission(sessionId)
+            user.started.await()
+
+            session.prompt(listOf(ContentBlock.Text("next")))
+            session.cancel()
+
+            assertEquals(RequestPermissionOutcome.Cancelled, agent.permissionOutcome(permission))
+            assertTrue(user.cleanedUp.isCompleted, "the handler stopped without the user answering")
+            assertEquals(emptyList(), agent.responsesTo(permission).toListNow(), "the request got exactly one response")
+
+            // Control: a prompt after the cancel lets new requests reach the app again.
+            user.answer.complete(ALLOWED)
+            session.prompt(listOf(ContentBlock.Text("again")))
+            val next = agent.requestPermission(sessionId)
+
+            assertEquals(ALLOWED.outcome, agent.permissionOutcome(next))
+            assertEquals(2, user.calls.get())
+        }
 
     @Test
     fun `close answers a pending permission request when the agent does not cancel it`() =
@@ -196,6 +224,171 @@ class ClientSessionTest {
         val failure = closing.await()
         assertEquals(JsonRpcErrorCode.INTERNAL_ERROR.code, failure.code)
         assertEquals(ScriptedAgent.FAILURE_MESSAGE, failure.message)
+    }
+
+    @Test
+    fun `a second close after the id was resumed again sends nothing and leaves the new session open`() =
+        withV2Client { client, agent, scope ->
+            val sessionId = SessionId("session")
+            agent.onNewSession(sessionId) { }
+            agent.onResumeSession { }
+            agent.onCloseSession()
+            val first = client.newSession(cwd = ".")
+            first.close()
+            val second = client.resumeSession(sessionId = sessionId, cwd = ".")
+            val secondUpdates = scope.read(second)
+
+            val again = first.close()
+
+            assertEquals(CloseSessionResponse(), again)
+            assertEquals(1, agent.closeRequestCount())
+            assertEquals(second, client.getSession(sessionId))
+            agent.sendUpdate(sessionId, "still routed")
+            assertEquals(listOf("still routed"), secondUpdates.takeTexts(1))
+        }
+
+    @Test
+    fun `a second close without opening the id again sends nothing`() = withV2Client { client, agent, _ ->
+        val sessionId = SessionId("session")
+        agent.onNewSession(sessionId) { }
+        agent.onCloseSession()
+        val session = client.newSession(cwd = ".")
+        session.close()
+
+        val again = session.close()
+
+        assertEquals(CloseSessionResponse(), again)
+        assertEquals(1, agent.closeRequestCount())
+    }
+
+    @Test
+    fun `close treats a resource not found answer as a successful close`() = withV2Client { client, agent, scope ->
+        val sessionId = SessionId("session")
+        agent.onNewSession(sessionId) { }
+        agent.onCloseSessionFailing(JsonRpcErrorCode.RESOURCE_NOT_FOUND.code)
+        val session = client.newSession(cwd = ".")
+        val updates = scope.read(session)
+
+        val response = session.close()
+
+        assertEquals(CloseSessionResponse(), response)
+        assertEquals(null, client.getSession(sessionId))
+        assertEquals(emptyList(), updates.rest())
+        session.close()
+        assertEquals(1, agent.closeRequestCount())
+    }
+
+    @Test
+    fun `close fails on any other error and keeps the session`() = withV2Client { client, agent, _ ->
+        val sessionId = SessionId("session")
+        agent.onNewSession(sessionId) { }
+        agent.onCloseSessionFailing(JsonRpcErrorCode.INTERNAL_ERROR.code)
+        val session = client.newSession(cwd = ".")
+
+        val failure = assertFailsWith<JsonRpcException> { session.close() }
+
+        assertEquals(JsonRpcErrorCode.INTERNAL_ERROR.code, failure.code)
+        assertEquals(session, client.getSession(sessionId))
+        agent.onCloseSession()
+        session.close()
+        assertEquals(2, agent.closeRequestCount())
+        assertEquals(null, client.getSession(sessionId))
+    }
+
+    @Test
+    fun `a session replaced by a resume of its id can still close the session and ends the replacement`() =
+        withV2Client { client, agent, scope ->
+            val sessionId = SessionId("session")
+            agent.onNewSession(sessionId) { }
+            agent.onResumeSession { }
+            agent.onCloseSession()
+            val replaced = client.newSession(cwd = ".")
+            val replacing = client.resumeSession(sessionId = sessionId, cwd = ".")
+            val replacingUpdates = scope.read(replacing)
+
+            replaced.close()
+
+            assertEquals(null, client.getSession(sessionId))
+            assertEquals(emptyList(), replacingUpdates.rest())
+            assertEquals(1, agent.closeRequestCount())
+        }
+
+    @Test
+    fun `the session another object's close removed sends nothing when it closes`() =
+        withV2Client { client, agent, _ ->
+            val sessionId = SessionId("session")
+            agent.onNewSession(sessionId) { }
+            agent.onResumeSession { }
+            agent.onCloseSession()
+            val replaced = client.newSession(cwd = ".")
+            val replacing = client.resumeSession(sessionId = sessionId, cwd = ".")
+            replaced.close()
+
+            assertEquals(CloseSessionResponse(), replacing.close())
+
+            assertEquals(1, agent.closeRequestCount())
+        }
+
+    @Test
+    fun `a replaced session closed once does not close a later resume of the id`() =
+        withV2Client { client, agent, _ ->
+            val sessionId = SessionId("session")
+            agent.onNewSession(sessionId) { }
+            agent.onResumeSession { }
+            agent.onCloseSession()
+            val replaced = client.newSession(cwd = ".")
+            client.resumeSession(sessionId = sessionId, cwd = ".")
+            replaced.close()
+            val later = client.resumeSession(sessionId = sessionId, cwd = ".")
+
+            replaced.close()
+
+            assertEquals(1, agent.closeRequestCount())
+            assertEquals(later, client.getSession(sessionId))
+        }
+
+    @Test
+    fun `close after the session was deleted sends nothing`() = withV2Client { client, agent, scope ->
+        val sessionId = SessionId("session")
+        agent.onNewSession(sessionId) { }
+        agent.onDeleteSession()
+        val session = client.newSession(cwd = ".")
+        val updates = scope.read(session)
+
+        client.deleteSession(sessionId)
+
+        assertEquals(emptyList(), updates.rest())
+        assertEquals(CloseSessionResponse(), session.close())
+        assertEquals(0, agent.closeRequestCount())
+    }
+
+    @Test
+    fun `deleteSession treats a resource not found answer as a successful delete`() =
+        withV2Client { client, agent, scope ->
+            val sessionId = SessionId("session")
+            agent.onNewSession(sessionId) { }
+            agent.onDeleteSessionFailing(JsonRpcErrorCode.RESOURCE_NOT_FOUND.code)
+            val session = client.newSession(cwd = ".")
+            val updates = scope.read(session)
+
+            val response = client.deleteSession(sessionId)
+
+            assertEquals(DeleteSessionResponse(), response)
+            assertEquals(null, client.getSession(sessionId))
+            assertEquals(emptyList(), updates.rest())
+        }
+
+    @Test
+    fun `deleteSession fails on any other error and keeps the session`() = withV2Client { client, agent, _ ->
+        val sessionId = SessionId("session")
+        agent.onNewSession(sessionId) { }
+        agent.onDeleteSessionFailing(JsonRpcErrorCode.INTERNAL_ERROR.code)
+        val session = client.newSession(cwd = ".")
+
+        val failure = assertFailsWith<JsonRpcException> { client.deleteSession(sessionId) }
+
+        assertEquals(JsonRpcErrorCode.INTERNAL_ERROR.code, failure.code)
+        assertEquals(session, client.getSession(sessionId))
     }
 
     @Test
@@ -569,6 +762,10 @@ private class WaitingUser(private val cleanupGate: CompletableDeferred<Unit>? = 
     }
 }
 
+private fun <T> Channel<T>.toListNow(): List<T> = buildList {
+    while (true) add(tryReceive().getOrNull() ?: break)
+}
+
 /** Starts reading [session], from the buffered updates onwards. */
 private fun CoroutineScope.read(session: ClientSession) = SessionReader(this, session)
 
@@ -624,6 +821,38 @@ private class ScriptedAgent(private val capabilities: AgentCapabilities) : BaseT
     private var resumeSession: (JsonRpcRequest) -> Unit = { error("no answer scripted for session/resume") }
     private var forkSession: (JsonRpcRequest) -> Unit = { error("no answer scripted for session/fork") }
     private var prompt: (JsonRpcRequest) -> Unit = { error("no answer scripted for session/prompt") }
+
+    /**
+     * Left unanswered unless the test scripts an answer, because some tests answer the close by hand.
+     */
+    private var closeSession: (JsonRpcRequest) -> Unit = { }
+    private var deleteSession: (JsonRpcRequest) -> Unit = { }
+    private val closeRequests = AtomicInteger()
+
+    fun onCloseSession() {
+        closeSession = { request ->
+            respond(request, AcpMethod.AgentMethods.V2.SessionClose.responseSerializer, CloseSessionResponse())
+        }
+    }
+
+    fun onCloseSessionFailing(code: Int) {
+        closeSession = { request -> failWith(request, code) }
+    }
+
+    fun onDeleteSession() {
+        deleteSession = { request ->
+            respond(request, AcpMethod.AgentMethods.V2.SessionDelete.responseSerializer, DeleteSessionResponse())
+        }
+    }
+
+    fun onDeleteSessionFailing(code: Int) {
+        deleteSession = { request -> failWith(request, code) }
+    }
+
+    /**
+     * How many `session/close` requests the client has sent so far.
+     */
+    fun closeRequestCount(): Int = closeRequests.get()
 
     fun onNewSession(sessionId: SessionId, beforeResponse: ScriptedAgent.() -> Unit) {
         newSession = { request ->
@@ -711,10 +940,10 @@ private class ScriptedAgent(private val capabilities: AgentCapabilities) : BaseT
         }
     }
 
-    fun fail(request: JsonRpcRequest) {
-        fireMessage(
-            JsonRpcErrorResponse(request.id, JsonRpcError(JsonRpcErrorCode.INTERNAL_ERROR.code, FAILURE_MESSAGE))
-        )
+    fun fail(request: JsonRpcRequest) = failWith(request, JsonRpcErrorCode.INTERNAL_ERROR.code)
+
+    fun failWith(request: JsonRpcRequest, code: Int) {
+        fireMessage(JsonRpcErrorResponse(request.id, JsonRpcError(code, FAILURE_MESSAGE)))
     }
 
     fun cancelRequest(id: RequestId) {
@@ -775,6 +1004,11 @@ private class ScriptedAgent(private val capabilities: AgentCapabilities) : BaseT
             AcpMethod.AgentMethods.V2.SessionResume.methodName -> resumeSession(message)
             AcpMethod.AgentMethods.V2.SessionFork.methodName -> forkSession(message)
             AcpMethod.AgentMethods.V2.SessionPrompt.methodName -> prompt(message)
+            AcpMethod.AgentMethods.V2.SessionClose.methodName -> {
+                closeRequests.incrementAndGet()
+                closeSession(message)
+            }
+            AcpMethod.AgentMethods.V2.SessionDelete.methodName -> deleteSession(message)
             else -> {}
         }
     }

@@ -215,7 +215,6 @@ public open class AcpMethod(public val methodName: MethodName) {
                     SetSessionConfigOptionResponse.serializer()
                 )
 
-            @UnstableApi
             public object SessionClose : AcpSessionRequestResponseMethod<CloseSessionRequest, CloseSessionResponse>(
                 "session/close",
                 CloseSessionRequest.serializer(),
@@ -504,7 +503,6 @@ public open class AcpMethod(public val methodName: MethodName) {
         )
         public val SessionSetConfigOption: AcpSessionRequestResponseMethod<SetSessionConfigOptionRequest, SetSessionConfigOptionResponse> get() = V1.SessionSetConfigOption
 
-        @UnstableApi
         @Deprecated(
             "Method objects are grouped by protocol version now",
             ReplaceWith("AcpMethod.AgentMethods.V1.SessionClose"),

@@ -3,7 +3,9 @@
 package com.agentclientprotocol.model.v2
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.MessageId
+import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionModeId
 import com.agentclientprotocol.model.ToolCallId
 import com.agentclientprotocol.model.ToolCallLocation
@@ -161,6 +163,22 @@ class SessionUpdateConversionTest {
         }
     }
 
+    @Test
+    fun `v1 subagent updates have no v2 form`() {
+        assertFailsWith<ProtocolConversionException> {
+            V1SessionUpdate.SubagentUpdate(sessionId = SessionId("child_1")).toV2()
+        }
+        assertFailsWith<ProtocolConversionException> {
+            V1SessionUpdate.SessionMessage(messageId = MessageId("msg_1")).toV2()
+        }
+        assertFailsWith<ProtocolConversionException> {
+            V1SessionUpdate.SessionMessageChunk(
+                messageId = MessageId("msg_1"),
+                content = V1ContentBlock.Text(text = "hi"),
+            ).toV2()
+        }
+    }
+
     // Tool calls: v1's two variants collapse into one v2 upsert
 
     @Test
@@ -302,6 +320,25 @@ class SessionUpdateConversionTest {
             MaybeUndefined.Value(listOf(ToolCallContent.Content(ContentBlock.Text("kept")))),
             assertIs<SessionUpdate.ToolCallUpdate>(v1.toV2()).update.content,
         )
+    }
+
+    @Test
+    fun `v1 session tool call content does not cross to v2`() {
+        val content = listOf(
+            V1ToolCallContent.Session(sessionId = SessionId("child_1")),
+            V1ToolCallContent.Content(V1ContentBlock.Text("kept")),
+        )
+        val expected = MaybeUndefined.Value(listOf(ToolCallContent.Content(ContentBlock.Text("kept"))))
+
+        val update: V1SessionUpdate = V1SessionUpdate.ToolCallUpdate(toolCallId = ToolCallId("tc_1"), content = content)
+        assertEquals(expected, assertIs<SessionUpdate.ToolCallUpdate>(update.toV2()).update.content)
+
+        val creation: V1SessionUpdate = V1SessionUpdate.ToolCall(
+            toolCallId = ToolCallId("tc_1"),
+            title = "Delegate",
+            content = content,
+        )
+        assertEquals(expected, assertIs<SessionUpdate.ToolCallUpdate>(creation.toV2()).update.content)
     }
 
     @Test

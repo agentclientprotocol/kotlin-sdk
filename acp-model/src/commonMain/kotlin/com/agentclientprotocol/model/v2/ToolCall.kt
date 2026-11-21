@@ -5,8 +5,12 @@ package com.agentclientprotocol.model.v2
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.AcpWithMeta
+import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.ToolCallId
 import com.agentclientprotocol.model.ToolCallLocation
+import com.agentclientprotocol.model.decodeMaybeUndefined
+import com.agentclientprotocol.model.decodeMaybeUndefinedList
+import com.agentclientprotocol.model.putMaybeUndefined
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName

@@ -18,9 +18,12 @@ import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.model.v2.RequestPermissionOutcome
 import com.agentclientprotocol.model.v2.RequestPermissionRequest
 import com.agentclientprotocol.model.v2.RequestPermissionResponse
+import com.agentclientprotocol.protocol.JsonRpcException
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.acpFail
 import com.agentclientprotocol.protocol.invoke
+import com.agentclientprotocol.rpc.JsonRpcErrorCode
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonElement
 
@@ -47,6 +50,15 @@ public class ClientSession internal constructor(
 ) {
     private val pendingPermissions = PendingPermissionCancellation()
 
+    private val ended = atomic(false)
+
+    /**
+     * Marks this object as no longer a handle to a session the client holds, so a later [close] sends nothing.
+     */
+    internal fun markEnded() {
+        ended.value = true
+    }
+
     /**
      * One `session/update` notification: the update and the metadata it came with.
      */
@@ -71,7 +83,7 @@ public class ClientSession internal constructor(
      * with this id can arrive on [updates] before or after this call returns
      */
     public suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): MessageId {
-        pendingPermissions.startTurn()
+        pendingPermissions.clearCancellation()
         return AcpMethod.AgentMethods.V2.SessionPrompt(protocol, PromptRequest(sessionId, content, _meta)).messageId
     }
 
@@ -122,16 +134,38 @@ public class ClientSession internal constructor(
      * the operations.
      *
      * After a successful response the session is forgotten locally, so its [updates] stop being routed
-     * anywhere.
+     * anywhere. An agent that answers `-32002` (resource not found) has no such session any more, which ACP asks
+     * the client to treat as a successful close
+     * ([closing active sessions](https://agentclientprotocol.com/protocol/v2/session-setup#closing-active-sessions)):
+     * the session is forgotten and this function returns an empty [CloseSessionResponse]. Any other error is
+     * thrown and the session stays registered.
+     *
+     * Closing is idempotent. Once this object has been closed, or was removed by [Client.deleteSession] or by
+     * another object's close of the same id, a later call returns an empty [CloseSessionResponse] at once, sends
+     * nothing and touches no other session, even if the id has been resumed again since: the request carries only
+     * the id, so it would close the new session. A call after a failed close sends the request again, and calls made
+     * while a close is in flight send their own requests.
+     *
+     * A session that [Client.resumeSession] replaced, by resuming the same id again, still ends its [updates] flow
+     * at once, but this object stays a handle to the one active session: closing it closes that session and ends
+     * the replacing object too.
      */
     public suspend fun close(_meta: JsonElement? = null): CloseSessionResponse {
+        if (ended.value) return CloseSessionResponse()
+
         /*
          * Answer before waiting for the response, so an agent that does not cancel its own permission requests
          * first is not left waiting for a session the client is dropping.
          */
         pendingPermissions.close()
-        val response = AcpMethod.AgentMethods.V2.SessionClose(protocol, CloseSessionRequest(sessionId, _meta))
+        val response = try {
+            AcpMethod.AgentMethods.V2.SessionClose(protocol, CloseSessionRequest(sessionId, _meta))
+        } catch (e: JsonRpcException) {
+            if (e.code != JsonRpcErrorCode.RESOURCE_NOT_FOUND.code) throw e
+            CloseSessionResponse()
+        }
         onClosed()
+        markEnded()
         return response
     }
 

@@ -12,7 +12,6 @@ import com.agentclientprotocol.util.PaginatedResponseToFlowAdapter
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
-import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
@@ -41,63 +40,61 @@ public class Client(
     @property:UnstableApi
     public val globalSessionUpdateHandler: GlobalSessionUpdateHandler? = null
 ) {
-    private data class SessionsStorage(val initializingSessionsCount: Int = 0, val sessions: PersistentMap<SessionId, ClientSessionHolder> = persistentMapOf())
-
-    private val _sessions = atomic(SessionsStorage())
+    private val sessions = ClientSessionRegistry(globalSessionUpdateHandler, protocol, protocol.newConnectionScope("Subagent sessions"))
     private val _nesSessions = atomic(persistentMapOf<SessionId, ClientNesSessionImpl>())
     @OptIn(UnstableApi::class)
     private val _elicitationToSession = ElicitationSessionStore()
 
     /**
-     * Looks up the holder for [sessionId], creating a new entry only if there are some currently initializing
-     * sessions. Returns `null` if the session is neither registered nor being initialized, instead of throwing -
-     * callers that need a session to exist (e.g., to service a request against it) should use
-     * [getOrCreateSessionHolder] instead.
-     *
-     * A failed holder counts as missing and is replaced while sessions initialize, so a retry of a failed opening
-     * gets a fresh holder. Dropping a failed holder loses nothing, because [failSessionHolder] drains it at once.
+     * Registers a handler of a session-scoped request that the session's operations answer through [Ops].
      */
-    private fun getOrCreateSessionHolderOrNull(sessionId: SessionId): ClientSessionHolder? {
-        // Fast path for the common case of an already registered session.
-        _sessions.value.sessions[sessionId]?.takeUnless { it.isFailed }?.let { return it }
-        var clientSessionHolder: ClientSessionHolder? = null
-        // Every branch below has to look the session up in `currentStorage` rather than rely on the read above:
-        // `_sessions` can change between that read and the CAS, and it can change again between two attempts of
-        // the CAS loop. A session that a concurrent newSession/loadSession registers in such a window - together
-        // with decrementing `initializingSessionsCount` back to zero - would otherwise be reported as missing.
-        _sessions.update { currentStorage ->
-            val existingHolder = currentStorage.sessions[sessionId]?.takeUnless { it.isFailed }
-            when {
-                existingHolder != null -> {
-                    clientSessionHolder = existingHolder
-                    currentStorage
-                }
-                currentStorage.initializingSessionsCount > 0 -> {
-                    val newHolder = ClientSessionHolder()
-                    clientSessionHolder = newHolder
-                    currentStorage.copy(sessions = currentStorage.sessions.put(sessionId, newHolder))
-                }
-                else -> {
-                    clientSessionHolder = null
-                    currentStorage
-                }
-            }
+    private inline fun <reified Ops : Any, P : AcpRequest, R : AcpResponse> handleSessionRequest(
+        method: AcpMethod.AcpRequestResponseMethod<P, R>,
+        crossinline sessionIdOf: (P) -> SessionId,
+        crossinline call: suspend Ops.(P) -> R,
+    ) {
+        protocol.setRequestHandler(method) { params ->
+            val session = sessions.awaitSession(sessionIdOf(params))
+            val ops = session.operations as? Ops ?: sessionMethodNotFound<Ops>(method)
+            session.executeWithSession { ops.call(params) }
         }
-        return clientSessionHolder
     }
 
-    /**
-     * Creates a new entry only if there are some currently initializing sessions. Otherwise, throws in the case of missing session.
-     */
-    private fun getOrCreateSessionHolder(sessionId: SessionId): ClientSessionHolder =
-        getOrCreateSessionHolderOrNull(sessionId) ?: acpFail("Session $sessionId not found")
+    @OptIn(UnstableApi::class)
+    private suspend fun createSessionElicitation(params: CreateElicitationRequest, sessionId: SessionId): CreateElicitationResponse {
+        val session = sessions.awaitSession(sessionId)
+        val ops = session.operations as? ElicitationOperations
+            ?: sessionMethodNotFound<ElicitationOperations>(AcpMethod.ClientMethods.V1.ElicitationCreate)
+        val response = session.executeWithSession { ops.createElicitation(params) }
+        // Only track URL-mode elicitation → session after a successful Accept response,
+        // since elicitation/complete only follows an accepted URL elicitation
+        trackUrlElicitationIfAccepted(params.mode, response, sessionId)
+        return response
+    }
 
-    internal fun removeSessionHolder(sessionId: SessionId) {
-        _sessions.update { currentMap ->
-            currentMap.copy(sessions = currentMap.sessions.remove(sessionId))
+    private fun createClientSession(
+        sessionHolder: RootSessionHolder,
+        sessionId: SessionId,
+        sessionParameters: SessionCreationParameters,
+        operations: ClientSessionOperations,
+        sessionResponse: AcpCreatedSessionResponse,
+    ): ClientSessionImpl = ClientSessionImpl(
+        this, sessionId, sessionParameters, operations, sessionResponse, protocol,
+        isOpen = { sessions.isOpen(sessionHolder) },
+        onClosed = { removeClosedSession(sessionHolder) },
+        holder = sessionHolder,
+    )
+
+    /**
+     * Removes the closed root [sessionHolder] and its subagents, and the elicitation entries of the ids that left the
+     * session map with them. A later holder of one of those ids keeps its entries.
+     */
+    private suspend fun removeClosedSession(sessionHolder: RootSessionHolder) {
+        val removed = sessions.removeSessionTree(sessionHolder)
+        for (id in removed) {
+            @OptIn(UnstableApi::class)
+            _elicitationToSession.removeBySession(id)
         }
-        @OptIn(UnstableApi::class)
-        _elicitationToSession.removeBySession(sessionId)
     }
 
     @OptIn(UnstableApi::class)
@@ -111,109 +108,64 @@ public class Client(
     init {
         // Set up request handlers for incoming agent requests
         protocol.setRequestHandler(AcpMethod.ClientMethods.V1.SessionRequestPermission) { params: RequestPermissionRequest ->
-            val session = getSessionOrThrow(params.sessionId)
+            /*
+             * A subagent's request joins its cancel race before the handler first suspends, so before any later
+             * notification is handled: a later `idle` with `cancelled`, a cancel or a close answers it even while it
+             * waits for the subagent's holder. It waits for the holder it found here, whose race it joined, and
+             * never looks the id up again.
+             */
+            val subagent = sessions.subagentHolderOrNull(params.sessionId)
+            if (subagent != null) {
+                return@setRequestHandler subagent.answerPermissionRequest(params.toolCall, params.options, params._meta)
+            }
+
+            val session = sessions.awaitSession(params.sessionId) as? ClientSessionImpl
+                ?: error("Session ${params.sessionId} is not a root session")
             return@setRequestHandler session.executeWithSession {
-                session.handlePermissionResponse(params.toolCall, params.options, params._meta)
+                session.answerPermissionRequest(params.toolCall, params.options, params._meta)
             }
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.V1.FsReadTextFile) { params ->
-            val session = getSessionOrThrow(params.sessionId)
-            val fs = session.operations as? FileSystemOperations
-                ?: sessionMethodNotFound<FileSystemOperations>(AcpMethod.ClientMethods.V1.FsReadTextFile)
-            return@setRequestHandler session.executeWithSession {
-                return@executeWithSession fs.fsReadTextFile(params.path, params.line, params.limit, params._meta)
-            }
+        handleSessionRequest<FileSystemOperations, _, _>(AcpMethod.ClientMethods.V1.FsReadTextFile, { it.sessionId }) { params ->
+            fsReadTextFile(params.path, params.line, params.limit, params._meta)
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.V1.FsWriteTextFile) { params ->
-            val session = getSessionOrThrow(params.sessionId)
-            val fs = session.operations as? FileSystemOperations
-                ?: sessionMethodNotFound<FileSystemOperations>(AcpMethod.ClientMethods.V1.FsWriteTextFile)
-            return@setRequestHandler session.executeWithSession {
-                return@executeWithSession fs.fsWriteTextFile(params.path, params.content, params._meta)
-            }
+        handleSessionRequest<FileSystemOperations, _, _>(AcpMethod.ClientMethods.V1.FsWriteTextFile, { it.sessionId }) { params ->
+            fsWriteTextFile(params.path, params.content, params._meta)
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.V1.TerminalCreate) { params ->
-            val session = getSessionOrThrow(params.sessionId)
-            val terminal = session.operations as? TerminalOperations
-                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.V1.TerminalCreate)
-            return@setRequestHandler session.executeWithSession {
-                return@executeWithSession terminal.terminalCreate(params.command, params.args, params.cwd, params.env, params.outputByteLimit, params._meta)
-            }
+        handleSessionRequest<TerminalOperations, _, _>(AcpMethod.ClientMethods.V1.TerminalCreate, { it.sessionId }) { params ->
+            terminalCreate(params.command, params.args, params.cwd, params.env, params.outputByteLimit, params._meta)
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.V1.TerminalKill) { params ->
-            val session = getSessionOrThrow(params.sessionId)
-            val terminal = session.operations as? TerminalOperations
-                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.V1.TerminalKill)
-            return@setRequestHandler session.executeWithSession {
-                return@executeWithSession terminal.terminalKill(params.terminalId, params._meta)
-            }
+        handleSessionRequest<TerminalOperations, _, _>(AcpMethod.ClientMethods.V1.TerminalKill, { it.sessionId }) { params ->
+            terminalKill(params.terminalId, params._meta)
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.V1.TerminalOutput) { params ->
-            val session = getSessionOrThrow(params.sessionId)
-            val terminal = session.operations as? TerminalOperations
-                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.V1.TerminalOutput)
-            return@setRequestHandler session.executeWithSession {
-                return@executeWithSession terminal.terminalOutput(params.terminalId, params._meta)
-            }
+        handleSessionRequest<TerminalOperations, _, _>(AcpMethod.ClientMethods.V1.TerminalOutput, { it.sessionId }) { params ->
+            terminalOutput(params.terminalId, params._meta)
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.V1.TerminalRelease) { params ->
-            val session = getSessionOrThrow(params.sessionId)
-            val terminal = session.operations as? TerminalOperations
-                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.V1.TerminalRelease)
-            return@setRequestHandler session.executeWithSession {
-                return@executeWithSession terminal.terminalRelease(params.terminalId, params._meta)
-            }
+        handleSessionRequest<TerminalOperations, _, _>(AcpMethod.ClientMethods.V1.TerminalRelease, { it.sessionId }) { params ->
+            terminalRelease(params.terminalId, params._meta)
         }
 
-        protocol.setRequestHandler(AcpMethod.ClientMethods.V1.TerminalWaitForExit) { params ->
-            val session = getSessionOrThrow(params.sessionId)
-            val terminal = session.operations as? TerminalOperations
-                ?: sessionMethodNotFound<TerminalOperations>(AcpMethod.ClientMethods.V1.TerminalWaitForExit)
-            return@setRequestHandler session.executeWithSession {
-                return@executeWithSession terminal.terminalWaitForExit(params.terminalId, params._meta)
-            }
+        handleSessionRequest<TerminalOperations, _, _>(AcpMethod.ClientMethods.V1.TerminalWaitForExit, { it.sessionId }) { params ->
+            terminalWaitForExit(params.terminalId, params._meta)
         }
 
         protocol.setNotificationHandler(AcpMethod.ClientMethods.V1.SessionUpdate) { params: SessionNotification ->
-            // The agent may report an update (e.g., a status change on `session/list`) for a session this client
-            // never called `session/new` / `session/load` / `session/resume` for. It can live on the server,
-            // created from another IDE window, the web, or another machine. That's not a protocol violation, so
-            // unlike other session-scoped methods, an unknown/unconnected session here must not fail the call.
-            // A speculative holder can also be reaped by `withInitializingSession` after we found it here.
-            val delivered = getOrCreateSessionHolderOrNull(params.sessionId)?.handleOrQueue(params.update, params._meta) ?: false
-            if (!delivered) {
-                handleUnconnectedSessionUpdate(params.sessionId, params.update, params._meta)
-            }
+            sessions.deliverSessionUpdate(params.sessionId, params.update, params._meta)
         }
 
         @OptIn(UnstableApi::class)
         protocol.setRequestHandler(AcpMethod.ClientMethods.V1.ElicitationCreate) { params: CreateElicitationRequest ->
             when (val scope = params.scope) {
-                is ElicitationScope.Session -> {
-                    val session = getSessionOrThrow(scope.sessionId)
-                    val ops = session.operations as? ElicitationOperations
-                        ?: sessionMethodNotFound<ElicitationOperations>(AcpMethod.ClientMethods.V1.ElicitationCreate)
-                    val response = session.executeWithSession { ops.createElicitation(params) }
-                    // Only track URL-mode elicitation → session after a successful Accept response,
-                    // since elicitation/complete only follows an accepted URL elicitation
-                    trackUrlElicitationIfAccepted(params.mode, response, scope.sessionId)
-                    response
-                }
+                is ElicitationScope.Session -> createSessionElicitation(params, scope.sessionId)
                 is ElicitationScope.Request -> {
                     val sessionId = protocol.getOutgoingRequestSessionId(scope.requestId)
                     if (sessionId != null) {
-                        val session = getSessionOrThrow(sessionId)
-                        val ops = session.operations as? ElicitationOperations
-                            ?: sessionMethodNotFound<ElicitationOperations>(AcpMethod.ClientMethods.V1.ElicitationCreate)
-                        val response = session.executeWithSession { ops.createElicitation(params) }
-                        trackUrlElicitationIfAccepted(params.mode, response, sessionId)
-                        response
+                        createSessionElicitation(params, sessionId)
                     } else {
                         @OptIn(UnstableApi::class)
                         val handler = globalElicitationHandler
@@ -226,25 +178,16 @@ public class Client(
 
         @OptIn(UnstableApi::class)
         protocol.setNotificationHandler(AcpMethod.ClientMethods.V1.ElicitationComplete) { params: CompleteElicitationNotification ->
-            var sessionId: SessionId? = _elicitationToSession.remove(params.elicitationId)
-
-            if (sessionId != null) {
-                // Session may have been closed between the elicitation and the completion;
-                // per the RFD, ignore unknown/already-completed IDs gracefully
-
-
-                val holder = _sessions.value.sessions[sessionId]
-                if (holder != null && holder.session.isCompleted) {
-                    val session = runCatching { getSessionOrThrow(sessionId) }.getOrNull()
-                    if (session != null) {
-                        val ops = session.operations as? ElicitationOperations
-                        if (ops != null) {
-                            session.executeWithSession { ops.completeElicitation(params) }
-                        }
-                    }
+            // Unknown or already-completed elicitation IDs are silently ignored per the RFD.
+            val sessionId = _elicitationToSession.remove(params.elicitationId)
+            if (sessionId != null && sessions.isSessionCompleted(sessionId)) {
+                // The session may have been closed between the elicitation and the completion.
+                val session = runCatching { sessions.awaitSession(sessionId) }.getOrNull()
+                val ops = session?.operations as? ElicitationOperations
+                if (session != null && ops != null) {
+                    session.executeWithSession { ops.completeElicitation(params) }
                 }
             }
-            // else: unknown or already-completed elicitation ID — silently ignore per RFD
         }
     }
 
@@ -408,30 +351,37 @@ public class Client(
     /**
      * Creates a new session with specified [sessionParameters].
      *
+     * The operations get [SessionEvent.Opened] and the buffered updates as [ClientOperationsFactory] describes, which
+     * also says when the call fails and what happens to the session's updates then.
+     *
      * @param sessionParameters parameters for creating a new session
      * @param operationsFactory a factory for creating [com.agentclientprotocol.common.ClientSessionOperations] for the new session.
      * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
      * See [ClientOperationsFactory.createClientOperations] for more details.
      * @return a [ClientSession] instance for the new session
+     * @throws IllegalStateException if the agent answers with the id of a session that is open or being opened in
+     *   this client
      */
     public suspend fun newSession(sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
-        return withInitializingSession {
-            val newSessionResponse = AcpMethod.AgentMethods.V1.SessionNew(
-                protocol,
+        return withAnsweredSessionId(sessionParameters, operationsFactory, NewSessionResponse::sessionId) { onResponse ->
+            protocol.sendRequest(
+                AcpMethod.AgentMethods.V1.SessionNew,
                 NewSessionRequest(
                     sessionParameters.cwd,
                     sessionParameters.mcpServers,
                     sessionParameters.additionalDirectories,
                     sessionParameters._meta
-                )
+                ),
+                onResponse,
             )
-            val sessionId = newSessionResponse.sessionId
-            return@withInitializingSession createSession(claimFactorySessionHolder(sessionId), sessionId, sessionParameters, newSessionResponse, operationsFactory)
         }
     }
 
     /**
      * Load an existing session with specified [sessionId] and [sessionParameters].
+     *
+     * The operations get [SessionEvent.Opened] and the buffered updates as [ClientOperationsFactory] describes, which
+     * also says when the call fails and what happens to the session's updates then.
      *
      * @param sessionId the id of the existing session to load
      * @param sessionParameters parameters for creating a new session
@@ -439,15 +389,12 @@ public class Client(
      * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
      * See [ClientOperationsFactory.createClientOperations] for more details.
      * @return a [ClientSession] instance for the new session
-     * @throws IllegalStateException before the request, if a call with ready operations has opened [sessionId] or
-     *   is opening it
+     * @throws IllegalStateException before the request, if [sessionId] is open or being opened in this client. To
+     *   load an open session again, close it first.
      */
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
-        return withFactoryInitializingSession(sessionId, sessionParameters, operationsFactory) {
-            AcpMethod.AgentMethods.V1.SessionLoad(
-                protocol,
-                loadSessionRequest(sessionId, sessionParameters)
-            )
+        return withFactoryInitializingSession(sessionId, sessionParameters, operationsFactory, replayRequested = true) { onResponse ->
+            protocol.sendRequest(AcpMethod.AgentMethods.V1.SessionLoad, loadSessionRequest(sessionId, sessionParameters), onResponse)
         }
     }
 
@@ -457,27 +404,29 @@ public class Client(
      * [ClientOperationsFactory] overload does.
      *
      * Each update reaches [ClientSessionOperations.notify] exactly once and in arrival order, before and after the
-     * answer. Before the answer, [kotlin.coroutines.CoroutineContext.clientSession] is not available in `notify`,
-     * and `notify` must not wait for this call to return. The mode and config options of the returned session are
-     * the same as with the [ClientOperationsFactory] overload.
+     * answer, and [SessionEvent.Opened] marks where the answer fell among them. Before the marker,
+     * [kotlin.coroutines.CoroutineContext.clientSession] is not available in `notify`, and `notify` must not wait for
+     * this call to return. The mode and config options of the returned session are the same as with the
+     * [ClientOperationsFactory] overload.
      *
-     * If the agent answers with an error, `notify` throws, or the caller is cancelled, the load fails. The updates
-     * that [operations] did not receive yet, and all later updates for [sessionId], go to [globalSessionUpdateHandler].
+     * The load fails if the agent answers with an error, or if the caller is cancelled or `notify` throws before
+     * this call returns. A load that fails before the answer arrives delivers no marker to [operations]. Once the
+     * answer has arrived, the marker may have been delivered even though the load then fails, so treat a failed
+     * call as a failed load. The updates that [operations] did not receive yet, and all later updates for
+     * [sessionId], then go to [globalSessionUpdateHandler], and [sessionId] can be loaded again. After this call has
+     * returned, a failure of `notify` is logged, as for any live update.
      *
      * @param sessionId the id of the existing session to load
      * @param sessionParameters parameters for loading the session
      * @param operations the operations of the session. It must also implement the interfaces for the extra
      * capabilities that the client declares, like file system or terminal support.
      * @return a [ClientSession] instance for the loaded session
-     * @throws IllegalStateException before the request, if [sessionId] already has a session in this client or
-     *   another call is opening it
+     * @throws IllegalStateException before the request, if [sessionId] is open or being opened in this client. To
+     *   load an open session again, close it first.
      */
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operations: ClientSessionOperations): ClientSession {
-        return withEarlyInitializingSession(sessionId, sessionParameters, operations) {
-            AcpMethod.AgentMethods.V1.SessionLoad(
-                protocol,
-                loadSessionRequest(sessionId, sessionParameters)
-            )
+        return withEarlyInitializingSession(sessionId, sessionParameters, operations, replayRequested = true) { onResponse ->
+            protocol.sendRequest(AcpMethod.AgentMethods.V1.SessionLoad, loadSessionRequest(sessionId, sessionParameters), onResponse)
         }
     }
 
@@ -529,28 +478,32 @@ public class Client(
      *
      * Forks an existing session, creating a new session based on the existing session's context.
      *
+     * The operations get [SessionEvent.Opened] and the buffered updates as [ClientOperationsFactory] describes, which
+     * also says when the call fails and what happens to the session's updates then.
+     *
      * @param sessionId the id of the session to fork
      * @param sessionParameters parameters for the forked session
      * @param operationsFactory a factory for creating [com.agentclientprotocol.common.ClientSessionOperations] for the new session.
      * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
      * See [ClientOperationsFactory.createClientOperations] for more details.
      * @return a [ClientSession] instance for the forked session
+     * @throws IllegalStateException if the agent answers with the id of a session that is open or being opened in
+     *   this client
      */
     @UnstableApi
     public suspend fun forkSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
-        return withInitializingSession {
-            val forkSessionResponse = AcpMethod.AgentMethods.V1.SessionFork(
-                protocol,
+        return withAnsweredSessionId(sessionParameters, operationsFactory, ForkSessionResponse::sessionId) { onResponse ->
+            protocol.sendRequest(
+                AcpMethod.AgentMethods.V1.SessionFork,
                 ForkSessionRequest(
                     sessionId,
                     sessionParameters.cwd,
                     sessionParameters.mcpServers,
                     sessionParameters.additionalDirectories,
                     sessionParameters._meta
-                )
+                ),
+                onResponse,
             )
-            val newSessionId = forkSessionResponse.sessionId
-            return@withInitializingSession createSession(claimFactorySessionHolder(newSessionId), newSessionId, sessionParameters, forkSessionResponse, operationsFactory)
         }
     }
 
@@ -561,6 +514,9 @@ public class Client(
      *
      * Resumes an existing session without replaying message history.
      *
+     * The operations get [SessionEvent.Opened] and the buffered updates as [ClientOperationsFactory] describes, which
+     * also says when the call fails and what happens to the session's updates then.
+     *
      * This method is only available if the agent advertises the `session.resume` capability.
      *
      * @param sessionId the id of the session to resume
@@ -569,16 +525,12 @@ public class Client(
      * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
      * See [ClientOperationsFactory.createClientOperations] for more details.
      * @return a [ClientSession] instance for the resumed session
-     * @throws IllegalStateException before the request, if a call with ready operations has opened [sessionId] or
-     *   is opening it
+     * @throws IllegalStateException before the request, if [sessionId] is open or being opened in this client
      */
     @UnstableApi
     public suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
-        return withFactoryInitializingSession(sessionId, sessionParameters, operationsFactory) {
-            AcpMethod.AgentMethods.V1.SessionResume(
-                protocol,
-                resumeSessionRequest(sessionId, sessionParameters)
-            )
+        return withFactoryInitializingSession(sessionId, sessionParameters, operationsFactory, replayRequested = false) { onResponse ->
+            protocol.sendRequest(AcpMethod.AgentMethods.V1.SessionResume, resumeSessionRequest(sessionId, sessionParameters), onResponse)
         }
     }
 
@@ -599,14 +551,12 @@ public class Client(
      * @param operations the operations of the session. It must also implement the interfaces for the extra
      * capabilities that the client declares, like file system or terminal support.
      * @return a [ClientSession] instance for the resumed session
+     * @throws IllegalStateException before the request, if [sessionId] is open or being opened in this client
      */
     @UnstableApi
     public suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operations: ClientSessionOperations): ClientSession {
-        return withEarlyInitializingSession(sessionId, sessionParameters, operations) {
-            AcpMethod.AgentMethods.V1.SessionResume(
-                protocol,
-                resumeSessionRequest(sessionId, sessionParameters)
-            )
+        return withEarlyInitializingSession(sessionId, sessionParameters, operations, replayRequested = false) { onResponse ->
+            protocol.sendRequest(AcpMethod.AgentMethods.V1.SessionResume, resumeSessionRequest(sessionId, sessionParameters), onResponse)
         }
     }
 
@@ -655,91 +605,132 @@ public class Client(
     }
 
     /**
-     * After ClientSessionImpl is created the delayed notifications are drained and pushed into session.notify()
+     * Creates the session with [factory] after the answer, and delivers the updates buffered in [sessionHolder] to it:
+     * the history, then the marker, then the live updates, see [RootSessionHolder.completeOpening]. If the factory
+     * or the delivery fails, or the caller is cancelled, the holder fails, even if the operations got the marker. A
+     * cancellation that the factory throws while the caller is active becomes an [IllegalStateException].
      */
     private suspend fun createSession(
-        sessionHolder: ClientSessionHolder,
+        sessionHolder: RootSessionHolder,
         sessionId: SessionId,
         sessionParameters: SessionCreationParameters,
         sessionResponse: AcpCreatedSessionResponse,
         factory: ClientOperationsFactory,
     ): ClientSession {
         return runCatching {
-            val operations = factory.createClientOperations(sessionId, sessionResponse)
-            val session = ClientSessionImpl(this, sessionId, sessionParameters, operations, sessionResponse, protocol)
-            sessionHolder.drainEventsAndCompleteSession(session)
+            val operations = try {
+                factory.createClientOperations(sessionId, sessionResponse)
+            } catch (ce: CancellationException) {
+                // As for `notify`, a cancellation the factory throws while the caller is active fails the opening.
+                currentCoroutineContext().ensureActive()
+                throw IllegalStateException("createClientOperations was cancelled", ce)
+            }
+            val session = createClientSession(sessionHolder, sessionId, sessionParameters, operations, sessionResponse)
+            val opened = sessionHolder.drainHistory(session)
+            sessionHolder.completeOpening(session, opened)
             session
         }.getOrElse { throwable ->
             // throw IllegalStateException to pass it as INTERNAL_ERROR to the other side (see in Protocol)
-            failSessionHolder(sessionId, sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
+            sessions.failSessionTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             // cleanup of this sessionId entry will be done in finally of withInitializingSession
             throw throwable
         }
     }
 
     /**
-     * Returns the holder of [sessionId], claimed by a factory call.
-     * Must run under [withInitializingSession], which makes sure the holder exists.
-     */
-    private fun claimFactorySessionHolder(sessionId: SessionId): ClientSessionHolder {
-        val sessionHolder = getOrCreateSessionHolder(sessionId)
-        check(sessionHolder.claim(ClientSessionHolder.Opener.FACTORY)) { "Session $sessionId is already open or being opened" }
-        return sessionHolder
-    }
-
-    /**
-     * Returns the holder of [sessionId], claimed by an operations call.
-     * Must run under [withInitializingSession], which makes sure the holder exists.
-     */
-    private fun claimOperationsSessionHolder(sessionId: SessionId): ClientSessionHolder {
-        val sessionHolder = getOrCreateSessionHolder(sessionId)
-        check(sessionHolder.claim(ClientSessionHolder.Opener.OPERATIONS)) { "Session $sessionId is already open or being opened" }
-        return sessionHolder
-    }
-
-    /**
-     * Opens the session [sessionId] with [request] under [withInitializingSession], and buffers its updates until
-     * [factory] creates the operations after the answer.
+     * Opens the session [sessionId] with [request] under [ClientSessionRegistry.withInitializingSession], and buffers
+     * its updates until [factory] creates the operations after the answer.
      *
-     * The holder is claimed before [request] sends anything, so a load with ready operations of the same id fails
-     * before its own request. If [request] fails, the holder fails, and the updates in its queue go to
+     * The holder is claimed before [request] sends anything, so another opening of the same id fails before its own
+     * request. [request] must pass its `onResponse` argument to the response hook of the call: it puts the marker into
+     * the holder's queue. If [request] fails, the holder fails, and the updates in its queue go to
      * [globalSessionUpdateHandler].
      */
     private suspend fun withFactoryInitializingSession(
         sessionId: SessionId,
         sessionParameters: SessionCreationParameters,
         factory: ClientOperationsFactory,
-        request: suspend () -> AcpCreatedSessionResponse,
-    ): ClientSession = withInitializingSession {
-        val sessionHolder = claimFactorySessionHolder(sessionId)
+        replayRequested: Boolean,
+        request: suspend (onResponse: (AcpCreatedSessionResponse) -> Unit) -> AcpCreatedSessionResponse,
+    ): ClientSession = sessions.withInitializingSession {
+        val sessionHolder = sessions.claimSessionHolder(sessionId, replayRequested, sessionParameters)
         val sessionResponse = try {
-            request()
+            request { response -> sessionHolder.markOpened(response) }
         } catch (throwable: Throwable) {
-            failSessionHolder(sessionId, sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
+            /*
+             * The hook may have put the marker into the queue before a cancellation won. Failing the holder drops
+             * the marker, so nothing delivers it.
+             */
+            sessions.failSessionTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             throw throwable
         }
         createSession(sessionHolder, sessionId, sessionParameters, sessionResponse, factory)
     }
 
     /**
-     * Opens the session [sessionId] with [request] under [withInitializingSession], and delivers its updates to
+     * Opens a session whose id first appears in the answer, `session/new` or `session/fork`, with [request] under
+     * [ClientSessionRegistry.withInitializingSession], and buffers its updates until [factory] creates the operations
+     * after the answer.
+     *
+     * [request] must pass its `onResponse` argument to the response hook of the call: it claims the holder of the
+     * answered id and puts the marker into its queue in one step, in the read loop, so the marker keeps its place
+     * among the updates that the agent sent for the new id before and after the answer.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private suspend fun <R : AcpCreatedSessionResponse> withAnsweredSessionId(
+        sessionParameters: SessionCreationParameters,
+        factory: ClientOperationsFactory,
+        sessionIdOf: (R) -> SessionId,
+        request: suspend (onResponse: (R) -> Unit) -> R,
+    ): ClientSession = sessions.withInitializingSession {
+        val claimed = CompletableDeferred<Pair<SessionId, RootSessionHolder>?>()
+        val sessionResponse = try {
+            request { response ->
+                val sessionId = sessionIdOf(response)
+                claimed.complete(sessions.claimAnsweredSessionHolder(sessionId, response, sessionParameters)?.let { sessionId to it })
+            }
+        } catch (throwable: Throwable) {
+            /*
+             * The hook may have claimed a holder before a cancellation won: fail it, which drops its marker. In the
+             * rare case that the hook still runs after this check, for example while the connection closes, the
+             * holder stays incomplete, and the reaping at the end of the last opening fails it.
+             */
+            val claimedHolder = if (claimed.isCompleted) claimed.getCompleted() else null
+            if (claimedHolder != null) {
+                val (sessionId, holder) = claimedHolder
+                sessions.failSessionTree(holder, IllegalStateException("Failed to create session $sessionId", throwable))
+            }
+            throw throwable
+        }
+        val sessionId = sessionIdOf(sessionResponse)
+        // A normal return means the hook has run.
+        val (_, sessionHolder) = claimed.getCompleted() ?: error("Session $sessionId is already open or being opened")
+        createSession(sessionHolder, sessionId, sessionParameters, sessionResponse, factory)
+    }
+
+    /**
+     * Opens the session [sessionId] with [request] under [ClientSessionRegistry.withInitializingSession], and delivers its updates to
      * [operations] before the answer.
      *
      * The holder is claimed before [request] sends anything, and one consumer hands its queue to [operations] until
-     * the answer. If the opening fails, also in [ClientSessionOperations.notify] or by a cancellation, the holder
-     * fails, and the updates still in its queue go to [globalSessionUpdateHandler].
+     * the marker that the response hook of [request] adds. The consumer stops at the marker, and only after [request]
+     * has returned is the marker delivered, so a call that fails, even by a cancellation that races with the answer,
+     * delivers none. If the opening fails, also in [ClientSessionOperations.notify] or by a cancellation, before or
+     * after the marker is delivered, the holder fails, and the updates still in its queue go to
+     * [globalSessionUpdateHandler].
      */
     private suspend fun withEarlyInitializingSession(
         sessionId: SessionId,
         sessionParameters: SessionCreationParameters,
         operations: ClientSessionOperations,
-        request: suspend () -> AcpCreatedSessionResponse,
-    ): ClientSession = withInitializingSession {
-        val sessionHolder = claimOperationsSessionHolder(sessionId)
+        replayRequested: Boolean,
+        request: suspend (onResponse: (AcpCreatedSessionResponse) -> Unit) -> AcpCreatedSessionResponse,
+    ): ClientSession = sessions.withInitializingSession {
+        val sessionHolder = sessions.claimSessionHolder(sessionId, replayRequested, sessionParameters)
 
         try {
-            coroutineScope {
-                val earlyDelivery = launch {
+            val (session, opened) = coroutineScope {
+                val earlyDelivery = async {
                     try {
                         sessionHolder.deliverEarly(operations)
                     } catch (ce: CancellationException) {
@@ -751,16 +742,17 @@ public class Client(
                         throw IllegalStateException("ClientSessionOperations.notify was cancelled", ce)
                     }
                 }
-                val sessionResponse = request()
-                sessionHolder.endEarlyDelivery()
-                earlyDelivery.join()
-                val session = ClientSessionImpl(this@Client, sessionId, sessionParameters, operations, sessionResponse, protocol)
-                sessionHolder.completeEarlySession(session)
-                session
+                val sessionResponse = request { response -> sessionHolder.markOpened(response) }
+                val opened = checkNotNull(earlyDelivery.await()) { "The queue of session $sessionId closed before its answer" }
+                val session = createClientSession(sessionHolder, sessionId, sessionParameters, operations, sessionResponse)
+                sessionHolder.applyEarlyState(session)
+                session to opened
             }
+            sessionHolder.completeOpening(session, opened)
+            session
         } catch (throwable: Throwable) {
             // The cleanup of this sessionId entry is done in finally of withInitializingSession.
-            failSessionHolder(sessionId, sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
+            sessions.failSessionTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             throw throwable
         }
     }
@@ -784,38 +776,7 @@ public class Client(
         )
 
     public fun getSession(sessionId: SessionId): ClientSession {
-        val sessionHolder = _sessions.value.sessions[sessionId] ?: error("Session $sessionId not found")
-        if (!sessionHolder.session.isCompleted) error("Session $sessionId not initialized yet")
-        @OptIn(ExperimentalCoroutinesApi::class)
-        return sessionHolder.session.getCompleted()
-    }
-
-    private suspend fun getSessionOrThrow(sessionId: SessionId): ClientSessionImpl {
-        return getOrCreateSessionHolder(sessionId).session.await()
-    }
-
-    private suspend fun handleUnconnectedSessionUpdate(sessionId: SessionId, update: SessionUpdate, _meta: JsonElement?) {
-        val handler = globalSessionUpdateHandler
-        if (handler != null) {
-            handler.onUnconnectedSessionUpdate(sessionId, update, _meta)
-        } else {
-            logger.debug { "Ignoring session/update for session $sessionId: client is not connected to it" }
-        }
-    }
-
-    /**
-     * Fails [holder] with [cause] and hands its queued updates to [globalSessionUpdateHandler] at once.
-     *
-     * Every failure of a holder goes through here, so a failed holder keeps no updates. A failure of the handler is
-     * logged per update, so it neither stops the drain nor replaces the failure that the caller sees.
-     */
-    private suspend fun failSessionHolder(sessionId: SessionId, holder: ClientSessionHolder, cause: Throwable) {
-        withContext(NonCancellable) {
-            holder.failAndDrainQueue(cause) { update, meta ->
-                runCatching { handleUnconnectedSessionUpdate(sessionId, update, meta) }
-                    .onFailure { logger.error(it) { "Unconnected session update handler failed for $sessionId" } }
-            }
-        }
+        return sessions.getRootSession(sessionId)
     }
 
     @OptIn(UnstableApi::class)
@@ -825,49 +786,6 @@ public class Client(
         }
     }
 
-    private suspend fun<T> withInitializingSession(block: suspend () -> T): T {
-        _sessions.update { it.copy(initializingSessionsCount = it.initializingSessionsCount + 1) }
-        try {
-            return block()
-        } finally {
-            var hangingSessions: Map<SessionId, ClientSessionHolder>? = null
-            _sessions.update { currentStorage ->
-                hangingSessions = null
-                if (currentStorage.initializingSessionsCount == 0) {
-                    logger.error { "Assertion failed: initializingSessionsCount should be positive, got ${currentStorage.initializingSessionsCount}" }
-                    return@update currentStorage
-                }
-                val newCount = currentStorage.initializingSessionsCount - 1
-                return@update if (newCount == 0) {
-                    // this means that currently no sessions can be in initializing state during to ongoing load/new/fork/resume calls
-                    // so if on exit from these methods we observe any entries with not completed or failed state we assume that someone sent us events with non-existent session ids
-                    // and we have to remove them and report errors
-                    hangingSessions = currentStorage.sessions.filterValues {
-                        @OptIn(ExperimentalCoroutinesApi::class)
-                        !it.session.isCompleted || it.session.getCompletionExceptionOrNull() != null
-                    }
-                    var aliveSessions: PersistentMap<SessionId, ClientSessionHolder> = currentStorage.sessions
-                    for ((id, _) in hangingSessions) {
-                        aliveSessions = aliveSessions.remove(id)
-                    }
-                    currentStorage.copy(initializingSessionsCount = newCount, sessions = aliveSessions)
-                } else {
-                    currentStorage.copy(initializingSessionsCount = newCount)
-                }
-            }
-            if (hangingSessions != null) {
-                for ((id, holder) in hangingSessions) {
-                    logger.trace { "Removing hanging session $id" }
-                    /*
-                     * Report it as a non-existent session. Its updates were buffered on the assumption they might
-                     * belong to this (or another concurrent) initialization; since none claimed `id`, it's an
-                     * unconnected session, same as if no initialization had been in progress when they arrived.
-                     */
-                    failSessionHolder(id, holder, AcpExpectedError("Session $id not found"))
-                }
-            }
-        }
-    }
 }
 
 private inline fun <reified TInterface> sessionMethodNotFound(method: AcpMethod): Nothing {

@@ -96,3 +96,6 @@ build
 out
 /.kotlin/
 /.env
+
+# Local scratch files
+/scratch/

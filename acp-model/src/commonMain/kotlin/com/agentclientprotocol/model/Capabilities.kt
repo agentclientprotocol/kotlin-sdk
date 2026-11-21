@@ -94,7 +94,10 @@ public data class ClientCapabilities(
     val positionEncodings: List<PositionEncodingKind>? = null,
     @property:UnstableApi
     val elicitation: ElicitationCapabilities? = null,
-    override val _meta: JsonElement? = null
+    override val _meta: JsonElement? = null,
+    @property:UnstableApi
+    @Serializable(with = LenientSubagentCapabilitiesSerializer::class)
+    val subagents: SubagentCapabilities? = null,
 ) : AcpCapabilities, AcpWithMeta
 
 /**
@@ -157,15 +160,10 @@ public data class SessionDeleteCapabilities(
 ) : AcpWithMeta
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * Capabilities for the `session/close` method.
  *
  * By supplying `{}` it means that the agent supports closing of sessions.
  */
-@UnstableApi
 @Serializable
 public data class SessionCloseCapabilities(
     override val _meta: JsonElement? = null
@@ -197,7 +195,6 @@ public data class SessionCapabilities(
     val list: SessionListCapabilities? = null,
     val resume: SessionResumeCapabilities? = null,
     val delete: SessionDeleteCapabilities? = null,
-    @property:UnstableApi
     val close: SessionCloseCapabilities? = null,
     @property:UnstableApi
     val additionalDirectories: SessionAdditionalDirectoriesCapabilities? = null,

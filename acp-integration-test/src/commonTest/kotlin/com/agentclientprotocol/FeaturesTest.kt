@@ -30,11 +30,7 @@ open class TestClientSessionOperations(): ClientSessionOperations {
         TODO()
     }
 
-    override suspend fun notify(
-        notification: SessionUpdate,
-        _meta: JsonElement?,
-    ) {
-    }
+    override suspend fun notify(event: SessionEvent) {}
 }
 
 open class TestAgentSession(override val sessionId: SessionId = SessionId("test-session-id")) : AgentSession {
@@ -121,7 +117,9 @@ abstract class FeaturesTest(protocolDriver: ProtocolDriver) : ProtocolDriver by 
         assertContentEquals(listOf("Hello", "File content: test", "END_TURN"), result)
     }
 
+    // TODO assert the current_mode_update in notify instead, together with removing the deprecated ClientSession.currentMode.
     @Test
+    @Suppress("DEPRECATION")
     fun `change mode from client`() = testWithProtocols { clientProtocol, agentProtocol ->
         val client = Client(protocol = clientProtocol)
 

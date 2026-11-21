@@ -5,6 +5,7 @@ package com.agentclientprotocol.client
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.SessionCreationParameters
+import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.ContentBlock
 import com.agentclientprotocol.model.NewSessionResponse
@@ -107,7 +108,8 @@ private object NoOpSessionOperations : ClientSessionOperations {
         _meta: JsonElement?,
     ): RequestPermissionResponse = error("not expected in this test")
 
-    override suspend fun notify(notification: SessionUpdate, _meta: JsonElement?) {
+    override suspend fun notify(event: SessionEvent) {
+        if (event !is SessionEvent.Update) return
         error("no updates expected for the session being created in this test")
     }
 }

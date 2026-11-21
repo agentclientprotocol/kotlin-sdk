@@ -20,7 +20,7 @@ import com.agentclientprotocol.model.v2.CloseSessionResponse
 import com.agentclientprotocol.model.v2.ConfigOptionUpdate
 import com.agentclientprotocol.model.v2.ContentBlock
 import com.agentclientprotocol.model.v2.ContentChunk
-import com.agentclientprotocol.model.v2.MaybeUndefined
+import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.v2.SessionCapabilities
 import com.agentclientprotocol.model.v2.SessionConfigKind
 import com.agentclientprotocol.model.v2.SessionConfigOption

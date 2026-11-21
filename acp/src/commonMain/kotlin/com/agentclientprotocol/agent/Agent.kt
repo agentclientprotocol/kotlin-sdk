@@ -3,7 +3,6 @@ package com.agentclientprotocol.agent
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.ClientInfo
 import com.agentclientprotocol.common.ClientSessionOperations
-import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.*
@@ -11,21 +10,12 @@ import com.agentclientprotocol.util.SequenceToPaginatedResponseAdapter
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
+import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentMapOf
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.getAndUpdate
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.JsonElement
-import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlinx.coroutines.currentCoroutineContext
 import kotlin.coroutines.CoroutineContext
 
 private val logger = KotlinLogging.logger {}
@@ -50,163 +40,28 @@ public class Agent(
     private val agentSupport: AgentSupport,
 ) {
 
-    internal open class BaseSessionWrapper(
-        val agent: Agent,
-        val protocol: Protocol
-    ) {
-        internal suspend fun <T> executeWithSession(block: suspend () -> T): T {
-            return withContext(this.asContextElement()) {
-                return@withContext block()
-            }
-        }
-    }
-
-    internal class SessionWrapper(
-        agent: Agent,
-        val agentSession: AgentSession,
-        val clientOperations: ClientSessionOperations,
-        protocol: Protocol
-    ) : BaseSessionWrapper(agent, protocol) {
-        private class PromptSession(val promptJob: Job) {
-            /**
-             * The number of cancels still running for this turn, or [ANSWERING] once the turn has passed the wait for
-             * them and is about to answer.
-             */
-            private val runningCancels = MutableStateFlow(0)
-
-            private val _isCancelRequested = atomic(false)
-
-            /**
-             * Whether a `session/cancel` targeted this turn before it started answering.
-             */
-            val isCancelRequested: Boolean get() = _isCancelRequested.value
-
-            /**
-             * Registers a cancel for this turn. Returns `false` if the turn is already answering.
-             */
-            fun startCancel(): Boolean {
-                val started = runningCancels.getAndUpdate { if (it == ANSWERING) it else it + 1 } != ANSWERING
-                if (started) _isCancelRequested.value = true
-                return started
-            }
-
-            fun finishCancel() {
-                runningCancels.update { it - 1 }
-            }
-
-            /**
-             * Suspends until no cancel is running for this turn, then marks the turn as answering.
-             */
-            suspend fun awaitCancels() {
-                while (!runningCancels.compareAndSet(0, ANSWERING)) {
-                    runningCancels.first { it == 0 }
-                }
-            }
-
-            private companion object {
-                const val ANSWERING = -1
-            }
-        }
-
-        private val _activePrompt = atomic<PromptSession?>(null)
-
-        @OptIn(UnstableApi::class)
-        suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): PromptResponse {
-            var response: PromptResponse? = null
-            var failure: Throwable? = null
-            return coroutineScope {
-                val promptJob = launch(start = CoroutineStart.LAZY) {
-                    /*
-                     * Keep a failure inside the turn's job, so a failed turn still waits for running cancels and a
-                     * cancel can still decide its answer.
-                     */
-                    try {
-                        agentSession.prompt(content, _meta).collect { event ->
-                            when (event) {
-                                is Event.PromptResponseEvent -> {
-                                    if (response != null) {
-                                        logger.error { "Received repeated prompt response: ${event.response} (previous: $response). The last is used" }
-                                    }
-                                    response = event.response
-                                }
-
-                                is Event.SessionUpdateEvent -> {
-                                    clientOperations.notify(event.update, _meta)
-                                }
-                            }
-                        }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Throwable) {
-                        failure = e
-                    }
-                }
-
-                val promptSession = PromptSession(promptJob)
-                if (!_activePrompt.compareAndSet(null, promptSession)) {
-                    error("There is already active prompt execution")
-                }
-                try {
-                    promptJob.join()
-                    /*
-                     * A cancelled turn answers only after the session's cancel() returns: the response must follow
-                     * every aborted operation and every update, including those sent from cancel().
-                     */
-                    promptSession.awaitCancels()
-                    /*
-                     * The session's cancel() may stop the turn cooperatively, so its flow ends normally before the
-                     * SDK cancels the job. The client still cancelled the turn and must get the `cancelled` reason.
-                     */
-                    val isCancelled = promptJob.isCancelled || promptSession.isCancelRequested
-                    failure?.let { e ->
-                        if (!isCancelled) throw e
-                        logger.debug(e) { "Prompt turn failed after a cancel; answering as cancelled" }
-                    }
-                    response ?: PromptResponse(
-                        stopReason = if (isCancelled) StopReason.CANCELLED else StopReason.END_TURN
-                    )
-                } finally {
-                    // Only the turn frees its slot, so the next prompt can start only after this one has answered.
-                    _activePrompt.value = null
-                }
-            }
-        }
-
-        suspend fun cancel() {
-            /*
-             * Take the turn to cancel before notifying the session: the session's cancel() may suspend, and a turn
-             * that has already answered may be followed by the next one meanwhile, which this cancel must not touch.
-             */
-            val promptToCancel = _activePrompt.value?.takeIf { it.startCancel() }
-            try {
-                // notify AgentSession about upcoming cancellation, this way implementations can gracefully stop ongoing requests
-                agentSession.cancel()
-
-                if (promptToCancel != null) {
-                    logger.trace { "Cancelling prompt" }
-                    // we expect that all nested outgoing jobs will be cancelled automatically due to structured concurrency
-                    // -> prompt task
-                    //   <- [request] read file
-                    //   -> [response] read file
-                    //   <- [request] permissions
-                    //   |suspended|
-                    // cancelling the whole prompt should cancel all nested outgoing requests. These requests on CE will propagate cancellation to the other side
-                    promptToCancel.promptJob.cancel()
-                }
-            } finally {
-                promptToCancel?.finishCancel()
-            }
-        }
-    }
-
-    internal class NesSessionWrapper @OptIn(UnstableApi::class) constructor(
-        agent: Agent,
-        val nesSession: NesAgentSession,
-        protocol: Protocol
-    ) : BaseSessionWrapper(agent, protocol)
-
     private val _clientInfo = CompletableDeferred<ClientInfo>()
-    private val _sessions = atomic(persistentMapOf<SessionId, SessionWrapper>())
+
+    /**
+     * The root sessions and subagents registered on this connection, at every depth, by their own session id.
+     *
+     * Both maps are one snapshot, so each rule that spans them is checked and applied in one compare-and-set: a
+     * subagent is added only while its root is registered, a root leaves or is replaced together with its subagents,
+     * and an id is never a root's and a subagent's at once. So no subagent can stay registered under a root that is
+     * gone.
+     */
+    private val _sessions = atomic(SessionTable(persistentMapOf(), persistentMapOf()))
+
+    private class SessionTable(
+        val roots: PersistentMap<SessionId, RootSessionWrapper>,
+        val subagents: PersistentMap<SessionId, SubagentSessionWrapper>,
+    ) {
+        fun subagentsOf(root: RootSessionWrapper): List<SubagentSessionWrapper> =
+            subagents.values.filter { it.root === root }
+
+        fun withoutSubagents(removed: List<SubagentSessionWrapper>): PersistentMap<SessionId, SubagentSessionWrapper> =
+            subagents.mutate { map -> removed.forEach { map.remove(it.sessionId) } }
+    }
 
     private val _nesSessions = atomic(persistentMapOf<SessionId, NesSessionWrapper>())
 
@@ -307,6 +162,7 @@ public class Agent(
         }
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.V1.SessionDelete) { params: DeleteSessionRequest ->
+            checkNotSubagent(params.sessionId)
             return@setRequestHandler agentSupport.deleteSession(params.sessionId, params._meta)
         }
 
@@ -326,10 +182,11 @@ public class Agent(
         }
 
         protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V1.SessionLoad) { params: LoadSessionRequest ->
+            checkNotSubagent(params.sessionId)
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val created = createSession(
                 sessionParameters,
-                beforeResponse = { session -> session.replayHistory() },
+                replayHistory = { session -> session.replayHistory() },
             ) { agentSupport.loadSession(params.sessionId, sessionParameters) }
             @OptIn(UnstableApi::class)
             return@setRequestOutcomeHandler created.mapResponse { session ->
@@ -344,6 +201,7 @@ public class Agent(
         }
 
         protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V1.SessionResume) { params: ResumeSessionRequest ->
+            checkNotSubagent(params.sessionId)
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val created = createSession(sessionParameters) { agentSupport.resumeSession(params.sessionId, sessionParameters) }
             return@setRequestOutcomeHandler created.mapResponse { session ->
@@ -376,24 +234,43 @@ public class Agent(
         }
 
         protocol.setNotificationHandler(AcpMethod.AgentMethods.V1.SessionCancel) { params: CancelNotification ->
+            val child = subagentOrNull(params.sessionId)
+            if (child != null) {
+                child.cancel()
+                return@setNotificationHandler
+            }
             val session = getSessionOrThrow(params.sessionId)
             session.executeWithSession {
                 session.cancel()
             }
         }
 
-        @OptIn(UnstableApi::class)
         protocol.setRequestHandler(AcpMethod.AgentMethods.V1.SessionClose) { params: CloseSessionRequest ->
-            val session = getSessionOrThrow(params.sessionId)
+            /*
+             * Closing is idempotent: an unknown id, or one already closed, gets the empty result without calling the
+             * app (https://agentclientprotocol.com/protocol/v1/session-setup#closing-active-sessions). A subagent's id
+             * is still rejected, because the client may only cancel a subagent.
+             */
+            val session = _sessions.value.roots[params.sessionId] ?: run {
+                checkNotSubagent(params.sessionId)
+                return@setRequestHandler CloseSessionResponse()
+            }
             val response = session.executeWithSession {
                 session.agentSession.close(params._meta)
             }
-            _sessions.update { it.remove(params.sessionId) }
+            /*
+             * Clean the subtree up before answering, so no update for the children reaches the client after the
+             * response. Requests the children have in flight, and their $/cancel_request, may still follow it.
+             * If close() threw, the session and its children stay registered. A root that replaced this one while
+             * close() ran stays registered.
+             */
+            removeRoot(session)
             return@setRequestHandler response
         }
 
         @OptIn(UnstableApi::class)
         protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V1.SessionFork) { params: ForkSessionRequest ->
+            checkNotSubagent(params.sessionId)
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val created = createSession(sessionParameters) { agentSupport.forkSession(params.sessionId, sessionParameters) }
             return@setRequestOutcomeHandler created.mapResponse { session ->
@@ -408,6 +285,7 @@ public class Agent(
 
         @OptIn(UnstableApi::class)
         protocol.setRequestOutcomeHandler(AcpMethod.AgentMethods.V1.SessionResume) { params: ResumeSessionRequest ->
+            checkNotSubagent(params.sessionId)
             val sessionParameters = SessionCreationParameters(params.cwd, params.mcpServers, params.additionalDirectories, params._meta)
             val created = createSession(sessionParameters) { agentSupport.resumeSession(params.sessionId, sessionParameters) }
             return@setRequestOutcomeHandler created.mapResponse { session ->
@@ -515,51 +393,151 @@ public class Agent(
         }
     }
 
+    /**
+     * Opens a root session. [replayHistory] is given only for `session/load`: it runs before the response, in the
+     * replay window of the new session.
+     */
+    @OptIn(UnstableApi::class)
     private suspend fun createSession(
         sessionParameters: SessionCreationParameters,
-        beforeResponse: suspend (AgentSession) -> Unit = {},
+        replayHistory: (suspend (AgentSession) -> Unit)? = null,
         sessionFactory: suspend (SessionCreationParameters) -> AgentSession,
     ): RequestOutcome<AgentSession> {
         val session = sessionFactory(sessionParameters)
         val clientInfo = getClientInfoOrThrow()
 
-        val sessionWrapper = SessionWrapper(
+        val sessionWrapper = RootSessionWrapper(
             this,
             session,
             RemoteClientSessionOperations(protocol, session.sessionId, clientInfo.capabilities),
-            protocol
+            protocol,
+            subagentsSupported = clientInfo.capabilities.subagents != null,
+            replaying = replayHistory != null,
         )
 
-        _sessions.update {
-            it.put(session.sessionId, sessionWrapper)
-        }
-
-        try {
-            sessionWrapper.executeWithSession { beforeResponse(session) }
-        } catch (t: Throwable) {
-            _sessions.update { sessions ->
-                if (sessions[session.sessionId] === sessionWrapper) sessions.remove(session.sessionId) else sessions
+        /*
+         * A root that is already open with this id is replaced, as `session/load` and `session/resume` may re-open
+         * it. Its subtree is cleaned up before the replay, so the replay can announce the same ids again, and no
+         * update for an old subagent follows the response. The old root's own turn and AgentSession are left as they
+         * are. If this load fails later, the old root isn't restored.
+         */
+        var replaced: RootSessionWrapper? = null
+        var removed = emptyList<SubagentSessionWrapper>()
+        _sessions.update { table ->
+            check(sessionWrapper.sessionId !in table.subagents) {
+                "Session ${sessionWrapper.sessionId} is already registered on this connection as a subagent"
             }
-            throw t
+            replaced = table.roots[sessionWrapper.sessionId]
+            removed = replaced?.let { table.subagentsOf(it) }.orEmpty()
+            SessionTable(table.roots.put(sessionWrapper.sessionId, sessionWrapper), table.withoutSubagents(removed))
+        }
+        replaced?.let { cleanUpSubtree(it, removed) }
+
+        if (replayHistory != null) {
+            try {
+                sessionWrapper.executeWithSession { replayHistory(session) }
+            } catch (t: Throwable) {
+                discardFailedLoad(sessionWrapper)
+                throw t
+            }
+            /*
+             * The client treats what follows the load response on the wire as live, so the replay window closes as
+             * soon as the transport has accepted the response, not a dispatch later when afterResponse starts. This
+             * also starts the replayed subagents' collections before postInitialize(): a slow one would otherwise
+             * keep every child's state unconfirmed and its cancel disabled on the client.
+             */
+            currentCoroutineContext().invokeOnResponseQueued { sessionWrapper.endReplay() }
         }
 
         return RequestOutcome(
             response = session,
             afterResponse = { sessionWrapper.executeWithSession { session.postInitialize() } },
+            onCompletion = {
+                // Still replaying here means the load response never reached the transport: the load failed.
+                if (sessionWrapper.isReplaying) discardFailedLoad(sessionWrapper)
+            },
         )
     }
 
-    private fun getSessionOrThrow(sessionId: SessionId): SessionWrapper = _sessions.value[sessionId] ?: acpFail("Session $sessionId not found")
+    /**
+     * Drops the root session of a failed `session/load` with every subagent registered under it during the attempt:
+     * no response confirmed them.
+     */
+    private fun discardFailedLoad(sessionWrapper: RootSessionWrapper) {
+        removeRoot(sessionWrapper)
+    }
+
+    private fun getSessionOrThrow(sessionId: SessionId): RootSessionWrapper {
+        _sessions.value.roots[sessionId]?.let { return it }
+        checkNotSubagent(sessionId)
+        acpFail("Session $sessionId not found")
+    }
+
+    /**
+     * Rejects a session method on a subagent's id. The client may only cancel a subagent: every other method is
+     * reserved for root sessions.
+     */
+    private fun checkNotSubagent(sessionId: SessionId) {
+        if (sessionId in _sessions.value.subagents) acpFail("Session $sessionId is a subagent")
+    }
+
+    internal fun subagentOrNull(sessionId: SessionId): SubagentSessionWrapper? = _sessions.value.subagents[sessionId]
+
+    /**
+     * Registers [child] under its own id.
+     *
+     * The check of [child]'s root and the addition are one update of the table, as is every removal of a root with
+     * its subagents, so a root's cleanup either removes [child] or makes this fail.
+     *
+     * @throws IllegalArgumentException if the id is already registered on this connection, as a root session or a
+     * subagent
+     * @throws IllegalStateException if [child]'s root is no longer registered: it was closed, its `session/load`
+     * failed, or a re-opening of its id replaced it
+     */
+    internal fun registerSubagent(child: SubagentSessionWrapper) {
+        val root = child.root
+        _sessions.update { table ->
+            check(table.roots[root.sessionId] === root) { "Session ${root.sessionId} is closed" }
+            require(child.sessionId !in table.roots && child.sessionId !in table.subagents) {
+                "Session ${child.sessionId} is already registered on this connection"
+            }
+            SessionTable(table.roots, table.subagents.put(child.sessionId, child))
+        }
+    }
+
+    internal fun unregisterSubagent(child: SubagentSessionWrapper) {
+        _sessions.update { table ->
+            if (table.subagents[child.sessionId] !== child) return@update table
+            SessionTable(table.roots, table.subagents.remove(child.sessionId))
+        }
+    }
+
+    /**
+     * Removes [root], if it is still the root registered under its id, together with every subagent below it, and
+     * cleans its subtree up. A root that replaced [root] stays: its own subagents aren't [root]'s.
+     */
+    private fun removeRoot(root: RootSessionWrapper) {
+        var removed = emptyList<SubagentSessionWrapper>()
+        _sessions.update { table ->
+            removed = table.subagentsOf(root)
+            val roots = if (table.roots[root.sessionId] === root) table.roots.remove(root.sessionId) else table.roots
+            SessionTable(roots, table.withoutSubagents(removed))
+        }
+        cleanUpSubtree(root, removed)
+    }
+
+    /**
+     * Subtree cleanup for [root], once [removed], its subagents at every depth, have left the table with it or with
+     * its replacement: cancels their collections and makes their operations fail. No app code is called for them:
+     * stopping their work belongs to the root's [AgentSession.close].
+     */
+    private fun cleanUpSubtree(root: RootSessionWrapper, removed: List<SubagentSessionWrapper>) {
+        root.cancelSubtreeScope()
+        removed.forEach { it.remove() }
+    }
 
     private fun getNesSessionOrThrow(sessionId: SessionId): NesSessionWrapper = _nesSessions.value[sessionId] ?: acpFail("NES session $sessionId not found")
 }
-
-
-internal class SessionWrapperContextElement(val sessionWrapper: Agent.BaseSessionWrapper) : AbstractCoroutineContextElement(Key) {
-    object Key : CoroutineContext.Key<SessionWrapperContextElement>
-}
-
-internal fun Agent.BaseSessionWrapper.asContextElement() = SessionWrapperContextElement(this)
 
 public val CoroutineContext.agent: Agent
     get() = this[SessionWrapperContextElement.Key]?.sessionWrapper?.agent ?: error("No agent data found in context")
@@ -572,13 +550,9 @@ public val CoroutineContext.clientInfo: ClientInfo
 /**
  * Returns a remote client connected to the counterpart via the current protocol.
  * Only available for chat sessions. NES sessions do not have access to client operations.
+ * In a subagent's context, these are the subagent's operations (see [AgentSubagentContext.client]).
  *
  * @throws IllegalStateException if called from a NES session context or outside a session context
  */
 public val CoroutineContext.client: ClientSessionOperations
-    get() {
-        val wrapper = this[SessionWrapperContextElement.Key]?.sessionWrapper
-            ?: error("No session found in context")
-        return (wrapper as? Agent.SessionWrapper)?.clientOperations
-            ?: error("Client operations are not available for NES sessions. Only chat sessions have access to client operations.")
-    }
+    get() = sessionWrapper("Client operations").clientOperations

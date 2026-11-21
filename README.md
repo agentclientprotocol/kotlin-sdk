@@ -181,6 +181,7 @@ Create a `Client` with your own `ClientSessionOperations` implementation. This s
 import com.agentclientprotocol.client.*
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
+import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.common.SessionParameters
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
@@ -215,9 +216,13 @@ private class TerminalSession(
         // Grant whichever option was first in the list (swap for real UX).
         RequestPermissionResponse(RequestPermissionOutcome.Selected(permissions.first().optionId))
 
-    override suspend fun notify(notification: SessionUpdate, _meta: JsonElement?) {
-        // Surface streaming updates back to the host application.
-        println("Agent update: $notification")
+    override suspend fun notify(event: SessionEvent) {
+        when (event) {
+            // Surface streaming updates back to the host application.
+            is SessionEvent.Update -> println("Agent update: ${event.update}")
+            // Updates before this marker came before the answer that opened the session; later ones are live.
+            is SessionEvent.Opened -> println("Session opened")
+        }
     }
 
     override suspend fun fsReadTextFile(
@@ -396,6 +401,8 @@ Contributions are welcome! Please open an issue to discuss significant changes b
 2. Run `./gradlew check` to execute the test suite.
 3. Use the supplied GitHub Actions workflows to verify compatibility.
 4. Optionally check protocol conformance with the [ACP Test Compatibility Kit](https://github.com/agentclientprotocol/acp-tck), see [`e2e/tck/README.md`](e2e/tck/README.md).
+
+Keep throwaway files, such as experiments, captured output, and ad hoc scripts, in `scratch/` at the repository root. It is gitignored.
 
 ## Support
 

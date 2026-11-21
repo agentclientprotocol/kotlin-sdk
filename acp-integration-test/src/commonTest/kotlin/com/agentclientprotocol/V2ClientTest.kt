@@ -70,7 +70,7 @@ import com.agentclientprotocol.model.v2.SessionConfigOptionCategory
 import com.agentclientprotocol.model.v2.SessionConfigSelectOptions
 import com.agentclientprotocol.model.v2.SessionConfigOptionValue
 import com.agentclientprotocol.model.v2.SessionInfo
-import com.agentclientprotocol.model.v2.MaybeUndefined
+import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.v2.PermissionOption
 import com.agentclientprotocol.model.v2.PermissionOptionKind
 import com.agentclientprotocol.model.v2.RequestPermissionOutcome

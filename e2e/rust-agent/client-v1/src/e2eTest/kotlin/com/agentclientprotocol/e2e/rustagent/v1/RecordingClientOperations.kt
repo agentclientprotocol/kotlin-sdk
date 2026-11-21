@@ -5,6 +5,7 @@ import com.agentclientprotocol.client.GlobalElicitationHandler
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.ElicitationOperations
 import com.agentclientprotocol.common.FileSystemOperations
+import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.common.TerminalOperations
 import com.agentclientprotocol.model.CompleteElicitationNotification
 import com.agentclientprotocol.model.CreateElicitationRequest
@@ -83,8 +84,8 @@ class RecordingClientOperations : ClientSessionOperations, FileSystemOperations,
         return RequestPermissionResponse(RequestPermissionOutcome.Selected(allowOnce.optionId))
     }
 
-    override suspend fun notify(notification: SessionUpdate, _meta: JsonElement?) {
-        notifications += notification
+    override suspend fun notify(event: SessionEvent) {
+        if (event is SessionEvent.Update) notifications += event.update
     }
 
     override suspend fun fsReadTextFile(path: String, line: UInt?, limit: UInt?, _meta: JsonElement?): ReadTextFileResponse {

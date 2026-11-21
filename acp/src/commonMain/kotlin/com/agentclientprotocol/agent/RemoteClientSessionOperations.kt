@@ -2,25 +2,61 @@ package com.agentclientprotocol.agent
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
+import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.RpcMethodsOperations
 import com.agentclientprotocol.protocol.invoke
 import kotlinx.serialization.json.JsonElement
 
-internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperations, private val sessionId: SessionId, private val clientCapabilities: ClientCapabilities) : ClientSessionOperations {
+/**
+ * The client operations of one session, sent to the client for [sessionId].
+ *
+ * This class serves root sessions as is. A subagent's operations subclass it to gate every operation until the
+ * subagent's announcement and to apply the subagents routing rule to [notify].
+ */
+internal open class RemoteClientSessionOperations(
+    protected val rpc: RpcMethodsOperations,
+    protected val sessionId: SessionId,
+    private val clientCapabilities: ClientCapabilities,
+) : ClientSessionOperations {
+    /**
+     * Throws if nothing may be sent for this session yet. Called before every operation except [notify], which
+     * subclasses check themselves.
+     */
+    protected open fun checkCanSend() {}
+
     override suspend fun requestPermissions(
         toolCall: SessionUpdate.ToolCallUpdate,
         permissions: List<PermissionOption>,
         _meta: JsonElement?,
     ): RequestPermissionResponse {
+        checkCanSend()
         return AcpMethod.ClientMethods.V1.SessionRequestPermission(rpc, RequestPermissionRequest(sessionId, toolCall, permissions, _meta))
     }
 
-    override suspend fun notify(
-        notification: SessionUpdate,
-        _meta: JsonElement?,
-    ) {
-        return AcpMethod.ClientMethods.V1.SessionUpdate(rpc, SessionNotification(sessionId, notification, _meta))
+    /**
+     * Sends the update of [event] for this root session.
+     *
+     * Every root path sends through here: `client.notify`, the prompt flow and replay, so the subagents rules for a
+     * root are checked once, here. A [SessionUpdate.SubagentUpdate] is always rejected, because the SDK must see
+     * every announcement and grant. The other updates the subagents RFD defines need the `subagents` client
+     * capability: a v1 agent MUST NOT send them without it (`docs/rfds/subagents.mdx`, "Capability negotiation").
+     *
+     * @throws IllegalStateException for [SessionEvent.Opened], which only the client runtime delivers
+     */
+    @OptIn(UnstableApi::class)
+    override suspend fun notify(event: SessionEvent) {
+        val (notification, _meta) = event.requireUpdate()
+        if (notification is SessionUpdate.SubagentUpdate) {
+            throw IllegalArgumentException(
+                "SubagentUpdate for ${notification.sessionId} cannot be sent through the client operations of " +
+                    "session $sessionId: announce subagents through subagents.announce"
+            )
+        }
+        if (clientCapabilities.subagents == null && notification.needsSubagentsCapability()) {
+            error("Client does not support subagents capability")
+        }
+        AcpMethod.ClientMethods.V1.SessionUpdate(rpc, SessionNotification(sessionId, notification, _meta))
     }
 
     override suspend fun fsReadTextFile(
@@ -29,6 +65,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
         limit: UInt?,
         _meta: JsonElement?,
     ): ReadTextFileResponse {
+        checkCanSend()
         if (clientCapabilities.fs?.readTextFile != true) error("Client does not support fs.readTextFile capability")
         return AcpMethod.ClientMethods.V1.FsReadTextFile(rpc, ReadTextFileRequest(sessionId, path, line, limit, _meta))
     }
@@ -38,6 +75,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
         content: String,
         _meta: JsonElement?,
     ): WriteTextFileResponse {
+        checkCanSend()
         if (clientCapabilities.fs?.writeTextFile != true) error("Client does not support fs.writeTextFile capability")
         return AcpMethod.ClientMethods.V1.FsWriteTextFile(rpc, WriteTextFileRequest(sessionId, path, content, _meta))
     }
@@ -50,6 +88,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
         outputByteLimit: ULong?,
         _meta: JsonElement?,
     ): CreateTerminalResponse {
+        checkCanSend()
         if (!clientCapabilities.terminal) error("Client does not support terminal capability")
         return AcpMethod.ClientMethods.V1.TerminalCreate(rpc, CreateTerminalRequest(sessionId, command, args, cwd, env, outputByteLimit, _meta))
     }
@@ -58,6 +97,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
         terminalId: String,
         _meta: JsonElement?,
     ): TerminalOutputResponse {
+        checkCanSend()
         if (!clientCapabilities.terminal) error("Client does not support terminal capability")
         return AcpMethod.ClientMethods.V1.TerminalOutput(rpc, TerminalOutputRequest(sessionId, terminalId, _meta))
     }
@@ -66,6 +106,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
         terminalId: String,
         _meta: JsonElement?,
     ): ReleaseTerminalResponse {
+        checkCanSend()
         if (!clientCapabilities.terminal) error("Client does not support terminal capability")
         return AcpMethod.ClientMethods.V1.TerminalRelease(rpc, ReleaseTerminalRequest(sessionId, terminalId, _meta))
     }
@@ -74,6 +115,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
         terminalId: String,
         _meta: JsonElement?,
     ): WaitForTerminalExitResponse {
+        checkCanSend()
         if (!clientCapabilities.terminal) error("Client does not support terminal capability")
         return AcpMethod.ClientMethods.V1.TerminalWaitForExit(rpc, WaitForTerminalExitRequest(sessionId, terminalId, _meta))
     }
@@ -82,6 +124,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
         terminalId: String,
         _meta: JsonElement?,
     ): KillTerminalCommandResponse {
+        checkCanSend()
         if (!clientCapabilities.terminal) error("Client does not support terminal capability")
         return AcpMethod.ClientMethods.V1.TerminalKill(rpc, KillTerminalCommandRequest(sessionId, terminalId, _meta))
     }
@@ -90,6 +133,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
     override suspend fun createElicitation(
         request: CreateElicitationRequest
     ): CreateElicitationResponse {
+        checkCanSend()
         val elicitation = clientCapabilities.elicitation
             ?: error("Client does not support elicitation capability")
         when (request.mode) {
@@ -125,6 +169,7 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
     override suspend fun completeElicitation(
         notification: CompleteElicitationNotification
     ) {
+        checkCanSend()
         AcpMethod.ClientMethods.V1.ElicitationComplete(rpc, notification)
     }
 
@@ -138,4 +183,27 @@ internal class RemoteClientSessionOperations(private val rpc: RpcMethodsOperatio
     ) {
         completeElicitation(CompleteElicitationNotification(elicitationId, _meta))
     }
+}
+
+/**
+ * Returns the update of an event that agent code sends. [SessionEvent.Opened] has an internal constructor, so only an
+ * SDK bug could pass one here.
+ *
+ * @throws IllegalStateException for [SessionEvent.Opened]
+ */
+internal fun SessionEvent.requireUpdate(): Pair<SessionUpdate, JsonElement?> = when (this) {
+    is SessionEvent.Update -> update to _meta
+    is SessionEvent.Opened -> throw IllegalStateException("SessionEvent.Opened is delivered only by the client runtime")
+}
+
+/**
+ * Whether the subagents RFD defines this update, so a v1 agent may send it only with the `subagents` client
+ * capability. That includes tool call content that references a session.
+ */
+@OptIn(UnstableApi::class)
+private fun SessionUpdate.needsSubagentsCapability(): Boolean = when (this) {
+    is SessionUpdate.SessionMessage, is SessionUpdate.SessionMessageChunk -> true
+    is SessionUpdate.ToolCall -> content.any { it is ToolCallContent.Session }
+    is SessionUpdate.ToolCallUpdate -> content.orEmpty().any { it is ToolCallContent.Session }
+    else -> false
 }

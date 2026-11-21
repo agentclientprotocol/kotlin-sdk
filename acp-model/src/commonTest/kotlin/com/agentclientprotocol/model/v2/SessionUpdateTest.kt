@@ -3,6 +3,7 @@
 package com.agentclientprotocol.model.v2
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.ToolCallId
 import com.agentclientprotocol.rpc.ACPJson

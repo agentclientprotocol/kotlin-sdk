@@ -28,8 +28,15 @@ class TestTransport(val timeout: Duration) : BaseTransport() {
 
     private fun fireMessage(message: JsonRpcMessage) = fireFrame(TransportFrame.Single(message))
 
+    /**
+     * Called with each outgoing message before it is queued for the test to read, on the sender's thread.
+     */
+    @Volatile
+    var onSend: (JsonRpcMessage) -> Unit = {}
+
     override fun send(frame: TransportFrame) {
         val message = (frame as TransportFrame.Single).message
+        onSend(message)
         responses.trySend(message)
     }
 

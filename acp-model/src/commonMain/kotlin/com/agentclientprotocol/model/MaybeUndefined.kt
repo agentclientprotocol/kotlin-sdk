@@ -1,6 +1,6 @@
 @file:Suppress("unused")
 
-package com.agentclientprotocol.model.v2
+package com.agentclientprotocol.model
 
 import com.agentclientprotocol.annotations.UnstableApi
 import kotlinx.serialization.DeserializationStrategy
@@ -14,10 +14,10 @@ import kotlinx.serialization.json.JsonObjectBuilder
 /**
  * A three-state field for upsert payloads: absent, JSON `null`, or a value.
  *
- * v2 upsert payloads (e.g. `ToolCallUpdate`, the message upserts) give optional fields
- * patch semantics: an omitted field leaves the existing value unchanged, `null` explicitly
- * clears it, and a concrete value replaces it. Kotlin's `T?` collapses the first two states,
- * so such fields are modeled with this type instead.
+ * Upsert payloads (e.g. the v2 `ToolCallUpdate` and message upserts, and the v1 subagent
+ * session updates) give optional fields patch semantics: an omitted field leaves the existing
+ * value unchanged, `null` explicitly clears it, and a concrete value replaces it. Kotlin's
+ * `T?` collapses the first two states, so such fields are modeled with this type instead.
  *
  * This type intentionally has no [kotlinx.serialization.KSerializer]: whether a key is
  * present on the wire is decided by the containing object, not the field value, and
@@ -83,17 +83,22 @@ public fun <T> MaybeUndefined<T>.update(previous: T?): T? = when (this) {
     MaybeUndefined.Null -> null
 }
 
-// Shared building blocks for the hand-written serializers of structs with [MaybeUndefined]
-// fields. Field semantics mirror the Rust schema's serde attributes:
-// `#[serde(default, skip_serializing_if = "MaybeUndefined::is_undefined")]` plus
-// `DefaultOnError` (and `VecSkipError` for collections).
+/*
+ * Shared building blocks for the hand-written serializers of structs with [MaybeUndefined]
+ * fields. Field semantics mirror the Rust schema's serde attributes:
+ * `#[serde(default, skip_serializing_if = "MaybeUndefined::is_undefined")]` plus
+ * `DefaultOnError` (and `VecSkipError` for collections).
+ */
 
 /**
  * Decodes a tri-state field: absent key → [MaybeUndefined.Undefined], JSON `null` →
  * [MaybeUndefined.Null], otherwise the decoded value.
  *
  * A present-but-malformed value degrades to [MaybeUndefined.Undefined] instead of failing,
- * mirroring Rust's `DefaultOnError` on every `MaybeUndefined` field of the v2 schema.
+ * mirroring Rust's `DefaultOnError` on the `MaybeUndefined` fields of the schema. This helper
+ * is always lenient. Some fields are deliberately strict and are decoded by their own
+ * serializer instead, such as the v1 `SubagentUpdate.cwd` and `additionalDirectories`, where
+ * a malformed value fails the update.
  */
 @OptIn(UnstableApi::class)
 internal fun <T> JsonObject.decodeMaybeUndefined(

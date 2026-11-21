@@ -4,9 +4,12 @@ import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
+import com.agentclientprotocol.common.notify
 import com.agentclientprotocol.model.*
+import com.agentclientprotocol.protocol.JsonRpcException
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.invoke
+import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -16,20 +19,23 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
-import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 
 private val logger = KotlinLogging.logger {}
 
 internal class ClientSessionImpl(
+    // Kept only to implement the deprecated getter.
+    @Suppress("OVERRIDE_DEPRECATION")
     override val client: Client,
     override val sessionId: SessionId,
     override val parameters: SessionCreationParameters,
     override val operations: ClientSessionOperations,
     private val createdResponse: AcpCreatedSessionResponse,
     private val protocol: Protocol,
+    private val isOpen: () -> Boolean,
+    private val onClosed: suspend () -> Unit,
+    private val holder: RootSessionHolder,
 ) : ClientSession {
 
     private class PromptSession(
@@ -38,6 +44,7 @@ internal class ClientSessionImpl(
     private val activePrompt = atomic<PromptSession?>(null)
     private val pendingPermissions = PendingPermissionCancellation()
 
+    // TODO remove together with the deprecated ClientSession.currentMode.
     private val _currentMode by lazy {
         val modes = createdResponse.modes ?: error("Modes are not provided by the agent")
         MutableStateFlow(modes.currentModeId)
@@ -49,6 +56,7 @@ internal class ClientSessionImpl(
         MutableStateFlow(models.currentModelId)
     }
 
+    // TODO remove together with the deprecated ClientSession.configOptions.
     @UnstableApi
     private val _configOptions by lazy {
         val configOptions = createdResponse.configOptions ?: error("Config options are not provided by the agent")
@@ -61,7 +69,7 @@ internal class ClientSessionImpl(
     ): Flow<Event> = channelFlow {
         val promptSession = PromptSession(Channel(Channel.UNLIMITED))
         if (!activePrompt.compareAndSet(null, promptSession)) error("There is active prompt execution")
-        pendingPermissions.startTurn()
+        pendingPermissions.clearCancellation()
         logger.trace { "Starting channel collection for prompt" }
         val channelJob = launch {
             for (update in promptSession.updateChannel) {
@@ -98,17 +106,50 @@ internal class ClientSessionImpl(
         }
     }
 
-    @UnstableApi
     override suspend fun close(_meta: JsonElement?): CloseSessionResponse {
         /*
-         * Answer before waiting for the response: an agent whose close waits for its turn to end would otherwise
-         * wait for the permission answer while the client waits for the close response.
+         * Only the registered, live holder of the id may close it: the request carries only the id, so the close of a
+         * session that is gone would close whatever the id is open as now. A root's holder leaves the map while it
+         * blocks its id only through a successful close, because the reaping and a replacement take only holders that
+         * haven't completed or have failed. So a holder that is gone and hasn't failed was closed.
+         */
+        if (!isOpen()) {
+            check(!holder.isFailed) { "Session $sessionId failed to open and can't be closed" }
+            return CloseSessionResponse()
+        }
+
+        /*
+         * Answer before waiting for the response: an agent whose close waits for its work to end, a subagent's
+         * included, would otherwise wait for the permission answer while the client waits for the close response.
          */
         pendingPermissions.close()
-        val response = AcpMethod.AgentMethods.V1.SessionClose(protocol, CloseSessionRequest(sessionId, _meta))
-        client.removeSessionHolder(sessionId)
+        holder.startClosing()
+
+        val response = try {
+            AcpMethod.AgentMethods.V1.SessionClose(protocol, CloseSessionRequest(sessionId, _meta))
+        } catch (e: JsonRpcException) {
+            /*
+             * An agent that doesn't know the session any more has closed it. ACP asks the client to treat `-32002` as a
+             * successful close: https://agentclientprotocol.com/protocol/v1/session-setup#closing-active-sessions
+             */
+            if (e.code != JsonRpcErrorCode.RESOURCE_NOT_FOUND.code) throw e
+            CloseSessionResponse()
+        }
+        onClosed()
         return response
     }
+
+    @UnstableApi
+    override val subagents: List<ClientSubagentSession>
+        get() = holder.subagents
+
+    @UnstableApi
+    override val cwd: String
+        get() = parameters.cwd
+
+    @UnstableApi
+    override val additionalDirectories: List<String>
+        get() = parameters.additionalDirectories ?: emptyList()
 
     override val modesSupported: Boolean
         get() = createdResponse.modes != null
@@ -116,6 +157,8 @@ internal class ClientSessionImpl(
     override val availableModes: List<SessionMode>
         get() = createdResponse.modes?.availableModes ?: emptyList()
 
+    // TODO remove together with the deprecated ClientSession.currentMode.
+    @Suppress("OVERRIDE_DEPRECATION")
     override val currentMode: StateFlow<SessionModeId>
         get() = _currentMode
 
@@ -145,22 +188,20 @@ internal class ClientSessionImpl(
     override val configOptionsSupported: Boolean
         get() = createdResponse.configOptions != null
 
+    // TODO remove together with the deprecated ClientSession.configOptions.
     @UnstableApi
+    @Suppress("OVERRIDE_DEPRECATION")
     override val configOptions: StateFlow<List<SessionConfigOption>>
         get() = _configOptions
 
     @UnstableApi
     override suspend fun setConfigOption(configId: SessionConfigId, value: SessionConfigOptionValue, _meta: JsonElement?): SetSessionConfigOptionResponse {
         val response = AcpMethod.AgentMethods.V1.SessionSetConfigOption(protocol, SetSessionConfigOptionRequest(sessionId, configId, value, _meta))
+        // TODO remove together with the deprecated ClientSession.configOptions.
         _configOptions.value = response.configOptions
         return response
     }
 
-    internal suspend fun <T> executeWithSession(block: suspend () -> T): T {
-        return withContext(this.asContextElement()) {
-            block()
-        }
-    }
     /**
      * Routes notification to either active prompt or global notification channel
      */
@@ -183,10 +224,12 @@ internal class ClientSessionImpl(
         }
     }
 
+    // TODO remove together with the deprecated ClientSession.currentMode and ClientSession.configOptions.
     /**
      * Applies the session state that [notification] carries to [currentMode] and [configOptions].
      */
     internal fun trackState(notification: SessionUpdate) {
+        // TODO remove together with the deprecated ClientSession.currentMode.
         if (notification is SessionUpdate.CurrentModeUpdate) {
             _currentMode.value = notification.currentModeId
         }
@@ -194,15 +237,16 @@ internal class ClientSessionImpl(
 //        if (notification is SessionUpdate.CurrentModelUpdate) {
 //            _currentModel.value = notification.currentModelId
 //        }
+        // TODO remove together with the deprecated ClientSession.configOptions.
         @OptIn(UnstableApi::class)
         if (notification is SessionUpdate.ConfigOptionUpdate && configOptionsSupported) {
             _configOptions.value = notification.configOptions
         }
     }
 
-    internal suspend fun handlePermissionResponse(toolCall: SessionUpdate.ToolCallUpdate,
-                                                  permissions: List<PermissionOption>,
-                                                  _meta: JsonElement?,): RequestPermissionResponse {
+    internal suspend fun answerPermissionRequest(toolCall: SessionUpdate.ToolCallUpdate,
+                                                 permissions: List<PermissionOption>,
+                                                 _meta: JsonElement?,): RequestPermissionResponse {
         return pendingPermissions.answerUnlessCancelled(
             cancelledAnswer = { RequestPermissionResponse(RequestPermissionOutcome.Cancelled) },
         ) {
@@ -211,11 +255,11 @@ internal class ClientSessionImpl(
     }
 }
 
-internal class ClientSessionContextElement(val session: ClientSessionImpl) : AbstractCoroutineContextElement(Key) {
-    object Key : CoroutineContext.Key<ClientSessionContextElement>
-}
-
-internal fun ClientSessionImpl.asContextElement() = ClientSessionContextElement(this)
-
+/**
+ * The root session that the current call of a session's operations belongs to.
+ *
+ * @throws IllegalStateException if the context belongs to no session, or to a subagent session. Use
+ * [clientSubagentSession] for a subagent session, and [baseClientSession] where the operations may serve both.
+ */
 public val CoroutineContext.clientSession: ClientSession
-    get() = this[ClientSessionContextElement.Key]?.session ?: error("No client session data found in context")
+    get() = this[ClientSessionContextElement.Key]?.session as? ClientSession ?: error("No client session data found in context")

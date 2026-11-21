@@ -34,7 +34,31 @@ public interface ClientSessionOperations : FileSystemOperations, TerminalOperati
     ): RequestPermissionResponse
 
     /**
-     * Handles notification from an agent that is not bound to any prompt
+     * Handles an event of the session's stream that is not bound to any prompt.
+     *
+     * On the client, this receives the session's updates as [SessionEvent.Update], and the [SessionEvent.Opened]
+     * marker with the answer of the opening call, exactly once if the opening succeeds. Updates before the marker
+     * came before that answer, for example the history that `session/load` replays; updates after it are live.
+     *
+     * Until the opening call returns, the call delivers these events itself: cancelling the caller cancels
+     * `notify`, and a cancellation of the caller or a failure of `notify` fails the opening. If the call fails
+     * before the agent's answer arrives, the marker never arrives. Once the answer has arrived, the marker may have
+     * been delivered even though the call then fails, so treat a failed opening call as a failed opening. After the
+     * call has returned, a failure of `notify` is logged, as for any live update.
+     *
+     * On the agent, this sends a [SessionEvent.Update] to the client. Only the client runtime delivers
+     * [SessionEvent.Opened], so the agent's implementation throws [IllegalStateException] for it. Agent code usually
+     * calls the [notify] extension that takes a [SessionUpdate].
      */
-    public suspend fun notify(notification: SessionUpdate, _meta: JsonElement? = null)
+    public suspend fun notify(event: SessionEvent)
+}
+
+/**
+ * Sends [notification] as a [SessionEvent.Update] through [ClientSessionOperations.notify].
+ *
+ * This is an extension rather than an overridable member, so a client implementation can't override it instead of
+ * the member and miss [SessionEvent.Opened].
+ */
+public suspend fun ClientSessionOperations.notify(notification: SessionUpdate, _meta: JsonElement? = null) {
+    notify(SessionEvent.Update(notification, _meta))
 }

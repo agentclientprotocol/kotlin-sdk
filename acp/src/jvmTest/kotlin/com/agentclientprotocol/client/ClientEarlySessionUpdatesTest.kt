@@ -5,35 +5,19 @@ package com.agentclientprotocol.client
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.SessionCreationParameters
-import com.agentclientprotocol.model.AcpCreatedSessionResponse
+import com.agentclientprotocol.common.notify
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.ContentBlock
 import com.agentclientprotocol.model.LoadSessionResponse
 import com.agentclientprotocol.model.NewSessionResponse
-import com.agentclientprotocol.model.PermissionOption
-import com.agentclientprotocol.model.RequestPermissionResponse
 import com.agentclientprotocol.model.ResumeSessionResponse
 import com.agentclientprotocol.model.SessionConfigOption
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionMode
 import com.agentclientprotocol.model.SessionModeId
 import com.agentclientprotocol.model.SessionModeState
-import com.agentclientprotocol.model.SessionNotification
 import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.protocol.Protocol
-import com.agentclientprotocol.rpc.ACPJson
-import com.agentclientprotocol.rpc.JsonRpcError
-import com.agentclientprotocol.rpc.JsonRpcErrorCode
-import com.agentclientprotocol.rpc.JsonRpcErrorResponse
-import com.agentclientprotocol.rpc.JsonRpcNotification
-import com.agentclientprotocol.rpc.JsonRpcRequest
-import com.agentclientprotocol.rpc.JsonRpcResponse
-import com.agentclientprotocol.rpc.JsonRpcSuccessResponse
-import com.agentclientprotocol.rpc.MethodName
-import com.agentclientprotocol.rpc.RequestId
-import com.agentclientprotocol.rpc.TransportFrame
-import com.agentclientprotocol.transport.BaseTransport
-import com.agentclientprotocol.transport.Transport
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -43,16 +27,10 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.serialization.KSerializer
-import kotlinx.serialization.json.JsonElement
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -111,7 +89,9 @@ class ClientEarlySessionUpdatesTest {
         assertEquals(listOf<SessionUpdate>(early), operations.updates.value)
     }
 
+    // TODO remove the currentMode assertion together with the deprecated ClientSession.currentMode.
     @Test
+    @Suppress("DEPRECATION")
     fun `updates racing the answer keep their order and arrive once`() = withClient { client, agent ->
         /*
          * The answer and the updates after it are put on the wire back to back, so the client switches from
@@ -136,7 +116,12 @@ class ClientEarlySessionUpdatesTest {
         }
     }
 
+    /*
+     * TODO remove the currentMode assertion together with the deprecated ClientSession.currentMode. It pins the
+     *  replayed mode over the newer one from the response, which is the reason for the deprecation.
+     */
     @Test
+    @Suppress("DEPRECATION")
     fun `the answer waits for an early update that the operations still handle`() = withClient { client, agent ->
         val sessionId = SessionId("slow-early-update")
         val releaseModeUpdate = CompletableDeferred<Unit>()
@@ -165,7 +150,13 @@ class ClientEarlySessionUpdatesTest {
         assertEquals(PLAN, session.currentMode.value, "the session applies the mode of the early update")
     }
 
+    /*
+     * TODO remove the currentMode and configOptions assertions together with the deprecated ClientSession.currentMode
+     *  and ClientSession.configOptions. They pin the replayed state over the newer state from the response, which is
+     *  the reason for the deprecation.
+     */
     @Test
+    @Suppress("DEPRECATION")
     fun `mode and config options after an early load equal those after a buffered load`() = withClient { client, agent ->
         val replay = listOf(
             SessionUpdate.CurrentModeUpdate(PLAN),
@@ -562,110 +553,3 @@ class ClientEarlySessionUpdatesTest {
         private val REVIEW = SessionModeId("review")
     }
 }
-
-private class RecordingOperations(
-    private val beforeEach: suspend (SessionUpdate) -> Unit = {},
-) : ClientSessionOperations {
-    val updates = MutableStateFlow<List<SessionUpdate>>(emptyList())
-
-    override suspend fun requestPermissions(
-        toolCall: SessionUpdate.ToolCallUpdate,
-        permissions: List<PermissionOption>,
-        _meta: JsonElement?,
-    ): RequestPermissionResponse = error("not expected in this test")
-
-    override suspend fun notify(notification: SessionUpdate, _meta: JsonElement?) {
-        beforeEach(notification)
-        updates.update { it + notification }
-    }
-
-    suspend fun awaitCount(count: Int) {
-        withTimeout(TIMEOUT) { updates.first { it.size >= count } }
-    }
-
-    suspend fun awaitUpdate(update: SessionUpdate) {
-        withTimeout(TIMEOUT) { updates.first { update in it } }
-    }
-
-    private companion object {
-        private val TIMEOUT = 5.seconds
-    }
-}
-
-/**
- * The agent side of a connection, driven by the test: it records the requests of the client, and sends the updates
- * and the answers the test asks for, in exactly that order.
- */
-private class ScriptedAgentTransport : BaseTransport() {
-    private val requests = Channel<JsonRpcRequest>(capacity = Channel.UNLIMITED)
-    private val responses = Channel<JsonRpcResponse>(capacity = Channel.UNLIMITED)
-    private val barrierIds = atomic(0)
-
-    override fun start() {
-        _state.value = Transport.State.STARTED
-    }
-
-    override fun close() {
-        _state.value = Transport.State.CLOSING
-        fireClose()
-        _state.value = Transport.State.CLOSED
-    }
-
-    override fun send(frame: TransportFrame) {
-        when (val message = (frame as TransportFrame.Single).message) {
-            is JsonRpcRequest -> requests.trySend(message)
-            is JsonRpcResponse -> responses.trySend(message)
-            else -> {}
-        }
-    }
-
-    suspend fun receiveRequest(method: MethodName): JsonRpcRequest {
-        val request = withTimeout(5.seconds) { requests.receive() }
-        assertEquals(method, request.method)
-        return request
-    }
-
-    fun assertNoRequest() {
-        assertNull(requests.tryReceive().getOrNull(), "the client must not send a request")
-    }
-
-    fun sendUpdate(sessionId: SessionId, update: SessionUpdate) {
-        fireFrame(
-            TransportFrame.Single(
-                JsonRpcNotification(
-                    method = AcpMethod.ClientMethods.V1.SessionUpdate.methodName,
-                    params = ACPJson.encodeToJsonElement(
-                        AcpMethod.ClientMethods.V1.SessionUpdate.serializer,
-                        SessionNotification(sessionId, update),
-                    ),
-                )
-            )
-        )
-    }
-
-    fun <T : AcpCreatedSessionResponse> answer(request: JsonRpcRequest, serializer: KSerializer<T>, response: T) {
-        fireFrame(TransportFrame.Single(JsonRpcSuccessResponse(request.id, ACPJson.encodeToJsonElement(serializer, response))))
-    }
-
-    fun fail(request: JsonRpcRequest) {
-        val error = JsonRpcError(JsonRpcErrorCode.INTERNAL_ERROR.code, "load failed")
-        fireFrame(TransportFrame.Single(JsonRpcErrorResponse(request.id, error)))
-    }
-
-    /**
-     * Returns after the client has handled every message sent before this call.
-     *
-     * The client reads messages in wire order and lets each notification handler run before it reads on, so its
-     * answer to a later request proves that the earlier notifications have been handled.
-     */
-    suspend fun awaitHandled() {
-        val id = RequestId.create("barrier-${barrierIds.incrementAndGet()}")
-        fireFrame(TransportFrame.Single(JsonRpcRequest(id, MethodName("test/barrier"), null)))
-        withTimeout(5.seconds) {
-            while (responses.receive().id != id) {
-                // An answer to an earlier barrier.
-            }
-        }
-    }
-}
-

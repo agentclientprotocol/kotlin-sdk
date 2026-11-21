@@ -5,6 +5,7 @@ import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.FileSystemOperations
 import com.agentclientprotocol.common.SessionCreationParameters
+import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.common.TerminalOperations
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
@@ -43,12 +44,15 @@ class TerminalClientSessionOperations : ClientSessionOperations, FileSystemOpera
         }
     }
 
-    override suspend fun notify(
-        notification: SessionUpdate,
-        _meta: JsonElement?,
-    ) {
-        println("Agent sent notification:")
-        notification.render()
+    override suspend fun notify(event: SessionEvent) {
+        when (event) {
+            is SessionEvent.Update -> {
+                println("Agent sent notification:")
+                event.update.render()
+            }
+            // Updates before the marker came before the answer, like the history that session/load replays.
+            is SessionEvent.Opened -> println("Session opened, later updates are live")
+        }
     }
 
     override suspend fun fsReadTextFile(

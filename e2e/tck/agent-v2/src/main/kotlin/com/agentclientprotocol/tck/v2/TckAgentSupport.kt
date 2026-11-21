@@ -12,6 +12,7 @@ import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.v2.ClientInfo
 import com.agentclientprotocol.model.AuthMethodId
 import com.agentclientprotocol.model.Implementation
+import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.PermissionOptionId
 import com.agentclientprotocol.model.SessionAdditionalDirectoriesCapabilities
