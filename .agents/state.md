@@ -363,6 +363,44 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
 R1-R15 done. Deferred to the next v2 PR: v2 agent close items 1-3 — unknown-id close default (goes to app `AgentSupport.closeSession`, `-32602`), `-32002` instead of `-32602` for unknown sessions in `prompt`/`set_config_option`, re-resume overwriting the wrapper without closing the old `AgentSession`.
 
+Review round 18 (2026-11-21, `ClientSession`/`ClientSessionHolder`/`ClientSubagentSession` notes). Agreed. Same workflow (uncommitted, user reviews).
+- R18 (agreed), refactor/docs only, no API change:
+  1. `ClientSession.close`: drop the leftover `**UNSTABLE**` banner (R13 removed only the annotation).
+  2. Restructure the `ClientSession.close` KDoc and the `ClientSessionHolder` class KDoc per "Structuring long
+     comments" (sections, bullets), every fact kept.
+  3. Queue comment (`ClientSessionHolder.kt:126`) → one block comment: why unbounded (a bounded queue would suspend
+     the read loop in the update handler, so the opening's response, which starts the drain, is never read).
+  4. `deliver` lambda: 4 of 5 call sites pass `session.deliverUpdate` with `session.operations`; only
+     `deliverEarly` has no session (tracks deprecated early mode/options, then `operations.notify`). Add
+     `deliverItem(item, session, opened)` for the 4; keep the lambda form private for `deliverEarly`.
+  5. `deliverOpening` → `deliverDuringOpening` + KDoc: only the opening uses it; it turns an app cancellation with
+     an active caller into `IllegalStateException` so the opening fails (live deliveries log instead).
+  6. `completeOpening`: drop the `when` with the unreachable "second opening marker" log (`markOpened` is strict,
+     one marker per holder); the loop calls `deliverItem`, whose `Opened` branch already throws.
+  7. (user, 2026-11-21) `sessionDeferred` → `_session` (backing property of `session`, like `_phase`/`phase`); KDoc
+     on `session`: completes when the session takes over, after the drain; fails when the holder fails; only the
+     holder completes it. `ClientSessionRegistry.kt:461` uses `isFailed` instead of the hand-written check.
+  8. (D1, user, 2026-11-21) `QueuedItem.Received`: sealed supertype of `Update`/`Announcement`/`Patch` with abstract
+     `update`/`meta` (`Announcement`/`Patch` override `update` as `SessionUpdate.SubagentUpdate`); `Update` keeps its
+     name; `failAndDrainQueue` has one `Received` branch.
+  9. (D2, user, 2026-11-21) `RootSessionHolder.startClosing()`: the CLOSING stage update, then
+     `forEachDescendant { it.permissions.close() }`; `markClosing` and `ClientSessionRegistry.closeDescendantPermissions`
+     go; `ClientSessionImpl` calls it on its `holder` (the `onClosing` lambda goes if nothing else needs it). The CLOSING
+     stage and its behaviour (sticky after a failed close, `addChild` read) unchanged; update KDoc/AGENTS.md mentions.
+  10. (D3, user, 2026-11-21) `ClientSubagentSession` internal constructor `(holder: SubagentSessionHolder, operations,
+     protocol)`: `sessionId`, `parentSessionId`, `cwd`/`additionalDirectories` fallback (`holder.parent.sessionCwd()`
+     etc.), `subagents`, `pendingPermissions` read from the holder; the lambdas go. Tests: `child(...)` helper takes
+     `parent: ClientSessionHolder` (default a claimed root holder) and attaches; the two-level and "subagents read from
+     the view" tests use real holders (`listSubagent`); `openChild` and `ClientSessionRegistryTest:376` simplified.
+     `cwd`/`additionalDirectories` stay public on `BaseClientSession` (user, 2026-11-21: uniform read from a handler's
+     context session; the SDK computes RFD inheritance).
+- Answered, no change proposed: note 6 (`drainHistory(session)`: used by all four factory overloads; kept after the factory deprecation too, since
+  new/fork with ready operations also start their consumer only after the answer; the holder publishes a session only by completing
+  `sessionDeferred` after the drain; before that the opening call owns it); note 8 (the consumer takes the marker
+  and returns it undelivered, since only the opening call knows whether it succeeded; `completeOpening` delivers
+  that same item).
+- Discussion done (D1 → 8, D2 → 9, D3 → 10). Plan agreed 2026-11-21; R18 delegated as one slice.
+
 Review round 16 (2026-11-20, client notes). Plan agreed; R16 then R17.
 Workflow (user, 2026-11-20): one slice at a time; programmers leave changes UNCOMMITTED; the user reviews the diff
 and tells the orchestrator to commit and continue. R16 (`b3e320b`) and R17 (`e618862`) committed; round 16 done. Waiting for the user's next review round.
