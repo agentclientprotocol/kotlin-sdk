@@ -404,15 +404,15 @@ public class Client(
      * [ClientOperationsFactory] overload does.
      *
      * Each update reaches [ClientSessionOperations.notify] exactly once and in arrival order, before and after the
-     * answer, and [SessionEvent.Opened] marks where the answer fell among them. Before the marker,
-     * [kotlin.coroutines.CoroutineContext.clientSession] is not available in `notify`, and `notify` must not wait for
-     * this call to return. The mode and config options of the returned session are the same as with the
-     * [ClientOperationsFactory] overload.
+     * answer, and [SessionEvent.Opened], the opened marker, marks where the answer fell among them. Before the
+     * opened marker, [kotlin.coroutines.CoroutineContext.clientSession] is not available in `notify`, and `notify`
+     * must not wait for this call to return. The mode and config options of the returned session are the same as with
+     * the [ClientOperationsFactory] overload.
      *
      * The load fails if the agent answers with an error, or if the caller is cancelled or `notify` throws before
-     * this call returns. A load that fails before the answer arrives delivers no marker to [operations]. Once the
-     * answer has arrived, the marker may have been delivered even though the load then fails, so treat a failed
-     * call as a failed load. The updates that [operations] did not receive yet, and all later updates for
+     * this call returns. A load that fails before the answer arrives delivers no opened marker to [operations]. Once
+     * the answer has arrived, the opened marker may have been delivered even though the load then fails, so treat a
+     * failed call as a failed load. The updates that [operations] did not receive yet, and all later updates for
      * [sessionId], then go to [globalSessionUpdateHandler], and [sessionId] can be loaded again. After this call has
      * returned, a failure of `notify` is logged, as for any live update.
      *
@@ -606,9 +606,10 @@ public class Client(
 
     /**
      * Creates the session with [factory] after the answer, and delivers the updates buffered in [sessionHolder] to it:
-     * the history, then the marker, then the live updates, see [RootSessionHolder.completeOpening]. If the factory
-     * or the delivery fails, or the caller is cancelled, the holder fails, even if the operations got the marker. A
-     * cancellation that the factory throws while the caller is active becomes an [IllegalStateException].
+     * the history, then the opened marker, then the live updates, see [RootSessionHolder.completeOpening]. If the
+     * factory or the delivery fails, or the caller is cancelled, the holder fails, even if the operations got the
+     * opened marker. A cancellation that the factory throws while the caller is active becomes an
+     * [IllegalStateException].
      */
     private suspend fun createSession(
         sessionHolder: RootSessionHolder,
@@ -626,8 +627,7 @@ public class Client(
                 throw IllegalStateException("createClientOperations was cancelled", ce)
             }
             val session = createClientSession(sessionHolder, sessionId, sessionParameters, operations, sessionResponse)
-            val opened = sessionHolder.drainHistory(session)
-            sessionHolder.completeOpening(session, opened)
+            sessionHolder.completeOpening(session)
             session
         }.getOrElse { throwable ->
             // throw IllegalStateException to pass it as INTERNAL_ERROR to the other side (see in Protocol)
@@ -642,8 +642,8 @@ public class Client(
      * its updates until [factory] creates the operations after the answer.
      *
      * The holder is claimed before [request] sends anything, so another opening of the same id fails before its own
-     * request. [request] must pass its `onResponse` argument to the response hook of the call: it puts the marker into
-     * the holder's queue. If [request] fails, the holder fails, and the updates in its queue go to
+     * request. [request] must pass its `onResponse` argument to the response hook of the call: it puts the opened
+     * marker into the holder's queue. If [request] fails, the holder fails, and the updates in its queue go to
      * [globalSessionUpdateHandler].
      */
     private suspend fun withFactoryInitializingSession(
@@ -658,8 +658,8 @@ public class Client(
             request { response -> sessionHolder.markOpened(response) }
         } catch (throwable: Throwable) {
             /*
-             * The hook may have put the marker into the queue before a cancellation won. Failing the holder drops
-             * the marker, so nothing delivers it.
+             * The hook may have put the opened marker into the queue before a cancellation won. Failing the holder
+             * drops the marker, so nothing delivers it.
              */
             sessions.failSessionTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             throw throwable
@@ -673,8 +673,8 @@ public class Client(
      * after the answer.
      *
      * [request] must pass its `onResponse` argument to the response hook of the call: it claims the holder of the
-     * answered id and puts the marker into its queue in one step, in the read loop, so the marker keeps its place
-     * among the updates that the agent sent for the new id before and after the answer.
+     * answered id and puts the opened marker into its queue in one step, in the read loop, so the marker keeps its
+     * place among the updates that the agent sent for the new id before and after the answer.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     private suspend fun <R : AcpCreatedSessionResponse> withAnsweredSessionId(
@@ -691,9 +691,9 @@ public class Client(
             }
         } catch (throwable: Throwable) {
             /*
-             * The hook may have claimed a holder before a cancellation won: fail it, which drops its marker. In the
-             * rare case that the hook still runs after this check, for example while the connection closes, the
-             * holder stays incomplete, and the reaping at the end of the last opening fails it.
+             * The hook may have claimed a holder before a cancellation won: fail it, which drops its opened marker.
+             * In the rare case that the hook still runs after this check, for example while the connection closes,
+             * the holder stays incomplete, and the reaping at the end of the last opening fails it.
              */
             val claimedHolder = if (claimed.isCompleted) claimed.getCompleted() else null
             if (claimedHolder != null) {
@@ -713,10 +713,10 @@ public class Client(
      * [operations] before the answer.
      *
      * The holder is claimed before [request] sends anything, and one consumer hands its queue to [operations] until
-     * the marker that the response hook of [request] adds. The consumer stops at the marker, and only after [request]
-     * has returned is the marker delivered, so a call that fails, even by a cancellation that races with the answer,
-     * delivers none. If the opening fails, also in [ClientSessionOperations.notify] or by a cancellation, before or
-     * after the marker is delivered, the holder fails, and the updates still in its queue go to
+     * the opened marker that the response hook of [request] adds. The consumer stops at the marker, and only after
+     * [request] has returned is the marker delivered, so a call that fails, even by a cancellation that races with
+     * the answer, delivers none. If the opening fails, also in [ClientSessionOperations.notify] or by a cancellation,
+     * before or after the opened marker is delivered, the holder fails, and the updates still in its queue go to
      * [globalSessionUpdateHandler].
      */
     private suspend fun withEarlyInitializingSession(

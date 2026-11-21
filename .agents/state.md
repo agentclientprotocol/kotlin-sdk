@@ -385,6 +385,9 @@ one slice; same workflow (uncommitted, user reviews, then commit).
      `completeOpening` "Must run after" + failure cases as bullets; subagent `completeOpening` steps as bullets ("its own
      subagents" = nested); `permissions` KDoc rewritten (stale "setup hands them" sentence); "opened marker" instead of
      bare "marker" across client-package comments/KDoc; AGENTS.md mentions of renamed symbols updated.
+- (user, 2026-11-22, after review) Undo item 1: the early path needs `completeOpening(session, opened)` anyway, so two
+  overloads read worse. `drainHistory` public again, the no-marker overload goes, `Client.createSession` and the test
+  call `drainHistory` + `completeOpening` as before; the item-6 KDoc rewrites and "opened marker" wording stay.
 - R19 implemented, UNCOMMITTED, waiting for the user's review (then commit as one slice). Programmer: client jvmTest 245
   green, `apiCheck` green, `acp.api` unchanged, `check` green on 2nd run (JS flake); a later comment-only fix in
   `deliverLive` compiled (`:acp:compileKotlinJvm`). Deviations: AGENTS.md unchanged (named no renamed symbol); test
