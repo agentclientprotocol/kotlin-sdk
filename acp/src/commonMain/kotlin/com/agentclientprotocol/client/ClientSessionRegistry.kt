@@ -105,19 +105,6 @@ internal class ClientSessionRegistry(
     fun isOpen(root: RootSessionHolder): Boolean = _sessions.value.sessions[root.sessionId] === root && root.blocksId
 
     /**
-     * Answers the pending and the later permission requests of every subagent below [root] with `cancelled`, when its
-     * close starts. Each close only completes a signal, so the order doesn't matter.
-     *
-     * The root is marked closing first, so a subagent that this walk misses has its permissions closed by its own
-     * registration, see [ClientSessionHolder.addChild]. The mark stays if the close fails, as the closed permissions
-     * do.
-     */
-    fun closeDescendantPermissions(root: RootSessionHolder) {
-        root.markClosing()
-        root.forEachDescendant { it.permissions.close() }
-    }
-
-    /**
      * Returns the holder of the subagent [sessionId], or `null` if the id has no subagent holder. Doesn't suspend or
      * create a holder, so a request handler can join the subagent's race before anything else changes its state, and
      * then wait for this holder rather than for whatever the id maps to later.
@@ -137,7 +124,7 @@ internal class ClientSessionRegistry(
      * 3. The holders leave the session map in one compare-and-set, each only if its id still maps to it. So no
      *    half-removed tree is visible, and a subagent registered after it stays out of the map.
      * 4. Bottom-up, for each subagent:
-     *    - its permission requests are answered `cancelled`, which changes nothing if [closeDescendantPermissions]
+     *    - its permission requests are answered `cancelled`, which changes nothing if [RootSessionHolder.startClosing]
      *      ran first;
      *    - its session object is closed;
      *    - its holder, if it hasn't completed, fails with a "closed" error, so its waiting requests get the error and
@@ -457,8 +444,7 @@ internal class ClientSessionRegistry(
                      * with its own setup or with its parent.
                      */
                     hangingSessions = currentStorage.sessions.filterValues {
-                        @OptIn(ExperimentalCoroutinesApi::class)
-                        it is RootSessionHolder && (!it.session.isCompleted || it.session.getCompletionExceptionOrNull() != null)
+                        it is RootSessionHolder && (!it.session.isCompleted || it.isFailed)
                     }
                     var aliveSessions: PersistentMap<SessionId, ClientSessionHolder> = currentStorage.sessions
                     for ((id, _) in hangingSessions) {

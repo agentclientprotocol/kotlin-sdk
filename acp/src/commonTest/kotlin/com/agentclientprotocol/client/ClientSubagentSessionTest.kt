@@ -137,17 +137,32 @@ class ClientSubagentSessionTest {
         scope.cancel()
     }
 
+    private val rootParameters = SessionCreationParameters(cwd = rootCwd, mcpServers = emptyList(), additionalDirectories = rootDirectories)
+
+    private fun claimedRoot(): RootSessionHolder {
+        val root = rootHolder()
+        assertTrue(root.claimForOpening(replayRequested = false, rootParameters))
+        return root
+    }
+
+    /**
+     * A subagent holder under [parent] with its session attached, as the setup leaves it.
+     */
+    private fun childHolder(
+        id: String = "child",
+        parent: ClientSessionHolder = claimedRoot(),
+        operations: ClientSessionOperations = NoOperations,
+    ): SubagentSessionHolder {
+        val holder = SubagentSessionHolder(SessionId(id), parent, SubagentSetup(protocol, scope) { _, _ -> })
+        holder.attachSubagent(ClientSubagentSession(holder, operations, protocol))
+        return holder
+    }
+
     private fun child(
         id: String = "child",
-        parentId: String = "root",
-        parentCwd: () -> String = { rootCwd },
-        parentDirectories: () -> List<String> = { rootDirectories },
-        children: () -> List<ClientSubagentSession> = { emptyList() },
+        parent: ClientSessionHolder = claimedRoot(),
         operations: ClientSessionOperations = NoOperations,
-        pendingPermissions: SubagentPendingPermissions = SubagentPendingPermissions(),
-    ) = ClientSubagentSession(
-        SessionId(id), SessionId(parentId), operations, protocol, parentCwd, parentDirectories, children, pendingPermissions,
-    )
+    ): ClientSubagentSession = checkNotNull(childHolder(id, parent, operations).subagent)
 
     private fun patch(
         title: MaybeUndefined<String> = MaybeUndefined.Undefined,
@@ -256,8 +271,9 @@ class ClientSubagentSessionTest {
 
     @Test
     fun `effective directories follow the parent over two levels`() {
-        val middle = child(id = "middle")
-        val leaf = child(id = "leaf", parentId = "middle", parentCwd = { middle.cwd }, parentDirectories = { middle.additionalDirectories })
+        val middleHolder = childHolder(id = "middle")
+        val middle = checkNotNull(middleHolder.subagent)
+        val leaf = child(id = "leaf", parent = middleHolder)
 
         assertEquals(rootCwd, leaf.cwd)
         assertEquals(rootDirectories, leaf.additionalDirectories)
@@ -525,13 +541,13 @@ class ClientSubagentSessionTest {
     }
 
     @Test
-    fun `the subagents of a subagent are read from the view it was given`() {
-        var listed = emptyList<ClientSubagentSession>()
-        val parent = child(id = "parent", children = { listed })
-        val grandchild = child(id = "grandchild", parentId = "parent")
+    fun `the subagents of a subagent are the ones listed under its holder`() {
+        val parentHolder = childHolder(id = "parent")
+        val parent = checkNotNull(parentHolder.subagent)
+        val grandchild = child(id = "grandchild", parent = parentHolder)
         assertTrue(parent.subagents.isEmpty())
 
-        listed = listOf(grandchild)
+        assertTrue(parentHolder.listSubagent(grandchild))
 
         assertEquals(listOf(grandchild), parent.subagents)
     }
@@ -563,8 +579,8 @@ class ClientSubagentSessionTest {
         val holder = rootHolder()
         val parameters = SessionCreationParameters(cwd = "/project", mcpServers = emptyList())
         assertTrue(holder.claimForOpening(replayRequested = false, parameters))
-        val first = child(id = "first", parentId = "root")
-        val second = child(id = "second", parentId = "root")
+        val first = child(id = "first", parent = holder)
+        val second = child(id = "second", parent = holder)
 
         assertTrue(holder.listSubagent(first))
         val root = rootSession(holder, parameters)
@@ -580,14 +596,14 @@ class ClientSubagentSessionTest {
         val holder = rootHolder()
         val setup = SubagentSetup(protocol, scope) { _, _ -> }
         val registered = SubagentSessionHolder(SessionId("first"), holder, setup)
-        val first = child(id = "first", parentId = "root")
+        val first = child(id = "first", parent = holder)
         assertTrue(holder.addChild(registered))
         assertTrue(holder.listSubagent(first))
 
         assertEquals(listOf(registered), holder.sealChildren().toList())
 
         assertFalse(holder.addChild(SubagentSessionHolder(SessionId("late"), holder, setup)))
-        assertFalse(holder.listSubagent(child(id = "late", parentId = "root")))
+        assertFalse(holder.listSubagent(child(id = "late", parent = holder)))
         assertNull(holder.childOrNull(SessionId("late")))
         assertSame(registered, holder.childOrNull(SessionId("first")))
         assertEquals(listOf(first), holder.subagents)
@@ -665,14 +681,11 @@ class ClientSubagentSessionTest {
      * holder's permissions are the session's.
      */
     private suspend fun openChild(operations: ClientSessionOperations): OpenChild {
-        val root = rootHolder()
-        val parameters = SessionCreationParameters(cwd = rootCwd, mcpServers = emptyList(), additionalDirectories = rootDirectories)
-        assertTrue(root.claimForOpening(replayRequested = false, parameters))
-        val holder = SubagentSessionHolder(SessionId("child"), root, SubagentSetup(protocol, scope) { _, _ -> })
-        val child = child(operations = operations, pendingPermissions = holder.permissions)
-        holder.attachSubagent(child)
+        val root = claimedRoot()
+        val holder = childHolder(parent = root, operations = operations)
+        val child = checkNotNull(holder.subagent)
 
-        val rootSession = rootSession(root, parameters)
+        val rootSession = rootSession(root, rootParameters)
         assertTrue(root.markOpened(NewSessionResponse(SessionId("root"))))
         root.completeOpening(rootSession, root.drainHistory(rootSession))
         holder.markSubagentOpened(promote = true)
@@ -692,7 +705,6 @@ class ClientSubagentSessionTest {
         createdResponse = NewSessionResponse(SessionId("root")),
         protocol = protocol,
         isOpen = { true },
-        onClosing = {},
         onClosed = {},
         holder = holder,
     )

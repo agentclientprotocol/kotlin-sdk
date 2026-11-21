@@ -72,16 +72,7 @@ internal class SubagentSetup(
             return
         }
 
-        val session = ClientSubagentSession(
-            sessionId = childId,
-            parentSessionId = parent.sessionId,
-            operations = operations,
-            protocol = protocol,
-            parentCwd = parent::sessionCwd,
-            parentAdditionalDirectories = parent::sessionAdditionalDirectories,
-            children = child::subagents,
-            pendingPermissions = child.permissions,
-        )
+        val session = ClientSubagentSession(child, operations, protocol)
         session.applyPatch(announcement.update, parentOpened)
         child.attachSubagent(session)
         /*

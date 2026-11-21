@@ -400,6 +400,10 @@ Review round 18 (2026-11-21, `ClientSession`/`ClientSessionHolder`/`ClientSubage
   and returns it undelivered, since only the opening call knows whether it succeeded; `completeOpening` delivers
   that same item).
 - Discussion done (D1 → 8, D2 → 9, D3 → 10). Plan agreed 2026-11-21; R18 delegated as one slice.
+- R18 implemented, UNCOMMITTED, waiting for the user's diff review (12 files, +253/-192). Programmer: jvmTest client,
+  `apiCheck` and `check` green (`check` 2nd run, JS flake); `acp.api` unchanged. Deviations: the lambda `deliverItem`
+  is `protected` (subclass `deliverEarly` calls it); `ClientSubagentSession.pendingPermissions` removed (unused
+  outside; `cancel()` uses `holder.permissions`); `parentSessionId` documented in the class body.
 
 Review round 16 (2026-11-20, client notes). Plan agreed; R16 then R17.
 Workflow (user, 2026-11-20): one slice at a time; programmers leave changes UNCOMMITTED; the user reviews the diff

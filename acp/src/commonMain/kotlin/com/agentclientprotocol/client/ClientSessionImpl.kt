@@ -34,7 +34,6 @@ internal class ClientSessionImpl(
     private val createdResponse: AcpCreatedSessionResponse,
     private val protocol: Protocol,
     private val isOpen: () -> Boolean,
-    private val onClosing: () -> Unit,
     private val onClosed: suspend () -> Unit,
     private val holder: RootSessionHolder,
 ) : ClientSession {
@@ -124,7 +123,7 @@ internal class ClientSessionImpl(
          * included, would otherwise wait for the permission answer while the client waits for the close response.
          */
         pendingPermissions.close()
-        onClosing()
+        holder.startClosing()
 
         val response = try {
             AcpMethod.AgentMethods.V1.SessionClose(protocol, CloseSessionRequest(sessionId, _meta))

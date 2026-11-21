@@ -54,21 +54,15 @@ import kotlinx.atomicfu.atomic
  * thread may read them, but values read one after the other may come from different moments. An application that
  * wants a flow keeps its own and updates it from `notify`.
  *
- * @property parentSessionId the id of the session this subagent was started under. There is no parent object, because
- * the parent's [ClientSession] may not exist yet when the subagent is built, while the history of a loading session
- * is being delivered. The application's own objects already link the two, because the parent's operations created
- * this subagent's.
+ * @property operations the operations that [SubagentOperations.createSubagentOperations] returned for this subagent
+ * @param holder the holder of this subagent's session, which its parent holder registered when the announcement arrived
+ * @param protocol the connection that `session/cancel` is sent on
  */
 @UnstableApi
 public class ClientSubagentSession internal constructor(
-    override val sessionId: SessionId,
-    public val parentSessionId: SessionId,
+    private val holder: SubagentSessionHolder,
     override val operations: ClientSessionOperations,
     private val protocol: Protocol,
-    private val parentCwd: () -> String,
-    private val parentAdditionalDirectories: () -> List<String>,
-    private val children: () -> List<ClientSubagentSession>,
-    internal val pendingPermissions: SubagentPendingPermissions,
 ) : BaseClientSession {
     private val _title = atomic<String?>(null)
     private val _description = atomic<String?>(null)
@@ -85,6 +79,16 @@ public class ClientSubagentSession internal constructor(
      */
     private var heldCapabilities: MaybeUndefined<SubagentSessionCapabilities> = MaybeUndefined.Undefined
     private var heldState: MaybeUndefined<StateUpdate> = MaybeUndefined.Undefined
+
+    override val sessionId: SessionId get() = holder.sessionId
+
+    /**
+     * The id of the session this subagent was started under.
+     *
+     * There is no parent object, because the parent's [ClientSession] may not exist yet when the subagent is built,
+     * while the history of a loading session is being delivered.
+     **/
+    public val parentSessionId: SessionId get() = holder.parent.sessionId
 
     /**
      * The title of the subagent, or `null` if the agent reported none or cleared it.
@@ -116,11 +120,11 @@ public class ClientSubagentSession internal constructor(
      */
     public val canCancel: Boolean get() = !closed.value && capabilities.value?.cancel != null
 
-    override val subagents: List<ClientSubagentSession> get() = children()
+    override val subagents: List<ClientSubagentSession> get() = holder.subagents
 
-    override val cwd: String get() = ownCwd.value ?: parentCwd()
+    override val cwd: String get() = ownCwd.value ?: holder.parent.sessionCwd()
 
-    override val additionalDirectories: List<String> get() = ownAdditionalDirectories.value ?: parentAdditionalDirectories()
+    override val additionalDirectories: List<String> get() = ownAdditionalDirectories.value ?: holder.parent.sessionAdditionalDirectories()
 
     /**
      * Asks the agent to cancel the work of this subagent by sending `session/cancel` for its id.
@@ -142,7 +146,7 @@ public class ClientSubagentSession internal constructor(
         try {
             AcpMethod.AgentMethods.V1.SessionCancel(protocol, CancelNotification(sessionId))
         } finally {
-            pendingPermissions.cancelByClient()
+            holder.permissions.cancelByClient()
         }
     }
 

@@ -50,13 +50,11 @@ public interface ClientSession : BaseClientSession {
     public suspend fun cancel()
 
     /**
-     * **UNSTABLE**
-     *
-     * This API may change at any point.
-     *
      * Closes the session and frees up any resources associated with it.
      * The agent must cancel any ongoing work (as if `session/cancel` was called)
      * and then free up any resources associated with the session.
+     *
+     * ### Pending permission requests
      *
      * When the close starts, every pending permission request of this session is answered with
      * [RequestPermissionOutcome.Cancelled] and its handler is cancelled, without waiting for the response and
@@ -64,36 +62,54 @@ public interface ClientSession : BaseClientSession {
      * [operations]. The same holds for every subagent session below this one, in [subagents] and their own
      * [ClientSubagentSession.subagents].
      *
+     * ### After a successful response
+     *
      * Closing a session closes all its subagents with it. After a successful response, and before this function
-     * returns, the client drops the whole tree: later updates for its session ids go to the
-     * [GlobalSessionUpdateHandler], the agent's requests for them fail, and a subagent that hasn't finished opening
-     * fails, so its waiting requests fail too. Each [ClientSubagentSession] keeps its last values and its
-     * [ClientSubagentSession.operations]. Nothing that arrives after the response reaches them. A call to them in
-     * progress when the response arrives, and the delivery of an update that arrived before the response and waits
-     * behind such a call, can still run after this function returns, as for [operations]. Its
-     * [ClientSubagentSession.canCancel] is `false`, and its [ClientSubagentSession.cancel] throws. The [subagents]
-     * lists stay as they were. This function cancels the deliveries to the subagents that haven't finished opening
-     * and waits for them to end, so it returns only once each [ClientSessionOperations.notify] or
-     * [SubagentOperations.createSubagentOperations] call in progress for such a subagent reacts to the cancellation.
+     * returns, the client drops the whole tree:
+     * - later updates for its session ids go to the [GlobalSessionUpdateHandler], and the agent's requests for them
+     *   fail;
+     * - a subagent that hasn't finished opening fails, so its waiting requests fail too;
+     * - each [ClientSubagentSession] keeps its last values and its [ClientSubagentSession.operations], but its
+     *   [ClientSubagentSession.canCancel] is `false` and its [ClientSubagentSession.cancel] throws;
+     * - the [subagents] lists stay as they were.
+     *
+     * Nothing that arrives after the response reaches the subagents. A call to them in progress when the response
+     * arrives, and the delivery of an update that arrived before the response and waits behind such a call, can still
+     * run after this function returns, as for [operations].
+     *
+     * This function cancels the deliveries to the subagents that haven't finished opening and waits for them to end, so
+     * it returns only once each [ClientSessionOperations.notify] or [SubagentOperations.createSubagentOperations] call
+     * in progress for such a subagent reacts to the cancellation.
+     *
+     * ### Errors
+     *
      * An answer with `-32002` (resource not found) means the agent no longer knows the session, so it counts as a
-     * successful close, as ACP asks: the tree is removed and this function returns an empty [CloseSessionResponse].
-     * If the request fails with any other error, nothing is removed.
+     * successful close, as ACP asks: the tree is removed and this function returns an empty [CloseSessionResponse]. If
+     * the request fails with any other error, nothing is removed.
+     *
+     * ### A close from a subagent's own operations
      *
      * Such a call may close the root itself. Then this function doesn't wait for that subagent's delivery, which
-     * would wait for itself, and cancels it before returning. It recognizes the call when this function runs in the
-     * call's coroutine or in one below it, or in a coroutine that kept the call's context elements, as
-     * `withContext(NonCancellable)` does, so a coroutine of another scope that copied them doesn't wait either. A
-     * close in a coroutine of another scope with a context of its own, such as `scope.async { session.close() }`, waits
-     * like any other: if the call waits for that close without reacting to cancellation, for example under
+     * would wait for itself, and cancels it before returning. It recognizes the call when this function runs:
+     * - in the call's coroutine or in one below it;
+     * - or in a coroutine that kept the call's context elements, as `withContext(NonCancellable)` does, so a
+     *   coroutine of another scope that copied them doesn't wait either.
+     *
+     * A close in a coroutine of another scope with a context of its own, such as `scope.async { session.close() }`,
+     * waits like any other: if the call waits for that close without reacting to cancellation, for example under
      * `NonCancellable`, neither of them ever finishes.
      *
-     * Only this session object sends `session/close` for its id, and only while the session is open. After a
-     * successful close, a later call returns an empty [CloseSessionResponse] at once, sends nothing and touches no
-     * other session, even if the id has been opened again since: the request carries only the id, so it would close
-     * the new session. A call after a failed close sends the request again, and calls made while a close is in flight
-     * send their own requests. If the opening of this session failed, which a call of [operations] that reads this
-     * session from its context during the opening can see, this function throws [IllegalStateException] and sends
-     * nothing. The agent's session then stays open until the connection ends.
+     * ### Repeated and stale calls
+     *
+     * Only this session object sends `session/close` for its id, and only while the session is open:
+     * - after a successful close, a later call returns an empty [CloseSessionResponse] at once, sends nothing and
+     *   touches no other session, even if the id has been opened again since, because the request carries only the id
+     *   and would close the new session;
+     * - a call after a failed close sends the request again, and calls made while a close is in flight send their own
+     *   requests;
+     * - if the opening of this session failed, which a call of [operations] that reads this session from its context
+     *   during the opening can see, this function throws [IllegalStateException] and sends nothing. The agent's
+     *   session then stays open until the connection ends.
      *
      * Only available if the agent advertises the `session.close` capability.
      *

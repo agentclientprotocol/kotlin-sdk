@@ -112,7 +112,7 @@ class ClientSessionRegistryTest {
             val childHolder = assertNotNull(rootHolder.childOrNull(child))
             assertEquals("answered", answerOf(childHolder), "before the close, a request reaches the app")
 
-            registry.closeDescendantPermissions(rootHolder)
+            rootHolder.startClosing()
             assertEquals("cancelled", answerOf(childHolder), "the walk closes the subagents it finds")
 
             val late = SessionId("late")
@@ -373,9 +373,7 @@ class ClientSessionRegistryTest {
      */
     private suspend fun TestScope.consumeUntilOpened(holder: SubagentSessionHolder): Recorder {
         val operations = Recorder()
-        val session = ClientSubagentSession(
-            holder.sessionId, holder.parent.sessionId, operations, protocol, { "/root" }, { emptyList() }, holder::subagents, holder.permissions,
-        )
+        val session = ClientSubagentSession(holder, operations, protocol)
         val consumer = launch { holder.consumeSubagentQueue(session) }
         runCurrent()
         consumer.cancel()

@@ -225,20 +225,20 @@ class ClientSessionHolderTest {
     }
 
     @Test
-    fun `only an answered holder can be marked closing and a later close keeps it closing`() {
+    fun `only an answered holder can start closing and a later close keeps it closing`() {
         val unclaimed = holder()
-        assertFailsWith<IllegalStateException> { unclaimed.markClosing() }
+        assertFailsWith<IllegalStateException> { unclaimed.startClosing() }
         assertFalse(unclaimed.phase.isAtLeast(Stage.CLAIMED), "a rejected close leaves an unclaimed holder so")
 
         val claimed = holder()
         assertTrue(claimed.claimForOpening(replayRequested = true, parameters))
-        assertFailsWith<IllegalStateException> { claimed.markClosing() }
+        assertFailsWith<IllegalStateException> { claimed.startClosing() }
         assertFalse(claimed.phase.isAtLeast(Stage.ANSWERED), "a rejected close leaves an unanswered holder so")
         assertTrue(claimed.markOpened(response), "the opening that owns it is still answered")
 
-        claimed.markClosing()
+        claimed.startClosing()
         assertTrue(claimed.phase.isAtLeast(Stage.CLOSING))
-        claimed.markClosing()
+        claimed.startClosing()
         assertTrue(claimed.phase.isAtLeast(Stage.CLOSING), "a close after a failed close")
         assertEquals(true, claimed.phase.opening?.replayRequested, "closing keeps the claim's opening")
     }

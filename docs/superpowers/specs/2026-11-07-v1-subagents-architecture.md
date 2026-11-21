@@ -1208,7 +1208,8 @@ holder owns an id, and it delivers `session/update`s from start to end.
 - **New:** `deliverSessionUpdate`, the sorting, `registerChild`, the blocking rule, the failure cascade over the
   tree, `subagentHolderOrNull` (the request handler's non-suspending lookup of a child's holder and its pending
   permissions),
-  `closeDescendantPermissions` and `removeSessionTree` (see "Close and connection end"). `removeSessionTree`
+  and `removeSessionTree` (see "Close and connection end"; the root holder's `startClosing` closes the descendants'
+  permissions). `removeSessionTree`
   replaces `removeSessionHolder`.
 - **Its constructor takes the `GlobalSessionUpdateHandler?`,** and also the `Protocol`, for a subagent's
   `session/cancel`, and a scope from `Protocol.newConnectionScope` for the subagents' consumers. `Client` passes on
@@ -1277,7 +1278,7 @@ root can be closed.
 - **Before the request:** every descendant's `SubagentPendingPermissions` is closed, at the same point as the
   root's `PendingPermissionCancellation` today, and for the same reason: the agent's close may wait for child work
   that waits for a permission answer. Each close only completes a signal, so the order doesn't matter.
-  - `closeDescendantPermissions` first moves the root's holder to the **`CLOSING` stage** of its `RootPhase` (after
+  - `RootSessionHolder.startClosing` first moves the root's holder to the **`CLOSING` stage** of its `RootPhase` (after
     `ANSWERED`, and read through `root`), and then walks the descendants. `registerChild` reads the stage after it
     has added the new child to its parent, and closes the new child's permissions if the root is closing. So a child that the walk misses,
     because it was registered while the walk ran, has its permissions closed by its own registration: one of the
@@ -1356,7 +1357,6 @@ internal class ClientSessionImpl(
     ...,
     private val protocol: Protocol,
     private val isOpen: () -> Boolean,              // whether its holder is still the registered, live one
-    private val onClosing: () -> Unit,              // answers the descendants' permission requests
     private val onClosed: suspend () -> Unit,       // removes the subtree and its elicitation entries
     private val holder: RootSessionHolder,
 ) : ClientSession {
@@ -1373,7 +1373,7 @@ internal class ClientSessionImpl(
          * included) would otherwise wait for a permission answer while the client waits for the close response.
          */
         pendingPermissions.close()
-        onClosing()
+        holder.startClosing()  // answers the descendants' permission requests
 
         val response = AcpMethod.AgentMethods.V1.SessionClose(protocol, CloseSessionRequest(sessionId, _meta))
         onClosed()
@@ -1385,7 +1385,6 @@ internal class ClientSessionImpl(
 ClientSessionImpl(
     this, sessionId, sessionParameters, operations, sessionResponse, protocol,
     isOpen = { sessions.isOpen(sessionHolder) },
-    onClosing = { sessions.closeDescendantPermissions(sessionHolder) },
     onClosed = { removeClosedSession(sessionHolder) },
     holder = sessionHolder,
 )
@@ -1424,11 +1423,6 @@ ClientSessionImpl(
 ```kotlin
 // ClientSessionRegistry
 fun isOpen(root: RootSessionHolder): Boolean = _sessions.value.sessions[root.sessionId] === root && root.blocksId
-
-fun closeDescendantPermissions(root: RootSessionHolder) {
-    root.markClosing()  // first: registerChild reads it after addChild
-    root.forEachDescendant { it.permissions.close() }
-}
 
 suspend fun removeSessionTree(root: RootSessionHolder): Set<SessionId> {
     val subtree = buildList {
@@ -1488,7 +1482,9 @@ internal class RootSessionHolder(sessionId: SessionId, setup: SubagentSetup) : C
     private val _phase = atomic(RootPhase.UNCLAIMED)
     val phase: RootPhase get() = _phase.value
 
-    fun markClosing()  // ANSWERED or CLOSING to CLOSING; throws for an unanswered root
+    // ANSWERED or CLOSING to CLOSING (first: registerChild reads it after addChild), then closes the descendants'
+    // permissions; throws for an unanswered root
+    fun startClosing()
 }
 
 internal class SubagentSessionHolder(sessionId: SessionId, val parent: ClientSessionHolder, setup: SubagentSetup) :
@@ -1899,7 +1895,7 @@ cover externally observable behaviour.
 - A failed close removes nothing, and the permissions stay closed: later requests on the root and its children are
   still answered `cancelled`. The root stays `CLOSING` too: a child announced after a failed close has its
   permissions closed.
-- A child announced after `closeDescendantPermissions` and before the close response has its permission requests
+- A child announced after `startClosing` and before the close response has its permission requests
   answered `cancelled` (the `CLOSING` stage), and after the removal too (the removal closes every subagent's
   permissions).
 - A child registered while the removal runs stays out of the session map (the root's entry is gone), and its
@@ -1965,7 +1961,7 @@ cover externally observable behaviour.
     pending-permission rule is updated for `clearCancellation()`;
   - root close: descendants' permissions answered before the request, the subtree removed in one update after a
     successful response, and sessions reach the client only through callbacks, never through `Client`;
-  - the root holder's `CLOSING` stage (reached first by `closeDescendantPermissions`, read by `registerChild` after
+  - the root holder's `CLOSING` stage (reached first by `startClosing`, read by `registerChild` after
     `addChild`, kept after a failed close) and the check of the root's entry inside `registerChild`'s update of the
     map, the close order, own-consumer detection by job ancestry or the consumer's context element, and that a
     failed child is marked closed and stays in `subagents`;
@@ -2386,7 +2382,7 @@ The design moved through several shapes before landing on the factory-based `ann
     elicitation entries; a failed close removes nothing; on connection end nothing more happens (see "Close and
     connection end"). `ClientSessionImpl` gets two callbacks instead of calling `Client`, and
     `ClientSession.client` is deprecated.
-    - The root's holder has a `CLOSING` stage. `closeDescendantPermissions` reaches it first, and `registerChild` reads
+    - The root's holder has a `CLOSING` stage. `startClosing` reaches it first, and `registerChild` reads
       it after `addChild` and closes the new child's permissions, so a child announced during the walk, or after it and
       before the response, gets closed permissions. It stays after a failed close, as the closed permissions do,
       and it needs no lock. The registration checks inside its own update of the map that the root's entry is still
