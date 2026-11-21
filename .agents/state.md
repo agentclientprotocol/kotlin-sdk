@@ -361,6 +361,34 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 
 ## Next
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
+Review round 19 (2026-11-21/22, `Client.kt`/`ClientSessionHolder.kt` notes). Plan agreed 2026-11-22; R19 delegated as
+one slice; same workflow (uncommitted, user reviews, then commit).
+- R19 (agreed), refactor/docs only, no API change:
+  1. Root: `drainHistory` private; new `completeOpening(session)` (factory path: history, opened marker, rest);
+     `completeOpening(session, opened)` stays for the early path. `Client.createSession` and the test call the new one.
+  2. Subagent names mirror root: `markSubagentOpened` → `markOpened`, `consumeSubagentQueue` → `completeOpening()`,
+     `stopConsumer` → `markConsumerStopped`, `builtSubagent` → private `_subagent`.
+  3. (D1, user 2026-11-22) The subagent object is stored once, privately: `startConsumer(session, scope, block)` sets
+     `_subagent` then claims the consumer state (`attachSubagent` goes); `completeOpening()` takes no parameter and reads
+     `_subagent`; the setup block becomes `{ consume(child) }`. Public `subagent` goes: holder methods `applyPatch(update,
+     opened)` (parent's `Patch` branch) and `markClosed()` (`failSessionTree`, `removeSessionTree`, setup); `sessionCwd`
+     stays. Outside the holder, `session` is the only handle (completion signal). Rationale (user accepted): the app gets
+     the object at setup (parent's `subagents`, announcement `notify`), `session` completes only after the child's opened
+     marker and the parent's completion; patches, nested cwd and close-on-failure need the object in between.
+  4. Drop the redundant `ensureActive()` before `_session.complete` in the subagent `completeOpening` (the loop exits
+     only right after its own check; `withContext` rethrows a cancellation at exit). Keep the two loop checks; reword
+     their comments: receive/tryReceive don't check when they don't suspend; the client application's `notify` may not
+     suspend; `deliverLive` swallows its failures; the cascade cancels without joining.
+  5. `deliverLive` catch: keep `ensureActive()`; one-line comment (rethrow only the consumer's own cancellation; a CE the
+     client application's `notify` throws, e.g. its own `withTimeout`, is logged like any live failure).
+  6. KDoc: `markOpened` "exactly once" as bullets (before the answer: this walk; after: the holder's `init`); root
+     `completeOpening` "Must run after" + failure cases as bullets; subagent `completeOpening` steps as bullets ("its own
+     subagents" = nested); `permissions` KDoc rewritten (stale "setup hands them" sentence); "opened marker" instead of
+     bare "marker" across client-package comments/KDoc; AGENTS.md mentions of renamed symbols updated.
+- Answered, no change: the agent child's lock around sends (`SubagentSessionWrapper.kt:418`) is fine: non-suspend
+  functions, `Transport.send` is encode + `trySend` on an unlimited channel, no app code, deferred completed outside;
+  relies on the `Transport.send` non-blocking contract.
+
 R1-R15 done. Deferred to the next v2 PR: v2 agent close items 1-3 — unknown-id close default (goes to app `AgentSupport.closeSession`, `-32602`), `-32002` instead of `-32602` for unknown sessions in `prompt`/`set_config_option`, re-resume overwriting the wrapper without closing the old `AgentSession`.
 
 Review round 18 (2026-11-21, `ClientSession`/`ClientSessionHolder`/`ClientSubagentSession` notes). Agreed. Same workflow (uncommitted, user reviews).
