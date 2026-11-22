@@ -381,6 +381,17 @@ KDoc of `SubagentPendingPermissions.kt` (spec typo + shortened "followed at arri
   but controls wait for success; a failed attempt invalidates what arrived during it). So N4 becomes ONE atomic state
   `Held(activeWork, setAside) | Live(activeWork)` replacing `activeWork`/`heldActiveWork`/`heldCancellation`;
   `setPendingAside` moves into the subagent class via D2's base (protected); `onOpened` KDoc restructured (N5).
+- D2 (agreed, user 2026-11-22), refactor only, no API change: ONE file `PendingPermissions.kt` replaces
+  `PendingPermissionCancellation.kt` + `SubagentPendingPermissions.kt` (precedent `agent/SessionWrapper.kt`); order:
+  base, root, subagent. `internal sealed class PendingPermissions`: `protected val signal`; public
+  `answerUnlessCancelled`, `close`; `protected open` `cancelPending`/`clearCancellation` (keep the `CLOSED` rule in one
+  place; `CLOSED` stays in the base). `RootPendingPermissions`: `public override fun cancelPending() =
+  super.cancelPending()` and same for `clearCancellation` (primitive names kept: commands; `ClientSessionImpl` call
+  sites unchanged; field `pendingPermissions` keeps its name). `SubagentPendingPermissions`: `on…` names = events, the
+  class decides the effect: `onState`, `onOpened`, `cancelByClient` → `onClientCancel`; `setPendingAside` PRIVATE here
+  (uses `signal`); N4 single atomic `Held(activeWork, setAside) | Live(activeWork)`. AGENTS.md mention of
+  `PendingPermissionCancellation` updated. Tests stay in their files (`ClientPermissionCancellationTest`,
+  `SubagentPendingPermissionsTest`), renamed calls only.
 - Research done → `.agents/research/updates-before-opening-answer.md` (spec `01a54c84`, Rust `34aea54f`): subagents RFD
   Completed 2026-11-20, now stable v1 (`docs/protocol/v1/subagents.mdx:497-533` normative). v1 new/fork: pre-answer
   traffic unspecified (only v2 says SHOULD NOT / client MAY buffer or drop). resume: child updates current, may arrive
