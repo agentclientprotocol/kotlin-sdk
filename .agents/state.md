@@ -422,6 +422,12 @@ KDoc of `SubagentPendingPermissions.kt` (spec typo + shortened "followed at arri
   cancelled or `notify` throws while delivering Opened + pre-takeover updates — Opened may have been delivered, treat a
   failed call as failed opening); closing line "Only the client runtime delivers it; agent code can't create one.";
   `@property response` unchanged.
+- `onOpened` KDoc (agreed, user 2026-11-22): summary "Resolves what [onState] held back, when the root's answer
+  arrives, and makes later states live."; pending-requests paragraph ("waits for its holder, which completes only
+  after the answer"); `### After a call that replayed no history` (bullets: set-aside answered cancelled; latest held
+  state decides foreground work); `### After a load` (bullets: nothing answered, set-aside stay pending, later
+  cancel/close answers them; no foreground work); "parent's answer" → "root's answer"; `@param promote` unchanged.
+- All R20 code and KDoc items agreed 2026-11-22.
 - Research done → `.agents/research/updates-before-opening-answer.md` (spec `01a54c84`, Rust `34aea54f`): subagents RFD
   Completed 2026-11-20, now stable v1 (`docs/protocol/v1/subagents.mdx:497-533` normative). v1 new/fork: pre-answer
   traffic unspecified (only v2 says SHOULD NOT / client MAY buffer or drop). resume: child updates current, may arrive
