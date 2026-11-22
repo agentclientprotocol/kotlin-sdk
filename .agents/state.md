@@ -392,6 +392,13 @@ KDoc of `SubagentPendingPermissions.kt` (spec typo + shortened "followed at arri
   (uses `signal`); N4 single atomic `Held(activeWork, setAside) | Live(activeWork)`. AGENTS.md mention of
   `PendingPermissionCancellation` updated. Tests stay in their files (`ClientPermissionCancellationTest`,
   `SubagentPendingPermissionsTest`), renamed calls only.
+- D3 (agreed, user 2026-11-22), KDoc only: `SubagentOperations` stays a plain interface (found by `as?` on the
+  operations object; a lambda can't also be `ClientSessionOperations`). Interface KDoc: banner, summary (+
+  `ClientSubagentSession` link), `### Implementing`, `### Capability`, `### Failure` (bullets: not in `subagents`,
+  logged, announcement/patches reach parent's `notify` as plain updates, own + nested updates →
+  `GlobalSessionUpdateHandler`, agent's requests fail, parent/siblings unaffected). Method KDoc: when called,
+  `### Context` (subagent in returned ops; parent during the call; none for early load/resume), `### Ordering`
+  (must not wait for a later parent event), `@return` (capability interfaces), one-line link to `### Failure`.
 - Research done → `.agents/research/updates-before-opening-answer.md` (spec `01a54c84`, Rust `34aea54f`): subagents RFD
   Completed 2026-11-20, now stable v1 (`docs/protocol/v1/subagents.mdx:497-533` normative). v1 new/fork: pre-answer
   traffic unspecified (only v2 says SHOULD NOT / client MAY buffer or drop). resume: child updates current, may arrive
