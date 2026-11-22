@@ -449,7 +449,10 @@ KDoc of `SubagentPendingPermissions.kt` (spec typo + shortened "followed at arri
   Merge DONE, uncommitted (client jvmTest 245 green, `apiCheck` green, `check` green on 2nd run, JS flake). Deviations:
   base ctor deps are plain `val`s (`protected` can't be read as `parent.protocol` in the subagent's super call);
   method named `setUpAnnouncedSubagent` (`setUpSubagent()` already exists in the subagent holder); registry
-  `protocol`/`subagentScope` became `private val`. Awaiting the user's look at the merge delta, then commit + push. R21 (agreed, user 2026-11-22), a SEPARATE behaviour slice
+  `protocol`/`subagentScope` became `private val`. Awaiting the user's look at the merge delta, then commit + push.
+  (user 2026-11-23) Renames: getter `setUpSubagent()` → `requireSubagent()` (it isn't a verb: it returns the stored
+  session or throws); `setUpAnnouncedSubagent(...)` → `setUpSubagent(...)`. Sent to the same programmer. Done, uncommitted
+  (client jvmTest 245 green, `apiCheck` green; `check` not re-run for the renames). R21 (agreed, user 2026-11-22), a SEPARATE behaviour slice
   after R20 (R20c, R20d): `ClientSessionRegistry.awaitSession` stops creating speculative holders; a request waits
   only for a completed holder, a claimed root or a subagent holder; anything else (unknown id, or an unclaimed
   speculative holder an update created) fails at once with `-32002` (resource not found), also in the no-opening case
