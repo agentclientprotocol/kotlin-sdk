@@ -436,7 +436,15 @@ KDoc of `SubagentPendingPermissions.kt` (spec typo + shortened "followed at arri
   fails: callers are `startClosing`, `addChild` while closing, `removeSessionTree`); "root's answer" in `onState`
   too; unreachable non-live-after-Live `onState` and second `onOpened` are no-ops; `workContinues` local. Open: the
   design spec `docs/superpowers/...` still names `PendingPermissionCancellation`/`cancelByClient` (~12×), left as is.
-- Research STARTED (user asked to trace and confirm parity with Rust): a `session/request_permission` (and other session
+- Research DONE → `.agents/research/request-before-new-answer.md`: Kotlin DIFFERS from Rust. Kotlin: no opening in flight
+  → `-32602` "not found" at once; any opening in flight (connection-wide counter) → a request creates a speculative
+  root holder and waits unbounded on `session.await()` (answer names it → app sees it after the opening; otherwise
+  `-32602` at the reap / `-32603` if the opening fails after the answer; no answer → hangs). Rust: never waits,
+  `-32601` (data = method) at once for an unrouted id; load/resume route before sending (Kotlin same). Options (NOT
+  decided, user to choose): (1) requests don't create speculative holders, wait only on a completed or claimed holder,
+  else `-32601` at once (fixes: an early request's speculative holder can block a later subagent announcement of that
+  id; `SimpleAgentTest:943` changes); (2) + case (a) `-32602` → `-32601` for requests; (3) codes only; (4) `-32002`.
+- (superseded) Research STARTED (user asked to trace and confirm parity with Rust): a `session/request_permission` (and other session
   requests) before the `session/new`/`fork` answer → `.agents/research/request-before-new-answer.md`.
 - Follow-ups recorded (not this round): drop `@UnstableApi` from v1 subagent types now that upstream is stable (start
   with a researcher diffing the stable schema vs our models); a `session/fork` streaming copied child history would be
