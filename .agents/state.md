@@ -381,8 +381,15 @@ KDoc of `SubagentPendingPermissions.kt` (spec typo + shortened "followed at arri
   but controls wait for success; a failed attempt invalidates what arrived during it). So N4 becomes ONE atomic state
   `Held(activeWork, setAside) | Live(activeWork)` replacing `activeWork`/`heldActiveWork`/`heldCancellation`;
   `setPendingAside` moves into the subagent class via D2's base (protected); `onOpened` KDoc restructured (N5).
-- Research running: may agents send updates/requests for a session before the answer of `session/new`/`fork`/`resume`/
-  `load`, and does the hold-back match the latest RFD → `.agents/research/updates-before-opening-answer.md`.
+- Research done → `.agents/research/updates-before-opening-answer.md` (spec `01a54c84`, Rust `34aea54f`): subagents RFD
+  Completed 2026-11-20, now stable v1 (`docs/protocol/v1/subagents.mdx:497-533` normative). v1 new/fork: pre-answer
+  traffic unspecified (only v2 says SHOULD NOT / client MAY buffer or drop). resume: child updates current, may arrive
+  before/after; no cancel until success + current grant; discard on failure. load: pre-answer caps/state are history.
+  Hold-back conforms (resume state hold stricter but fine; new/fork promotion is an inference; a fork streaming copied
+  child history would be promoted). Rust parks early v1 updates for unrouted ids, early requests get -32601.
+  NEW open question for the user: drop `@UnstableApi` from v1 subagent types now that upstream is stable? Also:
+  spec cites in code/docs should move to the stable page; unchecked: a `session/request_permission` before a
+  pending `session/new` answer.
 - (Superseded D1 text below kept for reference.) Still to discuss (proposed, NOT agreed): D1 states live when `answered || !replayRequested`, pre-answer states of a load
   ignored; `heldActiveWork`/`heldCancellation`/`setPendingAside`/`SubagentPendingPermissions.onOpened` go (behaviour
   change: a pre-answer `idle(cancelled)` of a resume answers at arrival; a failed resume then gives `cancelled` not an
