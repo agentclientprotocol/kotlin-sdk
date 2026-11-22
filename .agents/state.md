@@ -360,6 +360,11 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   tests; `check` green (2nd run, JS flake); no API change.
 
 ## Next
+TODO (user 2026-11-23, brainstorm later, NOT this round): review how root/subagent class pairs are organised across the
+SDK — two files vs one file (e.g. `ClientSessionHolder.kt` holds base + `RootSessionHolder` + `SubagentSessionHolder`;
+`PendingPermissions.kt` holds all three; `ClientSubagentSession.kt` separate; `agent/SessionWrapper.kt` vs
+`SubagentSessionWrapper.kt`). Brainstorm whether one consistent rule makes sense (always split / always one file) or
+whether it depends on the component (small families in one file, big ones split), and apply it.
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
 Review round 20 (2026-11-22, notes on `PendingPermissionCancellation`/`SubagentPendingPermissions`/`SubagentOperations`/
 `SubagentSetup`/`SessionEvent`). Answers given; discussion IN PROGRESS. The user has an UNCOMMITTED edit to the class
@@ -435,7 +440,16 @@ KDoc of `SubagentPendingPermissions.kt` (spec typo + shortened "followed at arri
   `setUp` Failure bullets corrected (factory failure also fails the holders below; rethrow only when the caller is
   cancelled AND the factory throws CE; a stopped opening happens only when the parent was sealed after the listing);
   registry test uses an `openingScope` on a test dispatcher; generic "consumer" wording kept where it means any queue
-  reader / the parent's deliverer. R21 (agreed, user 2026-11-22), a SEPARATE behaviour slice
+  reader / the parent's deliverer.
+  (user 2026-11-23, folded into R20b, RESUMED same programmer) Dissolve `SubagentSetup`: `setUp`/`failSetup` → private
+  base `ClientSessionHolder` methods (e.g. `setUpSubagent`); base takes `protocol`, `openingScope`, `failSessionTree`
+  as ctor params; `SubagentSessionHolder(sessionId, parent)` inherits them from the parent; only `RootSessionHolder`
+  is built with them (registry); `SubagentSetup.kt` deleted. `SubagentSessionHolder` stays in `ClientSessionHolder.kt`.
+  The user approved the rest of the R20b diff (2026-11-23); after the merge lands, review only the merge delta, then commit.
+  Merge DONE, uncommitted (client jvmTest 245 green, `apiCheck` green, `check` green on 2nd run, JS flake). Deviations:
+  base ctor deps are plain `val`s (`protected` can't be read as `parent.protocol` in the subagent's super call);
+  method named `setUpAnnouncedSubagent` (`setUpSubagent()` already exists in the subagent holder); registry
+  `protocol`/`subagentScope` became `private val`. Awaiting the user's look at the merge delta, then commit + push. R21 (agreed, user 2026-11-22), a SEPARATE behaviour slice
   after R20 (R20c, R20d): `ClientSessionRegistry.awaitSession` stops creating speculative holders; a request waits
   only for a completed holder, a claimed root or a subagent holder; anything else (unknown id, or an unclaimed
   speculative holder an update created) fails at once with `-32002` (resource not found), also in the no-opening case
