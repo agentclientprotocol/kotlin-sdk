@@ -377,7 +377,13 @@ KDoc of `SubagentPendingPermissions.kt` (spec typo + shortened "followed at arri
   consumer" stays: whoever delivers the parent's queue, incl. the root's opening call). Why not one public
   `completeOpening`: `setUp` runs in the parent's delivery and the child's opening waits for `parent.session.join()`, so
   inline would deadlock; a non-suspending launcher named "complete" would mislead.
-- Still to discuss (proposed, NOT agreed): D1 states live when `answered || !replayRequested`, pre-answer states of a load
+- D1 REJECTED (user 2026-11-22): keep the hold-back, it follows the RFD (no-replay pre-answer snapshots are current
+  but controls wait for success; a failed attempt invalidates what arrived during it). So N4 becomes ONE atomic state
+  `Held(activeWork, setAside) | Live(activeWork)` replacing `activeWork`/`heldActiveWork`/`heldCancellation`;
+  `setPendingAside` moves into the subagent class via D2's base (protected); `onOpened` KDoc restructured (N5).
+- Research running: may agents send updates/requests for a session before the answer of `session/new`/`fork`/`resume`/
+  `load`, and does the hold-back match the latest RFD → `.agents/research/updates-before-opening-answer.md`.
+- (Superseded D1 text below kept for reference.) Still to discuss (proposed, NOT agreed): D1 states live when `answered || !replayRequested`, pre-answer states of a load
   ignored; `heldActiveWork`/`heldCancellation`/`setPendingAside`/`SubagentPendingPermissions.onOpened` go (behaviour
   change: a pre-answer `idle(cancelled)` of a resume answers at arrival; a failed resume then gives `cancelled` not an
   error; reverses the "held back, its effect included" rule; `ClientSubagentSession` held caps/state unchanged). D2
