@@ -361,6 +361,36 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 
 ## Next
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
+Review round 20 (2026-11-22, notes on `PendingPermissionCancellation`/`SubagentPendingPermissions`/`SubagentOperations`/
+`SubagentSetup`/`SessionEvent`). Answers given; discussion IN PROGRESS. The user has an UNCOMMITTED edit to the class
+KDoc of `SubagentPendingPermissions.kt` (spec typo + shortened "followed at arrival" paragraph): keep it, build on it.
+- D4 (agreed, user 2026-11-22), refactor only, no API change: `SubagentSessionHolder.startConsumer(session, scope, block)`
+  → non-suspending `startOpening(session): Unit`: stores `_subagent`, claims the opening state, launches the opening in
+  the connection scope (scope and `failSessionTree` reached through the holder's `setup`), and calls
+  `session.markClosed()` itself when the opening was already stopped (no `Boolean`). The coroutine body stays a PRIVATE
+  `suspend fun completeOpening()` (name kept: it does complete) and absorbs `SubagentSetup.consume`'s failure handling;
+  `consume` and the block parameter go; `setUp`'s last line becomes `child.startOpening(session)`, and the "stays in the
+  list" comment moves into the holder, reworded: the session object stays in the parent's `subagents`, closed; "removed"
+  = removed with its root's tree after `session/close`; the failure/removal may have run before the store and missed it.
+  Renames: `ConsumerState` → `OpeningState`, `consumer` field → `opening`, `markConsumerStopped` → `markOpeningStopped`,
+  `SubagentConsumer` element → `SubagentOpening`, "a child's consumer" in AGENTS.md/KDoc → its opening ("the parent's
+  consumer" stays: whoever delivers the parent's queue, incl. the root's opening call). Why not one public
+  `completeOpening`: `setUp` runs in the parent's delivery and the child's opening waits for `parent.session.join()`, so
+  inline would deadlock; a non-suspending launcher named "complete" would mislead.
+- Still to discuss (proposed, NOT agreed): D1 states live when `answered || !replayRequested`, pre-answer states of a load
+  ignored; `heldActiveWork`/`heldCancellation`/`setPendingAside`/`SubagentPendingPermissions.onOpened` go (behaviour
+  change: a pre-answer `idle(cancelled)` of a resume answers at arrival; a failed resume then gives `cancelled` not an
+  error; reverses the "held back, its effect included" rule; `ClientSubagentSession` held caps/state unchanged). D2
+  abstract base `PendingPermissions` (public `answerUnlessCancelled`/`close`, protected `cancelPending`/
+  `clearCancellation`), `RootPendingPermissions` (`onPromptStarted`/`onCancel`), `SubagentPendingPermissions`
+  (`onState`, `cancelByClient` → `onClientCancel`). D3 `SubagentOperations` not a `fun interface` (found by `as?` on the
+  operations object, a lambda can't be both); split KDoc: interface = what/discovery/capability/failure sections,
+  method = call context, must-not-wait, return. Docs: `SubagentPendingPermissions` class KDoc sections (Cancellation
+  triggers, Later requests by last live state) + stray `*` at line 19; `setUp` KDoc Steps/Failure; `failHolder` param →
+  `failSessionTree` ("the holder of a subagent whose setup or opening failed, and every holder below it");
+  `SessionEvent.Opened` `### Delivery` bullets. User's note 3 part 2 ended with an unfinished "So let's maybe" — ask.
+- Draft slices: R20a permissions (opus; D1 if approved, D2, rename, KDoc, tests, AGENTS.md); R20b setup/naming (D4,
+  param, `setUp` KDoc); R20c docs (D3, `Opened`). One at a time, uncommitted for the user's review.
 Review round 19 (2026-11-21/22, `Client.kt`/`ClientSessionHolder.kt` notes). Plan agreed 2026-11-22; R19 done.
 - R19 (agreed), refactor/docs only, no API change:
   1. Root: `drainHistory` private; new `completeOpening(session)` (factory path: history, opened marker, rest);
