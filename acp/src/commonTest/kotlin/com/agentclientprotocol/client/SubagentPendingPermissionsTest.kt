@@ -101,7 +101,7 @@ class SubagentPendingPermissionsTest {
             val first = request(permissions)
             val second = request(permissions)
 
-            permissions.cancelByClient()
+            permissions.onClientCancel()
 
             first.assertCancelledInApp(name)
             second.assertCancelledInApp(name)
@@ -115,7 +115,7 @@ class SubagentPendingPermissionsTest {
                 val permissions = SubagentPendingPermissions()
                 permissions.onState(active, live = true)
 
-                permissions.cancelByClient()
+                permissions.onClientCancel()
 
                 request(permissions).assertCancelledWithoutApp("$active")
                 request(permissions).assertCancelledWithoutApp("$active, a second request")
@@ -136,7 +136,7 @@ class SubagentPendingPermissionsTest {
         for (next in states) {
             val permissions = SubagentPendingPermissions()
             permissions.onState(StateUpdate.Running(), live = true)
-            permissions.cancelByClient()
+            permissions.onClientCancel()
 
             permissions.onState(next, live = true)
 
@@ -161,7 +161,7 @@ class SubagentPendingPermissionsTest {
             val permissions = SubagentPendingPermissions()
             reported.forEach { permissions.onState(it, live = true) }
 
-            permissions.cancelByClient()
+            permissions.onClientCancel()
 
             val later = request(permissions)
             later.assertWaitingInApp(name)
@@ -177,7 +177,7 @@ class SubagentPendingPermissionsTest {
 
         permissions.onState(StateUpdate.RequiresAction(), live = true)
         request.assertWaitingInApp()
-        permissions.cancelByClient()
+        permissions.onClientCancel()
 
         request.assertCancelledInApp()
     }
@@ -186,12 +186,12 @@ class SubagentPendingPermissionsTest {
     fun `a request pending across an earlier cancel window is answered by a later cancel by the client`() = runTest {
         val permissions = SubagentPendingPermissions()
         permissions.onState(StateUpdate.Idle(stopReason = IdleStopReason.EndTurn), live = true)
-        permissions.cancelByClient()
+        permissions.onClientCancel()
         val request = request(permissions)
         request.assertWaitingInApp()
 
         permissions.onState(StateUpdate.Running(), live = true)
-        permissions.cancelByClient()
+        permissions.onClientCancel()
 
         request.assertCancelledInApp()
     }
@@ -203,7 +203,7 @@ class SubagentPendingPermissionsTest {
         val pending = request(permissions)
 
         permissions.onState(StateUpdate.RequiresAction(), live = true)
-        permissions.cancelByClient()
+        permissions.onClientCancel()
 
         pending.assertCancelledInApp()
         request(permissions).assertCancelledWithoutApp()
@@ -217,7 +217,7 @@ class SubagentPendingPermissionsTest {
         permissions.onState(StateUpdate.Running(), live = true)
         val pending = request(permissions)
 
-        permissions.cancelByClient()
+        permissions.onClientCancel()
         pending.assertCancelledInApp()
         request(permissions).assertCancelledWithoutApp("before the next state")
         permissions.onState(StateUpdate.RequiresAction(), live = true)
@@ -230,7 +230,7 @@ class SubagentPendingPermissionsTest {
         val permissions = SubagentPendingPermissions()
         permissions.onState(StateUpdate.Running(), live = false)
 
-        permissions.cancelByClient()
+        permissions.onClientCancel()
 
         request(permissions).assertWaitingInApp("a held back running confirms no work yet")
     }
@@ -244,7 +244,7 @@ class SubagentPendingPermissionsTest {
         permissions.onState(StateUpdate.Idle(stopReason = IdleStopReason.Cancelled), live = false)
         pending.assertWaitingInApp("a held back idle with cancelled is not applied")
 
-        permissions.cancelByClient()
+        permissions.onClientCancel()
         pending.assertCancelledInApp()
         permissions.onState(StateUpdate.Idle(), live = false)
         request(permissions).assertCancelledWithoutApp("a held back state does not end the window")
@@ -257,7 +257,7 @@ class SubagentPendingPermissionsTest {
             permissions.onState(held, live = false)
 
             permissions.onOpened(promote = true)
-            permissions.cancelByClient()
+            permissions.onClientCancel()
 
             request(permissions).assertCancelledWithoutApp("$held")
         }
@@ -270,7 +270,7 @@ class SubagentPendingPermissionsTest {
             permissions.onState(held, live = false)
 
             permissions.onOpened(promote = false)
-            permissions.cancelByClient()
+            permissions.onClientCancel()
 
             request(permissions).assertWaitingInApp("$held")
         }
@@ -282,26 +282,26 @@ class SubagentPendingPermissionsTest {
         idleLast.onState(StateUpdate.Running(), live = false)
         idleLast.onState(StateUpdate.Idle(), live = false)
         idleLast.onOpened(promote = true)
-        idleLast.cancelByClient()
+        idleLast.onClientCancel()
         request(idleLast).assertWaitingInApp("idle came last")
 
         val unconfirmedLast = SubagentPendingPermissions()
         unconfirmedLast.onState(StateUpdate.Running(), live = false)
         unconfirmedLast.onState(null, live = false)
         unconfirmedLast.onOpened(promote = true)
-        unconfirmedLast.cancelByClient()
+        unconfirmedLast.onClientCancel()
         request(unconfirmedLast).assertWaitingInApp("null came last")
 
         val runningLast = SubagentPendingPermissions()
         runningLast.onState(StateUpdate.Idle(), live = false)
         runningLast.onState(StateUpdate.Running(), live = false)
         runningLast.onOpened(promote = true)
-        runningLast.cancelByClient()
+        runningLast.onClientCancel()
         request(runningLast).assertCancelledWithoutApp("running came last")
 
         val nothingHeld = SubagentPendingPermissions()
         nothingHeld.onOpened(promote = true)
-        nothingHeld.cancelByClient()
+        nothingHeld.onClientCancel()
         request(nothingHeld).assertWaitingInApp("nothing was held back")
     }
 
@@ -339,7 +339,7 @@ class SubagentPendingPermissionsTest {
         pending.assertCancelledInApp()
         later.assertWaitingInApp("the work that runs again")
         // The latest held state, running, is promoted as before.
-        permissions.cancelByClient()
+        permissions.onClientCancel()
         later.assertCancelledInApp()
         request(permissions).assertCancelledWithoutApp("the promoted running confirms work")
     }
@@ -357,7 +357,7 @@ class SubagentPendingPermissionsTest {
             later.assertWaitingInApp(end)
 
             when (end) {
-                "cancel by the client" -> permissions.cancelByClient()
+                "cancel by the client" -> permissions.onClientCancel()
                 "close" -> permissions.close()
                 else -> permissions.onState(StateUpdate.Idle(stopReason = IdleStopReason.Cancelled), live = true)
             }
@@ -373,7 +373,7 @@ class SubagentPendingPermissionsTest {
             val pending = request(permissions)
             permissions.onState(StateUpdate.Idle(stopReason = IdleStopReason.Cancelled), live = false)
 
-            if (end == "close") permissions.close() else permissions.cancelByClient()
+            if (end == "close") permissions.close() else permissions.onClientCancel()
 
             pending.assertCancelledInApp(end)
             permissions.onOpened(promote = true)
@@ -388,7 +388,7 @@ class SubagentPendingPermissionsTest {
         permissions.onOpened(promote = true)
 
         permissions.onState(StateUpdate.Idle(stopReason = IdleStopReason.EndTurn), live = true)
-        permissions.cancelByClient()
+        permissions.onClientCancel()
 
         request(permissions).assertWaitingInApp()
     }
@@ -411,7 +411,7 @@ class SubagentPendingPermissionsTest {
         permissions.onState(StateUpdate.Idle(stopReason = IdleStopReason.Cancelled), live = true)
         request(permissions).assertCancelledWithoutApp("after a live idle with cancelled")
         permissions.onOpened(promote = false)
-        permissions.cancelByClient()
+        permissions.onClientCancel()
         request(permissions).assertCancelledWithoutApp("after a cancel by the client")
     }
 

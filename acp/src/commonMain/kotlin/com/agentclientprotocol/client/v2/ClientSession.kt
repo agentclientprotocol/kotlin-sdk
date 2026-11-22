@@ -1,7 +1,7 @@
 package com.agentclientprotocol.client.v2
 
 import com.agentclientprotocol.annotations.UnstableApi
-import com.agentclientprotocol.client.PendingPermissionCancellation
+import com.agentclientprotocol.client.RootPendingPermissions
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.SessionConfigId
@@ -48,7 +48,7 @@ public class ClientSession internal constructor(
     private val updatesFlow: Flow<UpdateWithMeta>,
     private val onClosed: () -> Unit = {},
 ) {
-    private val pendingPermissions = PendingPermissionCancellation()
+    private val pendingPermissions = RootPendingPermissions()
 
     private val ended = atomic(false)
 

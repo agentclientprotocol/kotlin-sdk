@@ -42,7 +42,7 @@ internal class ClientSessionImpl(
         val updateChannel: Channel<SessionUpdate>
     )
     private val activePrompt = atomic<PromptSession?>(null)
-    private val pendingPermissions = PendingPermissionCancellation()
+    private val pendingPermissions = RootPendingPermissions()
 
     // TODO remove together with the deprecated ClientSession.currentMode.
     private val _currentMode by lazy {

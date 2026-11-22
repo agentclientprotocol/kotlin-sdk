@@ -146,7 +146,7 @@ public class ClientSubagentSession internal constructor(
         try {
             AcpMethod.AgentMethods.V1.SessionCancel(protocol, CancelNotification(sessionId))
         } finally {
-            holder.permissions.cancelByClient()
+            holder.permissions.onClientCancel()
         }
     }
 
