@@ -417,6 +417,11 @@ KDoc of `SubagentPendingPermissions.kt` (spec typo + shortened "followed at arri
   logged; caller cancelled → rethrown; parent failed/closed during factory → not listed, not opened, holder never gets
   the session; only child's holder failed or removed with its root's tree → listed, closed, not opened). "added" →
   "listed".
+- `SessionEvent.Opened` KDoc (agreed, user 2026-11-22), KDoc only: summary unchanged; `### Delivery` bullets
+  (success → exactly one before any live update; fails before answer → none; after answer can still fail — caller
+  cancelled or `notify` throws while delivering Opened + pre-takeover updates — Opened may have been delivered, treat a
+  failed call as failed opening); closing line "Only the client runtime delivers it; agent code can't create one.";
+  `@property response` unchanged.
 - Research done → `.agents/research/updates-before-opening-answer.md` (spec `01a54c84`, Rust `34aea54f`): subagents RFD
   Completed 2026-11-20, now stable v1 (`docs/protocol/v1/subagents.mdx:497-533` normative). v1 new/fork: pre-answer
   traffic unspecified (only v2 says SHOULD NOT / client MAY buffer or drop). resume: child updates current, may arrive
