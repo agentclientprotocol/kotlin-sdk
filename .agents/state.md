@@ -430,7 +430,13 @@ KDoc of `SubagentPendingPermissions.kt` (spec typo + shortened "followed at arri
 - All R20 code and KDoc items agreed 2026-11-22.
 - Plan (agreed 2026-11-22): R20a permissions (opus; D2, N4, SPP class + onOpened KDocs, AGENTS.md) → R20b setup/opening
   (D4, `failSessionTree`, setup KDocs) → R20c docs (`SubagentOperations`, `SessionEvent.Opened`). Each uncommitted for
-  the user's review. R20a DONE, UNCOMMITTED, awaiting the user's review (client jvmTest 245 green,
+  the user's review. R20a COMMITTED `f5594c3` and pushed (user 2026-11-22). R20b DONE, UNCOMMITTED, awaiting the user's review (client jvmTest 245
+  green, `apiCheck` green, `acp.api` unchanged, `check` green 1st run). Deviations: base holder `setup` now `protected`;
+  `setUp` Failure bullets corrected (factory failure also fails the holders below; rethrow only when the caller is
+  cancelled AND the factory throws CE; a stopped opening happens only when the parent was sealed after the listing);
+  registry test uses an `openingScope` on a test dispatcher; generic "consumer" wording kept where it means any queue
+  reader / the parent's deliverer. Pending user answer: R21 error code for early requests (-32002 / -32602 / -32601). Design spec
+  update (user: "update design doc as necessary") planned as R20d after R20c, covering all R20 renames. Was: (client jvmTest 245 green,
   `apiCheck` green, `acp.api` unchanged, `check` green on 2nd run, JS flake). Deviations: v2 `ClientSession` also uses
   `RootPendingPermissions`; `[close]` bullet corrected (no path closes a subagent's permissions when its holder
   fails: callers are `startClosing`, `addChild` while closing, `removeSessionTree`); "root's answer" in `onState`
