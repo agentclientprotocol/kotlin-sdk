@@ -118,11 +118,11 @@ internal class SubagentConsumer(val holder: SubagentSessionHolder) : AbstractCor
  *
  * Every update that arrives before the session exists goes into one queue, and so does the [QueuedItem.Opened] marker
  * of the root's answer. The queue has one consumer at a time:
- * - for a root with ready operations (a load): [RootSessionHolder.deliverEarly], until the marker, then
- *   [RootSessionHolder.completeOpening];
- * - for a root with a factory: [RootSessionHolder.drainHistory], until the marker, then
- *   [RootSessionHolder.completeOpening];
- * - for a subagent: [SubagentSessionHolder.consumeSubagentQueue], started by the parent's consumer once it has set the
+ * - for a root with ready operations (a load): [RootSessionHolder.deliverEarly], until the opened marker, then
+ *   [RootSessionHolder.completeOpening] with that marker;
+ * - for a root with a factory: [RootSessionHolder.drainHistory], until the opened marker, then
+ *   [RootSessionHolder.completeOpening] with that marker;
+ * - for a subagent: [SubagentSessionHolder.completeOpening], started by the parent's consumer once it has set the
  *   subagent up.
  *
  * The consumer closes the queue to switch to the session.
@@ -131,7 +131,7 @@ internal class SubagentConsumer(val holder: SubagentSessionHolder) : AbstractCor
  *
  * An update that misses the closed queue waits until the consumer has finished and until the update that missed the
  * queue before it is delivered, and then goes to the session. So the updates keep the order in which their handlers
- * reach the holder, and the marker keeps its place among them.
+ * reach the holder, and the opened marker keeps its place among them.
  *
  * ### Subagents
  *
@@ -290,7 +290,7 @@ internal sealed class ClientSessionHolder(
     /**
      * Fails the holder with [cause] and hands whatever was queued to [onQueuedUpdate], a `subagent_update` as a
      * plain update. The queued updates belong to no live session: either no initialization claimed the holder, or
-     * its opening failed. A queued marker is dropped, because a failed opening delivers none.
+     * its opening failed. A queued opened marker is dropped, because a failed opening delivers none.
      *
      * The channel is closed before draining, so an update can't be queued after the drain and get lost.
      * The session is failed only after the drain, so [handleOrQueue] callers that missed the channel see
@@ -312,8 +312,8 @@ internal sealed class ClientSessionHolder(
 
     /**
      * Applies the `capabilities` and `state` patches that the subagents of this holder's session held back, when the
-     * marker of this session's stream is delivered: after a load they were history and are dropped, otherwise they
-     * take effect.
+     * opened marker of this session's stream is delivered: after a load they were history and are dropped, otherwise
+     * they take effect.
      */
     protected fun resolveHeldSubagentState() {
         val promote = root.phase.opening?.replayRequested != true
@@ -325,8 +325,8 @@ internal sealed class ClientSessionHolder(
      * its subagent up with the operations of [session], and a patch is first applied to its subagent, so the
      * application never sees an update whose effect isn't visible yet.
      *
-     * @param opened whether the marker of this holder's stream has been delivered, so a subagent's `capabilities` and
-     * `state` patches take effect at once rather than being held back
+     * @param opened whether the opened marker of this holder's stream has been delivered, so a subagent's
+     * `capabilities` and `state` patches take effect at once rather than being held back
      */
     protected suspend fun deliverItem(item: QueuedItem, session: BaseClientSession, opened: Boolean) {
         deliverItem(item, session.operations, opened) { update, meta -> session.deliverUpdate(update, meta) }
@@ -349,12 +349,11 @@ internal sealed class ClientSessionHolder(
                 deliver(item.update, item.meta)
             }
             is QueuedItem.Patch -> {
-                // A subagent whose setup failed has no session object, and its patches are plain updates.
-                item.child.subagent?.applyPatch(item.update, opened)
+                item.child.applyPatch(item.update, opened)
                 deliver(item.update, item.meta)
             }
-            // The consumers take the marker themselves, and it never reaches a completed holder.
-            is QueuedItem.Opened -> error("The opening marker of session $sessionId reached the delivery of an update")
+            // The consumers take the opened marker themselves, and it never reaches a completed holder.
+            is QueuedItem.Opened -> error("The opened marker of session $sessionId reached the delivery of an update")
         }
     }
 
@@ -519,7 +518,7 @@ internal class RootSessionHolder(sessionId: SessionId, setup: SubagentSetup) : C
      * Makes the opening call that asked for [replayRequested] with [parameters] the owner of this holder.
      *
      * Only a root's holder that has no owner and hasn't completed can be claimed: the response hook can put the
-     * marker only into an open queue, and two openings of one id would race for it.
+     * opened marker only into an open queue, and two openings of one id would race for it.
      *
      * @return `false` if the holder already has an owner or has completed. The holder is then unchanged.
      */
@@ -532,15 +531,20 @@ internal class RootSessionHolder(sessionId: SessionId, setup: SubagentSetup) : C
 
     /**
      * Puts the [QueuedItem.Opened] marker with [response] into the queue, after every update that has reached the
-     * holder, records that the opening call was answered, and puts a marker without a response into the queue of
-     * every subagent below, which resolves their held-back permission state too.
+     * holder, records that the opening call was answered, and puts an opened marker without a response into the queue
+     * of every subagent below, which resolves their held-back permission state too.
      *
-     * The response hook of the opening call calls this in the read loop, so it must not suspend or block. The
-     * `session/update` handler registers subagents in read-loop order too, so each subagent gets its marker exactly
-     * once: from here, or at its registration after the answer.
+     * The response hook of the opening call calls this in the read loop, so it must not suspend or block.
      *
-     * @return `false` if the queue is closed because the holder failed. The marker is then dropped, and the holder
-     * stays claimed.
+     * Each subagent gets its opened marker exactly once:
+     * - a subagent registered before the answer is in the tree, and gets it from the walk here;
+     * - a subagent registered after the answer gets it in its holder's `init`.
+     *
+     * Both run in read-loop order, this in the response hook and the registration in the `session/update` handler
+     * before it suspends, so they never interleave.
+     *
+     * @return `false` if the queue is closed because the holder failed. The opened marker is then dropped, and the
+     * holder stays claimed.
      * @throws IllegalStateException if no call has claimed the holder, or it was already answered
      */
     fun markOpened(response: AcpCreatedSessionResponse): Boolean {
@@ -551,18 +555,18 @@ internal class RootSessionHolder(sessionId: SessionId, setup: SubagentSetup) : C
 
         /*
          * Every subagent's queue is still open here: a subagent's consumer closes it only after it has delivered
-         * this marker, and a failed one's is closed, so it is skipped.
+         * this opened marker, and a failed one's is closed, so it is skipped.
          */
         val promote = answered.opening?.replayRequested != true
-        forEachDescendant { it.markSubagentOpened(promote) }
+        forEachDescendant { it.markOpened(promote) }
         return true
     }
 
     /**
-     * Hands the updates queued before the marker to [session], in queue order, and returns the marker without
+     * Hands the updates queued before the opened marker to [session], in queue order, and returns the marker without
      * delivering it. Pass the marker to [completeOpening].
      *
-     * Must run after the opening call was answered, so the marker is in the queue. A failure of the session's
+     * Must run after the opening call was answered, so the opened marker is in the queue. A failure of the session's
      * operations fails this call, and the remaining items stay in the queue for [failAndDrainQueue]. As in
      * [completeOpening], a cancellation that the operations throw while the caller is active becomes an
      * [IllegalStateException].
@@ -578,13 +582,13 @@ internal class RootSessionHolder(sessionId: SessionId, setup: SubagentSetup) : C
 
     /**
      * Hands each queued update and each arriving update to [operations], one at a time and in arrival order, until
-     * it takes the marker, and returns the marker without delivering it: only the opening call knows whether it
-     * succeeded. Pass the marker to [completeOpening] once it has.
+     * it takes the opened marker, and returns that marker without delivering it: only the opening call knows whether
+     * it succeeded. Pass the marker to [completeOpening] once it has.
      *
      * The holder must be claimed. If [operations] throws, the remaining items stay in the queue for
      * [failAndDrainQueue].
      *
-     * @return `null` if the queue was closed before the marker
+     * @return `null` if the queue was closed before the opened marker
      */
     suspend fun deliverEarly(operations: ClientSessionOperations): QueuedItem.Opened? {
         while (true) {
@@ -621,19 +625,24 @@ internal class RootSessionHolder(sessionId: SessionId, setup: SubagentSetup) : C
      * Delivers [opened] and the updates queued after it to [session], then makes [session] the receiver of all
      * later updates. The subagents' held-back state is resolved just before [opened] is delivered.
      *
-     * Must run after the request of the opening call has returned, and after its consumer, [deliverEarly] or
-     * [drainHistory], returned [opened]. The operations run in the caller's coroutine, so this can be cancelled. If
-     * the caller is cancelled or the operations throw, this throws and the opening fails, even though the operations
-     * may already have the marker: the caller must then fail the holder with
-     * [ClientSessionRegistry.failSessionTree], which hands the rest of the queue on. A cancellation that the
-     * operations throw while the caller is active becomes an [IllegalStateException], so the caller sees a failed
-     * opening rather than a cancellation of its own.
+     * Must run after:
+     * - the request of the opening call has returned;
+     * - the consumer of the queue, [deliverEarly] or [drainHistory], has returned [opened].
+     *
+     * The operations run in the caller's coroutine, so this can be cancelled. This throws, and the opening fails,
+     * when:
+     * - the caller is cancelled;
+     * - the operations throw. A cancellation that they throw while the caller is active becomes an
+     *   [IllegalStateException], so the caller sees a failed opening rather than a cancellation of its own.
+     *
+     * The operations may already have the opened marker then. The caller must fail the holder with
+     * [ClientSessionRegistry.failSessionTree], which hands the rest of the queue on.
      */
     suspend fun completeOpening(session: ClientSessionImpl, opened: QueuedItem.Opened) {
-        val response = checkNotNull(opened.response) { "The opening marker of root session ${session.sessionId} has no answer" }
+        val response = checkNotNull(opened.response) { "The opened marker of root session ${session.sessionId} has no answer" }
         deliverDuringOpening(session) {
             resolveHeldSubagentState()
-            // No prompt can be active yet, so the marker goes to `notify`.
+            // No prompt can be active yet, so the opened marker goes to `notify`.
             session.operations.notify(SessionEvent.Opened(response))
         }
         queue.close()
@@ -652,7 +661,7 @@ internal class RootSessionHolder(sessionId: SessionId, setup: SubagentSetup) : C
      * Only the opening uses it, in [drainHistory] and [completeOpening]. A [CancellationException] that app code throws
      * while the caller is still active becomes an [IllegalStateException], so the opening fails rather than looks like
      * the caller's own cancellation. Live deliveries log such failures instead, see
-     * [SubagentSessionHolder.consumeSubagentQueue].
+     * [SubagentSessionHolder.completeOpening].
      */
     private suspend fun deliverDuringOpening(session: BaseClientSession, block: suspend () -> Unit) {
         try {
@@ -669,7 +678,7 @@ internal class RootSessionHolder(sessionId: SessionId, setup: SubagentSetup) : C
  *
  * A holder created after the root's answer takes its [QueuedItem.Opened] marker at once, as its first item, before
  * it is added to [parent] or the session map. A holder created before the answer gets it from
- * [RootSessionHolder.markOpened]. Both run in read-loop order, so each subagent gets its marker exactly once.
+ * [RootSessionHolder.markOpened]. Both run in read-loop order, so each subagent gets its opened marker exactly once.
  *
  * @property parent the holder of the session this subagent was announced in
  * @param setup sets up the subagents announced in this subagent's stream
@@ -687,57 +696,83 @@ internal class SubagentSessionHolder(
 
     // The consumer of this subagent's queue; a root's consumer is its opening call.
     private val consumer = atomic<ConsumerState>(ConsumerState.NotStarted)
-    private val builtSubagent = atomic<ClientSubagentSession?>(null)
+
+    /*
+     * The subagent session that the setup built for this holder, stored by [startConsumer]. It stays `null` while the
+     * holder isn't set up, when its setup failed, and when the parent took no more subagents by the end of the setup.
+     * It exists before the holder completes, so patches, the working directories of nested subagents and the close
+     * after a failure reach it through the holder.
+     */
+    private val _subagent = atomic<ClientSubagentSession?>(null)
 
     /**
-     * The pending permission requests of this subagent. A load or resume of the root needs new holders, so it starts
-     * with fresh ones. The registry drives them at arrival, and the setup hands them to the [ClientSubagentSession].
+     * The pending permission requests of this subagent, answered `cancelled` on a cancel, an `idle(cancelled)` state
+     * or a close. The registry feeds them when the requests and states arrive.
+     *
+     * They belong to this holder, so a load or resume of the root, which builds new holders, starts with none
+     * pending.
      */
     val permissions: SubagentPendingPermissions = SubagentPendingPermissions()
 
     init {
         val phase = root.phase
-        if (phase.isAtLeast(Stage.ANSWERED)) markSubagentOpened(promote = phase.opening?.replayRequested != true)
+        if (phase.isAtLeast(Stage.ANSWERED)) markOpened(promote = phase.opening?.replayRequested != true)
     }
 
     override val root: RootSessionHolder get() = parent.root
 
-    /**
-     * The subagent session that the setup built for this holder, `null` while it isn't set up yet and when its setup
-     * failed. It exists before the holder completes.
-     */
-    val subagent: ClientSubagentSession? get() = builtSubagent.value
-
     override val blocksId: Boolean get() = !isFailed || !parent.isFailed
 
-    override fun sessionCwd(): String = checkNotNull(subagent) { "Subagent session $sessionId is not set up" }.cwd
+    override fun sessionCwd(): String = setUpSubagent().cwd
 
-    override fun sessionAdditionalDirectories(): List<String> =
-        checkNotNull(subagent) { "Subagent session $sessionId is not set up" }.additionalDirectories
+    override fun sessionAdditionalDirectories(): List<String> = setUpSubagent().additionalDirectories
+
+    private fun setUpSubagent(): ClientSubagentSession =
+        checkNotNull(_subagent.value) { "Subagent session $sessionId is not set up" }
 
     /**
      * Puts the [QueuedItem.Opened] marker of a subagent into its queue, and resolves its held-back permission state.
      *
      * @param promote whether the root's opening call replayed no history, so held-back values take effect
      */
-    fun markSubagentOpened(promote: Boolean) {
+    fun markOpened(promote: Boolean) {
         if (queue.trySend(QueuedItem.Opened(null)).isSuccess) permissions.onOpened(promote)
     }
 
     /**
-     * Records the subagent session that the setup built for this holder, before its consumer starts.
+     * Applies a later `subagent_update` of this subagent to its session, see [ClientSubagentSession.applyPatch]. A
+     * subagent that isn't set up has no session object, and then its patches are plain updates.
+     *
+     * @param parentOpened whether the opened marker of the parent's stream has been delivered
      */
-    fun attachSubagent(session: ClientSubagentSession) {
-        check(builtSubagent.compareAndSet(null, session)) { "Subagent session $sessionId is already set up" }
+    fun applyPatch(update: SessionUpdate.SubagentUpdate, parentOpened: Boolean) {
+        _subagent.value?.applyPatch(update, parentOpened)
     }
 
     /**
-     * Starts the consumer [block] of this subagent's queue in [scope], unless [stopConsumer] has run: a holder that
-     * failed or closed gets no consumer. The consumer's context has a [SubagentConsumer] of this holder.
-     *
-     * @return `false` if [stopConsumer] has run, so no consumer started
+     * Closes this subagent's session, if it is set up, see [ClientSubagentSession.markClosed].
      */
-    fun startConsumer(scope: CoroutineScope, block: suspend CoroutineScope.() -> Unit): Boolean {
+    fun markClosed() {
+        _subagent.value?.markClosed()
+    }
+
+    /**
+     * Stores [session], the subagent session that the setup built for this holder, and then starts the consumer
+     * [block] of this subagent's queue in [scope], unless [markConsumerStopped] has run: a holder that failed or closed
+     * gets no consumer. The consumer's context has a [SubagentConsumer] of this holder.
+     *
+     * The session is stored first, so a failure that stops the consumer after the store closes the session itself, and
+     * a failure that stopped it before leaves the close to the caller.
+     *
+     * @return `false` if [markConsumerStopped] has run, so no consumer started, and the caller closes [session]
+     */
+    fun startConsumer(
+        session: ClientSubagentSession,
+        scope: CoroutineScope,
+        block: suspend CoroutineScope.() -> Unit,
+    ): Boolean {
+        check(_subagent.compareAndSet(null, session)) { "Subagent session $sessionId is already set up" }
+
         val job = scope.launch(SubagentConsumer(this), start = CoroutineStart.LAZY, block = block)
         val started = consumer.compareAndSet(ConsumerState.NotStarted, ConsumerState.Running(job))
         if (started) job.start() else job.cancel()
@@ -745,24 +780,33 @@ internal class SubagentSessionHolder(
     }
 
     /**
-     * Keeps a consumer from starting, and returns the running one, if any, for the caller to cancel.
+     * Marks the consumer stopped, so [startConsumer] starts none from now on, and returns the running one, if any.
+     * It doesn't cancel the consumer: the caller does, and decides whether to join it.
      */
-    fun stopConsumer(): Job? = (consumer.getAndSet(ConsumerState.Stopped) as? ConsumerState.Running)?.job
+    fun markConsumerStopped(): Job? = (consumer.getAndSet(ConsumerState.Stopped) as? ConsumerState.Running)?.job
 
     /**
-     * Delivers this subagent's queue to [session]'s operations, and sets up the subagents announced in it, until the
-     * marker; delivers the marker; and once the parent's holder has completed, closes the queue, delivers the rest
-     * and completes this holder.
+     * Delivers this subagent's queue to its session's operations, with the session in the context of the calls:
+     * - the updates queued up to the opened marker, setting up the nested subagents announced in them;
+     * - the opened marker, as `SessionEvent.Opened(null)`;
+     * - once the parent's holder has completed: closes the queue, delivers the rest and completes this holder.
      *
-     * The calls run with [session] in the context. A failure before the marker is delivered fails this call, and
-     * the caller fails the holder; a failure after it is logged, as for any live update.
+     * The consumer that [startConsumer] starts calls this, after the session is stored.
+     *
+     * Failures:
+     * - before the opened marker is delivered, a failure fails this call, and the caller fails the holder;
+     * - after it, a failure is logged, as for any live update;
+     * - if the parent's holder failed, this returns, and the failure cascade fails this holder.
      */
-    suspend fun consumeSubagentQueue(session: ClientSubagentSession) {
+    suspend fun completeOpening() {
+        val session = setUpSubagent()
         val opened = session.executeWithSession {
             while (true) {
                 /*
-                 * A receive that finds an item doesn't check for cancellation, and the failure cascade doesn't join
-                 * this consumer, so check before each item.
+                 * `receiveCatching` doesn't check for cancellation when it finds an item without suspending, and the
+                 * client application's `notify` may return without suspending too. The failure cascade cancels this
+                 * consumer without joining it, so without this check a cancelled consumer would keep taking items
+                 * meant for the drain of [failAndDrainQueue].
                  */
                 currentCoroutineContext().ensureActive()
                 when (val item = queue.receiveCatching().getOrNull() ?: return@executeWithSession false) {
@@ -778,18 +822,22 @@ internal class SubagentSessionHolder(
         if (!opened) return
 
         /*
-         * The root's opening can still fail after its answer, while it delivers its marker and the updates queued
-         * behind it, and then every holder below fails with it. So the later updates stay queued, and this holder stays
-         * incomplete, until the parent's holder has completed.
+         * The root's opening can still fail after its answer, while it delivers its opened marker and the updates
+         * queued behind it, and then every holder below fails with it. So the later updates stay queued, and this
+         * holder stays incomplete, until the parent's holder has completed.
          */
         parent.session.join()
         if (parent.isFailed) return
 
         queue.close()
         /*
-         * Check for cancellation before taking each item, and nowhere between taking it and handing it to the
-         * operations, so one loop runs in one context: an item that a stopped consumer took would reach neither the
-         * session nor the drain of [failAndDrainQueue].
+         * `tryReceive` never suspends, so it never checks for cancellation, the client application's `notify` may
+         * return without suspending, and [deliverLive] swallows its failures. The failure cascade cancels this
+         * consumer without joining it, so without this check a cancelled consumer would keep taking items meant for
+         * the drain of [failAndDrainQueue].
+         *
+         * Check before taking each item, and nowhere between taking it and handing it to the operations, so one loop
+         * runs in one context: an item that a stopped consumer took would reach neither the session nor the drain.
          */
         session.executeWithSession {
             while (true) {
@@ -798,7 +846,6 @@ internal class SubagentSessionHolder(
                 deliverLive(item, session)
             }
         }
-        currentCoroutineContext().ensureActive()
         _session.complete(session)
     }
 
@@ -809,6 +856,10 @@ internal class SubagentSessionHolder(
         try {
             deliverItem(item, session, opened = true)
         } catch (ce: CancellationException) {
+            /*
+             * Rethrow only the consumer's own cancellation; one that the client application's `notify` throws itself,
+             * such as its own `withTimeout`, is logged.
+             */
             currentCoroutineContext().ensureActive()
             logger.error(ce) { "ClientSessionOperations.notify of session $sessionId was cancelled" }
         } catch (t: Throwable) {

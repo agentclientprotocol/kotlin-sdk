@@ -146,23 +146,25 @@ class ClientSubagentSessionTest {
     }
 
     /**
-     * A subagent holder under [parent] with its session attached, as the setup leaves it.
+     * A subagent holder under [parent] that stores its session, as the setup leaves it, and that session. Its consumer
+     * does nothing, so a test drives the queue itself.
      */
-    private fun childHolder(
+    private fun setUpChild(
         id: String = "child",
         parent: ClientSessionHolder = claimedRoot(),
         operations: ClientSessionOperations = NoOperations,
-    ): SubagentSessionHolder {
+    ): Child {
         val holder = SubagentSessionHolder(SessionId(id), parent, SubagentSetup(protocol, scope) { _, _ -> })
-        holder.attachSubagent(ClientSubagentSession(holder, operations, protocol))
-        return holder
+        val session = ClientSubagentSession(holder, operations, protocol)
+        assertTrue(holder.startConsumer(session, scope) {})
+        return Child(holder, session)
     }
 
     private fun child(
         id: String = "child",
         parent: ClientSessionHolder = claimedRoot(),
         operations: ClientSessionOperations = NoOperations,
-    ): ClientSubagentSession = checkNotNull(childHolder(id, parent, operations).subagent)
+    ): ClientSubagentSession = setUpChild(id, parent, operations).session
 
     private fun patch(
         title: MaybeUndefined<String> = MaybeUndefined.Undefined,
@@ -271,8 +273,7 @@ class ClientSubagentSessionTest {
 
     @Test
     fun `effective directories follow the parent over two levels`() {
-        val middleHolder = childHolder(id = "middle")
-        val middle = checkNotNull(middleHolder.subagent)
+        val (middleHolder, middle) = setUpChild(id = "middle")
         val leaf = child(id = "leaf", parent = middleHolder)
 
         assertEquals(rootCwd, leaf.cwd)
@@ -542,8 +543,7 @@ class ClientSubagentSessionTest {
 
     @Test
     fun `the subagents of a subagent are the ones listed under its holder`() {
-        val parentHolder = childHolder(id = "parent")
-        val parent = checkNotNull(parentHolder.subagent)
+        val (parentHolder, parent) = setUpChild(id = "parent")
         val grandchild = child(id = "grandchild", parent = parentHolder)
         assertTrue(parent.subagents.isEmpty())
 
@@ -680,20 +680,19 @@ class ClientSubagentSessionTest {
      * A subagent's holder that has completed with a session over [operations], as after the root's opening: the
      * holder's permissions are the session's.
      */
-    private suspend fun openChild(operations: ClientSessionOperations): OpenChild {
+    private suspend fun openChild(operations: ClientSessionOperations): Child {
         val root = claimedRoot()
-        val holder = childHolder(parent = root, operations = operations)
-        val child = checkNotNull(holder.subagent)
+        val child = setUpChild(parent = root, operations = operations)
 
         val rootSession = rootSession(root, rootParameters)
         assertTrue(root.markOpened(NewSessionResponse(SessionId("root"))))
         root.completeOpening(rootSession, root.drainHistory(rootSession))
-        holder.markSubagentOpened(promote = true)
-        holder.consumeSubagentQueue(child)
-        return OpenChild(holder, child)
+        child.holder.markOpened(promote = true)
+        child.holder.completeOpening()
+        return child
     }
 
-    private data class OpenChild(val holder: SubagentSessionHolder, val session: ClientSubagentSession)
+    private data class Child(val holder: SubagentSessionHolder, val session: ClientSubagentSession)
 
     private fun rootHolder() = RootSessionHolder(SessionId("root"), SubagentSetup(protocol, scope) { _, _ -> })
 

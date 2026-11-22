@@ -153,7 +153,7 @@ internal class ClientSessionRegistry(
         val consumers = subtree.mapNotNull { holder ->
             (holder as? SubagentSessionHolder)
                 ?.let { subagentHolder ->
-                    subagentHolder.stopConsumer()?.let { consumer -> subagentHolder to consumer }
+                    subagentHolder.markConsumerStopped()?.let { consumer -> subagentHolder to consumer }
                 }
         }
         val ownConsumers = consumers
@@ -188,7 +188,7 @@ internal class ClientSessionRegistry(
                 for (holder in subtree.asReversed()) {
                     if (holder !is SubagentSessionHolder) continue
                     holder.permissions.close()
-                    holder.subagent?.markClosed()
+                    holder.markClosed()
                     if (!holder.session.isCompleted) failSessionTree(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
                 }
             }
@@ -288,8 +288,8 @@ internal class ClientSessionRegistry(
      *
      * ### Steps
      *
-     * 1. The child's holder is created. If the root was already answered, it takes its marker as its first item,
-     *    before anyone else can reach it.
+     * 1. The child's holder is created. If the root was already answered, it takes its opened marker as its first
+     *    item, before anyone else can reach it.
      * 2. The child is added to the parent, so a parent that fails at the same moment can't miss it, and a sealed
      *    parent takes none. If the root's close has started, the add answers the child's permission requests
      *    `cancelled` from the start, see [ClientSessionHolder.addChild].
@@ -310,7 +310,7 @@ internal class ClientSessionRegistry(
      * @return the child's holder, or `null` if nothing was registered
      */
     private fun registerChild(parent: ClientSessionHolder, childId: SessionId): SubagentSessionHolder? {
-        val child = SubagentSessionHolder(childId, parent, subagentSetup) // takes the root's marker if answered
+        val child = SubagentSessionHolder(childId, parent, subagentSetup) // takes the root's opened marker if answered
         if (!parent.addChild(child)) return null // also closes its permissions if the root is closing
 
         val root = parent.root
@@ -404,9 +404,9 @@ internal class ClientSessionRegistry(
         suspend fun fail(failing: ClientSessionHolder, reason: Throwable) {
             val children = failing.sealChildren()
             if (failing is SubagentSessionHolder) {
-                failing.stopConsumer()?.cancel()
-                // After the stop, so a setup that attaches the subagent later finds no consumer and closes it itself.
-                failing.subagent?.markClosed()
+                failing.markConsumerStopped()?.cancel()
+                // After the stop, so a setup that stores the subagent later finds no consumer and closes it itself.
+                failing.markClosed()
             }
             failing.failAndDrainQueue(reason) { update, meta ->
                 runCatching { handleUnconnectedSessionUpdate(failing.sessionId, update, meta) }

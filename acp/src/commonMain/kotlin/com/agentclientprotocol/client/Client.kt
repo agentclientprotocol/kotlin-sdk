@@ -606,10 +606,10 @@ public class Client(
 
     /**
      * Creates the session with [factory] after the answer, and delivers the updates buffered in [sessionHolder] to it:
-     * the history, then the opened marker, then the live updates, see [RootSessionHolder.completeOpening]. If the
-     * factory or the delivery fails, or the caller is cancelled, the holder fails, even if the operations got the
-     * opened marker. A cancellation that the factory throws while the caller is active becomes an
-     * [IllegalStateException].
+     * the history, then the opened marker, then the live updates, see [RootSessionHolder.drainHistory] and
+     * [RootSessionHolder.completeOpening]. If the factory or the delivery fails, or the caller is cancelled, the
+     * holder fails, even if the operations got the opened marker. A cancellation that the factory throws while the
+     * caller is active becomes an [IllegalStateException].
      */
     private suspend fun createSession(
         sessionHolder: RootSessionHolder,
@@ -627,7 +627,8 @@ public class Client(
                 throw IllegalStateException("createClientOperations was cancelled", ce)
             }
             val session = createClientSession(sessionHolder, sessionId, sessionParameters, operations, sessionResponse)
-            sessionHolder.completeOpening(session)
+            val opened = sessionHolder.drainHistory(session)
+            sessionHolder.completeOpening(session, opened)
             session
         }.getOrElse { throwable ->
             // throw IllegalStateException to pass it as INTERNAL_ERROR to the other side (see in Protocol)

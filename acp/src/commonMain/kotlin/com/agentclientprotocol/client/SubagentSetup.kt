@@ -37,10 +37,10 @@ internal class SubagentSetup(
      * If [parentOperations] don't implement [SubagentOperations], or the factory throws, only the subagent's holder
      * fails, and the failure is logged. A [CancellationException] from the factory while the caller is active counts
      * as such a failure. A cancellation of the caller is rethrown. If the parent failed or was closed while the
-     * factory ran, the subagent is neither added nor started. If only the subagent's holder failed or was removed
-     * meanwhile, the subagent is added closed and not started.
+     * factory ran, the subagent is neither added nor started, and its holder doesn't keep it. If only the subagent's
+     * holder failed or was removed meanwhile, the subagent is added closed and not started.
      *
-     * @param parentOpened whether the marker of the parent's stream has been delivered
+     * @param parentOpened whether the opened marker of the parent's stream has been delivered
      */
     suspend fun setUp(
         parent: ClientSessionHolder,
@@ -74,20 +74,20 @@ internal class SubagentSetup(
 
         val session = ClientSubagentSession(child, operations, protocol)
         session.applyPatch(announcement.update, parentOpened)
-        child.attachSubagent(session)
         /*
          * The parent failed or was closed while the factory ran. That failure or close also ends the subagent's
-         * holder, so the subagent is dropped: the parent's list stays as it was, and the subagent gets no consumer.
+         * holder, so the subagent is dropped: the parent's list stays as it was, the holder doesn't keep the session,
+         * and the subagent gets no consumer.
          */
         if (!parent.listSubagent(session)) {
             session.markClosed()
             return
         }
         /*
-         * The subagent's holder has failed or was removed, perhaps before the attach, so the failure may have missed
-         * the session object. It stays in the list, closed, as after any failure of its holder.
+         * The subagent's holder has failed or was removed, perhaps before the holder stored the session, so the
+         * failure may have missed the session object. It stays in the list, closed, as after any failure of its holder.
          */
-        if (!child.startConsumer(scope) { consume(child, session) }) session.markClosed()
+        if (!child.startConsumer(session, scope) { consume(child) }) session.markClosed()
     }
 
     private suspend fun failSetup(child: SubagentSessionHolder, cause: Throwable) {
@@ -95,9 +95,9 @@ internal class SubagentSetup(
         failHolder(child, IllegalStateException("Failed to set up subagent session ${child.sessionId}", cause))
     }
 
-    private suspend fun consume(child: SubagentSessionHolder, session: ClientSubagentSession) {
+    private suspend fun consume(child: SubagentSessionHolder) {
         try {
-            child.consumeSubagentQueue(session)
+            child.completeOpening()
         } catch (ce: CancellationException) {
             // A stopped consumer's holder is already failing, and the end of the connection fails nothing.
             currentCoroutineContext().ensureActive()

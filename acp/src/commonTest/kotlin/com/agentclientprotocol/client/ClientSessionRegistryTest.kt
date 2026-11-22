@@ -179,7 +179,8 @@ class ClientSessionRegistryTest {
 
             registry.failSessionTree(rootHolder, IllegalStateException("load failed"))
             var started = false
-            childHolder.startConsumer(this@runTest) { started = true }
+            val session = ClientSubagentSession(childHolder, Recorder(), protocol)
+            assertFalse(childHolder.startConsumer(session, this@runTest) { started = true })
             runCurrent()
             assertFalse(started, "a setup that returns after the failure starts no consumer")
 
@@ -212,7 +213,8 @@ class ClientSessionRegistryTest {
             )
 
             var started = false
-            grandchildHolder.startConsumer(this@runTest) { started = true }
+            val session = ClientSubagentSession(grandchildHolder, Recorder(), protocol)
+            assertFalse(grandchildHolder.startConsumer(session, this@runTest) { started = true })
             runCurrent()
             assertFalse(started, "a setup that returns after the removal starts no consumer")
             assertFalse(rootHolder.addChild(SubagentSessionHolder(SessionId("late"), rootHolder, SubagentSetup(protocol, scope) { _, _ -> })))
@@ -223,17 +225,20 @@ class ClientSessionRegistryTest {
     fun `a consumer starts once and stopping it returns the running one`() = runTest {
         val holder = SubagentSessionHolder(child, RootSessionHolder(root, SubagentSetup(protocol, scope) { _, _ -> }), SubagentSetup(protocol, scope) { _, _ -> })
         var runs = 0
-        holder.startConsumer(this) {
-            runs++
-            awaitCancellation()
-        }
+        val session = ClientSubagentSession(holder, Recorder(), protocol)
+        assertTrue(
+            holder.startConsumer(session, this) {
+                runs++
+                awaitCancellation()
+            }
+        )
         runCurrent()
         assertEquals(1, runs)
 
-        val running = assertNotNull(holder.stopConsumer())
-        assertTrue(running.isActive)
+        val running = assertNotNull(holder.markConsumerStopped())
+        assertTrue(running.isActive, "marking the consumer stopped doesn't cancel it")
         running.cancel()
-        assertNull(holder.stopConsumer(), "a stopped consumer is returned once")
+        assertNull(holder.markConsumerStopped(), "a stopped consumer is returned once")
     }
 
     @Test
@@ -368,15 +373,15 @@ class ClientSessionRegistryTest {
         holder.permissions.answerUnlessCancelled({ "cancelled" }) { "answered" }
 
     /**
-     * Runs the consumer of [holder]'s queue until it has delivered the marker, and returns what its operations got.
-     * The consumer then waits for the parent's holder to complete, which these tests don't do, so it is cancelled.
+     * Runs the consumer of [holder]'s queue until it has delivered the opened marker, and returns what its operations
+     * got. The consumer then waits for the parent's holder to complete, which these tests don't do, so it is cancelled.
      */
-    private suspend fun TestScope.consumeUntilOpened(holder: SubagentSessionHolder): Recorder {
+    private fun TestScope.consumeUntilOpened(holder: SubagentSessionHolder): Recorder {
         val operations = Recorder()
         val session = ClientSubagentSession(holder, operations, protocol)
-        val consumer = launch { holder.consumeSubagentQueue(session) }
+        assertTrue(holder.startConsumer(session, this) { holder.completeOpening() })
         runCurrent()
-        consumer.cancel()
+        assertNotNull(holder.markConsumerStopped()).cancel()
         return operations
     }
 
