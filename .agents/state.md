@@ -408,6 +408,15 @@ KDoc of `SubagentPendingPermissions.kt` (spec typo + shortened "followed at arri
   running|requires_action yes until next live state; idle no + reason; unconfirmed|unknown no + reason), `### History`
   (held until onOpened; applied after a no-replay call, dropped after a load), closing line "As in
   [PendingPermissions], the race … exactly one response". Stray `*` fixed.
+- SubagentSetup KDocs (agreed, user 2026-11-22): class KDoc drops "runs the consumer"; `@param scope` = the subagents'
+  openings; `failHolder` → `failSessionTree` ("fails the holder of a subagent whose setup or opening failed, and every
+  holder below it, see [ClientSessionRegistry.failSessionTree]"); `scope`/`failSessionTree` become non-private `val`s
+  (the holder reaches them via `setup`). `setUp` KDoc: `### Steps` numbered (create ops; build session + patch; list in
+  parent's `subagents`; start opening → [SubagentSessionHolder.startOpening]), caller delivers announcement after;
+  `### Failure` bullets (no SubagentOperations/factory throws incl. CE with active caller → only child's holder fails,
+  logged; caller cancelled → rethrown; parent failed/closed during factory → not listed, not opened, holder never gets
+  the session; only child's holder failed or removed with its root's tree → listed, closed, not opened). "added" →
+  "listed".
 - Research done → `.agents/research/updates-before-opening-answer.md` (spec `01a54c84`, Rust `34aea54f`): subagents RFD
   Completed 2026-11-20, now stable v1 (`docs/protocol/v1/subagents.mdx:497-533` normative). v1 new/fork: pre-answer
   traffic unspecified (only v2 says SHOULD NOT / client MAY buffer or drop). resume: child updates current, may arrive
