@@ -435,7 +435,12 @@ KDoc of `SubagentPendingPermissions.kt` (spec typo + shortened "followed at arri
   `setUp` Failure bullets corrected (factory failure also fails the holders below; rethrow only when the caller is
   cancelled AND the factory throws CE; a stopped opening happens only when the parent was sealed after the listing);
   registry test uses an `openingScope` on a test dispatcher; generic "consumer" wording kept where it means any queue
-  reader / the parent's deliverer. Pending user answer: R21 error code for early requests (-32002 / -32602 / -32601). Design spec
+  reader / the parent's deliverer. R21 (agreed, user 2026-11-22), a SEPARATE behaviour slice
+  after R20 (R20c, R20d): `ClientSessionRegistry.awaitSession` stops creating speculative holders; a request waits
+  only for a completed holder, a claimed root or a subagent holder; anything else (unknown id, or an unclaimed
+  speculative holder an update created) fails at once with `-32002` (resource not found), also in the no-opening case
+  (today `-32602`). Tests: `SimpleAgentTest:943` updated; new test: early request rejected with `-32002` while the
+  `session/new` succeeds; cover both client paths. Research: `.agents/research/request-before-new-answer.md`. Design spec
   update (user: "update design doc as necessary") planned as R20d after R20c, covering all R20 renames. Was: (client jvmTest 245 green,
   `apiCheck` green, `acp.api` unchanged, `check` green on 2nd run, JS flake). Deviations: v2 `ClientSession` also uses
   `RootPendingPermissions`; `[close]` bullet corrected (no path closes a subagent's permissions when its holder
