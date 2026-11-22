@@ -399,6 +399,15 @@ KDoc of `SubagentPendingPermissions.kt` (spec typo + shortened "followed at arri
   `GlobalSessionUpdateHandler`, agent's requests fail, parent/siblings unaffected). Method KDoc: when called,
   `### Context` (subagent in returned ops; parent during the call; none for early load/resume), `### Ordering`
   (must not wait for a later parent event), `@return` (capability interfaces), one-line link to `### Failure`.
+- Note-3-part-2 cut-off "So let's maybe": dropped by the user; the D4 comment wording stands.
+- SPP class KDoc (agreed, user 2026-11-22), on top of the user's uncommitted edit: summary ("by the client or by the
+  agent"; "a subagent's requests"), spec paragraph, `### Arrival order` ("States and requests are followed when they
+  arrive, in wire order, not at delivery: the parent's stream can lag behind the requests: see [onState] and
+  [answerPermissionRequest]" — reason clause restored), `### What answers the pending requests` (bullets
+  onClientCancel / live idle(cancelled) via onState / close), `### Later requests after a client cancel` (bullets
+  running|requires_action yes until next live state; idle no + reason; unconfirmed|unknown no + reason), `### History`
+  (held until onOpened; applied after a no-replay call, dropped after a load), closing line "As in
+  [PendingPermissions], the race … exactly one response". Stray `*` fixed.
 - Research done → `.agents/research/updates-before-opening-answer.md` (spec `01a54c84`, Rust `34aea54f`): subagents RFD
   Completed 2026-11-20, now stable v1 (`docs/protocol/v1/subagents.mdx:497-533` normative). v1 new/fork: pre-answer
   traffic unspecified (only v2 says SHOULD NOT / client MAY buffer or drop). resume: child updates current, may arrive
