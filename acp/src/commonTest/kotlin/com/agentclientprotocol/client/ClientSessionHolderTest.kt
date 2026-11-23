@@ -266,7 +266,7 @@ class ClientSessionHolderTest {
         assertNull(failed.phase.opening)
     }
 
-    private fun holder() = RootSessionHolder(SessionId("session"), SubagentSetup(protocol, scope) { _, _ -> })
+    private fun holder() = RootSessionHolder(SessionId("session"), protocol, scope) { _, _ -> }
 
     private class RecordingOperations(
         private val beforeEach: suspend (SessionUpdate) -> Unit = {},

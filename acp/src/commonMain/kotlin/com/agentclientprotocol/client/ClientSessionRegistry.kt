@@ -37,17 +37,16 @@ private val logger = KotlinLogging.logger {}
  *
  * @param globalSessionUpdateHandler receives the updates for sessions that this client is not connected to
  * @param protocol the connection, for the subagents' `session/cancel`
- * @param subagentScope the scope of the subagents' consumers, which belongs to the connection
+ * @param subagentScope the scope of the subagents' openings, which belongs to the connection
  */
 internal class ClientSessionRegistry(
     private val globalSessionUpdateHandler: GlobalSessionUpdateHandler?,
-    protocol: Protocol,
-    subagentScope: CoroutineScope,
+    private val protocol: Protocol,
+    private val subagentScope: CoroutineScope,
 ) {
     private data class SessionsStorage(val initializingSessionsCount: Int = 0, val sessions: PersistentMap<SessionId, ClientSessionHolder> = persistentMapOf())
 
     private val _sessions = atomic(SessionsStorage())
-    private val subagentSetup = SubagentSetup(protocol, subagentScope, ::failSessionTree)
 
     /**
      * Looks up the holder for [sessionId], creating a new entry only if there are some currently initializing
@@ -78,7 +77,7 @@ internal class ClientSessionRegistry(
                     currentStorage
                 }
                 currentStorage.initializingSessionsCount > 0 -> {
-                    val newHolder = RootSessionHolder(sessionId, subagentSetup)
+                    val newHolder = RootSessionHolder(sessionId, protocol, subagentScope, ::failSessionTree)
                     clientSessionHolder = newHolder
                     currentStorage.copy(sessions = currentStorage.sessions.replacing(sessionId, newHolder))
                 }
@@ -118,9 +117,10 @@ internal class ClientSessionRegistry(
      * ### Steps
      *
      * 1. Each holder is sealed, top-down, so a late announcement registers no subagent that no close would reach.
-     * 2. Every consumer is stopped and joined, so none starts or delivers afterwards. The joins wait for a subagent's
-     *    `notify` to react to cancellation. The consumer that the close runs in, because a subagent's own operations
-     *    called it there, is not joined, which would never finish, see [runsIn]. It is cancelled at the end instead.
+     * 2. Every subagent's opening is stopped and joined, so none starts or delivers afterwards. The joins wait for a
+     *    subagent's `notify` to react to cancellation. The opening that the close runs in, because a subagent's own
+     *    operations called it there, is not joined, which would never finish, see [runsIn]. It is cancelled at the end
+     *    instead.
      * 3. The holders leave the session map in one compare-and-set, each only if its id still maps to it. So no
      *    half-removed tree is visible, and a subagent registered after it stays out of the map.
      * 4. Bottom-up, for each subagent:
@@ -132,7 +132,7 @@ internal class ClientSessionRegistry(
      *
      * ### Cancellation
      *
-     * The removal finishes even if the caller is cancelled while it joins the consumers, because the agent has
+     * The removal finishes even if the caller is cancelled while it joins the openings, because the agent has
      * already dropped the sessions.
      *
      * A second removal of [root], after a second close that was sent while the first was in flight, removes nothing
@@ -150,20 +150,20 @@ internal class ClientSessionRegistry(
         }
 
         val context = currentCoroutineContext()
-        val consumers = subtree.mapNotNull { holder ->
+        val openings = subtree.mapNotNull { holder ->
             (holder as? SubagentSessionHolder)
                 ?.let { subagentHolder ->
-                    subagentHolder.markConsumerStopped()?.let { consumer -> subagentHolder to consumer }
+                    subagentHolder.markOpeningStopped()?.let { opening -> subagentHolder to opening }
                 }
         }
-        val ownConsumers = consumers
+        val ownOpenings = openings
             .filter { (holder, job) -> context.runsIn(holder, job) }
             .map { it.second }.toSet()
         lateinit var previousSessions: SessionsStorage
 
         try {
-            for ((_, job) in consumers) if (job !in ownConsumers) job.cancel()
-            for ((_, job) in consumers) if (job !in ownConsumers) job.join()
+            for ((_, job) in openings) if (job !in ownOpenings) job.cancel()
+            for ((_, job) in openings) if (job !in ownOpenings) job.join()
         } finally {
             withContext(NonCancellable) {
                 /*
@@ -192,7 +192,7 @@ internal class ClientSessionRegistry(
                     if (!holder.session.isCompleted) failSessionTree(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
                 }
             }
-            for (job in ownConsumers) job.cancel()
+            for (job in ownOpenings) job.cancel()
         }
         return subtree.filter { previousSessions.sessions[it.sessionId] === it }.mapTo(mutableSetOf()) { it.sessionId }
     }
@@ -310,7 +310,7 @@ internal class ClientSessionRegistry(
      * @return the child's holder, or `null` if nothing was registered
      */
     private fun registerChild(parent: ClientSessionHolder, childId: SessionId): SubagentSessionHolder? {
-        val child = SubagentSessionHolder(childId, parent, subagentSetup) // takes the root's opened marker if answered
+        val child = SubagentSessionHolder(childId, parent) // takes the root's opened marker if answered
         if (!parent.addChild(child)) return null // also closes its permissions if the root is closing
 
         val root = parent.root
@@ -390,22 +390,22 @@ internal class ClientSessionRegistry(
      * Fails [holder] with [cause] and hands its queued updates to [globalSessionUpdateHandler] at once, then does the
      * same for every subagent below it, parent first.
      *
-     * Every failure of a holder goes through here, so a failed holder keeps no updates. Each holder is sealed and its
-     * consumer is stopped first, so no consumer starts after its holder has failed. A subagent's
-     * session object is closed, and stays in its parent's subagents. A failure of the handler is logged per update, so
+     * Every failure of a holder goes through here, so a failed holder keeps no updates. Each holder is sealed and a
+     * subagent's opening is stopped first, so no opening starts after its holder has failed. A subagent's session
+     * object is closed, and stays in its parent's subagents. A failure of the handler is logged per update, so
      * it neither stops the drain nor replaces the failure that the caller sees.
      *
-     * A running consumer is cancelled, not joined: this runs under [NonCancellable] and must not wait for the
-     * application's `notify`. A consumer checks for cancellation before it takes each item, so once the `notify` it is
-     * in returns, the rest of the queue goes to [globalSessionUpdateHandler]. Only a consumer that passed that check
+     * A running opening is cancelled, not joined: this runs under [NonCancellable] and must not wait for the
+     * application's `notify`. An opening checks for cancellation before it takes each item, so once the `notify` it is
+     * in returns, the rest of the queue goes to [globalSessionUpdateHandler]. Only an opening that passed that check
      * just before the cancellation can still take one more item and hand it to its `notify`.
      */
     suspend fun failSessionTree(holder: ClientSessionHolder, cause: Throwable) {
         suspend fun fail(failing: ClientSessionHolder, reason: Throwable) {
             val children = failing.sealChildren()
             if (failing is SubagentSessionHolder) {
-                failing.markConsumerStopped()?.cancel()
-                // After the stop, so a setup that stores the subagent later finds no consumer and closes it itself.
+                failing.markOpeningStopped()?.cancel()
+                // After the stop, so a setup that stores the subagent later starts no opening and closes it itself.
                 failing.markClosed()
             }
             failing.failAndDrainQueue(reason) { update, meta ->
@@ -503,17 +503,17 @@ private fun MutableMap<SessionId, ClientSessionHolder>.removeDescendantsOf(holde
 }
 
 /**
- * Whether the close with this context may run in [consumer], the consumer of [holder]'s queue, so joining it could
- * wait for itself.
+ * Whether the close with this context may run in [opening], the opening of [holder], so joining it could wait for
+ * itself.
  *
- * Either sign counts. The close runs below the consumer's job when the subagent's `notify` calls it directly or in
- * a coroutine it started, even one whose context lost the [SubagentConsumer] element. The element is still there
- * when `notify` replaced the job, as `withContext(NonCancellable)` does: the consumer then waits for the close
+ * Either sign counts. The close runs below the opening's job when the subagent's `notify` calls it directly or in
+ * a coroutine it started, even one whose context lost the [SubagentOpening] element. The element is still there
+ * when `notify` replaced the job, as `withContext(NonCancellable)` does: the opening then waits for the close
  * without reacting to its cancellation, and is no longer above it. A false match only skips a join, for example
  * for a coroutine that copied the context into another scope, while a missed one deadlocks.
  */
-private fun CoroutineContext.runsIn(holder: SubagentSessionHolder, consumer: Job): Boolean =
-    this[SubagentConsumer]?.holder === holder || this[Job]?.let { consumer.isSelfOrAncestorOf(it) } == true
+private fun CoroutineContext.runsIn(holder: SubagentSessionHolder, opening: Job): Boolean =
+    this[SubagentOpening]?.holder === holder || this[Job]?.let { opening.isSelfOrAncestorOf(it) } == true
 
 /**
  * Whether [job] is this job or a job below it.

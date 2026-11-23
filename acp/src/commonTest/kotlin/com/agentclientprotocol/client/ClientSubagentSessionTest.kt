@@ -146,17 +146,17 @@ class ClientSubagentSessionTest {
     }
 
     /**
-     * A subagent holder under [parent] that stores its session, as the setup leaves it, and that session. Its consumer
-     * does nothing, so a test drives the queue itself.
+     * A subagent holder under [parent] that stores its session, as the setup leaves it, and that session. Its opening
+     * waits for the opened marker, which only [openChild] puts into its queue.
      */
     private fun setUpChild(
         id: String = "child",
         parent: ClientSessionHolder = claimedRoot(),
         operations: ClientSessionOperations = NoOperations,
     ): Child {
-        val holder = SubagentSessionHolder(SessionId(id), parent, SubagentSetup(protocol, scope) { _, _ -> })
+        val holder = SubagentSessionHolder(SessionId(id), parent)
         val session = ClientSubagentSession(holder, operations, protocol)
-        assertTrue(holder.startConsumer(session, scope) {})
+        holder.startOpening(session)
         return Child(holder, session)
     }
 
@@ -594,15 +594,14 @@ class ClientSubagentSessionTest {
     @Test
     fun `a sealed holder keeps its subagents and refuses later children and listings`() {
         val holder = rootHolder()
-        val setup = SubagentSetup(protocol, scope) { _, _ -> }
-        val registered = SubagentSessionHolder(SessionId("first"), holder, setup)
+        val registered = SubagentSessionHolder(SessionId("first"), holder)
         val first = child(id = "first", parent = holder)
         assertTrue(holder.addChild(registered))
         assertTrue(holder.listSubagent(first))
 
         assertEquals(listOf(registered), holder.sealChildren().toList())
 
-        assertFalse(holder.addChild(SubagentSessionHolder(SessionId("late"), holder, setup)))
+        assertFalse(holder.addChild(SubagentSessionHolder(SessionId("late"), holder)))
         assertFalse(holder.listSubagent(child(id = "late", parent = holder)))
         assertNull(holder.childOrNull(SessionId("late")))
         assertSame(registered, holder.childOrNull(SessionId("first")))
@@ -688,13 +687,13 @@ class ClientSubagentSessionTest {
         assertTrue(root.markOpened(NewSessionResponse(SessionId("root"))))
         root.completeOpening(rootSession, root.drainHistory(rootSession))
         child.holder.markOpened(promote = true)
-        child.holder.completeOpening()
+        child.holder.session.await()
         return child
     }
 
     private data class Child(val holder: SubagentSessionHolder, val session: ClientSubagentSession)
 
-    private fun rootHolder() = RootSessionHolder(SessionId("root"), SubagentSetup(protocol, scope) { _, _ -> })
+    private fun rootHolder() = RootSessionHolder(SessionId("root"), protocol, scope) { _, _ -> }
 
     private fun rootSession(holder: RootSessionHolder, parameters: SessionCreationParameters) = ClientSessionImpl(
         client = Client(protocol),

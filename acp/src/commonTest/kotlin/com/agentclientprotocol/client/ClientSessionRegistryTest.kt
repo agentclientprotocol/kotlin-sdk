@@ -21,14 +21,14 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -62,8 +62,15 @@ private class SilentTransport : BaseTransport() {
 class ClientSessionRegistryTest {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val protocol = Protocol(scope, SilentTransport())
+
+    /*
+     * The subagents' openings of [registry] run only when a test runs [openingScheduler], so a test can tell whether
+     * one was started.
+     */
+    private val openingScheduler = TestCoroutineScheduler()
+    private val openingScope = CoroutineScope(StandardTestDispatcher(openingScheduler) + SupervisorJob())
     private val unconnected = mutableListOf<Pair<SessionId, SessionUpdate>>()
-    private val registry = ClientSessionRegistry({ id, update, _ -> unconnected += id to update }, protocol, scope)
+    private val registry = ClientSessionRegistry({ id, update, _ -> unconnected += id to update }, protocol, openingScope)
     private val parameters = SessionCreationParameters(cwd = "/root", mcpServers = emptyList())
 
     private val root = SessionId("root")
@@ -72,6 +79,7 @@ class ClientSessionRegistryTest {
 
     @AfterTest
     fun tearDown() {
+        openingScope.cancel()
         scope.cancel()
     }
 
@@ -171,26 +179,25 @@ class ClientSessionRegistryTest {
     }
 
     @Test
-    fun `a failing root stops its subagents' consumers so that none starts afterwards`() = runTest {
+    fun `a failing root stops its subagents' openings so that none starts afterwards`() = runTest {
         registry.withInitializingSession {
             val rootHolder = registry.claimSessionHolder(root, replayRequested = true, parameters)
             registry.deliverSessionUpdate(root, announce(child), null)
             val childHolder = assertNotNull(rootHolder.childOrNull(child))
 
             registry.failSessionTree(rootHolder, IllegalStateException("load failed"))
-            var started = false
             val session = ClientSubagentSession(childHolder, Recorder(), protocol)
-            assertFalse(childHolder.startConsumer(session, this@runTest) { started = true })
-            runCurrent()
-            assertFalse(started, "a setup that returns after the failure starts no consumer")
+            childHolder.startOpening(session)
+            assertTrue(openingScope.coroutineContext.job.children.none(), "a setup that returns after the failure starts no opening")
+            assertClosed(session)
 
             // A failed parent takes no subagents any more.
-            assertFalse(childHolder.addChild(SubagentSessionHolder(grandchild, childHolder, SubagentSetup(protocol, scope) { _, _ -> })))
+            assertFalse(childHolder.addChild(SubagentSessionHolder(grandchild, childHolder)))
         }
     }
 
     @Test
-    fun `removing a tree frees its ids and fails its unopened subagents and starts no consumer afterwards`() = runTest {
+    fun `removing a tree frees its ids and fails its unopened subagents and starts no opening afterwards`() = runTest {
         registry.withInitializingSession {
             val rootHolder = registry.claimSessionHolder(root, replayRequested = false, parameters)
             registry.deliverSessionUpdate(root, announce(child), null)
@@ -212,33 +219,25 @@ class ClientSessionRegistryTest {
                 "each queue is handed on, bottom-up",
             )
 
-            var started = false
             val session = ClientSubagentSession(grandchildHolder, Recorder(), protocol)
-            assertFalse(grandchildHolder.startConsumer(session, this@runTest) { started = true })
-            runCurrent()
-            assertFalse(started, "a setup that returns after the removal starts no consumer")
-            assertFalse(rootHolder.addChild(SubagentSessionHolder(SessionId("late"), rootHolder, SubagentSetup(protocol, scope) { _, _ -> })))
+            grandchildHolder.startOpening(session)
+            assertTrue(openingScope.coroutineContext.job.children.none(), "a setup that returns after the removal starts no opening")
+            assertClosed(session)
+            assertFalse(rootHolder.addChild(SubagentSessionHolder(SessionId("late"), rootHolder)))
         }
     }
 
     @Test
-    fun `a consumer starts once and stopping it returns the running one`() = runTest {
-        val holder = SubagentSessionHolder(child, RootSessionHolder(root, SubagentSetup(protocol, scope) { _, _ -> }), SubagentSetup(protocol, scope) { _, _ -> })
-        var runs = 0
+    fun `an opening starts once and stopping it returns the running one`() = runTest {
+        val holder = SubagentSessionHolder(child, RootSessionHolder(root, protocol, this) { _, _ -> })
         val session = ClientSubagentSession(holder, Recorder(), protocol)
-        assertTrue(
-            holder.startConsumer(session, this) {
-                runs++
-                awaitCancellation()
-            }
-        )
+        holder.startOpening(session)
         runCurrent()
-        assertEquals(1, runs)
 
-        val running = assertNotNull(holder.markConsumerStopped())
-        assertTrue(running.isActive, "marking the consumer stopped doesn't cancel it")
+        val running = assertNotNull(holder.markOpeningStopped())
+        assertTrue(running.isActive, "the opening started and waits for the opened marker, and marking it stopped doesn't cancel it")
         running.cancel()
-        assertNull(holder.markConsumerStopped(), "a stopped consumer is returned once")
+        assertNull(holder.markOpeningStopped(), "a stopped opening is returned once")
     }
 
     @Test
@@ -315,7 +314,7 @@ class ClientSessionRegistryTest {
     }
 
     @Test
-    fun `a subagent consumer that the failure cascade stops takes no item once its notify returns`() = runTest {
+    fun `a subagent opening that the failure cascade stops takes no item once its notify returns`() = runTest {
         val handedOn = mutableListOf<SessionUpdate>()
         val drainEntered = CompletableDeferred<Unit>()
         val releaseDrain = CompletableDeferred<Unit>()
@@ -351,13 +350,13 @@ class ClientSessionRegistryTest {
             for (name in listOf("first", "second", "third")) drainingRegistry.deliverSessionUpdate(child, text(name), null)
             assertTrue(rootHolder.markOpened(LoadSessionResponse()))
             assertNotNull(rootHolder.deliverEarly(rootOperations))
-            val consumer = notifyEntered.await()
+            val opening = notifyEntered.await()
 
             val failing = launch { drainingRegistry.failSessionTree(rootHolder, IllegalStateException("load failed")) }
-            // The cascade has cancelled the consumer, and hands the queue on while the consumer is still in notify.
+            // The cascade has cancelled the opening, and hands the queue on while the opening is still in notify.
             drainEntered.await()
             releaseNotify.complete(Unit)
-            consumer.join()
+            opening.join()
             releaseDrain.complete(Unit)
             failing.join()
 
@@ -373,16 +372,22 @@ class ClientSessionRegistryTest {
         holder.permissions.answerUnlessCancelled({ "cancelled" }) { "answered" }
 
     /**
-     * Runs the consumer of [holder]'s queue until it has delivered the opened marker, and returns what its operations
-     * got. The consumer then waits for the parent's holder to complete, which these tests don't do, so it is cancelled.
+     * Runs the opening of [holder] until it has delivered the opened marker, and returns what its operations got. The
+     * opening then waits for the parent's holder to complete, which these tests don't do, so it is cancelled.
      */
-    private fun TestScope.consumeUntilOpened(holder: SubagentSessionHolder): Recorder {
+    private fun consumeUntilOpened(holder: SubagentSessionHolder): Recorder {
         val operations = Recorder()
         val session = ClientSubagentSession(holder, operations, protocol)
-        assertTrue(holder.startConsumer(session, this) { holder.completeOpening() })
-        runCurrent()
-        assertNotNull(holder.markConsumerStopped()).cancel()
+        holder.startOpening(session)
+        openingScheduler.runCurrent()
+        assertNotNull(holder.markOpeningStopped()).cancel()
+        openingScheduler.runCurrent()
         return operations
+    }
+
+    private suspend fun assertClosed(session: ClientSubagentSession) {
+        val failure = runCatching { session.cancel() }.exceptionOrNull()
+        assertEquals("Subagent session ${session.sessionId} is closed", failure?.message)
     }
 
     private class Recorder : ClientSessionOperations {
