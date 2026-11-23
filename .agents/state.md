@@ -364,13 +364,15 @@ File layout goal (user 2026-11-23, IN PROGRESS):
 - Decided (user): internal machinery goes to `agent.internal` / `client.internal` (public types and sealed members of
   public types, e.g. `ClientSessionImpl`, stay). Why (user): avoid multi-component long files, fixed rules for
   agents/devs, discoverable file tree for onboarding, but no file per small helper.
-- R22a pure move — DONE, UNCOMMITTED for the user's review: 14 main files (incl. `ClientSessionImpl.kt`) + 3 commonTest
+- R22a pure move — DONE, committed `d42a7f9`: 14 main files (incl. `ClientSessionImpl.kt`) + 3 commonTest
   + `ElicitationSessionMapTest` moved, imports only; public `CoroutineContext.clientSession` moved verbatim into `client/BaseClientSession.kt`
   next to `baseClientSession`/`clientSubagentSession` (user: context accessors live with the sealed base, consistently),
   file gets `@file:JvmName("ClientSessionImplKt")` (master facade kept; the two PR-new getters move into it); `.api` diff = only the two PR-new getters moving facade; AGENTS.md `:acp` paragraph; `./gradlew check` green.
 - R22b (agreed by user): a task wired into `check` that fails if anything public lives in an `internal` package.
-  Proposed: buildSrc convention task failing on `/internal/` entries in any module's `.api` dump. Not started.
-- R22c file split — PROPOSED, awaiting user approval. Rule: a top-level class/interface gets its own file if public
+  DONE, UNCOMMITTED for review: `buildSrc/.../CheckInternalPackagesNotPublic.kt` + registration in
+  `acp.multiplatform.gradle.kts` (all 5 BCV modules, wired into `check`), fails on class entries under `/internal/` in
+  `api/*.api`; negative control with a public probe failed as expected; AGENTS.md bullet; `./gradlew check` green.
+- R22c file split — UNDER DISCUSSION (user 2026-11-23: "still have to discuss"); open points put to the user: what counts as logic (BaseSessionWrapper → rename file), forwarding-only variants stay with base, small public types (AgentSubagentContext, Exceptions.kt), master-era files left alone; plus "context accessors live with the family's sealed base". Rule: a top-level class/interface gets its own file if public
   API (typealiases excepted), has mutable state, or has logic beyond forwarding; else it stays with what it serves
   (base, only user, marked class); master-era violators (`ClientNegotiator.kt`, `protocol/Exceptions.kt`,
   `protocol/Protocol.kt`) left alone; rule goes into AGENTS.md Kotlin Style "File layout". Splits:
