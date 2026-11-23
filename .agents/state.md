@@ -386,7 +386,14 @@ side, with straightforward structured comments. Plan APPROVED (user 2026-11-23):
   infra + README row) → E2 `session/load` replay (record children, replayHistory re-announces, fresh grant after load;
   client sees history → Opened, canCancel false until the fresh grant; test extended). Each uncommitted for the user's
   review. E1/E2 on opus. Reviewer (user: yes) over E0–E2 at the end, then the user reviews.
-- E0 COMMITTED `7eff9a3` (user approved 2026-11-23). E1 STARTED (programmer, opus). Was: module build, each local task run, `check` green
+- E0 COMMITTED `7eff9a3` (user approved 2026-11-23). E1 DONE, UNCOMMITTED, awaiting the user's review
+  (module build 7/7 tests, `--rerun` 5x, stress 420 runs x2, mutation checks, `check --rerun-tasks` green). Files in
+  `samples/.../subagents/`: SubagentsApp, SubagentsAgentSupport, Worker, DelegatedTasks, NativeAgentRelay,
+  SubagentsClientSupport, test SubagentsSampleTest, `logback-subagents.xml` (runSubagents only). Calls to raise with
+  the user: root updates during a turn arrive through the prompt Flow (unlimited channel), so `subagents` getters can
+  be ahead there — sample renders root-stream events from the update, getters shown in child notify; theoretical
+  race for the probe's `unknown` (never seen in 840+ runs); WARN `CancelRequest for unknown request` every run (SDK
+  follow-up: log level); module-wide logback config / `libs.logback.classic` follow-ups. Was: module build, each local task run, `check` green
   1st run. Calls: `TerminalClientSupport.kt` → `support/` (simple + gemini use it); `SimpleAgentSupport`/`V2SampleSupport`
   stay with their samples (auth imports both); Gemini KDoc names `runGeminiClient`; task group `samples`. Pre-existing:
   `runSimpleAgent` JVM doesn't exit after "Goodbye" (documented in samples/README, not fixed). Draft commit:
