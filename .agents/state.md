@@ -394,7 +394,10 @@ side, with straightforward structured comments. Plan APPROVED (user 2026-11-23):
   returned). Reviewer over E0–E2 DONE → `.agents/research/review-examples.md`: 0 blockers, 4 should-fix (replay reorders parent
   stream — reviewer recommends live order via the child's stored context; tree at loaded root's Opened can miss
   grandchildren off a single thread; follow-up session_message links an unsent message; CancellationException as a
-  domain signal), nits; SDK follow-up: `AgentSubagentFactory.createSubagent` KDoc. Fix plan shown to the user. E1 restructure was (build 7/7, `--rerun` 5x, stress 420, runSubagents ok;
+  domain signal), nits; SDK follow-up: `AgentSubagentFactory.createSubagent` KDoc. Fix plan APPROVED (user 2026-11-24: fix all findings): E3 (same opus programmer) sample fixes, all 4 should-fix + sample
+  nits, lands with E2 as one commit → E4 (default model) E0 leftovers: rename TerminalClientSupport/V2SampleSupport,
+  single-line KDocs, `v2-sample-*` transport names, `libs.logback.classic`, AGENTS.md/root README mention → E5 SDK KDoc
+  `AgentSubagentFactory.createSubagent` (patches keep their place on the parent's stream). E3 STARTED. E1 restructure was (build 7/7, `--rerun` 5x, stress 420, runSubagents ok;
   `check` green from cache). Tree: subagents/{SubagentsApp,Transcript}, agent/{DelegatingAgentSupport,
   DelegatingAgentSession,DelegatedSubagentFactory,DelegatedSubagentSession,DelegatedTask,SampleTasks,
   RemoteProbeSubagentSession,NativeRelayedSubagentSession,FakeNativeAgent,SessionUpdates}, client/{SubagentsClient,
