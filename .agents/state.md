@@ -386,7 +386,12 @@ side, with straightforward structured comments. Plan APPROVED (user 2026-11-23):
   infra + README row) → E2 `session/load` replay (record children, replayHistory re-announces, fresh grant after load;
   client sees history → Opened, canCancel false until the fresh grant; test extended). Each uncommitted for the user's
   review. E1/E2 on opus. Reviewer (user: yes) over E0–E2 at the end, then the user reviews.
-- E0 COMMITTED `7eff9a3` (user approved 2026-11-23). E1 COMMITTED (user approved 2026-11-23). E2 STARTED (same programmer, opus). E1 restructure was (build 7/7, `--rerun` 5x, stress 420, runSubagents ok;
+- E0 COMMITTED `7eff9a3` (user approved 2026-11-23). E1 COMMITTED `e03539a` (user approved 2026-11-23). E2 DONE, UNCOMMITTED (12/12 tests, `--rerun` 5x,
+  stress 480, `check --rerun-tasks` green): `agent/SessionHistory.kt` new; load via early `loadSession(…, operations)`;
+  reviewer gets a fresh grant after load and is cancelled; others history-only. OPEN for the user: replayed parent
+  stream interleaving differs from live (factory sends the child's whole history before returning, per the
+  `AgentSubagentFactory` KDoc; exact interleaving would need sends through the child context after the factory
+  returned). Reviewer over E0–E2 (7eff9a3..HEAD + uncommitted E2) STARTED → `.agents/research/review-examples.md`. E1 restructure was (build 7/7, `--rerun` 5x, stress 420, runSubagents ok;
   `check` green from cache). Tree: subagents/{SubagentsApp,Transcript}, agent/{DelegatingAgentSupport,
   DelegatingAgentSession,DelegatedSubagentFactory,DelegatedSubagentSession,DelegatedTask,SampleTasks,
   RemoteProbeSubagentSession,NativeRelayedSubagentSession,FakeNativeAgent,SessionUpdates}, client/{SubagentsClient,
