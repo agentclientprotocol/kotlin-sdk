@@ -360,7 +360,15 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   tests; `check` green (2nd run, JS flake); no API change.
 
 ## Next
-Explicit response hook goal (user 2026-11-23, design approved). R23 DONE, UNCOMMITTED, awaiting the user's review
+Subagent examples goal (user 2026-11-23): comprehensive samples of subagent use from the agent side and the client
+side, with straightforward structured comments. PLANNING: plan shown to the user, waiting for sign-off before any
+programmer starts.
+
+TODO (user 2026-11-23, later goal, not now): consider a proper `docs/` directory with contribution and usage
+guidelines; move suitable parts of AGENTS.md there (AGENTS.md keeps agent rules and points to it).
+
+Explicit response hook goal (user 2026-11-23, design approved). R23 COMMITTED `8b8257d` (user will review later; not
+pushed). Was: R23 DONE, UNCOMMITTED, awaiting the user's review
 (focused tests, `:acp:jvmTest`, `:acp-integration-test:jvmTest`, `apiCheck`, `check` green 1st run; mutation: hook=null
 fails 11 load/replay tests; no new opt-in warnings; `.api` diff = RequestOutcome only, as expected). Deviations: extra
 `@OptIn` on `Protocol.requestHandlers`; error-reply hook test now cancels the handler locally while it prepares an
