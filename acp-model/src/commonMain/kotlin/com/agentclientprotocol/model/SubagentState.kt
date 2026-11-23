@@ -15,10 +15,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * The work state of a subagent session, as reported in `subagent_update.state`.
  *
  * This is an open union discriminated by `state`. Each known state keeps only its own fields, and extra
@@ -30,7 +26,6 @@ import kotlinx.serialization.json.buildJsonObject
  * Decoding fails for a value that is not a JSON object and for a missing or non-string `state`. A known state
  * whose payload is malformed never decodes as [Other]. `subagent_update` treats a failed state as an absent one.
  */
-@UnstableApi
 @Serializable(with = StateUpdateSerializer::class)
 public sealed class StateUpdate {
     /**
@@ -50,8 +45,10 @@ public sealed class StateUpdate {
      * @property usage token usage of the completed work; omitted, `null` and malformed values decode as `null`
      * @property _meta extension metadata; a value that is not a JSON object decodes as `null`
      */
+    @OptIn(UnstableApi::class)
     public data class Idle(
         val stopReason: IdleStopReason? = null,
+        @property:UnstableApi
         val usage: Usage? = null,
         override val _meta: JsonElement? = null,
     ) : StateUpdate(), AcpWithMeta
@@ -93,17 +90,12 @@ public sealed class StateUpdate {
 }
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * Why a subagent went idle, as reported in [StateUpdate.Idle.stopReason].
  *
  * This is an open union discriminated by `stopReason`. It has no wire form of its own: its fields sit
  * beside `state`, `usage` and `_meta` in the idle snapshot. The first five values match [StopReason]. A known
  * stop reason keeps only its own fields, and extra fields beside it are dropped.
  */
-@UnstableApi
 public sealed class IdleStopReason {
     /**
      * The work finished normally.

@@ -7,8 +7,8 @@ import com.agentclientprotocol.model.SessionId
 /**
  * **UNSTABLE**
  *
- * Part of the SDK's Kotlin API for client-side subagents, which are not part of the spec yet. It may change or be
- * removed at any point.
+ * Part of the SDK's Kotlin API for client-side subagents. The subagent protocol is stable in v1, but this Kotlin API
+ * is unstable. It may change or be removed at any point.
  *
  * Lets the operations of a session handle the subagent sessions that the agent starts under it. The client builds a
  * [ClientSubagentSession] from the operations that [createSubagentOperations] returns.

@@ -2,7 +2,6 @@
 
 package com.agentclientprotocol.model
 
-import com.agentclientprotocol.annotations.UnstableApi
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
@@ -18,10 +17,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * Subagent capabilities supported by the client.
  *
  * By supplying `{}` in `clientCapabilities.subagents` the client opts in to `subagent_update`,
@@ -30,17 +25,12 @@ import kotlinx.serialization.json.buildJsonObject
  *
  * @property _meta extension metadata; a value that is not a JSON object decodes as `null`
  */
-@UnstableApi
 @Serializable(with = SubagentCapabilitiesSerializer::class)
 public data class SubagentCapabilities(
     override val _meta: JsonElement? = null,
 ) : AcpWithMeta
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * Controls the client may use on a subagent session, as announced by the agent.
  *
  * Every field decodes leniently: a malformed value decodes as `null` and the rest of the object
@@ -50,7 +40,6 @@ public data class SubagentCapabilities(
  * omitted, `null` and malformed values all mean it may not
  * @property _meta extension metadata; a value that is not a JSON object decodes as `null`
  */
-@UnstableApi
 @Serializable(with = SubagentSessionCapabilitiesSerializer::class)
 public data class SubagentSessionCapabilities(
     val cancel: SessionCancelCapabilities? = null,
@@ -58,22 +47,16 @@ public data class SubagentSessionCapabilities(
 ) : AcpWithMeta
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * Marker for the `cancel` control: its presence means the client may send `session/cancel` for the
  * subagent session.
  *
  * @property _meta extension metadata; a value that is not a JSON object decodes as `null`
  */
-@UnstableApi
 @Serializable(with = SessionCancelCapabilitiesSerializer::class)
 public data class SessionCancelCapabilities(
     override val _meta: JsonElement? = null,
 ) : AcpWithMeta
 
-@OptIn(UnstableApi::class)
 internal object SubagentCapabilitiesSerializer : JsonObjectSerializer<SubagentCapabilities>(
     "com.agentclientprotocol.model.SubagentCapabilities",
 ) {
@@ -85,7 +68,6 @@ internal object SubagentCapabilitiesSerializer : JsonObjectSerializer<SubagentCa
     }
 }
 
-@OptIn(UnstableApi::class)
 internal object SessionCancelCapabilitiesSerializer : JsonObjectSerializer<SessionCancelCapabilities>(
     "com.agentclientprotocol.model.SessionCancelCapabilities",
 ) {
@@ -97,7 +79,6 @@ internal object SessionCancelCapabilitiesSerializer : JsonObjectSerializer<Sessi
     }
 }
 
-@OptIn(UnstableApi::class)
 internal object SubagentSessionCapabilitiesSerializer : JsonObjectSerializer<SubagentSessionCapabilities>(
     "com.agentclientprotocol.model.SubagentSessionCapabilities",
 ) {
@@ -116,7 +97,6 @@ internal object SubagentSessionCapabilitiesSerializer : JsonObjectSerializer<Sub
  * Serializer for `ClientCapabilities.subagents`: a malformed value decodes as `null` instead of failing the
  * enclosing capabilities, since a client that advertises something unreadable has not opted in.
  */
-@OptIn(UnstableApi::class)
 internal object LenientSubagentCapabilitiesSerializer : KSerializer<SubagentCapabilities?> {
     private val delegate: KSerializer<SubagentCapabilities> = SubagentCapabilities.serializer()
 

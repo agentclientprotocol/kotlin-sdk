@@ -17,8 +17,8 @@ import kotlinx.atomicfu.atomic
 /**
  * **UNSTABLE**
  *
- * Part of the SDK's Kotlin API for client-side subagents, which are not part of the spec yet. It may change or be
- * removed at any point.
+ * Part of the SDK's Kotlin API for client-side subagents. The subagent protocol is stable in v1, but this Kotlin API
+ * is unstable. It may change or be removed at any point.
  *
  * A session that the agent started under another session, to do work for it. The client builds it when the agent
  * announces the subagent, from the operations that [SubagentOperations.createSubagentOperations] returned, and it

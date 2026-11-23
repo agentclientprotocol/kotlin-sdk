@@ -271,10 +271,6 @@ public sealed class SessionUpdate {
     ) : SessionUpdate(), AcpWithMeta
 
     /**
-     * **UNSTABLE**
-     *
-     * This capability is not part of the spec yet, and may be removed or changed at any point.
-     *
      * A patch of a subagent session's state, sent by the agent as `subagent_update`.
      *
      * Every field except [sessionId] is a [MaybeUndefined] patch: omitted leaves the stored value unchanged,
@@ -298,7 +294,6 @@ public sealed class SessionUpdate {
      * @property _meta extension metadata; a value that is not a JSON object decodes as
      * [MaybeUndefined.Undefined]
      */
-    @UnstableApi
     @Serializable(with = SubagentUpdateSerializer::class)
     public data class SubagentUpdate(
         val sessionId: SessionId,
@@ -312,10 +307,6 @@ public sealed class SessionUpdate {
     ) : SessionUpdate()
 
     /**
-     * **UNSTABLE**
-     *
-     * This capability is not part of the spec yet, and may be removed or changed at any point.
-     *
      * A message exchanged between sessions, sent as `session_message`. Needs the `subagents` client
      * capability.
      *
@@ -339,7 +330,6 @@ public sealed class SessionUpdate {
      * @property _meta extension metadata; a value that is not a JSON object decodes as
      * [MaybeUndefined.Undefined]
      */
-    @UnstableApi
     @Serializable(with = SessionMessageSerializer::class)
     public data class SessionMessage(
         val messageId: MessageId,
@@ -352,10 +342,6 @@ public sealed class SessionUpdate {
     ) : SessionUpdate()
 
     /**
-     * **UNSTABLE**
-     *
-     * This capability is not part of the spec yet, and may be removed or changed at any point.
-     *
      * A chunk of a message exchanged between sessions, sent as `session_message_chunk`. Needs the
      * `subagents` client capability.
      *
@@ -367,7 +353,6 @@ public sealed class SessionUpdate {
      * @property _meta extension metadata; omitted, `null` and values that are not a JSON object all decode
      * as `null`
      */
-    @UnstableApi
     @Serializable(with = SessionMessageChunkSerializer::class)
     public data class SessionMessageChunk(
         val messageId: MessageId,

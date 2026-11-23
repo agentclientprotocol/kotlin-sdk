@@ -101,10 +101,6 @@ public sealed class ToolCallContent {
     ) : ToolCallContent(), AcpWithMeta
 
     /**
-     * **UNSTABLE**
-     *
-     * This capability is not part of the spec yet, and may be removed or changed at any point.
-     *
      * A display-only reference to a session that this tool call operates on, such as a child session it
      * spawned or waits on.
      *
@@ -112,7 +108,6 @@ public sealed class ToolCallContent {
      * referenced session must already be known to the client, through session setup or an announcement.
      * The reference grants no controls and says nothing about the referenced session's work.
      */
-    @UnstableApi
     @Serializable
     @SerialName("session")
     public data class Session(

@@ -2,7 +2,6 @@
 
 package com.agentclientprotocol.model
 
-import com.agentclientprotocol.annotations.UnstableApi
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.SerializationStrategy
 import kotlinx.serialization.json.Json
@@ -26,7 +25,6 @@ import kotlinx.serialization.json.JsonObjectBuilder
  * by key presence (absent → [Undefined], `null` → [Null]) and encode by skipping [Undefined]
  * and emitting `JsonNull` for [Null].
  */
-@UnstableApi
 public sealed class MaybeUndefined<out T> {
     /**
      * The field is not present; an existing value is left unchanged.
@@ -76,7 +74,6 @@ public sealed class MaybeUndefined<out T> {
  * Applies this field's patch semantics to a previous value: [MaybeUndefined.Undefined]
  * keeps [previous], [MaybeUndefined.Null] clears it, and [MaybeUndefined.Value] replaces it.
  */
-@UnstableApi
 public fun <T> MaybeUndefined<T>.update(previous: T?): T? = when (this) {
     is MaybeUndefined.Value -> value
     MaybeUndefined.Undefined -> previous
@@ -100,7 +97,6 @@ public fun <T> MaybeUndefined<T>.update(previous: T?): T? = when (this) {
  * serializer instead, such as the v1 `SubagentUpdate.cwd` and `additionalDirectories`, where
  * a malformed value fails the update.
  */
-@OptIn(UnstableApi::class)
 internal fun <T> JsonObject.decodeMaybeUndefined(
     json: Json,
     key: String,
@@ -122,7 +118,6 @@ internal fun <T> JsonObject.decodeMaybeUndefined(
  * semantics on top: items that fail to decode are skipped instead of failing the field, and a
  * present-but-non-array value degrades to [MaybeUndefined.Undefined].
  */
-@OptIn(UnstableApi::class)
 internal fun <T> JsonObject.decodeMaybeUndefinedList(
     json: Json,
     key: String,
@@ -155,7 +150,6 @@ internal fun <T> JsonArray.decodeSkippingInvalid(
  * emits an explicit JSON `null` (building the [JsonObject] directly bypasses `ACPJson`'s
  * `explicitNulls = false`), and [MaybeUndefined.Value] emits the encoded value.
  */
-@OptIn(UnstableApi::class)
 internal fun <T> JsonObjectBuilder.putMaybeUndefined(
     json: Json,
     key: String,

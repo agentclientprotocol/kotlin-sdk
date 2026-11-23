@@ -2,7 +2,6 @@
 
 package com.agentclientprotocol.model
 
-import com.agentclientprotocol.annotations.UnstableApi
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
@@ -21,7 +20,6 @@ import kotlinx.serialization.json.buildJsonObject
  * strict. A required field that is missing or malformed fails the update.
  */
 
-@OptIn(UnstableApi::class)
 internal object SubagentUpdateSerializer : JsonObjectSerializer<SessionUpdate.SubagentUpdate>(
     "com.agentclientprotocol.model.SessionUpdate.SubagentUpdate",
 ) {
@@ -53,7 +51,6 @@ internal object SubagentUpdateSerializer : JsonObjectSerializer<SessionUpdate.Su
     }
 }
 
-@OptIn(UnstableApi::class)
 internal object SessionMessageSerializer : JsonObjectSerializer<SessionUpdate.SessionMessage>(
     "com.agentclientprotocol.model.SessionUpdate.SessionMessage",
 ) {
@@ -78,7 +75,6 @@ internal object SessionMessageSerializer : JsonObjectSerializer<SessionUpdate.Se
     }
 }
 
-@OptIn(UnstableApi::class)
 internal object SessionMessageChunkSerializer : JsonObjectSerializer<SessionUpdate.SessionMessageChunk>(
     "com.agentclientprotocol.model.SessionUpdate.SessionMessageChunk",
 ) {
@@ -107,7 +103,6 @@ private fun JsonObject.requiredString(key: String): String =
  *
  * The check is explicit because `ACPJson` is lenient and would read `false` or `42` as text.
  */
-@OptIn(UnstableApi::class)
 private fun <T> JsonObject.lenientMaybeString(key: String, wrap: (String) -> T): MaybeUndefined<T> =
     when (val element = this[key]) {
         null -> MaybeUndefined.Undefined
@@ -118,7 +113,6 @@ private fun <T> JsonObject.lenientMaybeString(key: String, wrap: (String) -> T):
 /**
  * Decodes a tri-state string field where a value that is not a JSON string fails the update.
  */
-@OptIn(UnstableApi::class)
 private fun JsonObject.strictMaybeString(key: String): MaybeUndefined<String> =
     when (val element = this[key]) {
         null -> MaybeUndefined.Undefined
@@ -130,7 +124,6 @@ private fun JsonObject.strictMaybeString(key: String): MaybeUndefined<String> =
  * Decodes a tri-state string list field where a non-array value, or any item that is not a JSON string,
  * fails the update.
  */
-@OptIn(UnstableApi::class)
 private fun JsonObject.strictMaybeStringList(key: String): MaybeUndefined<List<String>> =
     when (val element = this[key]) {
         null -> MaybeUndefined.Undefined
@@ -144,7 +137,6 @@ private fun JsonObject.strictMaybeStringList(key: String): MaybeUndefined<List<S
 /**
  * Decodes a tri-state `_meta` where a value that is not a JSON object decodes as absent.
  */
-@OptIn(UnstableApi::class)
 private fun JsonObject.lenientMaybeMeta(): MaybeUndefined<JsonElement> =
     when (val element = this["_meta"]) {
         null -> MaybeUndefined.Undefined

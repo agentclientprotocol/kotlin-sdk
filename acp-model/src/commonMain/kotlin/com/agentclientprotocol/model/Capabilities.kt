@@ -95,7 +95,6 @@ public data class ClientCapabilities(
     @property:UnstableApi
     val elicitation: ElicitationCapabilities? = null,
     override val _meta: JsonElement? = null,
-    @property:UnstableApi
     @Serializable(with = LenientSubagentCapabilitiesSerializer::class)
     val subagents: SubagentCapabilities? = null,
 ) : AcpCapabilities, AcpWithMeta

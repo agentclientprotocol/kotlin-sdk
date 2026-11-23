@@ -13,7 +13,7 @@ import kotlin.coroutines.CoroutineContext
 /**
  * **UNSTABLE**
  *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
+ * The subagent protocol is stable in v1, but this Kotlin API is unstable and may be removed or changed at any point.
  *
  * What the SDK gives an [AgentSubagentFactory] that builds a child: the child's own operations, bound to its id.
  *
@@ -43,7 +43,7 @@ public class AgentSubagentContext internal constructor(
 /**
  * **UNSTABLE**
  *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
+ * The subagent protocol is stable in v1, but this Kotlin API is unstable and may be removed or changed at any point.
  *
  * A subagent the app exposes to the client. Built by an [AgentSubagentFactory].
  *
@@ -92,7 +92,7 @@ public interface AgentSubagentSession {
 /**
  * **UNSTABLE**
  *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
+ * The subagent protocol is stable in v1, but this Kotlin API is unstable and may be removed or changed at any point.
  *
  * Builds a child for [AgentSubagents.announce]. Follows `ClientOperationsFactory` on the client side.
  */
@@ -115,7 +115,7 @@ public fun interface AgentSubagentFactory<out S : AgentSubagentSession> {
 /**
  * **UNSTABLE**
  *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
+ * The subagent protocol is stable in v1, but this Kotlin API is unstable and may be removed or changed at any point.
  *
  * The subagents of one session, a root session or a subagent, for announcing its children to the client. An instance
  * is bound to its session and stays valid for that session's lifetime, not only inside the call that obtained it.
@@ -215,7 +215,7 @@ public class AgentSubagents internal constructor(private val bound: SessionWrapp
 /**
  * **UNSTABLE**
  *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
+ * The subagent protocol is stable in v1, but this Kotlin API is unstable and may be removed or changed at any point.
  *
  * The subagents of the current session: a root session or a subagent. `null` when the client didn't advertise
  * `subagents`: run the child without exposing it.
