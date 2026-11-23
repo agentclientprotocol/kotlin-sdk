@@ -39,8 +39,11 @@ internal open class RemoteClientSessionOperations(
      *
      * Every root path sends through here: `client.notify`, the prompt flow and replay, so the subagents rules for a
      * root are checked once, here. A [SessionUpdate.SubagentUpdate] is always rejected, because the SDK must see
-     * every announcement and grant. The other updates the subagents RFD defines need the `subagents` client
-     * capability: a v1 agent MUST NOT send them without it (`docs/rfds/subagents.mdx`, "Capability negotiation").
+     * every announcement and grant. The other updates the subagents page defines need the `subagents` client
+     * capability: an agent MUST NOT send `session_message` or `session_message_chunk` without it
+     * (`docs/protocol/v1/subagents.mdx`, "Checking support"; `docs/protocol/v1/initialization.mdx`, "Subagents"), and
+     * it sends `session` tool call content only to a client that advertised it
+     * (`docs/protocol/v1/tool-calls.mdx`, "Sessions"). The SDK rejects both the same way.
      *
      * @throws IllegalStateException for [SessionEvent.Opened], which only the client runtime delivers
      */
@@ -197,8 +200,9 @@ internal fun SessionEvent.requireUpdate(): Pair<SessionUpdate, JsonElement?> = w
 }
 
 /**
- * Whether the subagents RFD defines this update, so a v1 agent may send it only with the `subagents` client
- * capability. That includes tool call content that references a session.
+ * Whether the v1 subagents pages define this update, so an agent may send it only with the `subagents` client
+ * capability (`docs/protocol/v1/subagents.mdx`, "Checking support"). That includes tool call content that references a
+ * session (`docs/protocol/v1/tool-calls.mdx`, "Sessions").
  */
 @OptIn(UnstableApi::class)
 private fun SessionUpdate.needsSubagentsCapability(): Boolean = when (this) {
