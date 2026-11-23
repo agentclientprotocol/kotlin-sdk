@@ -360,6 +360,24 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   tests; `check` green (2nd run, JS flake); no API change.
 
 ## Next
+Explicit response hook goal (user 2026-11-23, design approved; slice R23 STARTED, uncommitted for the user's review):
+- Why (user): common and v2 code avoid implicit coroutine-context dependencies; v1 keeps its context accessors only
+  for API compatibility. `JsonRpcRequestContextElement.slot` + `CoroutineContext.invokeOnResponseQueued` violate that.
+- Decided (user): extend the existing `RequestOutcome` instead of an internal type. Drop `data` (no shims, no
+  deprecated constructor/copy/componentN; small break: `copy`, destructuring, value `equals`; none in our code,
+  verified). New field `onResponseQueued: (() -> Unit)? = null`, runs synchronously right after the transport accepted
+  the success response frame, before `afterResponse`; skipped on error reply / frame never queued (like
+  `afterResponse`); must not suspend/block/throw (throw logged). `mapResponse` forwards it. Whole class
+  `@UnstableApi`; `setRequestOutcomeHandlerRaw` becomes `@UnstableApi`; opt-ins only at outcome-touching SDK sites
+  (setRequestHandlerRaw default body, Protocol override + handleRequest, two test files file-level); no new
+  unstable warnings elsewhere. Release note (PR description): `data` removal + stability downgrade.
+- Protocol: `handleRequest` copies the hook into the slot before completing the reply (plain field; atomic + "already
+  registered" check go); context element back to `request` only (master shape); `invokeOnResponseQueued` deleted;
+  `Agent.createSession` returns `onResponseQueued = { sessionWrapper.endReplay() }` when replaying.
+- AGENTS.md (user): explicit rule: no new implicit coroutine-context dependency passing in common and v2 code; prefer
+  explicit dependencies; v1 legacy accessors stay for compatibility. Plus reword the two hook rules; spec lines ~615,
+  ~2326 updated.
+
 File layout goal (user 2026-11-23, DONE):
 - Decided (user): internal machinery goes to `agent.internal` / `client.internal` (public types and sealed members of
   public types, e.g. `ClientSessionImpl`, stay). Why (user): avoid multi-component long files, fixed rules for
