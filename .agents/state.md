@@ -360,7 +360,13 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   tests; `check` green (2nd run, JS flake); no API change.
 
 ## Next
-Explicit response hook goal (user 2026-11-23, design approved; slice R23 STARTED, uncommitted for the user's review):
+Explicit response hook goal (user 2026-11-23, design approved). R23 DONE, UNCOMMITTED, awaiting the user's review
+(focused tests, `:acp:jvmTest`, `:acp-integration-test:jvmTest`, `apiCheck`, `check` green 1st run; mutation: hook=null
+fails 11 load/replay tests; no new opt-in warnings; `.api` diff = RequestOutcome only, as expected). Deviations: extra
+`@OptIn` on `Protocol.requestHandlers`; error-reply hook test now cancels the handler locally while it prepares an
+outcome (a throwing handler has no outcome). Open nit: `ResponseSlot.successQueuedHook()` still checks for a success
+reply although the field is only set on the success path. Draft commit message in the programmer's report
+(`refactor: return the response-queued hook through RequestOutcome`, body has the release note).
 - Why (user): common and v2 code avoid implicit coroutine-context dependencies; v1 keeps its context accessors only
   for API compatibility. `JsonRpcRequestContextElement.slot` + `CoroutineContext.invokeOnResponseQueued` violate that.
 - Decided (user): extend the existing `RequestOutcome` instead of an internal type. Drop `data` (no shims, no
