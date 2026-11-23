@@ -507,6 +507,8 @@ Round 21 follow-ups (user 2026-11-23):
   Kotlin API unstable"). Follow-up (API decision): `StateUpdate.Idle(...)` still warns for non-opt-in callers because
   `Usage` is in its constructor (same as `PromptResponse`). Draft commit body in the programmer's report (records
   upstream `01a54c84` / `9d44c77a`).
+  C1 COMMITTED `5f0a72f`, P1 COMMITTED `7ca2356` (user 2026-11-23; `check` green before), pushed. Next (small, docs):
+  spec ~165 still says `SessionReference` only in `schema.unstable.json` / Rust `unstable_subagents` — fix as a slice.
 - Fork-history ambiguity: LEAVE IT (user 2026-11-23); raise upstream once fork nears stable. No code change. R21 (agreed, user 2026-11-22), a SEPARATE behaviour slice
   after R20 (R20c, R20d): `ClientSessionRegistry.awaitSession` stops creating speculative holders; a request waits
   only for a completed holder, a claimed root or a subagent holder; anything else (unknown id, or an unclaimed
