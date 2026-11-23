@@ -360,11 +360,23 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   tests; `check` green (2nd run, JS flake); no API change.
 
 ## Next
-TODO (user 2026-11-23, brainstorm later, NOT this round): review how root/subagent class pairs are organised across the
-SDK — two files vs one file (e.g. `ClientSessionHolder.kt` holds base + `RootSessionHolder` + `SubagentSessionHolder`;
-`PendingPermissions.kt` holds all three; `ClientSubagentSession.kt` separate; `agent/SessionWrapper.kt` vs
-`SubagentSessionWrapper.kt`). Brainstorm whether one consistent rule makes sense (always split / always one file) or
-whether it depends on the component (small families in one file, big ones split), and apply it.
+File layout goal (user 2026-11-23, IN PROGRESS):
+- Decided (user): internal machinery goes to `agent.internal` / `client.internal` (public types and sealed members of
+  public types, e.g. `ClientSessionImpl`, stay). Why (user): avoid multi-component long files, fixed rules for
+  agents/devs, discoverable file tree for onboarding, but no file per small helper.
+- R22a pure move — DONE, UNCOMMITTED for the user's review (13 main files + 3 commonTest files moved, imports only,
+  `.api` unchanged, AGENTS.md `:acp` paragraph; `./gradlew check` green on rerun after the JS flake).
+- R22b (agreed by user): a task wired into `check` that fails if anything public lives in an `internal` package.
+  Proposed: buildSrc convention task failing on `/internal/` entries in any module's `.api` dump. Not started.
+- R22c file split — PROPOSED, awaiting user approval. Rule: a top-level class/interface gets its own file if public
+  API (typealiases excepted), has mutable state, or has logic beyond forwarding; else it stays with what it serves
+  (base, only user, marked class); master-era violators (`ClientNegotiator.kt`, `protocol/Exceptions.kt`,
+  `protocol/Protocol.kt`) left alone; rule goes into AGENTS.md Kotlin Style "File layout". Splits:
+  `ClientSessionHolder.kt` → base+`QueuedItem` / `RootSessionHolder.kt` / `SubagentSessionHolder.kt` (+`SubagentOpening`);
+  `PendingPermissions.kt` → base+root / `SubagentPendingPermissions.kt` (partly reverses R20 D2 — user to confirm);
+  `SessionWrapper.kt` → `BaseSessionWrapper.kt` (base, abstract, NES, context element) / `RootSessionWrapper.kt`
+  (+`PromptSession`); `AgentSubagents.kt` → `AgentSubagentContext.kt`, `AgentSubagentSession.kt`,
+  `AgentSubagentFactory.kt`, `AgentSubagents.kt`. No merges.
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
 Review round 20 (2026-11-22, notes on `PendingPermissionCancellation`/`SubagentPendingPermissions`/`SubagentOperations`/
 `SubagentSetup`/`SessionEvent`). Answers given; discussion IN PROGRESS. The user has an UNCOMMITTED edit to the class
