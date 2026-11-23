@@ -372,15 +372,28 @@ File layout goal (user 2026-11-23, IN PROGRESS):
   DONE, UNCOMMITTED for review: `buildSrc/.../CheckInternalPackagesNotPublic.kt` + registration in
   `acp.multiplatform.gradle.kts` (all 5 BCV modules, wired into `check`), fails on class entries under `/internal/` in
   `api/*.api`; negative control with a public probe failed as expected; AGENTS.md bullet; `./gradlew check` green.
-- R22c file split — UNDER DISCUSSION (user 2026-11-23: "still have to discuss"); open points put to the user: what counts as logic (BaseSessionWrapper → rename file), forwarding-only variants stay with base, small public types (AgentSubagentContext, Exceptions.kt), master-era files left alone; plus "context accessors live with the family's sealed base". Rule: a top-level class/interface gets its own file if public
-  API (typealiases excepted), has mutable state, or has logic beyond forwarding; else it stays with what it serves
-  (base, only user, marked class); master-era violators (`ClientNegotiator.kt`, `protocol/Exceptions.kt`,
-  `protocol/Protocol.kt`) left alone; rule goes into AGENTS.md Kotlin Style "File layout". Splits:
-  `ClientSessionHolder.kt` → base+`QueuedItem` / `RootSessionHolder.kt` / `SubagentSessionHolder.kt` (+`SubagentOpening`);
-  `PendingPermissions.kt` → base+root / `SubagentPendingPermissions.kt` (partly reverses R20 D2 — user to confirm);
-  `SessionWrapper.kt` → `BaseSessionWrapper.kt` (base, abstract, NES, context element) / `RootSessionWrapper.kt`
-  (+`PromptSession`); `AgentSubagents.kt` → `AgentSubagentContext.kt`, `AgentSubagentSession.kt`,
-  `AgentSubagentFactory.kt`, `AgentSubagents.kt`. No merges.
+- R22b tests (user request): extract matcher, JUnit unit tests + ProjectBuilder task test in buildSrc, wired so root
+  `./gradlew check` runs them (proven by a temporary break). Tests done (11). User 2026-11-23: replace the nested
+  `GradleBuild` wiring with an included build: `git mv buildSrc build-logic`, `includeBuild` in pluginManagement, root
+  `base` + `tasks.check { dependsOn(gradle.includedBuild("build-logic").task(":check")) }`; use type-safe task
+  accessors (`tasks.check`) wherever they exist, incl. the old `named("check")` in rust-agent-e2e. Then
+  `./gradlew clean build`, commit R22b, start R22c.
+- R22c file split — APPROVED (user 2026-11-23), queued after R22b is committed (both touch AGENTS.md). Rule ("File
+  layout", AGENTS.md Kotlin Style):
+  1. One concern per file, named after its main declaration; helpers live with what they serve (private decls,
+     parameter/result types, extensions); coroutine-context elements and their accessors live with the family base.
+  2. A file with several top-level declarations stays under ~400 lines; a single component may be longer.
+  3. Hierarchies: for each class with subclasses, either its whole subtree is in its file, or each direct subclass
+     gets its own file (its subtree by the same rule); keep together while it fits rule 2; nested subclasses are
+     inside by definition; siblings sharing one concern may share a file named after that concern.
+  4. Internal runtime machinery in `<pkg>.internal`; public types and direct subtypes of public sealed types stay.
+  Splits: `client/internal/ClientSessionHolder.kt` → `ClientSessionHolder.kt` (base + nested `QueuedItem`),
+  `RootSessionHolder.kt`, `SubagentSessionHolder.kt` (+ `SubagentOpening`); `agent/internal/SessionWrapper.kt` +
+  `SubagentSessionWrapper.kt` → `BaseSessionWrapper.kt` (base + context element + accessors), `NesSessionWrapper.kt`,
+  `SessionWrapper.kt` (abstract), `RootSessionWrapper.kt` (+ private `PromptSession`), `SubagentSessionWrapper.kt`;
+  merge `SubagentClientOperations` into `RemoteClientSessionOperations.kt`. Unchanged: `PendingPermissions.kt` (whole),
+  `AgentSubagents.kt` (one concern, user rejected the 4-file split), public client session files. Moves only, no
+  `.api` change. No "legacy files" clause (v1 agent/client already comply; `protocol/Protocol.kt` out of scope).
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
 Review round 20 (2026-11-22, notes on `PendingPermissionCancellation`/`SubagentPendingPermissions`/`SubagentOperations`/
 `SubagentSetup`/`SessionEvent`). Answers given; discussion IN PROGRESS. The user has an UNCOMMITTED edit to the class
