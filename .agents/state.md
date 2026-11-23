@@ -377,8 +377,8 @@ File layout goal (user 2026-11-23, IN PROGRESS):
   `GradleBuild` wiring with an included build: `git mv buildSrc build-logic`, `includeBuild` in pluginManagement, root
   `base` + `tasks.check { dependsOn(gradle.includedBuild("build-logic").task(":check")) }`; use type-safe task
   accessors (`tasks.check`) wherever they exist, incl. the old `named("check")` in rust-agent-e2e. Then
-  `./gradlew clean build`, commit R22b, start R22c.
-- R22c file split — APPROVED (user 2026-11-23), queued after R22b is committed (both touch AGENTS.md). Rule ("File
+  `./gradlew clean build`, commit R22b, start R22c. R22b DONE — committed `61fc0a4`.
+- R22c file split — DONE, UNCOMMITTED for the user's review (content verified identical modulo imports/loggers/one `@OptIn` moved to the class; `.api` unchanged; `./gradlew check` green; AGENTS.md `### File layout`). Rule ("File
   layout", AGENTS.md Kotlin Style):
   1. One concern per file, named after its main declaration; helpers live with what they serve (private decls,
      parameter/result types, extensions); coroutine-context elements and their accessors live with the family base.
