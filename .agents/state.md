@@ -364,8 +364,10 @@ File layout goal (user 2026-11-23, IN PROGRESS):
 - Decided (user): internal machinery goes to `agent.internal` / `client.internal` (public types and sealed members of
   public types, e.g. `ClientSessionImpl`, stay). Why (user): avoid multi-component long files, fixed rules for
   agents/devs, discoverable file tree for onboarding, but no file per small helper.
-- R22a pure move — DONE, UNCOMMITTED for the user's review (13 main files + 3 commonTest files moved, imports only,
-  `.api` unchanged, AGENTS.md `:acp` paragraph; `./gradlew check` green on rerun after the JS flake).
+- R22a pure move — DONE, UNCOMMITTED for the user's review: 14 main files (incl. `ClientSessionImpl.kt`) + 3 commonTest
+  + `ElicitationSessionMapTest` moved, imports only; public `CoroutineContext.clientSession` moved verbatim to new
+  `client/ClientSessionContext.kt` with `@file:JvmName("ClientSessionImplKt")` (user chose A; `ClientSession.kt` already
+  has facade `ClientSessionKt`); `.api` unchanged; AGENTS.md `:acp` paragraph; `./gradlew check` green.
 - R22b (agreed by user): a task wired into `check` that fails if anything public lives in an `internal` package.
   Proposed: buildSrc convention task failing on `/internal/` entries in any module's `.api` dump. Not started.
 - R22c file split — PROPOSED, awaiting user approval. Rule: a top-level class/interface gets its own file if public
