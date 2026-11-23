@@ -361,8 +361,32 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 
 ## Next
 Subagent examples goal (user 2026-11-23): comprehensive samples of subagent use from the agent side and the client
-side, with straightforward structured comments. PLANNING: plan shown to the user, waiting for sign-off before any
-programmer starts.
+side, with straightforward structured comments. Plan APPROVED (user 2026-11-23):
+- Layout like Koog `examples/simple-examples`: same module (`samples/kotlin-acp-client-sample`, name kept), one
+  package per sample under `com.agentclientprotocol.samples` (`support/`, `simple/`, `gemini/`, `v2/`, `auth/`,
+  `subagents/`), a `registerSampleTask(name, mainClass)` JavaExec helper with one task per sample (`runSimpleAgent`,
+  `runGeminiClient`, `runV2SimpleAgent`, `runV2Negotiation`, `runAuthStatus`, `runSubagents`); plain `run` keeps the
+  simple agent default, `-PmainClass` stays. New `samples/README.md` (table: what it shows, protocol version, task,
+  external needs; how to run; section per group); root README "Sample projects" shrinks to a pointer; AGENTS.md
+  samples paragraph updated.
+- Subagents sample: runnable scripted app (pipe/in-memory, one process), agent side + client side + app files; KDoc
+  overview per file listing scenarios, numbered section comments, inline comments only for non-obvious protocol
+  rules. Agent scenarios: capability null check; announce with factory (title/description/grant/running) + events;
+  child work via context.client incl. permission; parent links (ToolCallContent.Session, session_message after
+  announce returns); patches as events; cancel → idle(cancelled); idle(error) + SDK `unknown` on an active feed end;
+  nested grandchild; root close stops children; relay pattern `announce(…, parent = …)` as a short last section (user:
+  yes). Client scenarios: `subagents` capability in ClientInfo; root ops implement SubagentOperations (child ops too);
+  parent notify renders announcement/patches from `subagents` + session links; `clientSubagentSession` in child ops;
+  child stream history → Opened → live; child permission answered, pending one answered `cancelled` on cancel;
+  `canCancel`/`cancel()`; root close closes children. Script: init, new session, one prompt with three children (one
+  completes, one cancelled by the client while its permission is pending, one fails and has a grandchild), close.
+- Anti-rot: a JVM test in the samples module, run by `check`, runs the same scripted entry point and asserts key
+  events and order.
+- Slices: E0 restructure (moves + tasks + samples/README + root README + AGENTS.md) → E1 subagents live flow (+ test
+  infra + README row) → E2 `session/load` replay (record children, replayHistory re-announces, fresh grant after load;
+  client sees history → Opened, canCancel false until the fresh grant; test extended). Each uncommitted for the user's
+  review. E1/E2 on opus. Reviewer (user: yes) over E0–E2 at the end, then the user reviews.
+- E0 STARTED (programmer, default model).
 
 TODO (user 2026-11-23, later goal, not now): consider a proper `docs/` directory with contribution and usage
 guidelines; move suitable parts of AGENTS.md there (AGENTS.md keeps agent rules and points to it).
