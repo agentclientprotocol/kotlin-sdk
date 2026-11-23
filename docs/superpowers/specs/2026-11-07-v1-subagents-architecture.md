@@ -612,8 +612,8 @@ the parent's `AgentSession.replayHistory()`, which marks the replay window for t
   don't feed the `unknown` rule.
 - The replay window runs from the start of `session/load` until **the transport has accepted the load response**. It
   doesn't end in `afterResponse`: that runs a dispatch later, and the client already treats everything that follows
-  the response on the wire as live. The window closes from the internal `invokeOnResponseQueued` hook of the
-  request handler, which runs right after the transport accepted the response, before `afterResponse`.
+  the response on the wire as live. The window closes from the `onResponseQueued` hook of the load's
+  `RequestOutcome`, which runs right after the transport accepted the response, before `afterResponse`.
 - The SDK starts collecting a replayed child's `events` when that window closes, after the parent's load response.
   Its updates are fresh patches, not a new announcement (`sub:508`, `sub:512`).
   - Closing the window first launches the replayed children's collections into the root's connection scope, without
@@ -2323,7 +2323,7 @@ The design moved through several shapes before landing on the factory-based `ann
     collections first, then call `postInitialize()` (see "Replay"). The reverse order was rejected: the launch
     doesn't block, but a slow `postInitialize()` would delay every child's first fresh snapshot.
     - The launch and the end of the replay window happen when the transport accepts the response
-      (`invokeOnResponseQueued`), not when `afterResponse` starts, so the agent's idea of history matches the
+      (`RequestOutcome.onResponseQueued`), not when `afterResponse` starts, so the agent's idea of history matches the
       client's, which treats everything after the response on the wire as live.
     - A failed load, including a response that never reached the transport, drops the root with every registration
       made during it.

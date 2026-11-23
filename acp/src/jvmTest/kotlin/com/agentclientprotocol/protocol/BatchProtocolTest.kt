@@ -1,5 +1,8 @@
+@file:OptIn(UnstableApi::class)
+
 package com.agentclientprotocol.protocol
 
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.CancelRequestNotification
 import com.agentclientprotocol.model.SessionId
@@ -350,10 +353,12 @@ class BatchProtocolTest {
         transport.onSend = { events.trySend("sent") }
         protocol.setRequestOutcomeHandlerRaw(method) { request ->
             val id = request.id.value as Int
-            currentCoroutineContext().invokeOnResponseQueued { events.trySend("hook $id") }
             if (id == 2) release.await()
-            RequestOutcome<JsonElement?>(JsonNull, afterResponse = { events.trySend("follow-up $id") })
-                .also { if (id == 1) prepared.complete(Unit) }
+            RequestOutcome<JsonElement?>(
+                JsonNull,
+                afterResponse = { events.trySend("follow-up $id") },
+                onResponseQueued = { events.trySend("hook $id") },
+            ).also { if (id == 1) prepared.complete(Unit) }
         }
         transport.receive(TransportFrame.Batch(listOf(request(1), request(2))))
         prepared.await()
@@ -370,15 +375,28 @@ class BatchProtocolTest {
     fun responseQueuedHookIsSkippedForErrorRepliesAndFailedSends() = test { protocol, transport ->
         val hooks = Channel<Int>(Channel.UNLIMITED)
         val cleaned = Channel<Int>(Channel.UNLIMITED)
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
         protocol.setRequestOutcomeHandlerRaw(method) { request ->
             val id = request.id.value as Int
-            currentCoroutineContext().invokeOnResponseQueued { hooks.trySend(id) }
-            if (id == 1) error("handler failed")
-            RequestOutcome<JsonElement?>(JsonNull, onCompletion = { cleaned.trySend(id) })
+            if (id == 1) {
+                // Cancelled while preparing its outcome: answered with an error although it returns one.
+                started.complete(Unit)
+                withContext(NonCancellable) { release.await() }
+            }
+            RequestOutcome<JsonElement?>(
+                JsonNull,
+                onCompletion = { cleaned.trySend(id) },
+                onResponseQueued = { hooks.trySend(id) },
+            )
         }
 
         transport.receive(request(1))
+        started.await()
+        protocol.cancelPendingIncomingRequest(RequestId.create(1))
+        release.complete(Unit)
         assertIs<JsonRpcErrorResponse>(transport.sent.receive().replies().single())
+        assertEquals(1, cleaned.receive())
         transport.failSend = true
         transport.receive(request(2))
         assertEquals(2, cleaned.receive())

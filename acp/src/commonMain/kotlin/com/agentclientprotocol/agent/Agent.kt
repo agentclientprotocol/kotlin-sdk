@@ -21,7 +21,6 @@ import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.currentCoroutineContext
 import kotlin.coroutines.CoroutineContext
 
 private val logger = KotlinLogging.logger {}
@@ -446,13 +445,6 @@ public class Agent(
                 discardFailedLoad(sessionWrapper)
                 throw t
             }
-            /*
-             * The client treats what follows the load response on the wire as live, so the replay window closes as
-             * soon as the transport has accepted the response, not a dispatch later when afterResponse starts. This
-             * also starts the replayed subagents' collections before postInitialize(): a slow one would otherwise
-             * keep every child's state unconfirmed and its cancel disabled on the client.
-             */
-            currentCoroutineContext().invokeOnResponseQueued { sessionWrapper.endReplay() }
         }
 
         return RequestOutcome(
@@ -461,6 +453,17 @@ public class Agent(
             onCompletion = {
                 // Still replaying here means the load response never reached the transport: the load failed.
                 if (sessionWrapper.isReplaying) discardFailedLoad(sessionWrapper)
+            },
+            /*
+             * The client treats what follows the load response on the wire as live, so the replay window closes as
+             * soon as the transport has accepted the response, not a dispatch later when afterResponse starts. This
+             * also starts the replayed subagents' collections before postInitialize(): a slow one would otherwise
+             * keep every child's state unconfirmed and its cancel disabled on the client.
+             */
+            onResponseQueued = if (replayHistory != null) {
+                { sessionWrapper.endReplay() }
+            } else {
+                null
             },
         )
     }

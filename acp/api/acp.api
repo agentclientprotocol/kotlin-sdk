@@ -852,20 +852,13 @@ public class com/agentclientprotocol/protocol/ProtocolOptions {
 }
 
 public final class com/agentclientprotocol/protocol/RequestOutcome {
-	public fun <init> (Ljava/lang/Object;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;)V
-	public synthetic fun <init> (Ljava/lang/Object;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun component1 ()Ljava/lang/Object;
-	public final fun component2 ()Lkotlin/jvm/functions/Function1;
-	public final fun component3 ()Lkotlin/jvm/functions/Function0;
-	public final fun copy (Ljava/lang/Object;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;)Lcom/agentclientprotocol/protocol/RequestOutcome;
-	public static synthetic fun copy$default (Lcom/agentclientprotocol/protocol/RequestOutcome;Ljava/lang/Object;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;ILjava/lang/Object;)Lcom/agentclientprotocol/protocol/RequestOutcome;
-	public fun equals (Ljava/lang/Object;)Z
+	public fun <init> (Ljava/lang/Object;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;)V
+	public synthetic fun <init> (Ljava/lang/Object;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getAfterResponse ()Lkotlin/jvm/functions/Function1;
 	public final fun getOnCompletion ()Lkotlin/jvm/functions/Function0;
+	public final fun getOnResponseQueued ()Lkotlin/jvm/functions/Function0;
 	public final fun getResponse ()Ljava/lang/Object;
-	public fun hashCode ()I
 	public final fun mapResponse (Lkotlin/jvm/functions/Function1;)Lcom/agentclientprotocol/protocol/RequestOutcome;
-	public fun toString ()Ljava/lang/String;
 }
 
 public abstract interface class com/agentclientprotocol/protocol/RpcMethodsOperations {

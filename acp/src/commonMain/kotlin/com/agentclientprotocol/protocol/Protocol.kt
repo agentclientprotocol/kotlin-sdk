@@ -2,6 +2,7 @@
 
 package com.agentclientprotocol.protocol
 
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.CancelRequestNotification
 import com.agentclientprotocol.model.ProtocolVersion
@@ -80,6 +81,7 @@ public class Protocol(
     /**
      * Request handlers for incoming requests.
      */
+    @OptIn(UnstableApi::class)
     private val requestHandlers: AtomicRef<PersistentMap<MethodName, suspend (JsonRpcRequest) -> RequestOutcome<JsonElement?>>> =
         atomic(persistentMapOf())
 
@@ -343,6 +345,7 @@ public class Protocol(
         transport.send(frame)
     }
 
+    @OptIn(UnstableApi::class)
     override fun setRequestOutcomeHandlerRaw(
         method: AcpMethod.AcpRequestResponseMethod<*, *>,
         additionalContext: CoroutineContext,
@@ -503,7 +506,7 @@ public class Protocol(
                 )
                 // Before completing the frame, so every hook runs before any after-response work starts.
                 for (slot in slots) {
-                    val hook = slot.takeSuccessQueuedHook() ?: continue
+                    val hook = slot.successQueuedHook() ?: continue
                     runCatching(hook).onFailure { t -> logger.error(t) { "Response queued hook failed" } }
                 }
                 responseFrameQueued.complete(Unit)
@@ -556,6 +559,7 @@ public class Protocol(
         handlerJob.start()
     }
 
+    @OptIn(UnstableApi::class)
     private suspend fun handleRequest(request: JsonRpcRequest, slot: ResponseSlot) {
         var outcome: RequestOutcome<JsonElement?>? = null
 
@@ -564,12 +568,14 @@ public class Protocol(
                 val handler = requestHandlers.value[request.method]
                     ?: jsonRpcMethodNotFound("Method not supported: ${request.method}")
 
-                withContext(JsonRpcRequestContextElement(request, slot)) {
+                withContext(JsonRpcRequestContextElement(request)) {
                     outcome = handler(request)
                 }
 
                 currentCoroutineContext().ensureActive()
-                slot.response.complete(JsonRpcSuccessResponse(request.id, outcome!!.response ?: JsonNull))
+                // Before the response completes, so the frame's sender sees the hook once it has the response.
+                slot.onSuccessQueued = outcome!!.onResponseQueued
+                slot.response.complete(JsonRpcSuccessResponse(request.id, outcome.response ?: JsonNull))
             } catch (t: Throwable) {
                 slot.response.complete(JsonRpcErrorResponse(request.id, t.toJsonRpcError()))
                 return
@@ -726,22 +732,15 @@ internal class IncomingRequest(val handlerJob: Job) {
 internal class ResponseSlot(val responseFrameQueued: CompletableDeferred<Unit>) {
     val response = CompletableDeferred<JsonRpcResponse>()
 
-    private val successQueuedHook = atomic<(() -> Unit)?>(null)
-
     /**
-     * Registers the hook of [invokeOnResponseQueued] for this slot's request.
+     * The request's [RequestOutcome.onResponseQueued], set before [response] completes with a success.
      */
-    fun invokeOnSuccessQueued(hook: () -> Unit) {
-        check(successQueuedHook.compareAndSet(null, hook)) { "A response hook is already registered for this request" }
-    }
+    var onSuccessQueued: (() -> Unit)? = null
 
     /**
-     * Returns the registered hook if [response] is a success, once the frame carrying it was accepted by the
-     * transport, and clears it.
+     * Returns [onSuccessQueued] if [response] is a success, once the frame carrying it was accepted by the transport.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun takeSuccessQueuedHook(): (() -> Unit)? {
-        val hook = successQueuedHook.getAndSet(null) ?: return null
-        return hook.takeIf { response.getCompleted() is JsonRpcSuccessResponse }
-    }
+    fun successQueuedHook(): (() -> Unit)? =
+        onSuccessQueued.takeIf { response.getCompleted() is JsonRpcSuccessResponse }
 }
