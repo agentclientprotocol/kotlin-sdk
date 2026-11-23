@@ -479,7 +479,14 @@ Round 21 follow-ups (user 2026-11-23):
 - (decided) Promote ONLY the v1 subagent MODEL types in `:acp-model` (drop their `@UnstableApi`); the Kotlin runtime API
   (`SubagentOperations`, `ClientSubagentSession`, `BaseClientSession.subagents`, `clientSubagentSession`,
   `AgentSubagents` …) stays unstable. Types still unstable upstream (fork, possibly `ToolCallContent.Session`) stay.
-  Gated on research `.agents/research/subagents-stable-schema-diff.md` (RUNNING): if any wire shape differs, ask the user.
+  Research DONE (`.agents/research/subagents-stable-schema-diff.md`, upstream `01a54c84`): all v1 subagent wire shapes
+  identical to `c392d7e9`; every item MATCH. Except `StateUpdate.Idle.usage`: not in stable (Draft end-turn-usage RFD)
+  → keep `@property:UnstableApi` on it (like `PromptResponse.usage`); `Usage` stays unstable. 10 annotations to drop
+  (Subagents.kt:33,53,70; Capabilities.kt:98; SessionUpdate.kt:301,342,370; SubagentState.kt:33,106; ToolCall.kt:115)
+  + their UNSTABLE KDoc banners. Conversions unaffected. ASKED the user: promote `MaybeUndefined`/`update()` and
+  `MessageId` too (exposed by the stable types)? Unrelated stale annotations (PlanUpdateV2, PlanRemoved,
+  SessionInfoUpdate, UsageUpdate, chunk messageIds stable upstream; PromptRequest.messageId/PromptResponse.userMessageId
+  removed upstream) → follow-up, not this slice.
 - (decided, no discussion) Fix the design spec's stale Kotlin file:line cites and move RFD cites to the stable page,
   using research `.agents/research/subagents-rfd-cite-mapping.md` (RUNNING), then one programmer slice.
 - Fork-history ambiguity: LEAVE IT (user 2026-11-23); raise upstream once fork nears stable. No code change. R21 (agreed, user 2026-11-22), a SEPARATE behaviour slice
