@@ -386,7 +386,7 @@ side, with straightforward structured comments. Plan APPROVED (user 2026-11-23):
   infra + README row) → E2 `session/load` replay (record children, replayHistory re-announces, fresh grant after load;
   client sees history → Opened, canCancel false until the fresh grant; test extended). Each uncommitted for the user's
   review. E1/E2 on opus. Reviewer (user: yes) over E0–E2 at the end, then the user reviews.
-- E0 DONE, UNCOMMITTED (renames staged), awaiting the user's review: module build, each local task run, `check` green
+- E0 COMMITTED `7eff9a3` (user approved 2026-11-23). E1 STARTED (programmer, opus). Was: module build, each local task run, `check` green
   1st run. Calls: `TerminalClientSupport.kt` → `support/` (simple + gemini use it); `SimpleAgentSupport`/`V2SampleSupport`
   stay with their samples (auth imports both); Gemini KDoc names `runGeminiClient`; task group `samples`. Pre-existing:
   `runSimpleAgent` JVM doesn't exit after "Goodbye" (documented in samples/README, not fixed). Draft commit:
