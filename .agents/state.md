@@ -488,7 +488,15 @@ Round 21 follow-ups (user 2026-11-23):
   SessionInfoUpdate, UsageUpdate, chunk messageIds stable upstream; PromptRequest.messageId/PromptResponse.userMessageId
   removed upstream) → follow-up, not this slice.
 - (decided, no discussion) Fix the design spec's stale Kotlin file:line cites and move RFD cites to the stable page,
-  using research `.agents/research/subagents-rfd-cite-mapping.md` (RUNNING), then one programmer slice.
+  using research `.agents/research/subagents-rfd-cite-mapping.md` (DONE: cites match RFD `13b76582`; ~110 refs / 65
+  ranges, short forms `sub:`/`pt:`/`tc:`/`init:`/`rfd:`/`v2sub:`; material changes: cost incl. descendants, late-response
+  restart MUST NOT→SHOULD NOT, ungranted child requests SHOULD be rejected with -32602 (our agent already does via
+  acpFail), `session` content "only" w/o MUST, ~12 quoted phrases reworded). Slice C1 STARTED (programmer, docs + 2
+  KDoc cite lines in `RemoteClientSessionOperations.kt`), uncommitted for review.
+  C1 DONE, uncommitted, awaiting the user's review (spec + KDoc; `:acp:compileKotlinJvm` green). ~121 short-form refs;
+  material edits as listed; Table E quotes reworded/dropped; Kotlin cites → symbol names; RemoteClientSessionOperations
+  KDoc cites the stable pages. Left: Rust refs (lines 23-29), delete-vs-close, long lines not reflowed. For the
+  promotion slice: spec ~165 still says `SessionReference` only in `schema.unstable.json` / Rust `unstable_subagents`.
 - Fork-history ambiguity: LEAVE IT (user 2026-11-23); raise upstream once fork nears stable. No code change. R21 (agreed, user 2026-11-22), a SEPARATE behaviour slice
   after R20 (R20c, R20d): `ClientSessionRegistry.awaitSession` stops creating speculative holders; a request waits
   only for a completed holder, a claimed root or a subagent holder; anything else (unknown id, or an unclaimed
