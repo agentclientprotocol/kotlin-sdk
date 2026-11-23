@@ -452,7 +452,10 @@ KDoc of `SubagentPendingPermissions.kt` (spec typo + shortened "followed at arri
   `protocol`/`subagentScope` became `private val`. Awaiting the user's look at the merge delta, then commit + push.
   (user 2026-11-23) Renames: getter `setUpSubagent()` → `requireSubagent()` (it isn't a verb: it returns the stored
   session or throws); `setUpAnnouncedSubagent(...)` → `setUpSubagent(...)`. Sent to the same programmer. Done, uncommitted
-  (client jvmTest 245 green, `apiCheck` green; `check` not re-run for the renames). R21 (agreed, user 2026-11-22), a SEPARATE behaviour slice
+  (client jvmTest 245 green, `apiCheck` green; `check` not re-run for the renames).
+  R20b COMMITTED `563865d` and pushed (user 2026-11-23; `check` green before the commit). R20c DONE, uncommitted, awaiting the user's review
+  (`:acp:compileKotlinJvm` + `apiCheck` green; no statement needed correcting). Note: the banner "not part of the spec
+  yet" is stale since upstream made subagents stable; belongs to the `@UnstableApi` follow-up. R21 (agreed, user 2026-11-22), a SEPARATE behaviour slice
   after R20 (R20c, R20d): `ClientSessionRegistry.awaitSession` stops creating speculative holders; a request waits
   only for a completed holder, a claimed root or a subagent holder; anything else (unknown id, or an unclaimed
   speculative holder an update created) fails at once with `-32002` (resource not found), also in the no-opening case
