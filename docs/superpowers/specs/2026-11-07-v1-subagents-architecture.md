@@ -36,7 +36,7 @@ design document for v1 subagents; the earlier discussion notes were removed, and
 - This branch (`eugenethedev/subagents`) is stacked on PR #156 (`9941000`, branch
   `eugenethedev/permission-cancellation-fix`). #156 makes the v1 client answer pending permission requests with
   `cancelled` on `cancel()`/`close()`, through `PendingPermissionCancellation.kt`, which is now
-  `client/PendingPermissions.kt`.
+  `client/internal/PendingPermissions.kt`.
 - #156 is based on master with PR #155 (`f858693`: one v1 turn at a time, cancel targets its own turn), so this
   branch includes #155. If #156 changes again, rebase onto its new head.
 - Scope: protocol v1 only. v2 follows separately (see "Looking ahead to v2"). Do not change v2 runtimes.
@@ -405,7 +405,7 @@ collector sends through the same path:
   ("Client does not support subagents capability") when the client didn't advertise `subagents`. The subagents page
   says an agent MUST NOT send those updates unless the client advertised `subagents` (`sub:59`, `init:241-242`).
   - The check sits in the root's `RemoteClientSessionOperations.notify`. `client.notify`, the prompt flow's
-    `Event.SessionUpdateEvent` (`agent/SessionWrapper.kt`, `RootSessionWrapper.prompt`) and replay all go through it, so one
+    `Event.SessionUpdateEvent` (`agent/internal/RootSessionWrapper.kt`, `RootSessionWrapper.prompt`) and replay all go through it, so one
     check covers every path. It follows the fs, terminal and elicitation checks in the same file, which use
     `error(...)` with the same message format.
   - It throws rather than dropping with a log: the app made an explicit call that breaks a MUST NOT, and a silent
@@ -448,7 +448,7 @@ collector sends through the same path:
   context. `CoroutineContext.client` doesn't work yet: today it casts to `RootSessionWrapper` and reads its
   `clientOperations` (`CoroutineContext.client` in `agent/Agent.kt`), and `BaseSessionWrapper` has no
   `clientOperations`. Make the accessor resolve a `SubagentSessionWrapper` too, for example by moving the operations
-  to a shared supertype that NES sessions don't implement (`SessionWrapper` in `agent/SessionWrapper.kt` is that
+  to a shared supertype that NES sessions don't implement (`SessionWrapper` in `agent/internal/SessionWrapper.kt` is that
   supertype now). `.subagents` needs the same. The child's `client` is a `RemoteClientSessionOperations` for the
   child's id, gated until the announcement is sent, and applies the routing rule.
 
@@ -790,7 +790,7 @@ details below (decision log, question 7).
   - Shared KDoc lives on `BaseClientSession` and its members. Overrides add KDoc only where their behaviour differs
     in an important way.
   - A new context accessor returns `BaseClientSession`. `coroutineContext.clientSession`
-    (`client/ClientSessionImpl.kt`) stays as it is. A third, `coroutineContext.clientSubagentSession`, returns
+    (`client/BaseClientSession.kt`) stays as it is. A third, `coroutineContext.clientSubagentSession`, returns
     the `ClientSubagentSession` and throws for a root session or none.
   - Adding `subagents` to `ClientSession` breaks external implementations of that interface. This is accepted
     because the member is `@UnstableApi`.
@@ -1124,10 +1124,10 @@ arrival (see "Pending permission requests").
 
 ### Holders
 
-Every session id, root or child, has one `ClientSessionHolder` (`client/ClientSessionHolder.kt`): a
+Every session id, root or child, has one `ClientSessionHolder` (`client/internal/ClientSessionHolder.kt`): a
 `RootSessionHolder` for a root, a `SubagentSessionHolder` for a child. Today's holder
 can't host a child: `getOrCreateSessionHolderOrNull` creates one only while an opening is in progress
-(`client/ClientSessionRegistry.kt`), the reaping at the end of the last opening fails every holder that hasn't
+(`client/internal/ClientSessionRegistry.kt`), the reaping at the end of the last opening fails every holder that hasn't
 completed (`withInitializingSession` there), and the holder is typed to `ClientSessionImpl`. The rules below fix that and keep the invariant of
 "History and live updates": when the root's response hook runs, every descendant holder is still queuing.
 
@@ -1405,7 +1405,7 @@ root can be closed.
   the session closed instead.
 
 **`ClientSessionImpl` no longer calls its `Client`.** It used `client` only for `client.removeSessionHolder` after
-a close (`ClientSessionImpl.close`, `client/ClientSessionImpl.kt`). It gets two callbacks instead, as v2's `ClientSession` gets
+a close (`ClientSessionImpl.close`, `client/internal/ClientSessionImpl.kt`). It gets two callbacks instead, as v2's `ClientSession` gets
 `onClosed` (`client/v2/ClientSession.kt`, passed by `client/v2/Client.kt`):
 
 ```kotlin
@@ -2171,8 +2171,8 @@ cover externally observable behaviour.
 
 - **Both root runtimes treat a `CancellationException` thrown by the app's own flow as a cancellation** (a
   follow-up PR, not this change; the fix ideas are in `FIXME` comments in `RootSessionWrapper.prompt` in
-  `agent/SessionWrapper.kt` and in `runTurn` in `agent/v2/Agent.kt`). The v1 `RootSessionWrapper.prompt` rethrows it, so the turn's job counts as cancelled and
-  `session/prompt` answers `stopReason: cancelled` (`RootSessionWrapper.prompt` in `agent/SessionWrapper.kt`, where `isCancelled` picks `StopReason.CANCELLED`). The v2 `runTurn` reports
+  `agent/internal/RootSessionWrapper.kt` and in `runTurn` in `agent/v2/Agent.kt`). The v1 `RootSessionWrapper.prompt` rethrows it, so the turn's job counts as cancelled and
+  `session/prompt` answers `stopReason: cancelled` (`RootSessionWrapper.prompt` in `agent/internal/RootSessionWrapper.kt`, where `isCancelled` picks `StopReason.CANCELLED`). The v2 `runTurn` reports
   `idle(cancelled)` for any `CancellationException` and rethrows it (`agent/v2/Agent.kt`, the
   `is CancellationException` branch). So an uncaught `withTimeout` inside a root's flow tells the client the user
   cancelled the turn. #131 fixed only the SDK-made case: a peer's `-32800` response is now
