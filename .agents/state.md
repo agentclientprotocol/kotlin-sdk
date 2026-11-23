@@ -360,7 +360,7 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   tests; `check` green (2nd run, JS flake); no API change.
 
 ## Next
-File layout goal (user 2026-11-23, IN PROGRESS):
+File layout goal (user 2026-11-23, DONE):
 - Decided (user): internal machinery goes to `agent.internal` / `client.internal` (public types and sealed members of
   public types, e.g. `ClientSessionImpl`, stay). Why (user): avoid multi-component long files, fixed rules for
   agents/devs, discoverable file tree for onboarding, but no file per small helper.
@@ -378,7 +378,7 @@ File layout goal (user 2026-11-23, IN PROGRESS):
   `base` + `tasks.check { dependsOn(gradle.includedBuild("build-logic").task(":check")) }`; use type-safe task
   accessors (`tasks.check`) wherever they exist, incl. the old `named("check")` in rust-agent-e2e. Then
   `./gradlew clean build`, commit R22b, start R22c. R22b DONE — committed `61fc0a4`.
-- R22c file split — DONE, UNCOMMITTED for the user's review (content verified identical modulo imports/loggers/one `@OptIn` moved to the class; `.api` unchanged; `./gradlew check` green; AGENTS.md `### File layout`). Rule ("File
+- R22c file split — DONE, committed `2849640` (content verified identical modulo imports/loggers/one `@OptIn` moved to the class; `.api` unchanged; `./gradlew check` green; AGENTS.md `### File layout`). Rule ("File
   layout", AGENTS.md Kotlin Style):
   1. One concern per file, named after its main declaration; helpers live with what they serve (private decls,
      parameter/result types, extensions); coroutine-context elements and their accessors live with the family base.
@@ -394,6 +394,7 @@ File layout goal (user 2026-11-23, IN PROGRESS):
   merge `SubagentClientOperations` into `RemoteClientSessionOperations.kt`. Unchanged: `PendingPermissions.kt` (whole),
   `AgentSubagents.kt` (one concern, user rejected the 4-file split), public client session files. Moves only, no
   `.api` change. No "legacy files" clause (v1 agent/client already comply; `protocol/Protocol.kt` out of scope).
+- R22d spec paths — DONE, committed (9 path mentions in the v1 subagents spec now point at the current layout).
 Current goal (2026-11-19): the user reviews PR #158 piece by piece; each round's notes become a refactor/fix slice.
 Review round 20 (2026-11-22, notes on `PendingPermissionCancellation`/`SubagentPendingPermissions`/`SubagentOperations`/
 `SubagentSetup`/`SessionEvent`). Answers given; discussion IN PROGRESS. The user has an UNCOMMITTED edit to the class
