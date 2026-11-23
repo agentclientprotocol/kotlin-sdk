@@ -391,7 +391,10 @@ side, with straightforward structured comments. Plan APPROVED (user 2026-11-23):
   reviewer gets a fresh grant after load and is cancelled; others history-only. OPEN for the user: replayed parent
   stream interleaving differs from live (factory sends the child's whole history before returning, per the
   `AgentSubagentFactory` KDoc; exact interleaving would need sends through the child context after the factory
-  returned). Reviewer over E0–E2 (7eff9a3..HEAD + uncommitted E2) STARTED → `.agents/research/review-examples.md`. E1 restructure was (build 7/7, `--rerun` 5x, stress 420, runSubagents ok;
+  returned). Reviewer over E0–E2 DONE → `.agents/research/review-examples.md`: 0 blockers, 4 should-fix (replay reorders parent
+  stream — reviewer recommends live order via the child's stored context; tree at loaded root's Opened can miss
+  grandchildren off a single thread; follow-up session_message links an unsent message; CancellationException as a
+  domain signal), nits; SDK follow-up: `AgentSubagentFactory.createSubagent` KDoc. Fix plan shown to the user. E1 restructure was (build 7/7, `--rerun` 5x, stress 420, runSubagents ok;
   `check` green from cache). Tree: subagents/{SubagentsApp,Transcript}, agent/{DelegatingAgentSupport,
   DelegatingAgentSession,DelegatedSubagentFactory,DelegatedSubagentSession,DelegatedTask,SampleTasks,
   RemoteProbeSubagentSession,NativeRelayedSubagentSession,FakeNativeAgent,SessionUpdates}, client/{SubagentsClient,
