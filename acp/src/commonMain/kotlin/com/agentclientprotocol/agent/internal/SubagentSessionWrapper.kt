@@ -1,7 +1,12 @@
 @file:OptIn(UnstableApi::class)
 
-package com.agentclientprotocol.agent
+package com.agentclientprotocol.agent.internal
 
+import com.agentclientprotocol.agent.Agent
+import com.agentclientprotocol.agent.AgentSubagentContext
+import com.agentclientprotocol.agent.AgentSubagentFactory
+import com.agentclientprotocol.agent.AgentSubagentSession
+import com.agentclientprotocol.agent.AgentSubagents
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.notify
 import com.agentclientprotocol.model.AcpMethod

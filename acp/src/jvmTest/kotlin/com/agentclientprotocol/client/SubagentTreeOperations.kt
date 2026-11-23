@@ -3,6 +3,7 @@
 package com.agentclientprotocol.client
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.client.internal.ClientSessionContextElement
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.ElicitationOperations
 import com.agentclientprotocol.common.FileSystemOperations

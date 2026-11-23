@@ -1,5 +1,8 @@
 package com.agentclientprotocol.agent
 
+import com.agentclientprotocol.agent.internal.SessionWrapper
+import com.agentclientprotocol.agent.internal.SubagentSessionWrapper
+import com.agentclientprotocol.agent.internal.sessionWrapper
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.model.SessionId

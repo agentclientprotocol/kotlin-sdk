@@ -1,6 +1,8 @@
-package com.agentclientprotocol.client
+package com.agentclientprotocol.client.internal
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.client.Client
+import com.agentclientprotocol.client.ClientNesSession
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.invoke

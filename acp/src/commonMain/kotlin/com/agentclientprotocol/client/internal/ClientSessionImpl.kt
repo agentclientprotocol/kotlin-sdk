@@ -1,6 +1,10 @@
-package com.agentclientprotocol.client
+package com.agentclientprotocol.client.internal
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.client.Client
+import com.agentclientprotocol.client.ClientSession
+import com.agentclientprotocol.client.ClientSubagentSession
+import com.agentclientprotocol.client.setConfigOption
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
 import com.agentclientprotocol.common.SessionCreationParameters
@@ -20,7 +24,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
-import kotlin.coroutines.CoroutineContext
 
 private val logger = KotlinLogging.logger {}
 
@@ -254,12 +257,3 @@ internal class ClientSessionImpl(
         }
     }
 }
-
-/**
- * The root session that the current call of a session's operations belongs to.
- *
- * @throws IllegalStateException if the context belongs to no session, or to a subagent session. Use
- * [clientSubagentSession] for a subagent session, and [baseClientSession] where the operations may serve both.
- */
-public val CoroutineContext.clientSession: ClientSession
-    get() = this[ClientSessionContextElement.Key]?.session as? ClientSession ?: error("No client session data found in context")

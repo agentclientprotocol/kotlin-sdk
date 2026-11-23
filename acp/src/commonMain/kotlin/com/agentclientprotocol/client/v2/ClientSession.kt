@@ -1,7 +1,7 @@
 package com.agentclientprotocol.client.v2
 
 import com.agentclientprotocol.annotations.UnstableApi
-import com.agentclientprotocol.client.RootPendingPermissions
+import com.agentclientprotocol.client.internal.RootPendingPermissions
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.SessionConfigId

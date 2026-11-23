@@ -1,9 +1,15 @@
+@file:JvmName("ClientSessionImplKt")
+
+// Keeps clientSession in the JVM class it had when it lived in ClientSessionImpl.kt, for binary compatibility.
+
 package com.agentclientprotocol.client
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.client.internal.ClientSessionContextElement
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.model.SessionId
 import kotlin.coroutines.CoroutineContext
+import kotlin.jvm.JvmName
 
 /**
  * **UNSTABLE**
@@ -85,6 +91,15 @@ public sealed interface BaseClientSession {
 @UnstableApi
 public val CoroutineContext.baseClientSession: BaseClientSession
     get() = this[ClientSessionContextElement.Key]?.session ?: error("No client session data found in context")
+
+/**
+ * The root session that the current call of a session's operations belongs to.
+ *
+ * @throws IllegalStateException if the context belongs to no session, or to a subagent session. Use
+ * [clientSubagentSession] for a subagent session, and [baseClientSession] where the operations may serve both.
+ */
+public val CoroutineContext.clientSession: ClientSession
+    get() = this[ClientSessionContextElement.Key]?.session as? ClientSession ?: error("No client session data found in context")
 
 /**
  * **UNSTABLE**

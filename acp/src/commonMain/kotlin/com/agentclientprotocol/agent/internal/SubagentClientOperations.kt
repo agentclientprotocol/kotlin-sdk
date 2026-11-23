@@ -1,6 +1,6 @@
 @file:OptIn(UnstableApi::class)
 
-package com.agentclientprotocol.agent
+package com.agentclientprotocol.agent.internal
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.SessionEvent

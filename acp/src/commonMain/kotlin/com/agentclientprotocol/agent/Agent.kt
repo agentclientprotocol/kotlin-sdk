@@ -1,5 +1,11 @@
 package com.agentclientprotocol.agent
 
+import com.agentclientprotocol.agent.internal.NesSessionWrapper
+import com.agentclientprotocol.agent.internal.RemoteClientSessionOperations
+import com.agentclientprotocol.agent.internal.RootSessionWrapper
+import com.agentclientprotocol.agent.internal.SessionWrapperContextElement
+import com.agentclientprotocol.agent.internal.SubagentSessionWrapper
+import com.agentclientprotocol.agent.internal.sessionWrapper
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.ClientInfo
 import com.agentclientprotocol.common.ClientSessionOperations

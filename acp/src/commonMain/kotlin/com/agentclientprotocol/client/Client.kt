@@ -4,6 +4,13 @@ package com.agentclientprotocol.client
 
 import com.agentclientprotocol.agent.AgentInfo
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.client.internal.ClientNesSessionImpl
+import com.agentclientprotocol.client.internal.ClientSessionImpl
+import com.agentclientprotocol.client.internal.ClientSessionRegistry
+import com.agentclientprotocol.client.internal.ElicitationSessionStore
+import com.agentclientprotocol.client.internal.RootSessionHolder
+import com.agentclientprotocol.client.internal.answerPermissionRequest
+import com.agentclientprotocol.client.internal.executeWithSession
 import com.agentclientprotocol.common.*
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.*

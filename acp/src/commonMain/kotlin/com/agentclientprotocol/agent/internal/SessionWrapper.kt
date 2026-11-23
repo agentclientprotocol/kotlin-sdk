@@ -1,5 +1,9 @@
-package com.agentclientprotocol.agent
+package com.agentclientprotocol.agent.internal
 
+import com.agentclientprotocol.agent.Agent
+import com.agentclientprotocol.agent.AgentSession
+import com.agentclientprotocol.agent.AgentSubagents
+import com.agentclientprotocol.agent.NesAgentSession
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event

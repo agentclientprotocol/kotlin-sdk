@@ -1,6 +1,13 @@
 package com.agentclientprotocol.client
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.client.internal.ClientSessionHolder
+import com.agentclientprotocol.client.internal.ClientSessionImpl
+import com.agentclientprotocol.client.internal.RootSessionHolder
+import com.agentclientprotocol.client.internal.SubagentSessionHolder
+import com.agentclientprotocol.client.internal.answerPermissionRequest
+import com.agentclientprotocol.client.internal.deliverUpdate
+import com.agentclientprotocol.client.internal.executeWithSession
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.common.SessionEvent

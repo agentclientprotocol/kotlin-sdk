@@ -1,6 +1,7 @@
 package com.agentclientprotocol.client
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.client.internal.SubagentSessionHolder
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.CancelNotification

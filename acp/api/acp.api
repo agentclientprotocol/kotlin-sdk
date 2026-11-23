@@ -334,11 +334,6 @@ public abstract interface class com/agentclientprotocol/client/BaseClientSession
 	public abstract fun getSubagents ()Ljava/util/List;
 }
 
-public final class com/agentclientprotocol/client/BaseClientSessionKt {
-	public static final fun getBaseClientSession (Lkotlin/coroutines/CoroutineContext;)Lcom/agentclientprotocol/client/BaseClientSession;
-	public static final fun getClientSubagentSession (Lkotlin/coroutines/CoroutineContext;)Lcom/agentclientprotocol/client/ClientSubagentSession;
-}
-
 public final class com/agentclientprotocol/client/Client {
 	public fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/GlobalElicitationHandler;Lcom/agentclientprotocol/client/GlobalSessionUpdateHandler;)V
 	public synthetic fun <init> (Lcom/agentclientprotocol/protocol/Protocol;Lcom/agentclientprotocol/client/GlobalElicitationHandler;Lcom/agentclientprotocol/client/GlobalSessionUpdateHandler;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -483,7 +478,9 @@ public final class com/agentclientprotocol/client/ClientSession$DefaultImpls {
 }
 
 public final class com/agentclientprotocol/client/ClientSessionImplKt {
+	public static final fun getBaseClientSession (Lkotlin/coroutines/CoroutineContext;)Lcom/agentclientprotocol/client/BaseClientSession;
 	public static final fun getClientSession (Lkotlin/coroutines/CoroutineContext;)Lcom/agentclientprotocol/client/ClientSession;
+	public static final fun getClientSubagentSession (Lkotlin/coroutines/CoroutineContext;)Lcom/agentclientprotocol/client/ClientSubagentSession;
 }
 
 public final class com/agentclientprotocol/client/ClientSessionKt {

@@ -1,8 +1,14 @@
 @file:OptIn(UnstableApi::class)
 
-package com.agentclientprotocol.client
+package com.agentclientprotocol.client.internal
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.client.BaseClientSession
+import com.agentclientprotocol.client.ClientSession
+import com.agentclientprotocol.client.internal.ClientSessionImpl
+import com.agentclientprotocol.client.ClientSubagentSession
+import com.agentclientprotocol.client.baseClientSession
+import com.agentclientprotocol.client.clientSession
 import com.agentclientprotocol.common.notify
 import com.agentclientprotocol.model.PermissionOption
 import com.agentclientprotocol.model.RequestPermissionOutcome

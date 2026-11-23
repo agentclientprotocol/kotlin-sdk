@@ -41,6 +41,8 @@ The core runtime:
 - `transport`: the transport contract and STDIO implementation;
 - `util`: coroutine and pagination helpers.
 
+`agent.internal` and `client.internal` hold the runtimes' non-public machinery (session implementations and wrappers, holders, the registry, pending permissions). Public types, and direct subtypes of a public sealed type (Kotlin requires those in the sealed type's package), stay in the parent package.
+
 The public API dump is `acp/api/acp.api`.
 
 ### `:acp-ktor`

@@ -1,9 +1,13 @@
 @file:OptIn(UnstableApi::class)
 
-package com.agentclientprotocol.client
+package com.agentclientprotocol.client.internal
 
 import com.agentclientprotocol.annotations.UnstableApi
-import com.agentclientprotocol.client.RootSessionHolder.Stage
+import com.agentclientprotocol.client.BaseClientSession
+import com.agentclientprotocol.client.Client
+import com.agentclientprotocol.client.ClientSession
+import com.agentclientprotocol.client.GlobalSessionUpdateHandler
+import com.agentclientprotocol.client.internal.RootSessionHolder.Stage
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.model.AcpCreatedSessionResponse
 import com.agentclientprotocol.model.MaybeUndefined

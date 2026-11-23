@@ -1,6 +1,6 @@
 @file:OptIn(UnstableApi::class)
 
-package com.agentclientprotocol.client
+package com.agentclientprotocol.client.internal
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.IdleStopReason
