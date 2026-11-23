@@ -455,7 +455,15 @@ KDoc of `SubagentPendingPermissions.kt` (spec typo + shortened "followed at arri
   (client jvmTest 245 green, `apiCheck` green; `check` not re-run for the renames).
   R20b COMMITTED `563865d` and pushed (user 2026-11-23; `check` green before the commit). R20c DONE, uncommitted, awaiting the user's review
   (`:acp:compileKotlinJvm` + `apiCheck` green; no statement needed correcting). Note: the banner "not part of the spec
-  yet" is stale since upstream made subagents stable; belongs to the `@UnstableApi` follow-up. R21 (agreed, user 2026-11-22), a SEPARATE behaviour slice
+  yet" is stale since upstream made subagents stable; belongs to the `@UnstableApi` follow-up.
+  R20c COMMITTED `56519ca` and pushed (user 2026-11-23). R20d STARTED (design spec sync for R19+R20 names; base
+  `56519ca`; RFD line cites untouched). R20d DONE, uncommitted, awaiting the user's review (spec only, +204/−155).
+  Also fixed: `failSessionHolder`→`failSessionTree`, claim function names, `getSessionOrThrow`→`awaitSession`,
+  `closeChildren`/`SubagentList`→`sealChildren`/`Children.listed`, root state-order names; the Ownership bullet and
+  decision 24 now say `ClientSubagentSession` takes its holder privately (matches R18 D3); one Tests item "child's
+  consumer" → "parent's consumer". Kept as history: `PendingPermissionCancellation.kt` at line 30 (PR #156),
+  `startTurn()`, `Opener`, `ElicitationRegistry`, `removeSessionHolder`. ~25 stale Kotlin file:line cites listed, left
+  (existing follow-up). R21 (agreed, user 2026-11-22), a SEPARATE behaviour slice
   after R20 (R20c, R20d): `ClientSessionRegistry.awaitSession` stops creating speculative holders; a request waits
   only for a completed holder, a claimed root or a subagent holder; anything else (unknown id, or an unclaimed
   speculative holder an update created) fails at once with `-32002` (resource not found), also in the no-opening case
