@@ -386,7 +386,13 @@ side, with straightforward structured comments. Plan APPROVED (user 2026-11-23):
   infra + README row) → E2 `session/load` replay (record children, replayHistory re-announces, fresh grant after load;
   client sees history → Opened, canCancel false until the fresh grant; test extended). Each uncommitted for the user's
   review. E1/E2 on opus. Reviewer (user: yes) over E0–E2 at the end, then the user reviews.
-- E0 COMMITTED `7eff9a3` (user approved 2026-11-23). E1 restructure IN PROGRESS (user 2026-11-23: files hard to read; name files after the SDK component they implement/use,
+- E0 COMMITTED `7eff9a3` (user approved 2026-11-23). E1 restructure DONE, UNCOMMITTED with E1, awaiting the user's review (build 7/7, `--rerun` 5x, stress 420, runSubagents ok;
+  `check` green from cache). Tree: subagents/{SubagentsApp,Transcript}, agent/{DelegatingAgentSupport,
+  DelegatingAgentSession,DelegatedSubagentFactory,DelegatedSubagentSession,DelegatedTask,SampleTasks,
+  RemoteProbeSubagentSession,NativeRelayedSubagentSession,FakeNativeAgent,SessionUpdates}, client/{SubagentsClient,
+  TreeClientSessionOperations,RootClientSessionOperations,SubagentClientSessionOperations,ScriptedUser,ClientTranscript};
+  no fake/ pkg; 2 deferreds instead of 4; E2 hooks: DelegatingAgentSession.children, DelegatedSubagentSession.events.
+  Was IN PROGRESS (user 2026-11-23: files hard to read; name files after the SDK component they implement/use,
   no `…AgentSupport`/`…ClientSupport` names that aren't those types; split into agent/ + client/ subpackages per the
   proposed tree; remaining calls delegated to the Opus programmer; lands with E1 as one commit). Before that: E1 DONE, UNCOMMITTED, awaiting the user's review
   (module build 7/7 tests, `--rerun` 5x, stress 420 runs x2, mutation checks, `check --rerun-tasks` green). Files in
