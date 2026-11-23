@@ -463,7 +463,16 @@ KDoc of `SubagentPendingPermissions.kt` (spec typo + shortened "followed at arri
   decision 24 now say `ClientSubagentSession` takes its holder privately (matches R18 D3); one Tests item "child's
   consumer" → "parent's consumer". Kept as history: `PendingPermissionCancellation.kt` at line 30 (PR #156),
   `startTurn()`, `Opener`, `ElicitationRegistry`, `removeSessionHolder`. ~25 stale Kotlin file:line cites listed, left
-  (existing follow-up). R21 (agreed, user 2026-11-22), a SEPARATE behaviour slice
+  (existing follow-up).
+  R20d COMMITTED `eeb3b8b` (with the user's `ToolCallContent.Session` KDoc trim), NOT pushed (the combined commit+push
+  was blocked by the permission classifier; the user asked only to commit this time). Round 20 done.
+  R21 DONE, uncommitted, awaiting the user's review (client jvmTest, integration SimpleAgentTest, `apiCheck`, `check`
+  green 1st run; old code fails 3 new tests for the original reasons). `awaitSession` reads the map once: claimed root
+  or subagent holder → wait; else `JsonRpcException(RESOURCE_NOT_FOUND)` "Session <id> not found". v2 untouched (own
+  lookup, still `-32602`). New `ClientEarlySessionRequestsTest`; `SimpleAgentTest` fail-fast test now real; subagent
+  test: request-created holder no longer blocks an announcement; one AGENTS.md rule added. Follow-ups: `data.sessionId`
+  on unknown-session errors (spec `error.mdx:53-55`); design spec lines ~1019/1038 about request-created holders; v2
+  `-32602` alignment. R21 (agreed, user 2026-11-22), a SEPARATE behaviour slice
   after R20 (R20c, R20d): `ClientSessionRegistry.awaitSession` stops creating speculative holders; a request waits
   only for a completed holder, a claimed root or a subagent holder; anything else (unknown id, or an unclaimed
   speculative holder an update created) fails at once with `-32002` (resource not found), also in the no-opening case
