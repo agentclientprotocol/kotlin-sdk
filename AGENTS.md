@@ -234,6 +234,13 @@ Use blank lines to separate distinct logical steps inside a function or code blo
 
 Do not add a blank line after every statement. Short, closely related steps should stay together when separating them would inflate the code without improving readability.
 
+### File layout
+
+- One concern per file, named after its main declaration. Helpers live with what they serve: private declarations, parameter and result types, and extensions. Coroutine-context elements and their accessors live with the family's base.
+- A file with several top-level declarations stays under about 400 lines. A single component may be as long as it needs.
+- For a class with subclasses, either its whole subtree is in its file, or each direct subclass gets its own file, and its own subtree follows the same rule. Keep the subtree together while it fits the length limit. Nested subclasses are in the base's file by definition. Siblings that share one concern may share a file named after that concern.
+- Internal runtime machinery goes in the `internal` subpackage, as the `:acp` map above describes.
+
 ## Comments and KDoc
 
 Comments should explain intent, constraints, protocol requirements, lifecycle subtleties, or non-obvious tradeoffs.

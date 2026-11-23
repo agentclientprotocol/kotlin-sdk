@@ -259,7 +259,7 @@ public class Agent(
                      own exception type or an explicit branch.
 
                      Cover it with lifecycle tests for each case above, using a client cancel as the control.
-                     The v1 counterpart is the FIXME in `RootSessionWrapper.prompt` in `agent/SessionWrapper.kt`.
+                     The v1 counterpart is the FIXME in `RootSessionWrapper.prompt` in `agent/internal/RootSessionWrapper.kt`.
                      */
                     is CancellationException -> {
                         logger.debug(t) { "Reporting a locally cancelled turn for session ${session.sessionId}" }

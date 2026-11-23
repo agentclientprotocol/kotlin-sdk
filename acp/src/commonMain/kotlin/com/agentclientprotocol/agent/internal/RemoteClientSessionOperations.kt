@@ -4,6 +4,7 @@ import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.model.*
+import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.RpcMethodsOperations
 import com.agentclientprotocol.protocol.invoke
 import kotlinx.serialization.json.JsonElement
@@ -185,6 +186,33 @@ internal open class RemoteClientSessionOperations(
         _meta: JsonElement? = null
     ) {
         completeElicitation(CompleteElicitationNotification(elicitationId, _meta))
+    }
+}
+
+/**
+ * The client operations of [subagent]: requests for the child's session, gated until the announcement, and the
+ * subagents routing rule for updates. The child's send state stays in [subagent], which does the sending.
+ */
+@OptIn(UnstableApi::class)
+internal class SubagentClientOperations(
+    protocol: Protocol,
+    sessionId: SessionId,
+    clientCapabilities: ClientCapabilities,
+    private val subagent: SubagentSessionWrapper,
+) : RemoteClientSessionOperations(protocol, sessionId, clientCapabilities) {
+    override fun checkCanSend() = subagent.checkAnnounced()
+
+    override suspend fun notify(event: SessionEvent) {
+        val (notification, _meta) = event.requireUpdate()
+        if (notification is SessionUpdate.SubagentUpdate) {
+            require(notification.sessionId == sessionId) {
+                "SubagentUpdate for ${notification.sessionId} cannot be sent through the client operations of " +
+                    "subagent $sessionId: announce nested subagents through subagents.announce"
+            }
+            subagent.sendOwnUpdate(notification, _meta)
+        } else {
+            subagent.sendPlainUpdate(notification, _meta)
+        }
     }
 }
 
