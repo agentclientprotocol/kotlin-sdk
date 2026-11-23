@@ -1,4 +1,4 @@
-package com.agentclientprotocol.samples
+package com.agentclientprotocol.samples.support
 
 import com.agentclientprotocol.client.*
 import com.agentclientprotocol.common.ClientSessionOperations

@@ -1,6 +1,6 @@
 @file:OptIn(UnstableApi::class)
 
-package com.agentclientprotocol.samples
+package com.agentclientprotocol.samples.auth
 
 import com.agentclientprotocol.agent.Agent
 import com.agentclientprotocol.agent.AgentInfo
@@ -16,6 +16,9 @@ import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
 import com.agentclientprotocol.model.v2.SessionCapabilities
 import com.agentclientprotocol.model.v2.StatusAuthResponse
 import com.agentclientprotocol.protocol.Protocol
+import com.agentclientprotocol.samples.simple.SimpleAgentSupport
+import com.agentclientprotocol.samples.support.createInMemoryTransportPair
+import com.agentclientprotocol.samples.v2.SimpleV2AgentSupport
 import com.agentclientprotocol.transport.Transport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope

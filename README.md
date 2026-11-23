@@ -291,41 +291,14 @@ fun main(): Unit = runBlocking {
 }
 ```
 
-### Run the reference sample
+### Run the samples
 
-Prefer a fully wired example? Launch the repository sample that pairs the agent and client shown above:
+Prefer a fully wired example? The repository samples pair an agent and a client in one process. Each has its own
+package and run task, and [samples/README.md](samples/README.md) lists them all:
 
 ```bash
-./gradlew :samples:kotlin-acp-client-sample:run
-
-# Gemini interactive client (requires external Gemini ACP agent)
-./gradlew :samples:kotlin-acp-client-sample:run \
-    -PmainClass=com.agentclientprotocol.samples.GeminiClientAppKt
-
-# Direct v2 client and agent
-./gradlew :samples:kotlin-acp-client-sample:run \
-    -PmainClass=com.agentclientprotocol.samples.V2SimpleAgentAppKt
-
-# Select v1 or v2 with ClientNegotiator, then run the v2 conversation
-./gradlew :samples:kotlin-acp-client-sample:run \
-    -PmainClass=com.agentclientprotocol.samples.V2NegotiationAppKt
-
-# Query the unstable auth/status method over v1 and v2
-./gradlew :samples:kotlin-acp-client-sample:run \
-    -PmainClass=com.agentclientprotocol.samples.AuthStatusAppKt
+./gradlew :samples:kotlin-acp-client-sample:runSimpleAgent
 ```
-
-## Sample projects
-
-| Project | Shows | Command |
-| --- | --- | --- |
-| `samples:kotlin-acp-client-sample` | End-to-end agent + client with STDIO transport | `./gradlew :samples:kotlin-acp-client-sample:run` |
-| `GeminiClientApp.kt` | Interactive CLI client that talks to an external Gemini ACP agent | `./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=...GeminiClientAppKt` |
-| `V2SimpleAgentApp.kt` | Direct v2 client and agent conversation | `./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=...V2SimpleAgentAppKt` |
-| `V2NegotiationApp.kt` | Client negotiation followed by a v2 conversation | `./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=...V2NegotiationAppKt` |
-| `AuthStatusApp.kt` | Unstable `auth/status` query over v1 and v2, without a session | `./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=...AuthStatusAppKt` |
-
-Each sample includes comments that explain the protocol lifecycle and can be used as templates for real applications.
 
 The v2 samples expose a response mode through session config options. The client selects “Uppercase once”
 with `session/set_config_option`; after replying, the agent resets to Echo and sends a `config_option_update`.
@@ -348,7 +321,7 @@ After initialization, `Client.authStatus` queries the agent without a session or
 `AgentSupport.authStatus` with `AuthStatusResponse` in V1, or `StatusAuthResponse` in V2.
 The response can include a human-readable `message` and `_meta`. `authenticated` means credentials are configured, not necessarily valid.
 Calls with a missing or `false` capability fail locally. An agent without a status handler returns JSON-RPC method not found (`-32601`).
-`AuthStatusApp.kt` shows the V1 and V2 flows end to end.
+`samples/kotlin-acp-client-sample/.../auth/AuthStatusApp.kt` shows the V1 and V2 flows end to end (`runAuthStatus` task).
 
 ## Capabilities
 

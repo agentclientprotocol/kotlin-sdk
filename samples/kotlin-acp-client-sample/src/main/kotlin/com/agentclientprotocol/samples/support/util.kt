@@ -1,4 +1,4 @@
-package com.agentclientprotocol.samples
+package com.agentclientprotocol.samples.support
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.ContentBlock

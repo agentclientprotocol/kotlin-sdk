@@ -61,6 +61,8 @@ Cross-transport integration and conformance-style tests. Use this module for beh
 
 Runnable examples for stable ACP, direct v2 use, negotiation, and external-agent integration. Samples should demonstrate supported public APIs, not internal shortcuts.
 
+Each sample has its own package under `com.agentclientprotocol.samples`, with shared helpers in `support`, and its own Gradle run task registered with `registerSampleTask` in the module's `build.gradle.kts`. `samples/README.md` is the table of contents. A new sample adds a package, a task and a README row.
+
 ### `e2e`
 
 End-to-end suites that check the SDK against external counterparts, such as the ACP TCK and the Rust SDK. They need tools outside the Gradle build, and `./gradlew check` does not run their tests. Before changing anything under `e2e/`, read `e2e/README.md` and the README of the suite you touch.

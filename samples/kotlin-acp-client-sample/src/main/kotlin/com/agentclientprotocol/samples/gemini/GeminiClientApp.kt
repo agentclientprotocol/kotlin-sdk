@@ -1,5 +1,7 @@
-package com.agentclientprotocol.samples
+package com.agentclientprotocol.samples.gemini
 
+import com.agentclientprotocol.samples.support.createProcessStdioTransport
+import com.agentclientprotocol.samples.support.runTerminalClient
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.coroutineScope
 
@@ -17,7 +19,7 @@ private val logger = KotlinLogging.logger {}
  * 
  * Usage:
  * ```
- * ./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=com.agentclientprotocol.samples.GeminiClientAppKt
+ * ./gradlew :samples:kotlin-acp-client-sample:runGeminiClient
  * ```
  */
 suspend fun main() = coroutineScope {

@@ -1,6 +1,6 @@
 @file:OptIn(UnstableApi::class)
 
-package com.agentclientprotocol.samples
+package com.agentclientprotocol.samples.v2
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.ClientInfo
@@ -23,6 +23,7 @@ import com.agentclientprotocol.model.v2.SessionConfigOptionValue
 import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.model.v2.StateUpdate
 import com.agentclientprotocol.protocol.Protocol
+import com.agentclientprotocol.samples.support.render
 import com.agentclientprotocol.transport.Transport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred

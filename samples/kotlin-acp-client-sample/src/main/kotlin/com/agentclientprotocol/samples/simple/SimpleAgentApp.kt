@@ -1,7 +1,8 @@
-package com.agentclientprotocol.samples
+package com.agentclientprotocol.samples.simple
 
 import com.agentclientprotocol.agent.Agent
 import com.agentclientprotocol.protocol.Protocol
+import com.agentclientprotocol.samples.support.runTerminalClient
 import com.agentclientprotocol.transport.StdioTransport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope

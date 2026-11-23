@@ -1,6 +1,6 @@
 @file:OptIn(com.agentclientprotocol.annotations.UnstableApi::class)
 
-package com.agentclientprotocol.samples
+package com.agentclientprotocol.samples.simple
 
 import com.agentclientprotocol.agent.*
 import com.agentclientprotocol.client.ClientInfo
