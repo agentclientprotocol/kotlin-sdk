@@ -482,7 +482,7 @@ Round 21 follow-ups (user 2026-11-23):
   Gated on research `.agents/research/subagents-stable-schema-diff.md` (RUNNING): if any wire shape differs, ask the user.
 - (decided, no discussion) Fix the design spec's stale Kotlin file:line cites and move RFD cites to the stable page,
   using research `.agents/research/subagents-rfd-cite-mapping.md` (RUNNING), then one programmer slice.
-- Fork-history ambiguity: user informed; recommendation leave + raise upstream when fork nears stable (no answer yet). R21 (agreed, user 2026-11-22), a SEPARATE behaviour slice
+- Fork-history ambiguity: LEAVE IT (user 2026-11-23); raise upstream once fork nears stable. No code change. R21 (agreed, user 2026-11-22), a SEPARATE behaviour slice
   after R20 (R20c, R20d): `ClientSessionRegistry.awaitSession` stops creating speculative holders; a request waits
   only for a completed holder, a claimed root or a subagent holder; anything else (unknown id, or an unclaimed
   speculative holder an update created) fails at once with `-32002` (resource not found), also in the no-opening case
