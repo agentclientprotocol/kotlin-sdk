@@ -497,6 +497,16 @@ Round 21 follow-ups (user 2026-11-23):
   material edits as listed; Table E quotes reworded/dropped; Kotlin cites → symbol names; RemoteClientSessionOperations
   KDoc cites the stable pages. Left: Rust refs (lines 23-29), delete-vs-close, long lines not reflowed. For the
   promotion slice: spec ~165 still says `SessionReference` only in `schema.unstable.json` / Rust `unstable_subagents`.
+- (user 2026-11-23) Promotion also covers `MaybeUndefined`/`update()` and `MessageId` (Rust's `MaybeUndefined` is
+  public, ungated). Slice P1 STARTED (programmer, base `6e0d46c`), `:acp-model` files only; C1 stays uncommitted
+  alongside (disjoint files). Spec ~165 fix deferred until C1 is committed.
+  P1 DONE, uncommitted, awaiting the user's review (`:acp-model:apiDump` no diff; apiChecks, acp-model jvmTest, client
+  jvmTest green; `check` green on 2nd run after JS flake, 2nd run short/incremental). 10 annotations + banners dropped;
+  `Idle.usage` `@property:UnstableApi` + class `@OptIn` (like PromptResponse); `MaybeUndefined`/`update()`/`MessageId`
+  promoted; 14 redundant opt-ins removed (compiler-confirmed); 10 runtime banners reworded ("protocol stable in v1,
+  Kotlin API unstable"). Follow-up (API decision): `StateUpdate.Idle(...)` still warns for non-opt-in callers because
+  `Usage` is in its constructor (same as `PromptResponse`). Draft commit body in the programmer's report (records
+  upstream `01a54c84` / `9d44c77a`).
 - Fork-history ambiguity: LEAVE IT (user 2026-11-23); raise upstream once fork nears stable. No code change. R21 (agreed, user 2026-11-22), a SEPARATE behaviour slice
   after R20 (R20c, R20d): `ClientSessionRegistry.awaitSession` stops creating speculative holders; a request waits
   only for a completed holder, a claimed root or a subagent holder; anything else (unknown id, or an unclaimed
