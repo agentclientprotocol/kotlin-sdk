@@ -12,6 +12,22 @@ dependencies {
     implementation("ch.qos.logback:logback-classic:1.5.13")
 }
 
+/*
+ * The tests run scripted samples end to end, so that a change in the SDK that breaks a sample fails `check`.
+ */
+testing {
+    suites {
+        @Suppress("UnstableApiUsage")
+        named<JvmTestSuite>("test") {
+            useJUnitJupiter(libs.versions.junit.get())
+
+            dependencies {
+                implementation("org.jetbrains.kotlin:kotlin-test-junit5")
+            }
+        }
+    }
+}
+
 application {
     mainClass.set(
         providers.gradleProperty("mainClass")
@@ -65,3 +81,10 @@ registerSampleTask(
     "Queries the unstable auth/status method over v1 and v2 without a session.",
     "com.agentclientprotocol.samples.auth.AuthStatusAppKt"
 )
+registerSampleTask(
+    "runSubagents",
+    "Runs a scripted agent that delegates to subagents, and a client that shows, cancels and closes them (ACP v1).",
+    "com.agentclientprotocol.samples.subagents.SubagentsAppKt"
+).configure {
+    systemProperty("logback.configurationFile", "logback-subagents.xml")
+}

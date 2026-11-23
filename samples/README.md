@@ -37,8 +37,10 @@ has no task of its own yet:
 | [v2](#v2) | A v2 client and a v2 agent talking directly | v2 | `runV2SimpleAgent` | nothing |
 | [v2](#v2) | `ClientNegotiator` choosing between v1 and v2, then the v2 conversation | negotiated | `runV2Negotiation` | nothing |
 | [auth](#auth) | The unstable `auth/status` query, without a session | v1 and v2 | `runAuthStatus` | nothing |
+| [subagents](#subagents) | An agent that delegates to subagents, and a client that shows, cancels and closes them | v1 | `runSubagents` | nothing |
 
-The v2 and `auth/status` APIs are unstable (`@UnstableApi`) and need an explicit opt-in.
+The v2, `auth/status` and subagent APIs are unstable (`@UnstableApi`) and need an explicit opt-in. The subagent protocol
+itself is stable in v1; only the SDK's Kotlin API for it may still change.
 
 ## simple
 
@@ -79,6 +81,64 @@ Package `com.agentclientprotocol.samples.auth`. Run with `runAuthStatus`.
 
 It builds on the agents of the `simple` and `v2` packages.
 
+## subagents
+
+Package `com.agentclientprotocol.samples.subagents`. Run with `runSubagents`.
+
+A scripted run, with no input: the client opens a session and sends two prompts, then closes the session. The agent
+delegates the first prompt to three subagents. The reviewer completes, the user cancels the cleaner while its
+permission request is pending, and the tester fails after it started a grandchild whose feed is lost. The agent relays
+the second prompt to a native agent, whose workers become nested subagents. The app prints what each side sees.
+
+Read `agent/DelegatingAgentSession.kt` first for the agent side and `client/SubagentsClient.kt` for the client side.
+`SubagentsApp.kt` wires them together in one process, and `Transcript.kt` holds the lines both sides write.
+
+Each file is named after the SDK type it implements or mainly uses. The agent side, in package `agent`:
+
+- `DelegatingAgentSupport.kt`: the `AgentSupport`; it opens a `DelegatingAgentSession`.
+- `DelegatingAgentSession.kt`: the root `AgentSession`, which delegates or relays each prompt.
+- `DelegatedSubagentFactory.kt`: the `AgentSubagentFactory` that sends a delegated child's announcement.
+- `DelegatedSubagentSession.kt`: the `AgentSubagentSession` of a delegated child; it runs a `DelegatedTask`.
+- `DelegatedTask.kt`: a task, and what its work can do through the child's context.
+- `SampleTasks.kt`: the reviewer, cleaner and tester tasks.
+- `RemoteProbeSubagentSession.kt`: the tester's grandchild.
+- `NativeRelayedSubagentSession.kt`: a relayed worker of a native agent, and the relay loop.
+- `FakeNativeAgent.kt`: the simulated native agent's flat event stream; it uses no SDK type.
+
+The client side, in package `client`:
+
+- `SubagentsClient.kt`: runs the `Client`: initialize, the two prompts, close.
+- `TreeClientSessionOperations.kt`: the `ClientSessionOperations` and `SubagentOperations` shared by every session.
+- `RootClientSessionOperations.kt` and `SubagentClientSessionOperations.kt`: the operations of the root and of a
+  subagent.
+- `ScriptedUser.kt`: answers permission requests, or cancels the subagent that asks.
+- `ClientTranscript.kt`: writes the client's lines and renders sessions and updates.
+
+Where each scenario lives:
+
+| Scenario | Agent | Client |
+| --- | --- | --- |
+| The `subagents` capability | `DelegatingAgentSession` (1: no capability, work inline) | `SubagentsClient` (1) |
+| Announcing a child, and the operations that receive it | `DelegatedSubagentFactory` (2) | `TreeClientSessionOperations` (2) |
+| A child's requests, such as a permission request | `DelegatedTask` (3) | `SubagentClientSessionOperations`, `ScriptedUser` (5) |
+| Links from the parent: `session_message`, session tool call content | `DelegatingAgentSession` (4) | `TreeClientSessionOperations`, `SubagentsClient` (3) |
+| Patches to a child | `DelegatedTask` (5) | `TreeClientSessionOperations` (3) |
+| A child's own stream: history, `Opened`, live updates | | `SubagentClientSessionOperations` (4) |
+| Cancel | `DelegatedSubagentSession` (6) | `ScriptedUser` (5, 6) |
+| Failure, and the SDK's `unknown` | `DelegatedSubagentSession`, `RemoteProbeSubagentSession` (7) | |
+| A grandchild | `RemoteProbeSubagentSession` (8) | `TreeClientSessionOperations` (3) |
+| Closing the root | `DelegatingAgentSession` (9) | `SubagentsClient` (7) |
+| Relay of a native agent, `announce(…, parent = …)` | `NativeRelayedSubagentSession` (10) | |
+
+The numbers are those of the section comments in each side's files.
+
+The streams of different sessions are delivered concurrently, so lines of different sessions may interleave differently
+from run to run. The run task logs only warnings, to stderr. One is expected: the agent stops the cleaner's work while
+its permission request is pending, which cancels the request, and the client logs the `$/cancel_request` for a request
+it has already answered `cancelled`.
+
+`SubagentsSampleTest` runs the same script and checks its key events, so `./gradlew check` fails if the sample breaks.
+
 ## support
 
 Package `com.agentclientprotocol.samples.support`. It has no entry point and no task.
@@ -93,3 +153,5 @@ Package `com.agentclientprotocol.samples.support`. It has no entry point and no 
 1. Add a package under `com.agentclientprotocol.samples` with a `main` function.
 2. Register a task for it with `registerSampleTask` in `build.gradle.kts`.
 3. Add a row to the table above and a section about its files.
+4. If it runs without input or external tools, add a test under `src/test` that runs its entry point, as
+   `SubagentsSampleTest` does. `./gradlew check` runs it.
