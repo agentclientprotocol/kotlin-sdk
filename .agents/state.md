@@ -397,7 +397,10 @@ side, with straightforward structured comments. Plan APPROVED (user 2026-11-23):
   domain signal), nits; SDK follow-up: `AgentSubagentFactory.createSubagent` KDoc. Fix plan APPROVED (user 2026-11-24: fix all findings): E3 (same opus programmer) sample fixes, all 4 should-fix + sample
   nits, lands with E2 as one commit → E4 (default model) E0 leftovers: rename TerminalClientSupport/V2SampleSupport,
   single-line KDocs, `v2-sample-*` transport names, `libs.logback.classic`, AGENTS.md/root README mention → E5 SDK KDoc
-  `AgentSubagentFactory.createSubagent` (patches keep their place on the parent's stream). E3 STARTED. E1 restructure was (build 7/7, `--rerun` 5x, stress 420, runSubagents ok;
+  `AgentSubagentFactory.createSubagent` (patches keep their place on the parent's stream). E3 DONE, UNCOMMITTED with E2,
+  awaiting the user's review (13 sample tests x2 dispatchers + 7 DelegatedWorkTest, `--rerun` 5x, stress 780,
+  `check --rerun-tasks` green). Combined E2+E3 commit message in the programmer's report. Residual: before the first
+  close the settle can't prove the live probe is listed (never seen). E4/E5 wait for the E2+E3 commit. E1 restructure was (build 7/7, `--rerun` 5x, stress 420, runSubagents ok;
   `check` green from cache). Tree: subagents/{SubagentsApp,Transcript}, agent/{DelegatingAgentSupport,
   DelegatingAgentSession,DelegatedSubagentFactory,DelegatedSubagentSession,DelegatedTask,SampleTasks,
   RemoteProbeSubagentSession,NativeRelayedSubagentSession,FakeNativeAgent,SessionUpdates}, client/{SubagentsClient,
