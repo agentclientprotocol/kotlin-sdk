@@ -22,15 +22,18 @@ public sealed class SessionEvent {
      * Marks the point from which this stream is live: updates before it came before the answer of the call that
      * opened the root session, and updates after it are current.
      *
-     * The operations of a successful opening get exactly one [Opened], before any live update. If the opening call
-     * fails before the agent's answer arrives, they get none. Once the answer has arrived, the call still fails if
-     * its caller is cancelled, or `notify` throws, while the call delivers [Opened] and the updates that arrived
-     * before the session took over. [Opened] may have been delivered then, so treat a failed opening call as a
-     * failed opening, whatever events the operations got. Only the client runtime delivers it; agent code can't
-     * create one.
+     * ### Delivery
      *
-     * @property response the answer of the call that opened this session, with its state at this point; `null` for
-     * a subagent, which no call opens: its state starts unconfirmed and comes from later updates
+     * - A successful opening delivers exactly one [Opened] to its operations, before any live update.
+     * - An opening call that fails before the agent's answer arrives delivers none.
+     * - Once the answer has arrived, the call can still fail: if its caller is cancelled, or `notify` throws, while the
+     *   call delivers [Opened] and the updates that arrived before the session took over. [Opened] may already have
+     *   been delivered then, so treat a failed opening call as a failed opening, whatever events the operations got.
+     *
+     * Only the client runtime delivers it; agent code can't create one.
+     *
+     * @property response the answer of the call that opened this session, with its state at this point; `null` for a
+     * subagent, which no call opens: its state starts unconfirmed and comes from later updates
      */
     public class Opened internal constructor(public val response: AcpCreatedSessionResponse?) : SessionEvent()
 }
