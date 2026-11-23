@@ -1035,9 +1035,9 @@ arrival (see "Pending permission requests").
     delivered to `P`'s `notify` as a plain update, it isn't applied to any child, it registers nothing, and the SDK
     logs a warning. The holder that owns the id keeps its own traffic.
   - This one rule covers an update that names its own parent, an ancestor (a cycle), another parent's child (a
-    reparent), a root that is open or being opened, and an id with a speculative holder (announcements precede
-    child traffic, so a speculative holder means a root is being opened under that id). The tree is never walked
-    to look for a cycle.
+    reparent), a root that is open or being opened, and an id with a speculative holder (only an update creates
+    one, and announcements precede child traffic, so a speculative holder means a root is being opened under that
+    id). The tree is never walked to look for a cycle.
   - An unknown parent and a failed parent are already covered: nothing is registered, and the update goes the way
     of any update for that parent (see "Holders", "Creation").
   - Failing the connection was rejected: `session/update` is a notification, so there's nothing to answer, and the
@@ -1227,6 +1227,15 @@ holder owns an id, and it delivers `session/update`s from start to end.
   of a holder (`failSessionTree`) and `handleUnconnectedSessionUpdate`. The holder lookup in `Client`'s request
   handlers and in its `getSessionOrThrow` (now the registry's `awaitSession`) is a registry lookup, so nothing outside
   it touches the map.
+- **Request lookup.** `awaitSession` reads the session map once and never changes it, so only updates create
+  speculative holders. A request waits only for a root's holder that an opening call has claimed (`session/load`
+  and `session/resume` claim before the request goes out, `session/new` and `session/fork` in the response hook)
+  or for a child's holder. Anything else, no holder or a root's holder that no opening has claimed, fails at once
+  with `-32002` (`JsonRpcException` with `RESOURCE_NOT_FOUND`), also when no opening is in progress.
+  - The Rust SDK never waits for routing either: it answers a request for an unrouted session at once.
+  - Creating a holder for a request was dropped: the wait would have no bound, because an unclaimed holder is
+    reaped only when the last opening on the connection ends, and the holder would block a later announcement of a
+    child with that id.
 - **New:** `deliverSessionUpdate`, the sorting, `registerChild`, the blocking rule, the failure cascade over the
   tree, `subagentHolderOrNull` (the request handler's non-suspending lookup of a child's holder and its pending
   permissions),
@@ -1644,8 +1653,7 @@ elicitation requests are unaffected (see "Side findings" for elicitation).
   the request isn't ordered against it). The handler takes the child's holder (`subagentHolderOrNull`) and its
   permissions there, and the wait for **that** holder, `holder.session.await()`, moves **inside** the race, as the
   first step of the `answer` block, and the app's `requestPermissions` runs after it. It never looks the id up
-  again, so it can't create a speculative root holder for a child's id or reach a holder registered later under
-  the same id. The app still sees the request only after the holder has completed. A request that is cancelled
+  again, so it can't reach a holder registered later under the same id. The app still sees the request only after the holder has completed. A request that is cancelled
   meanwhile is answered `cancelled` without waiting for the holder. Roots are unchanged: their signal is read at the
   same point, and their holder is already complete when a prompt can run.
 - **`PendingPermissions.kt`** holds three internal classes. The sealed base `PendingPermissions` owns the signal, the
@@ -1881,6 +1889,10 @@ cover externally observable behaviour.
   implement the mixin, the request fails with method-not-found.
 - A `subagent_update` on a session id with no holder goes to `globalSessionUpdateHandler` and registers nothing. A
   later update on that child id is unconnected too.
+- A request for an id before the answer of the `session/new` or `session/fork` that returns it, or with no opening
+  in progress, fails at once with `-32002`, and the session still opens. During a load or resume of the id, a
+  request waits and reaches the app after the opening. A request for an unknown id during an opening leaves the id
+  free for a later announcement.
 - Registry unit tests, without a `Protocol`:
   - an announcement rejected because its id has a speculative holder stays rejected when that holder is reaped
     before the parent's consumer reaches it: nothing is registered;
@@ -1933,7 +1945,7 @@ cover externally observable behaviour.
 - Every descendant's pending permission request is answered `cancelled` before `session/close` is sent, and an
   agent whose close waits for a child's permission answer doesn't deadlock.
 - After the response, every descendant id is unconnected: its updates go to `globalSessionUpdateHandler`, its
-  requests fail with "session not found", and its elicitation entries are gone.
+  requests fail at once with `-32002` "session not found", and its elicitation entries are gone.
 - A child waiting in `createSubagentOperations` when the close is answered is failed: its opening never starts,
   and its waiting requests get the error.
 - A child inside a suspended `notify` when the response arrives: `close()` returns only after that `notify` has

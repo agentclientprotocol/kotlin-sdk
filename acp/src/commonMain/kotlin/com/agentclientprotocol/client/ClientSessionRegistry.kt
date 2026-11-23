@@ -10,8 +10,10 @@ import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.protocol.AcpExpectedError
+import com.agentclientprotocol.protocol.JsonRpcException
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.acpFail
+import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.getAndUpdate
@@ -51,8 +53,8 @@ internal class ClientSessionRegistry(
     /**
      * Looks up the holder for [sessionId], creating a new entry only if there are some currently initializing
      * sessions. Returns `null` if the session is neither registered nor being initialized, instead of throwing -
-     * callers that need a session to exist (e.g., to service a request against it) should use
-     * [getOrCreateSessionHolder] instead.
+     * callers that need a session to exist should use [getOrCreateSessionHolder] instead. Requests of the agent
+     * don't come here, see [awaitSession].
      *
      * A failed holder counts as missing and is replaced while sessions initialize, so a retry of a failed opening
      * gets a fresh holder, unless it still blocks its id, see [ClientSessionHolder.blocksId]. Dropping a failed holder
@@ -210,17 +212,35 @@ internal class ClientSessionRegistry(
     }
 
     /**
-     * Returns the session [sessionId], suspending until its opening finishes.
+     * Returns the session [sessionId] for a request of the agent, suspending until its opening finishes. Reads the
+     * session map once and never changes it.
      *
-     * While an opening is in progress, an unknown id gets a speculative holder, never a session: the call then waits
-     * for an opening to claim the holder, and fails with [AcpExpectedError] when the holder is reaped unclaimed. If
-     * the holder fails otherwise, because the opening failed or the session was closed before it finished opening,
-     * the call throws that failure.
+     * The registered holder of the id decides:
+     * - a holder whose session is complete: the call returns the session, or throws the holder's failure;
+     * - a root holder claimed by an opening call, by `session/load` or `session/resume` before the request or by
+     *   `session/new` or `session/fork` in the response hook, and a subagent holder: the call waits for the holder,
+     *   and throws its failure if the opening fails or the session is closed before it finished opening;
+     * - no holder, or a root holder that no opening has claimed, which an early update created: the call fails at
+     *   once.
      *
-     * @throws AcpExpectedError if the session is unknown and no opening is in progress
+     * A root's session completes only after its claim, and a failed root doesn't keep its id, so the first case needs
+     * no check of its own.
+     *
+     * @throws JsonRpcException with [JsonRpcErrorCode.RESOURCE_NOT_FOUND] in the last case
      */
     suspend fun awaitSession(sessionId: SessionId): BaseClientSession {
-        return getOrCreateSessionHolder(sessionId).session.await()
+        /*
+         * A request doesn't create a holder, and doesn't wait for an opening that hasn't claimed the id: the Rust SDK
+         * answers such a request at once too. A wait would have no bound, since an unclaimed holder is reaped only when
+         * the last opening on the connection ends, and a holder created for a request would block a later announcement
+         * of a subagent with that id.
+         */
+        val holder = when (val registered = _sessions.value.sessions[sessionId]?.takeIf { it.blocksId }) {
+            is RootSessionHolder -> registered.takeIf { it.phase.isAtLeast(Stage.CLAIMED) }
+            is SubagentSessionHolder -> registered
+            null -> null
+        } ?: throw JsonRpcException(JsonRpcErrorCode.RESOURCE_NOT_FOUND.code, "Session $sessionId not found")
+        return holder.session.await()
     }
 
     /**
@@ -238,8 +258,7 @@ internal class ClientSessionRegistry(
     suspend fun deliverSessionUpdate(sessionId: SessionId, update: SessionUpdate, _meta: JsonElement?) {
         /*
          * The agent may report an update (e.g., a status change on `session/list`) for a session this client
-         * never called `session/new` / `session/load` / `session/resume` for. It can live on the server,
-         * created from another IDE window, the web, or another machine. That's not a protocol violation, so
+         * never called `session/new` / `session/load` / `session/resume` for.  That's not a protocol violation, so
          * unlike other session-scoped methods, an unknown/unconnected session here must not fail the call.
          * A speculative holder can also be reaped by `withInitializingSession` after we found it here.
          *

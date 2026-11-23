@@ -951,19 +951,19 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
             }
 
             override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
-                this@testWithProtocols.launch {
-                    try {
-                        AcpMethod.ClientMethods.V1.FsReadTextFile(
-                            agentProtocol,
-                            ReadTextFileRequest(unknownSessionId, "/test/path", null, null, null)
-                        )
-                        requestFailure.complete(AssertionError("Unknown session request should fail"))
-                    } catch (t: Throwable) {
-                        requestFailure.complete(t)
-                    }
+                /*
+                 * The `session/new` stays unanswered until the request is: if the client waited for an opening to
+                 * claim the unknown id, this would never return.
+                 */
+                try {
+                    AcpMethod.ClientMethods.V1.FsReadTextFile(
+                        agentProtocol,
+                        ReadTextFileRequest(unknownSessionId, "/test/path", null, null, null)
+                    )
+                    requestFailure.complete(AssertionError("Unknown session request should fail"))
+                } catch (t: Throwable) {
+                    requestFailure.complete(t)
                 }
-
-                delay(200.milliseconds)
                 return object : AgentSession {
                     override val sessionId: SessionId = SessionId("known-session-id")
 
@@ -1000,12 +1000,9 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
             }
         }
 
-        val failure = withTimeout(2000.milliseconds) { requestFailure.await() }
-        val message = failure.message ?: failure.toString()
-        assertTrue(
-            message.contains("Session $unknownSessionId not found"),
-            "Unexpected failure message: $message"
-        )
+        val failure = assertIs<JsonRpcException>(requestFailure.await())
+        assertEquals(JsonRpcErrorCode.RESOURCE_NOT_FOUND.code, failure.code)
+        assertEquals("Session $unknownSessionId not found", failure.message)
     }
 
     @Test

@@ -35,6 +35,7 @@ import com.agentclientprotocol.model.SubagentSessionCapabilities
 import com.agentclientprotocol.model.ToolCallId
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.rpc.ACPJson
+import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import com.agentclientprotocol.rpc.JsonRpcErrorResponse
 import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.rpc.JsonRpcSuccessResponse
@@ -859,6 +860,27 @@ class ClientSubagentSessionsTest {
             awaitUnconnected(unconnected, speculative, text("after-reap"))
             assertTrue(world.log.value.none { "->" in it }, "nothing is set up: ${world.log.value}")
         }
+
+    @Test
+    fun `a request for an unknown id during an opening leaves the id free for a later announcement`() = withClient { client, agent ->
+        val world = SubagentWorld()
+        val root = SessionId("root")
+        val session = openLive(client, agent, root, world)
+
+        val pending = SessionId("pending")
+        val pendingOpen = async { loadWithOperations.open(client, pending, parameters, world) }
+        val pendingRequest = agent.receiveRequest(loadWithOperations.method)
+        val child = SessionId("child")
+        val early = agent.sendRequest(AcpMethod.ClientMethods.V1.SessionRequestPermission, permissionRequest(child, "early"))
+        val failure = assertIs<JsonRpcErrorResponse>(agent.awaitResponse(early)).error
+        assertEquals(JsonRpcErrorCode.RESOURCE_NOT_FOUND.code, failure.code)
+
+        agent.sendUpdate(root, announce(child))
+        world.awaitOperations(child)
+        assertEquals(listOf(child), session.subagents.map { it.sessionId })
+        loadWithOperations.answer(agent, pendingRequest, pending)
+        pendingOpen.await()
+    }
 
     @Test
     fun `an announcement for an unknown or failed parent registers nothing`() = withUnconnectedRecorder { client, agent, unconnected ->
