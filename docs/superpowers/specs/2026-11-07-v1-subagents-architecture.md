@@ -27,7 +27,8 @@ design document for v1 subagents; the earlier discussion notes were removed, and
 
 - This branch (`eugenethedev/subagents`) is stacked on PR #156 (`9941000`, branch
   `eugenethedev/permission-cancellation-fix`). #156 makes the v1 client answer pending permission requests with
-  `cancelled` on `cancel()`/`close()`, through `client/PendingPermissionCancellation.kt`.
+  `cancelled` on `cancel()`/`close()`, through `PendingPermissionCancellation.kt`, which is now
+  `client/PendingPermissions.kt`.
 - #156 is based on master with PR #155 (`f858693`: one v1 turn at a time, cancel targets its own turn), so this
   branch includes #155. If #156 changes again, rebase onto its new head.
 - Scope: protocol v1 only. v2 follows separately (see "Looking ahead to v2"). Do not change v2 runtimes.
@@ -717,6 +718,8 @@ details below (decision log, question 7).
   - `ClientSessionOperations` doesn't inherit it. The app's operations implement it to support children, and the
     client checks `operations as? SubagentOperations`, as it checks `as? FileSystemOperations` today
     (`client/Client.kt:122`). Nested children work through the same interface on the child's operations.
+  - It stays a plain interface, not a `fun interface`: the client finds it by `as?` on the operations object, and a
+    lambda couldn't also be the `ClientSessionOperations`.
   - Not in `common`: `common` imports nothing from `client` or `agent` today, and `ClientSessionOperations` is also
     the agent's view of the client (`RemoteClientSessionOperations`), where the method would compile and throw. The
     fs, terminal and elicitation mixins live in `common` because both sides implement them; this one has no agent
@@ -834,8 +837,18 @@ public sealed class SessionEvent {
      * Marks the point from which this stream is live: updates before it came before the answer of the call that
      * opened the root session, and updates after it are current.
      *
-     * @property response the answer of the call that opened this session, with its state at this point; `null` for
-     * a subagent, which no call opens: its state starts unconfirmed and comes from later updates
+     * ### Delivery
+     *
+     * - A successful opening delivers exactly one [Opened] to its operations, before any live update.
+     * - An opening call that fails before the agent's answer arrives delivers none.
+     * - Once the answer has arrived, the call can still fail: if its caller is cancelled, or `notify` throws, while the
+     *   call delivers [Opened] and the updates that arrived before the session took over. [Opened] may already have
+     *   been delivered then, so treat a failed opening call as a failed opening, whatever events the operations got.
+     *
+     * Only the client runtime delivers it; agent code can't create one.
+     *
+     * @property response the answer of the call that opened this session, with its state at this point; `null` for a
+     * subagent, which no call opens: its state starts unconfirmed and comes from later updates
      */
     public class Opened internal constructor(public val response: AcpCreatedSessionResponse?) : SessionEvent()
 }
@@ -925,7 +938,7 @@ succeeded.
 - After the request has returned, the opening call delivers the marker as `SessionEvent.Opened` and then the rest of
   the queue in its own coroutine, cancellably (`completeOpening`). That is app code, so it doesn't run in
   `NonCancellable`. A cancellation of the caller, or a `notify` that throws, while it runs fails the opening like
-  any failed opening: the holder fails through `failSessionHolder`, the rest of the queue goes to
+  any failed opening: the holder fails through `failSessionTree`, the rest of the queue goes to
   `globalSessionUpdateHandler`, and the id can be opened again. This holds even though the operations may already
   have the marker. Delivering in `NonCancellable` instead would leave a cancelled caller without its session but with
   the id still taken, and would run app code uncancellably.
@@ -1033,8 +1046,13 @@ arrival (see "Pending permission requests").
   1. calls `createSubagentOperations(childId)` on the parent's operations;
   2. builds the `ClientSubagentSession` from the result and the announcement's patch;
   3. adds it to the parent's `subagents`;
-  4. starts the child's consumer (see "Holders");
+  4. starts the child's opening (see "Holders");
   5. delivers the announcement to the parent's prompt flow or `notify`.
+
+  Steps 1 to 4 are `setUpSubagent`, a private method of the parent's `ClientSessionHolder`. The base holder takes the
+  connection's `protocol`, the scope for the subagents' openings (`openingScope`) and the `failSessionTree` callback,
+  and a `SubagentSessionHolder(sessionId, parent)` takes them from its parent. Step 4 is
+  `SubagentSessionHolder.startOpening(session)`.
 
   So inside the parent's `notify` for the announcement, the child exists, with its operations and its state.
   - The parent's stream waits while the factory runs, as a root's stream waits for `ClientOperationsFactory`. A
@@ -1045,19 +1063,19 @@ arrival (see "Pending permission requests").
   - If the parent failed or was closed while the factory ran, the parent's `subagents` is closed, so the child is
     neither added nor started: it is marked closed, and the failure or close that ended the parent also ends the
     child's holder. If only the child's own holder failed or was removed meanwhile, the child is added to the list,
-    marked closed, and gets no consumer.
+    marked closed, and gets no opening.
   - The parent's consumer is the one that has the parent's operations: on the early path it's `deliverEarly`, so
     a replayed child gets its operations as soon as its announcement is delivered; on the factory path it's the
     drain after the factory, so the child waits for its parent's answer first. The main case is `session/load` with
     a factory: the agent replays children before the response, and the factory runs only after it.
   - This holds at every depth: a grandchild waits for its child, which waits for the root.
-  - Running the factory in the child's own consumer was rejected: the child would appear only after the parent's
+  - Running the factory in the child's own opening was rejected: the child would appear only after the parent's
     `notify` saw its announcement, so the app couldn't look it up there.
   - Each session's updates keep their order. Follow the single-queue rule for `ClientSessionHolder` in `CLAUDE.md`.
 - **After setup.** All of the child's updates go to its `notify`. There's no prompt flow, because the client never
   prompts a child. Its permission, fs, terminal and elicitation requests go to its operations.
 - **Failed setup.** If the parent's operations don't implement `SubagentOperations`, or `createSubagentOperations`
-  throws, no `ClientSubagentSession` is created, and only that child's holder fails, through `failSessionHolder` as
+  throws, no `ClientSubagentSession` is created, and only that child's holder fails, through `failSessionTree` as
   for a failed `ClientOperationsFactory`:
   - its queued and later updates go to `globalSessionUpdateHandler`;
   - its requests get an error;
@@ -1095,7 +1113,7 @@ can't host a child: `getOrCreateSessionHolderOrNull` creates one only while an o
     applicable inside 'interface'"), so the sealed type can't carry the runtime's hooks.
   - The few behaviours that differ by type become internal extension functions with an exhaustive `when` over the
     sealed type: delivering an event (a root's goes to its prompt flow or `notify`, a child's to `notify`) and
-    answering a permission request through the session's `PendingPermissionCancellation` (a root's) or
+    answering a permission request through the session's `RootPendingPermissions` (a root's) or
     `SubagentPendingPermissions` (a child's). The request handler takes a child's `SubagentPendingPermissions` when
     the request arrives, before anything suspends, and passes the lookup of the child's session to it as the first
     step of its race (see "Pending permission requests").
@@ -1117,7 +1135,8 @@ can't host a child: `getOrCreateSessionHolderOrNull` creates one only while an o
   new or forked session can send updates before its response. Child ids never get speculative holders, and
   malformed announcements are rejected (see "Routing and delivery").
 - **The tree.** Each holder keeps its children in an atomic map keyed by id, failed children included, and closes
-  it when it fails. Announcement order is kept separately, in the public `subagents`, which the consumer builds.
+  it when it fails. Announcement order is kept separately, in the public `subagents`, which the parent's consumer
+  builds. Both collections are in one atomic state, so one update seals both.
   `registerChild` first adds the child to its parent's children, and registers nothing if they're closed, so a
   parent that fails at the same moment can't miss a child. It then checks the id and puts the child's holder into
   the session map in one compare-and-set on the map, because openings, close and reaping change the map from other
@@ -1134,40 +1153,42 @@ can't host a child: `getOrCreateSessionHolderOrNull` creates one only while an o
     after the `addChild` (see "Close and connection end").
   - A failed root's descendants leave the map when the root is reaped or replaced by a new holder, so failed
     subagents of repeated failed loads don't pile up under fresh ids.
-- **One consumer per child, until `Opened` and its parent's completion.** Once the parent's consumer has built the
-  child (see "Setup"), one consumer delivers the child's queue to its operations, setting up grandchildren the way
-  the parent's consumer sets up the child. After it has delivered `Opened`, it waits until the parent's holder has
-  completed. Only then does it close the queue, deliver the rest and complete the holder. From then on, delivery is
-  synchronous, and late updates wait in `lateDeliveries`, as for roots.
+- **One opening per child, until `Opened` and its parent's completion.** Once the parent's consumer has built the
+  child (see "Setup"), the child's own opening (`SubagentSessionHolder.completeOpening`, started by `startOpening`)
+  delivers the child's queue to its operations, setting up grandchildren the way the parent's consumer sets up the
+  child. After it has delivered `Opened`, it waits until the parent's holder has completed. Only then does it close
+  the queue, deliver the rest and complete the holder. From then on, delivery is synchronous, and late updates wait in
+  `lateDeliveries`, as for roots.
   - **Why it waits for the parent's holder.** The root's opening can still fail after its answer, while it delivers
     its marker and the updates queued behind it, and every holder below fails with it. A child that had already
     completed couldn't be failed that way, and would stay live under a failed root. So the later updates of the
     child stay in its queue, and its holder stays incomplete, until the parent's holder has completed. If the
-    parent's holder has failed instead, the consumer returns and the cascade drains the queue. This holds at every
+    parent's holder has failed instead, the opening returns and the cascade drains the queue. This holds at every
     depth: a grandchild waits for its parent, which waits for the root.
   - The cost: a child's live updates, and the agent's requests for it, wait until the opening call of the root has
     returned and the root's queue is delivered. During that time the child is already visible in the parent's
     `subagents`, with its state live. An app whose parent's `notify` waits for a live event of a child's stream
     never returns, like any `notify` that waits for a later event of a stream. The KDoc of `ClientSubagentSession`
     says so.
-  - A consumer checks for cancellation (`ensureActive()`) before it takes each item, before and after `Opened`, and
-    nowhere between taking an item and handing it to the operations. The failure cascade cancels consumers without
-    joining them (see "Reaping and failure"), so a consumer that was cancelled in the middle of a `notify` leaves
+  - An opening checks for cancellation (`ensureActive()`) before it takes each item, before and after `Opened`, and
+    nowhere between taking an item and handing it to the operations. The failure cascade cancels openings without
+    joining them (see "Reaping and failure"), so an opening that was cancelled in the middle of a `notify` leaves
     the rest of its queue for the drain. Only an item that it took just after passing the check can still reach its
     `notify`.
-  - The parent's consumer launches it into a scope from `Protocol.newConnectionScope` (see "Lifetimes" on the
-    agent side), which `Client` creates once. So it ends with the connection, and it doesn't run on the handler
-    thread.
+  - The parent's consumer starts it with `startOpening`, which launches it into `openingScope`, a scope from
+    `Protocol.newConnectionScope` (see "Lifetimes" on the agent side), which `Client` creates once. So it ends with
+    the connection, and it doesn't run on the handler thread. Its coroutine context carries a `SubagentOpening`
+    element of the holder (see "Close and connection end").
   - Running it in the coroutine of the `session/update` handler that registered the child was rejected (it was the
     first version of question 19). For a parent that is already open, that coroutine is the one delivering the
     announcement to the parent's `notify`, so the child's history and requests would wait until that `notify`
     returned.
-  - A child registered after the root's answer finds `Opened(null)` at the head of its queue, so its consumer
+  - A child registered after the root's answer finds `Opened(null)` at the head of its queue, so its opening
     completes the holder right after delivering what's queued, once the parent's holder has completed. A child
     registered before the answer, on the early path, gets its history as it arrives, like the root's `deliverEarly`,
     until the root's response adds `Opened`.
   - The app sees a request on a child id only once its holder completes, so during a load that is after the root's
-    opening call has returned, as for the root's own requests (`getSessionOrThrow`). A permission request is the
+    opening call has returned, as for the root's own requests (`awaitSession`). A permission request is the
     exception in one respect: it joins the child's cancel race when it arrives, and the wait for the holder happens
     inside that race (see "Pending permission requests"). The other request kinds simply wait.
   - Switching a child to synchronous delivery as soon as it has operations was rejected: on the early path that
@@ -1176,17 +1197,17 @@ can't host a child: `getOrCreateSessionHolderOrNull` creates one only while an o
   would otherwise fail a child still waiting for its operations whenever an unrelated opening finished. A child
   holder ends only when:
   - its own setup fails: `createSubagentOperations` throws, or its `notify` throws before it has delivered
-    `Opened`, or the consumer's coroutine is cancelled. A `notify` failure after `Opened` is only logged, as for any
+    `Opened`, or its opening's coroutine is cancelled. A `notify` failure after `Opened` is only logged, as for any
     live update;
   - its parent's holder fails: the failure cascades down the tree, parent first, and each queue goes to
-    `globalSessionUpdateHandler` through `failSessionHolder`. A speculative parent that gets reaped takes its
+    `globalSessionUpdateHandler` through `failSessionTree`. A speculative parent that gets reaped takes its
     children with it;
   - its root closes (see "Close and connection end").
 
-  The cascade stops each holder's consumer the way close does, through the consumer state, so a consumer can't
-  start after its holder has failed. It only cancels a running consumer, and doesn't join it: it runs under
-  `NonCancellable` and must not wait for the app's `notify`. A subagent's object, once built, is marked closed, and
-  stays in its parent's `subagents`.
+  The cascade stops each holder's opening the way close does, through the opening state (`markOpeningStopped`), so
+  an opening can't start after its holder has failed. It only cancels a running opening, and doesn't join it: it
+  runs under `NonCancellable` and must not wait for the app's `notify`. A subagent's object, once built, is marked
+  closed, and stays in its parent's `subagents`.
 
   **A failed child holder stays in the session map while its parent's holder is live,** so its id stays taken:
   its later patches are sorted as patches of a failed child, `getOrCreateSessionHolderOrNull` doesn't replace it
@@ -1201,10 +1222,11 @@ can't host a child: `getOrCreateSessionHolderOrNull` creates one only while an o
 holder owns an id, and it delivers `session/update`s from start to end.
 
 - **Moved from `Client`:** `SessionsStorage` and `_sessions`, `getOrCreateSessionHolderOrNull`,
-  `getOrCreateSessionHolder`, `removeSessionHolder`, `claimFactorySessionHolder`, `claimOperationsSessionHolder`,
-  `withInitializingSession` with its reaping, `failSessionHolder` and `handleUnconnectedSessionUpdate`. The holder
-  lookup in the request handlers (`client/Client.kt:236`) and in `getSessionOrThrow` (`:787`) becomes a registry
-  lookup, so nothing outside it touches the map.
+  `getOrCreateSessionHolder`, `removeSessionHolder`, the claiming of a holder for an opening call
+  (`claimSessionHolder` and `claimAnsweredSessionHolder`), `withInitializingSession` with its reaping, the failing
+  of a holder (`failSessionTree`) and `handleUnconnectedSessionUpdate`. The holder lookup in `Client`'s request
+  handlers and in its `getSessionOrThrow` (now the registry's `awaitSession`) is a registry lookup, so nothing outside
+  it touches the map.
 - **New:** `deliverSessionUpdate`, the sorting, `registerChild`, the blocking rule, the failure cascade over the
   tree, `subagentHolderOrNull` (the request handler's non-suspending lookup of a child's holder and its pending
   permissions),
@@ -1212,7 +1234,7 @@ holder owns an id, and it delivers `session/update`s from start to end.
   permissions). `removeSessionTree`
   replaces `removeSessionHolder`.
 - **Its constructor takes the `GlobalSessionUpdateHandler?`,** and also the `Protocol`, for a subagent's
-  `session/cancel`, and a scope from `Protocol.newConnectionScope` for the subagents' consumers. `Client` passes on
+  `session/cancel`, and a scope from `Protocol.newConnectionScope` for the subagents' openings. `Client` passes on
   its `globalSessionUpdateHandler`. That property stays, because it's public API, but nothing else in `Client` reads
   it.
 
@@ -1249,12 +1271,12 @@ holder owns an id, and it delivers `session/update`s from start to end.
 
   ```kotlin
   private inline fun <reified Ops : Any, P : AcpRequest, R : AcpResponse> handleSessionRequest(
-      method: AcpRequestMethod<P, R>,
+      method: AcpMethod.AcpRequestResponseMethod<P, R>,
       crossinline sessionIdOf: (P) -> SessionId,
       crossinline call: suspend Ops.(P) -> R,
   ) {
       protocol.setRequestHandler(method) { params ->
-          val session = sessions.getSessionOrThrow(sessionIdOf(params))
+          val session = sessions.awaitSession(sessionIdOf(params))
           val ops = session.operations as? Ops ?: sessionMethodNotFound<Ops>(method)
           session.executeWithSession { ops.call(params) }
       }
@@ -1276,7 +1298,7 @@ The RFD: closing a parent ends the work of all its descendants and needs no term
 root can be closed.
 
 - **Before the request:** every descendant's `SubagentPendingPermissions` is closed, at the same point as the
-  root's `PendingPermissionCancellation` today, and for the same reason: the agent's close may wait for child work
+  root's `RootPendingPermissions`, and for the same reason: the agent's close may wait for child work
   that waits for a permission answer. Each close only completes a signal, so the order doesn't matter.
   - `RootSessionHolder.startClosing` first moves the root's holder to the **`CLOSING` stage** of its `RootPhase` (after
     `ANSWERED`, and read through `root`), and then walks the descendants. `registerChild` reads the stage after it
@@ -1289,11 +1311,11 @@ root can be closed.
   1. it closes each holder's children map, top-down, so a late announcement can't register a grandchild under a
      holder that is going away (such a grandchild would block its id forever, and no close would reach it). This
      also closes the holder's `subagents` list, so a setup that finishes later drops its child;
-  2. it stops every consumer in the subtree, which keeps one that hasn't started from starting, then cancels the
-     running ones and joins them, so none starts or delivers afterwards. The cost: `close()` waits for a child's
-     `notify` to react to cancellation. The consumer that the close itself runs in is the exception: a subagent's own operations may
-     call `close()` from their `notify`, and joining that consumer would wait for itself. The close doesn't join
-     it, and cancels it at the end;
+  2. it stops the opening of every subagent in the subtree (`markOpeningStopped`), which keeps one that hasn't
+     started from starting, then cancels the running ones and joins them, so none starts or delivers afterwards. The
+     cost: `close()` waits for a child's `notify` to react to cancellation. The opening that the close itself runs in
+     is the exception: a subagent's own operations may call `close()` from their `notify`, and joining that opening
+     would wait for itself. The close doesn't join it, and cancels it at the end;
   3. the rest runs under `NonCancellable`, so a cancelled caller can't leave a half-removed tree, because the agent
      has already dropped the sessions. It removes the root and every descendant from the session map in one
      compare-and-set, each only if its id still maps to that holder, so no half-removed tree is ever visible. A
@@ -1303,27 +1325,27 @@ root can be closed.
      permissions (which changes nothing if the first step ran, and answers the requests of a child that was
      announced after it), marks each child object closed, and fails each child holder that hasn't completed
      (waiting in `createSubagentOperations`, not yet set up, or still in its `notify` before `Opened`) with "session
-     closed" through `failSessionHolder`, so its waiting requests get the error and its queue goes to
+     closed" through `failSessionTree`, so its waiting requests get the error and its queue goes to
      `globalSessionUpdateHandler`;
   5. it returns the removed ids, and `Client` removes their elicitation entries, as `removeSessionHolder` does for a
      root today.
 
   After that, updates for those ids are unconnected, as a closed root's are today.
-- **Detecting the consumer that the close runs in.** Either of two signs counts, and the close skips the join of
-  every consumer that matches one:
-  - the close's job is the consumer's job or below it, through the job hierarchy (`Job.children`): a close that a
-    subagent's `notify` starts runs in its consumer's job tree, directly or in a coroutine that `notify` launched,
+- **Detecting the opening that the close runs in.** Either of two signs counts, and the close skips the join of
+  every opening that matches one:
+  - the close's job is the opening's job or below it, through the job hierarchy (`Job.children`): a close that a
+    subagent's `notify` starts runs in its opening's job tree, directly or in a coroutine that `notify` launched,
     even one whose context lost the element below;
-  - the close's context carries the consumer's `SubagentConsumer` element, which `startConsumer` puts into the
-    consumer's context. It survives `withContext(NonCancellable)`, `withContext(Job())` and
-    `withContext(otherScope.coroutineContext)`, which replace the job: the consumer then waits for the close without
+  - the close's context carries the opening's `SubagentOpening` element, which `startOpening` puts into the
+    opening's context. It survives `withContext(NonCancellable)`, `withContext(Job())` and
+    `withContext(otherScope.coroutineContext)`, which replace the job: the opening then waits for the close without
     reacting to cancellation, and isn't above it any more, so ancestry alone would join it and deadlock.
 
-  A false match only skips a join: a close from an app coroutine that copied the consumer's context into another
-  scope returns before that consumer reacts, and cancels it at the end. A missed one deadlocks, so the check errs
+  A false match only skips a join: a close from an app coroutine that copied the opening's context into another
+  scope returns before that opening reacts, and cancels it at the end. A missed one deadlocks, so the check errs
   that way. Ancestry alone, an earlier version, was rejected for that deadlock. A close in a coroutine of another
   scope with a context of its own, such as `otherScope.async { close() }`, matches neither sign and joins the
-  consumer: if `notify` awaits it cancellably, the cancellation ends that wait and the close completes; if `notify`
+  opening: if `notify` awaits it cancellably, the cancellation ends that wait and the close completes; if `notify`
   waits for it without reacting to cancellation, neither finishes. The `ClientSession.close` KDoc states that
   limitation.
 - **If the request fails,** nothing is removed, as for a root today and as on the agent side. An answer with
@@ -1338,14 +1360,15 @@ root can be closed.
   before its `Opened` or an ancestor's holder failed, is closed the same way, and stays in its parent's `subagents`:
   a listed child may be closed because its stream or an ancestor's failed, or because its root closed. `operations` stays valid as a link. An update that was already being delivered when `close()`
   ran can still reach it once, because the removal doesn't wait for deliveries in the handler's coroutine.
-- **On connection end, nothing more happens.** The child consumers live in the connection scope, so they're
+- **On connection end, nothing more happens.** The subagents' openings live in the connection scope, so they're
   cancelled, and question 20 rethrows that cancellation rather than failing the holder. `Protocol` cancels the
   incoming permission handlers, so no answer is sent. The holders stay, as roots' do. Cleaning up on disconnect would
   be one change for roots and children together, as on the agent side.
-- **The race the consumer state closes.** Once a parent's holder is complete, its announcements are delivered
+- **The race the opening state closes.** Once a parent's holder is complete, its announcements are delivered
   directly in the handler's coroutine, so a grandchild's setup can be inside `createSubagentOperations` while
-  `close()` runs. Its holder is in the subtree but has no consumer yet. Without a guard, the setup would return and
-  launch a consumer for a closed session. `startConsumer` refuses once `stopConsumer` has run.
+  `close()` runs. Its holder is in the subtree but has no opening yet. Without a guard, the setup would return and
+  launch an opening for a closed session. `startOpening` starts none once `markOpeningStopped` has run, and marks
+  the session closed instead.
 
 **`ClientSessionImpl` no longer calls its `Client`.** It used `client` only for `client.removeSessionHolder` after
 a close (`client/ClientSessionImpl.kt:111`). It gets two callbacks instead, as v2's `ClientSession` gets
@@ -1428,18 +1451,18 @@ suspend fun removeSessionTree(root: RootSessionHolder): Set<SessionId> {
     val subtree = buildList {
         fun visit(holder: ClientSessionHolder) {
             add(holder)
-            holder.closeChildren().forEach(::visit)  // also closes holder.subagents
+            holder.sealChildren().forEach(::visit)  // also seals holder.subagents
         }
         visit(root)
     }
 
     val context = currentCoroutineContext()
-    val consumers = subtree.mapNotNull { holder -> (holder as? SubagentSessionHolder)?.stopConsumer()?.let { holder to it } }
-    // the consumer's SubagentConsumer element, or job ancestry
-    val ownConsumers = consumers.filter { (holder, job) -> context.runsIn(holder, job) }.map { it.second }.toSet()
+    val openings = subtree.mapNotNull { holder -> (holder as? SubagentSessionHolder)?.markOpeningStopped()?.let { holder to it } }
+    // the opening's SubagentOpening element, or job ancestry
+    val ownOpenings = openings.filter { (holder, job) -> context.runsIn(holder, job) }.map { it.second }.toSet()
     try {
-        for ((_, job) in consumers) if (job !in ownConsumers) job.cancel()
-        for ((_, job) in consumers) if (job !in ownConsumers) job.join()
+        for ((_, job) in openings) if (job !in ownOpenings) job.cancel()
+        for ((_, job) in openings) if (job !in ownOpenings) job.join()
     } finally {
         withContext(NonCancellable) {
             _sessions.update { storage ->  // registerChild checks the root's entry inside its own update
@@ -1451,33 +1474,48 @@ suspend fun removeSessionTree(root: RootSessionHolder): Set<SessionId> {
             for (holder in subtree.asReversed()) {  // bottom-up
                 if (holder !is SubagentSessionHolder) continue
                 holder.permissions.close()
-                holder.subagent?.markClosed()
-                if (!holder.session.isCompleted) failSessionHolder(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
+                holder.markClosed()
+                if (!holder.session.isCompleted) failSessionTree(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
             }
         }
-        for (job in ownConsumers) job.cancel()
+        for (job in ownOpenings) job.cancel()
     }
     return removedIds
 }
 
 // ClientSessionHolder, which now knows its own id, with a subclass per kind of session
-internal sealed class ClientSessionHolder(val sessionId: SessionId, setup: SubagentSetup) {
+internal sealed class ClientSessionHolder(
+    val sessionId: SessionId,
+    val protocol: Protocol,                   // for the subagents' session/cancel
+    val openingScope: CoroutineScope,         // from Protocol.newConnectionScope, for the subagents' openings
+    val failSessionTree: suspend (ClientSessionHolder, Throwable) -> Unit,
+) {
     private data class Children(
         val byId: PersistentMap<SessionId, SubagentSessionHolder> = persistentMapOf(),
-        val closed: Boolean = false,
+        val listed: PersistentList<ClientSubagentSession> = persistentListOf(),  // the public subagents
+        val sealed: Boolean = false,
     )
     private val children = atomic(Children())
-    val subagents = SubagentList()  // the public BaseClientSession.subagents, closable
+    val subagents: List<ClientSubagentSession> get() = children.value.listed  // the public BaseClientSession.subagents
 
-    fun addChild(child: SubagentSessionHolder): Boolean   // false once closed
+    fun addChild(child: SubagentSessionHolder): Boolean   // false once sealed
     fun removeChild(id: SessionId)
     fun childOrNull(id: SessionId): SubagentSessionHolder?
-    fun closeChildren(): Collection<SubagentSessionHolder>  // closes the map and `subagents`
+    fun listSubagent(subagent: ClientSubagentSession): Boolean  // false once sealed
+    fun sealChildren(): Collection<SubagentSessionHolder>  // seals the map and `subagents` in one update
     fun forEachDescendant(action: (SubagentSessionHolder) -> Unit)
+
+    // "Setup" steps 1 to 4: createSubagentOperations, the ClientSubagentSession, listSubagent, startOpening
+    private suspend fun setUpSubagent(announcement: QueuedItem.Announcement, operations: ClientSessionOperations, parentOpened: Boolean)
 }
 
-internal class RootSessionHolder(sessionId: SessionId, setup: SubagentSetup) : ClientSessionHolder(sessionId, setup) {
-    // UNCLAIMED, CLAIMED, ANSWERED (the root's marker was queued), CLOSING (the close started; stays if it fails),
+internal class RootSessionHolder(
+    sessionId: SessionId,
+    protocol: Protocol,
+    openingScope: CoroutineScope,
+    failSessionTree: suspend (ClientSessionHolder, Throwable) -> Unit,
+) : ClientSessionHolder(sessionId, protocol, openingScope, failSessionTree) {
+    // UNCLAIMED, CLAIMED, ANSWERED (the root's opened marker was queued), CLOSING (the close started; stays if it fails),
     // with the claim's opening, in one atomic snapshot
     private val _phase = atomic(RootPhase.UNCLAIMED)
     val phase: RootPhase get() = _phase.value
@@ -1487,28 +1525,32 @@ internal class RootSessionHolder(sessionId: SessionId, setup: SubagentSetup) : C
     fun startClosing()
 }
 
-internal class SubagentSessionHolder(sessionId: SessionId, val parent: ClientSessionHolder, setup: SubagentSetup) :
-    ClientSessionHolder(sessionId, setup) {
+internal class SubagentSessionHolder(sessionId: SessionId, val parent: ClientSessionHolder) :
+    ClientSessionHolder(sessionId, parent.protocol, parent.openingScope, parent.failSessionTree) {
     val permissions = SubagentPendingPermissions()
 
-    private sealed class ConsumerState {
-        object NotStarted : ConsumerState()
-        class Running(val job: Job) : ConsumerState()
-        object Stopped : ConsumerState()
+    private sealed class OpeningState {
+        object NotStarted : OpeningState()
+        class Running(val job: Job) : OpeningState()
+        object Stopped : OpeningState()
     }
-    private val consumer = atomic<ConsumerState>(ConsumerState.NotStarted)
+    private val opening = atomic<OpeningState>(OpeningState.NotStarted)
+    private val _subagent = atomic<ClientSubagentSession?>(null)  // stored by startOpening, read by the holder's methods
 
-    fun startConsumer(scope: CoroutineScope, block: suspend CoroutineScope.() -> Unit): Boolean {
-        val job = scope.launch(start = CoroutineStart.LAZY, block = block)
-        val started = consumer.compareAndSet(ConsumerState.NotStarted, ConsumerState.Running(job))
-        if (started) job.start() else job.cancel()
-        return started
-    }
+    // Stores the session, then launches completeOpening() into openingScope with a SubagentOpening element in its
+    // context. If markOpeningStopped has run, it starts none and marks the session closed instead.
+    fun startOpening(session: ClientSubagentSession)
+    fun markOpeningStopped(): Job?
 
-    fun stopConsumer(): Job? = (consumer.getAndSet(ConsumerState.Stopped) as? ConsumerState.Running)?.job
+    fun markOpened(promote: Boolean)  // from the root's response hook, or at the registration after the answer
+    fun applyPatch(update: SessionUpdate.SubagentUpdate, parentOpened: Boolean)  // the parent's Patch branch
+    fun markClosed()                  // when this holder fails or its root's tree is removed
+
+    // The body of the opening: delivers the queue up to the opened marker, waits for the parent's holder, then switches.
+    private suspend fun completeOpening()
 }
 
-// ClientSubagentSession
+// ClientSubagentSession, which gets its holder as a private constructor argument
 private val closed = atomic(false)
 public val canCancel: Boolean get() = !closed.value && capabilities.value?.cancel != null
 public suspend fun cancel() {
@@ -1517,7 +1559,7 @@ public suspend fun cancel() {
     try {
         AcpMethod.AgentMethods.V1.SessionCancel(protocol, CancelNotification(sessionId))
     } finally {
-        pendingPermissions.cancelByClient()
+        holder.permissions.onClientCancel()
     }
 }
 internal fun markClosed() { closed.value = true }  // applyPatch and onParentOpened then do nothing
@@ -1565,8 +1607,8 @@ elicitation requests are unaffected (see "Side findings" for elicitation).
     background request until the next `running`;
   - with an unconfirmed state or `unknown`, the client can't tell, so it doesn't deny work that may continue.
   An agent that never reports state loses later requests only while its state is confirmed as active.
-- **`clearCancellation()` replaces `startTurn()`** in `PendingPermissionCancellation`, for roots and children. It
-  replaces only a signal that a cancel has completed:
+- **`clearCancellation()` replaces `startTurn()`** in the base class `PendingPermissions`, for roots and children.
+  It replaces only a signal that a cancel has completed:
 
   ```kotlin
   /**
@@ -1590,7 +1632,7 @@ elicitation requests are unaffected (see "Side findings" for elicitation).
   a cancel followed by a request would get that request answered `cancelled` while the consumer is still in an
   earlier `notify`. So the sorting in `ClientSessionRegistry` drives a child's permissions at arrival, on the handler
   thread, through the child's holder from the `Patch` or `Announcement` tag. The child object may not exist yet then,
-  because the consumer builds it later. `state` and `canCancel` keep their one writer, the consumer; the
+  because the parent's consumer builds it later. `state` and `canCancel` keep their one writer, that consumer; the
   permission state isn't visible to the app, so updating it at arrival shows nothing ahead of the stream.
 - **A child's permission request joins the cancel race when it arrives.** The wire order matters for the requests
   too: a request that waits for its child's holder, which can take as long as the root's opening call and the
@@ -1606,39 +1648,44 @@ elicitation requests are unaffected (see "Side findings" for elicitation).
   the same id. The app still sees the request only after the holder has completed. A request that is cancelled
   meanwhile is answered `cancelled` without waiting for the holder. Roots are unchanged: their signal is read at the
   same point, and their holder is already complete when a prompt can run.
-- **`SubagentPendingPermissions`**, an internal class, holds a child's `PendingPermissionCancellation` and an atomic
-  `activeWork` flag, and owns the rules above:
+- **`PendingPermissions.kt`** holds three internal classes. The sealed base `PendingPermissions` owns the signal, the
+  public `answerUnlessCancelled` and `close`, and the protected open `cancelPending` and `clearCancellation`, so the
+  `CLOSED` rule lives in one place. `RootPendingPermissions` makes the two protected ones public, as the root's
+  commands. `SubagentPendingPermissions` holds the rules above, and its `on…` names are events: the class decides
+  the effect.
 
   ```kotlin
-  internal class SubagentPendingPermissions {
-      private val cancellation = PendingPermissionCancellation()
-      private val activeWork = atomic(false)
-      private val heldActiveWork = atomic(false)  // the latest state that arrived before the root's answer
-      private val heldCancellation = atomic<CompletableDeferred<Unit>?>(null)  // set aside by a held idle(cancelled)
+  internal class SubagentPendingPermissions : PendingPermissions() {
+      private sealed class WorkState {
+          // before the root's answer: the latest held state, and the requests set aside by a held idle(cancelled)
+          class Held(val activeWork: Boolean, val setAside: CompletableDeferred<Unit>?) : WorkState()
+          // after it: whether the last live state confirmed foreground work
+          class Live(val activeWork: Boolean) : WorkState()
+      }
+      private val workState = atomic<WorkState>(WorkState.Held(activeWork = false, setAside = null))
 
       fun onState(state: StateUpdate?, live: Boolean)  // from the sorting, at arrival
       fun onOpened(promote: Boolean)                    // from markOpened, at the root's response
-      fun cancelByClient()                              // from ClientSubagentSession.cancel()
-      suspend fun <T> answerUnlessCancelled(cancelledAnswer: () -> T, answer: suspend () -> T): T
-      fun close()
+      fun onClientCancel()                              // from ClientSubagentSession.cancel()
+      // inherited: suspend fun <T> answerUnlessCancelled(cancelledAnswer: () -> T, answer: suspend () -> T): T, close()
   }
   ```
 
   - `onState` with `live = true`: `idle(cancelled)` calls `cancelPending()`; every patch, including `state: null`,
-    then sets `activeWork` to whether the state is `running` or `requires_action`, **and only then** calls
-    `clearCancellation()`. With `live = false` it holds the state's effect back, as in "History and live updates":
-    it remembers that value, and an `idle(cancelled)` sets aside the requests pending at its arrival
-    (`PendingPermissionCancellation.setPendingAside()`: the signal they wait on is replaced by a fresh one, which
-    completes the old one when it completes, so the next cancel or close still answers them). "Live" comes from
-    question 18's `ANSWERED` stage of the root, which the response hook reaches in wire order.
-  - `onOpened(promote)`: after a resume, `activeWork` takes the held-back value, and the requests set aside by a
-    held `idle(cancelled)` are answered `cancelled`, as that `idle` would have answered them live; a later held
-    state doesn't undo that, and a request that arrived after the `idle` isn't answered by it. After a load,
-    `activeWork` stays `false` and nothing is answered: the requests set aside stay pending like the others.
-    `markOpened` calls it on every open descendant as it walks the tree. Requests can be pending then, because a
-    request joins the race when it arrives, also while it waits for its holder, which completes only after the
-    answer, so the app never sees a request that a held `idle(cancelled)` answers.
-  - `cancelByClient()`: `cancelPending()`, then `clearCancellation()` unless `activeWork`.
+    then records `Live(activeWork)`, with `activeWork` true when the state is `running` or `requires_action`, **and
+    only then** calls `clearCancellation()`. With `live = false` it holds the state's effect back, as in "History
+    and live updates": it replaces the `Held` state with the latest value, and an `idle(cancelled)` sets aside the
+    requests pending at its arrival (the private `setPendingAside()`: the signal they wait on is replaced by a fresh
+    one, which completes the old one when it completes, so the next cancel or close still answers them). "Live"
+    comes from question 18's `ANSWERED` stage of the root, which the response hook reaches in wire order.
+  - `onOpened(promote)`: after a resume, the `Held` state becomes `Live` with the held-back `activeWork`, and the
+    requests set aside by a held `idle(cancelled)` are answered `cancelled`, as that `idle` would have answered them
+    live; a later held state doesn't undo that, and a request that arrived after the `idle` isn't answered by it.
+    After a load, the state becomes `Live(activeWork = false)` and nothing is answered: the requests set aside stay
+    pending like the others. `markOpened` calls it on every open descendant as it walks the tree. Requests can be
+    pending then, because a request joins the race when it arrives, also while it waits for its holder, which
+    completes only after the answer, so the app never sees a request that a held `idle(cancelled)` answers.
+  - `onClientCancel()`: `cancelPending()`, then `clearCancellation()` unless the state is `Live` with `activeWork`.
   - **A cancel racing a state.** The write order in `onState` fixes what each interleaving gives. If the state comes
     first and the cancel after it, the cancel sees the new `activeWork`: with confirmed foreground work, later
     requests stay blocked until a further state. If the cancel comes first and the state after it, requests are
@@ -1649,11 +1696,11 @@ elicitation requests are unaffected (see "Side findings" for elicitation).
     `requestPermissions`". The registry's `subagentHolderOrNull(sessionId)` gives the handler the child's holder,
     and with it the `SubagentPendingPermissions`, without suspending.
   - **Ownership:** the child's holder creates it at registration, so a load or resume, which needs new holders
-    (question 19), starts with a fresh one. The holder keeps a reference for the sorting and `markOpened`, and hands
-    it to the `ClientSubagentSession` constructor at setup, for `cancel()` and the permission handler. The holder
-    never reads it back through the child object. The child object doesn't get the holder: it would expose the
-    queue, the tree and the consumer.
-  - The root keeps using `PendingPermissionCancellation` directly: its only inputs are `prompt()`, `cancel()` and
+    (question 19), starts with a fresh one. The holder keeps it for the sorting and `markOpened`, and the
+    `ClientSubagentSession`, which gets its holder as a private constructor argument, reaches it through the holder
+    for `cancel()`. The permission handler takes it from the holder too. The holder is never public, so the child
+    object doesn't expose the queue, the tree or the opening.
+  - The root uses `RootPendingPermissions`, which adds no rules: its only inputs are `prompt()`, `cancel()` and
     `close()`, which are local calls with no wire order to follow.
 
 ### Discovery
@@ -1813,7 +1860,7 @@ cover externally observable behaviour.
 - A child's live updates and requests wait until the parent's holder has completed. If the root's opening fails
   after its answer, the child's holder fails with it, also when the child had already delivered its `Opened(null)`,
   and nothing stays live under the failed root.
-- A `CancellationException` from `createSubagentOperations` that is thrown while the child's consumer is active
+- A `CancellationException` from `createSubagentOperations` that is thrown while the parent's consumer is active
   fails only that child's holder. One from the factory path's `createClientOperations` fails the opening with an
   `IllegalStateException`.
 - `createSubagentOperations` sees the parent session in `coroutineContext.baseClientSession`, except on the early
@@ -1837,7 +1884,7 @@ cover externally observable behaviour.
 - Registry unit tests, without a `Protocol`:
   - an announcement rejected because its id has a speculative holder stays rejected when that holder is reaped
     before the parent's consumer reaches it: nothing is registered;
-  - a child whose parent fails while the child's setup is inside `createSubagentOperations` never gets a consumer.
+  - a child whose parent fails while the child's setup is inside `createSubagentOperations` never gets an opening.
 
 **Client: malformed announcements**
 - A `subagent_update` naming its own parent, an ancestor, another parent's child, an open root and an id with a
@@ -1887,7 +1934,7 @@ cover externally observable behaviour.
   agent whose close waits for a child's permission answer doesn't deadlock.
 - After the response, every descendant id is unconnected: its updates go to `globalSessionUpdateHandler`, its
   requests fail with "session not found", and its elicitation entries are gone.
-- A child waiting in `createSubagentOperations` when the close is answered is failed: its consumer never starts,
+- A child waiting in `createSubagentOperations` when the close is answered is failed: its opening never starts,
   and its waiting requests get the error.
 - A child inside a suspended `notify` when the response arrives: `close()` returns only after that `notify` has
   reacted to the cancellation.
@@ -1900,17 +1947,17 @@ cover externally observable behaviour.
   permissions).
 - A child registered while the removal runs stays out of the session map (the root's entry is gone), and its
   subagent object is closed.
-- A close that a child's own `notify` starts returns without joining that consumer, and cancels the consumer at the
+- A close that a child's own `notify` starts returns without joining that opening, and cancels the opening at the
   end, also when `notify` waits for it under `withContext(NonCancellable)`, `withContext(Job())` or another scope's
-  context. A close that an app coroutine starts after copying the consumer's context into another scope doesn't
-  join the consumer either. A close in another scope with a fresh context that `notify` awaits joins the consumer,
+  context. A close that an app coroutine starts after copying the opening's context into another scope doesn't
+  join the opening either. A close in another scope with a fresh context that `notify` awaits joins the opening,
   whose cancellation ends that wait.
 - The closed `subagents` list: a child whose setup finishes after the close is dropped, not added.
 - A closed child keeps `subagents`, `state` and `title`; `canCancel` is `false`, and `cancel()` throws without
   sending anything.
-- On connection end, child consumers stop and no holder is failed.
+- On connection end, the subagents' openings stop and no holder is failed.
 - A registry unit test: a grandchild whose setup is inside `createSubagentOperations` when `removeSessionTree` runs
-  never gets a consumer.
+  never gets an opening.
 
 **Client: holders**
 - One opening per holder: a second opening of an open session fails before its request, for factory after factory,
@@ -1949,10 +1996,10 @@ cover externally observable behaviour.
   - `Protocol.newConnectionScope` for work that outlives a request, and its dispatcher;
   - `Protocol`'s internal response hook and its rules, and the `Opened` marker in the holder's single queue,
     added to the existing holder rule;
-  - one opening per holder, the holder tree, the exemption from reaping, and the child's consumer that stops at
+  - one opening per holder, the holder tree, the exemption from reaping, and the child's opening that stops at
     `Opened` (see "Holders");
-  - the child's operations created by the parent's consumer before the announcement is delivered, and its consumer
-    in the connection scope;
+  - the child's operations created by the parent's consumer before the announcement is delivered, and the child's
+    opening in the connection scope;
   - child members are plain getters, updated by the parent's consumer before the event that changes them is
     delivered: don't add a `StateFlow` beside the stream;
   - `ClientSessionRegistry` owns the session map and `session/update` delivery; each update is sorted at arrival,
@@ -1963,9 +2010,9 @@ cover externally observable behaviour.
     successful response, and sessions reach the client only through callbacks, never through `Client`;
   - the root holder's `CLOSING` stage (reached first by `startClosing`, read by `registerChild` after
     `addChild`, kept after a failed close) and the check of the root's entry inside `registerChild`'s update of the
-    map, the close order, own-consumer detection by job ancestry or the consumer's context element, and that a
-    failed child is marked closed and stays in `subagents`;
-  - a child's consumer waits for its parent's holder before it switches to synchronous delivery.
+    map, the close order, own-opening detection by job ancestry or the opening's `SubagentOpening` context element,
+    and that a failed child is marked closed and stays in `subagents`;
+  - a child's opening waits for its parent's holder before it switches to synchronous delivery.
 - A release note for the breaking `ClientSessionOperations.notify(SessionEvent)` change, and the samples moved to
   it. It also says that opening a session that is already open, or being opened, now fails for the factory
   overloads too, so a client must close a session before loading it again, that `ClientSession.client` is
@@ -2030,9 +2077,9 @@ cover externally observable behaviour.
     `cancelledAnswer = { CreateElicitationResponse(ElicitationAction.Cancel) }`.
     A root then follows the root rules and a child the #24 rules. Elicitations outside any session, handled by
     `globalElicitationHandler`, stay out of it.
-  - In that fix, rename `PendingPermissionCancellation` to `PendingInteractionCancellation` and
-    `SubagentPendingPermissions` to `SubagentPendingInteractions` (the RFD's term is "interactive request";
-    `PendingRequestCancellation` would be too broad, since fs and terminal requests aren't answered on cancel), and
+  - In that fix, rename `PendingPermissions` to `PendingInteractions`, and `RootPendingPermissions` and
+    `SubagentPendingPermissions` to match (the RFD's term is "interactive request"; `PendingRequests` would be too
+    broad, since fs and terminal requests aren't answered on cancel), and
     update `CLAUDE.md` and this spec. Until then, "permission" is the accurate name.
 - The v2 client's `cancel()` answers every pending permission request, but v2 exempts requests for work in the
   `background` list (`docs/protocol/v2/prompt-lifecycle.mdx`). The v2 runtime doesn't model that list yet.
@@ -2050,8 +2097,9 @@ cover externally observable behaviour.
   answers. So the response's `configOptions`/`modes` are newer than every replayed `config_option_update` or
   `current_mode_update` (v2 says this explicitly: `docs/protocol/v2/session-setup.mdx:138`). `ClientSessionImpl`
   starts from the response and then applies the replayed updates on top: the factory path through
-  `drainEventsAndCompleteSession` → `trackState`, and the early path (#146) through
-  `earlyMode`/`earlyConfigOptions` in `completeEarlySession`. So older history overwrites the response.
+  `drainHistory` → `deliverUpdate` → `trackState`, and the early path (#146) through
+  `earlyMode`/`earlyConfigOptions` in the holder, which `applyEarlyState` applies. So older history overwrites the
+  response.
   `ClientEarlySessionUpdatesTest` ("mode and config options after an early load equal those after a buffered load")
   pins this.
   - **Done in this branch:** `ClientSession.configOptions` and `ClientSession.currentMode` are deprecated for removal
@@ -2163,7 +2211,7 @@ The design moved through several shapes before landing on the factory-based `ann
 6. **Closing a parent. Decided:** subtree cleanup cancels collections, frees ids and disables operations. It calls no app code for the children. Order: the app's `close()`, then cleanup, then the response. No cleanup if `close()` throws. On connection end, cleanup runs without `close()` (see "Lifetimes").
    - A `session/load` or `session/resume` that re-opens a root that is still open is still accepted. Once the app's factory returns, the old root's subtree is cleaned up the same way, and the old root's turn is left alone. The alternatives were refusing the re-open (the protocol defines no error that fits, and v2, the Rust SDK and the agent before subagents accept it) and leaving the old children registered (their ids would block the replay).
    - A child's late requests and its `$/cancel_request` after the close response are accepted and documented. Only updates are guaranteed not to follow it.
-7. **The client side. Decided:** synchronous registration of a new child in the client's `session/update` handler, with the three guards; a child's consumer waiting for its parent's holder before it completes its own (see "Holders"); a throwing `createSubagentOperations` failing only that child (and its descendants); the name `BaseClientSession` (see "Client side").
+7. **The client side. Decided:** synchronous registration of a new child in the client's `session/update` handler, with the three guards; a child's opening waiting for its parent's holder before it completes its own (see "Holders"); a throwing `createSubagentOperations` failing only that child (and its descendants); the name `BaseClientSession` (see "Client side").
 
 #### Client state and usage
 
@@ -2276,8 +2324,8 @@ The design moved through several shapes before landing on the factory-based `ann
     - v2 gets the same shape as a separate type, in the v2 work.
 19. **Holder lifecycle for children. Decided:** the holder holds a `BaseClientSession`; one opening per holder for
     every overload; child holders get their own creation path, live in a tree of holders, are exempt from reaping
-    and end through a cascade; and each child has one consumer until it has delivered `Opened` (see "Holders"). The
-    consumer first ran in the child's registration handler; question 20 moved it to a connection scope.
+    and end through a cascade; and each child has one opening until it has delivered `Opened` (see "Holders"). The
+    opening first ran in the child's registration handler; question 20 moved it to a connection scope.
     - Keeping the factory re-claim from #146 was rejected: the response hook can't mark a completed holder, and the
       reopened session is never registered.
     - Letting a reopen join the open session, as the unmerged #148 proposed for JetBrains Air (which reopens a
@@ -2290,7 +2338,7 @@ The design moved through several shapes before landing on the factory-based `ann
     - Internal members on `BaseClientSession` were rejected because Kotlin forbids them in interfaces, and
       `BaseClientSession` must be an interface: the existing public interface `ClientSession` extends it, and turning
       `ClientSession` into a class would break compiled callers and implementers.
-    - A child's consumer waits for its parent's holder to complete before it closes its queue and completes its own
+    - A child's opening waits for its parent's holder to complete before it closes its queue and completes its own
       holder. Completing at once after `Opened` was rejected: the root's opening can still fail after its answer,
       and a child that had completed could not be failed with it. The cost is that a child's live updates and
       requests wait for the root's opening call (see "Holders").
@@ -2310,13 +2358,13 @@ The design moved through several shapes before landing on the factory-based `ann
     - The child as the factory's argument was rejected: the child would exist before its operations, so either its
       `operations` getter would be filled in late and throw inside the factory, or it would have no getter and the
       app would keep a map. With the id, the operations get their session from the context, as roots do.
-    - Running the factory in the child's own consumer was rejected: the child would appear after the parent's
+    - Running the factory in the child's own opening was rejected: the child would appear after the parent's
       `notify` saw its announcement. The cost of the chosen order is that the parent's stream waits for the
       factory, as a root's waits for `ClientOperationsFactory`.
     - An attach model (`child.attach(operations)`) was rejected: a child the app never attaches queues without
       bound and stalls the agent. Delivering the whole tree to the root's operations was rejected: every call would
       dispatch on an implicit context value.
-    - The child's consumer moved from its registration handler's coroutine to a scope from
+    - The child's opening moved from its registration handler's coroutine to a scope from
       `Protocol.newConnectionScope`: for an open parent, that handler is busy in the parent's `notify`.
     - The call runs with the parent session in the context, except on the early path of `loadSession` and
       `resumeSession` with ready operations, where no session exists yet. The KDoc says so.
@@ -2374,10 +2422,11 @@ The design moved through several shapes before landing on the factory-based `ann
       `cancelled`, so the outcome is that of the live `idle`. After a load it is dropped like the rest of history,
       and those requests stay pending like the others. Dropping it after a resume too, the earlier behaviour, let a
       request of cancelled work reach the app.
-    - Keeping the child's signal only in the child object was rejected: patches can arrive before it exists. Giving
-      the child object its holder was rejected: it would expose more than it needs.
+    - Keeping the child's signal only in the child object was rejected: patches can arrive before it exists. The
+      child object gets its holder only as a private constructor argument, to reach the signal for `cancel()`, and
+      the holder stays internal.
 25. **Close order on the client. Decided:** before the request, every descendant's permissions are closed; after a
-    successful response, the registry closes the children maps, stops the consumers, removes the subtree in one
+    successful response, the registry closes the children maps, stops the openings, removes the subtree in one
     compare-and-set, marks the child objects closed and fails the incomplete holders, and `Client` removes their
     elicitation entries; a failed close removes nothing; on connection end nothing more happens (see "Close and
     connection end"). `ClientSessionImpl` gets two callbacks instead of calling `Client`, and
@@ -2389,14 +2438,14 @@ The design moved through several shapes before landing on the factory-based `ann
       there, which the removal takes out.
       The removal also closes every subagent's permissions. Narrowing the KDoc to the subagents that existed when the
       close started was rejected: the RFD says the client cleans up the requests together with the parent's.
-    - A close that a child's own `notify` starts doesn't join that child's consumer. It detects the consumer by job
-      ancestry or by the consumer's `SubagentConsumer` context element, either one: the element survives
-      `withContext(NonCancellable)` and other replaced jobs, and ancestry covers a coroutine below the consumer whose
+    - A close that a child's own `notify` starts doesn't join that child's opening. It detects the opening by job
+      ancestry or by the opening's `SubagentOpening` context element, either one: the element survives
+      `withContext(NonCancellable)` and other replaced jobs, and ancestry covers a coroutine below the opening whose
       context dropped the element. A false match only skips a join, while a missed one deadlocks (see "Close and
       connection end").
     - Detecting it by job ancestry alone was rejected: a close that `notify` waits for under
-      `withContext(NonCancellable)` leaves the consumer's job tree and would join its own consumer forever. Detecting
-      it by the element alone was rejected too: it misses a coroutine below the consumer started with a context of
+      `withContext(NonCancellable)` leaves the opening's job tree and would join its own opening forever. Detecting
+      it by the element alone was rejected too: it misses a coroutine below the opening started with a context of
       its own.
     - Closing descendants bottom-up, the earlier recommendation, was rejected: the order mattered only for removing
       holders one at a time, and one update removes them all.

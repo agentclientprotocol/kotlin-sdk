@@ -111,11 +111,6 @@ public sealed class ToolCallContent {
      * In v1 the agent may send it only when the client advertised the `subagents` client capability. The
      * referenced session must already be known to the client, through session setup or an announcement.
      * The reference grants no controls and says nothing about the referenced session's work.
-     *
-     * Adding this variant is a source-breaking change for an exhaustive `when` over [ToolCallContent]: it
-     * needs a branch for [Session] (with an opt-in) or an `else`.
-     *
-     * @property _meta extension metadata; a value that is not a JSON object decodes as `null`
      */
     @UnstableApi
     @Serializable
