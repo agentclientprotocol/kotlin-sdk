@@ -53,7 +53,7 @@ follow the skill's instructions: ask before cloning, and never clone silently.
   side it binds (agent, client, or both). The SDK decides what to enforce, validate, or leave to
   the application based on this classification.
 - **No product writes.** The only file you create is your report. Never touch module sources,
-  tests, samples, `e2e/`, `buildSrc/`, Gradle files, API dumps, `AGENTS.md`, or git.
+  tests, samples, `e2e/`, `build-logic/`, Gradle files, API dumps, `AGENTS.md`, or git.
 - Use `Bash` for read-only inspection (`git -C … pull --ff-only` as the skills instruct, `rg`,
   `ls`, `git log`). Never commit, push, branch, or modify any checkout's working tree.
 

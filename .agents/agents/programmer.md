@@ -1,6 +1,6 @@
 ---
 name: programmer
-description: "Implements one well-scoped slice of the ACP Kotlin SDK: writes code and tests, runs the checks, and iterates until they are green, in either single-worker or worktree mode as the brief specifies. Kotlin Multiplatform + Gradle wrapper + JDK 21. Use for changes to the SDK modules, samples, e2e suites, buildSrc, Gradle files, API dumps, AGENTS.md, or skill definitions. Use ONLY when the `orchestrator` skill is active or the user explicitly asks for this agent. Do not use it to research protocol behavior; it must escalate unclear protocol questions instead of guessing."
+description: "Implements one well-scoped slice of the ACP Kotlin SDK: writes code and tests, runs the checks, and iterates until they are green, in either single-worker or worktree mode as the brief specifies. Kotlin Multiplatform + Gradle wrapper + JDK 21. Use for changes to the SDK modules, samples, e2e suites, build-logic, Gradle files, API dumps, AGENTS.md, or skill definitions. Use ONLY when the `orchestrator` skill is active or the user explicitly asks for this agent. Do not use it to research protocol behavior; it must escalate unclear protocol questions instead of guessing."
 model: sonnet
 effort: high
 color: green

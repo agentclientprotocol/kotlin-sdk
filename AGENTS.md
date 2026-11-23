@@ -65,9 +65,11 @@ Runnable examples for stable ACP, direct v2 use, negotiation, and external-agent
 
 End-to-end suites that check the SDK against external counterparts, such as the ACP TCK and the Rust SDK. They need tools outside the Gradle build, and `./gradlew check` does not run their tests. Before changing anything under `e2e/`, read `e2e/README.md` and the README of the suite you touch.
 
-### `buildSrc`
+### `build-logic`
 
-Shared Gradle convention and publishing plugins. Changes here affect most modules and are core architectural changes.
+Shared Gradle convention and publishing plugins, an included build declared in `pluginManagement` of `settings.gradle.kts`. Changes here affect most modules and are core architectural changes.
+
+Its tests (`build-logic/src/test`) run from the root `./gradlew check`, which depends on the included build's `check`.
 
 ## Architecture and Dependency Direction
 
@@ -186,6 +188,7 @@ The published modules use strict explicit API mode and Kotlin's binary compatibi
 - Preserve high-level Agent, Client, and session-facing ergonomics when refactoring lower layers.
 - Treat constructors, default values, interfaces, sealed hierarchies, annotations, and public constants as API changes.
 - Add KDoc for public behavior whose lifecycle, failure, ownership, or compatibility contract is not obvious.
+- `internal` packages hold only non-public declarations: `check` enforces it through the API dumps with `checkInternalPackagesNotPublic`, which fails if a dump lists a class from a package with an `internal` segment.
 - If a public API change is intentional, update the affected checked-in `.api` dump with that module's `apiDump` task.
 - Review API dump diffs as source changes. Do not accept generated API changes blindly.
 - Run API generation and verification as separate Gradle invocations; combining `apiDump` with `apiCheck`/`check` can cause implicit task-dependency validation failures.

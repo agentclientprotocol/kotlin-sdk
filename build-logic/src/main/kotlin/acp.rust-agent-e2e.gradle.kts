@@ -37,7 +37,7 @@ testing {
 }
 
 // Compiling the suite catches SDK API changes that break it; running it needs the external agent, so check never does.
-tasks.named("check") {
+tasks.check {
     dependsOn(tasks.named("compileE2eTestKotlin"))
 }
 
