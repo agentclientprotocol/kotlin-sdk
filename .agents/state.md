@@ -471,8 +471,10 @@ KDoc of `SubagentPendingPermissions.kt` (spec typo + shortened "followed at arri
   or subagent holder → wait; else `JsonRpcException(RESOURCE_NOT_FOUND)` "Session <id> not found". v2 untouched (own
   lookup, still `-32602`). New `ClientEarlySessionRequestsTest`; `SimpleAgentTest` fail-fast test now real; subagent
   test: request-created holder no longer blocks an announcement; one AGENTS.md rule added. Follow-ups: `data.sessionId`
-  on unknown-session errors (spec `error.mdx:53-55`); design spec lines ~1019/1038 about request-created holders; v2
-  `-32602` alignment. R21 (agreed, user 2026-11-22), a SEPARATE behaviour slice
+  on unknown-session errors (spec `error.mdx:53-55`); v2 `-32602` alignment. (Design spec follow-up folded in.)
+  R21 COMMITTED `9f0220d` with the design spec update (user 2026-11-23); pushed with R20d. Round 20 + R21 done; waiting
+  for the next review round. Open follow-ups: `@UnstableApi` drop (upstream stable), spec cites (Kotlin file:line,
+  RFD → stable page), `data.sessionId`, v2 `-32602`, class-file organisation brainstorm (TODO above), fork history. R21 (agreed, user 2026-11-22), a SEPARATE behaviour slice
   after R20 (R20c, R20d): `ClientSessionRegistry.awaitSession` stops creating speculative holders; a request waits
   only for a completed holder, a claimed root or a subagent holder; anything else (unknown id, or an unclaimed
   speculative holder an update created) fails at once with `-32002` (resource not found), also in the no-opening case
