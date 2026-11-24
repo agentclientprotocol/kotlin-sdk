@@ -376,8 +376,8 @@ during the factory = factory failure, events never collected; probe announces wi
 events patch; follow-ups: `ReplayedTree` test start race, misleading message when a factory swallows the close
 failure; draft commit `feat: make the subagent factory the only way to announce a child` in the report; amended per user note: `createSubagent` grant sentence now says a grant sent during the replay is history); 2 tree incomplete at loaded root's `Opened` (grandchildren) — DECIDED (user agreed option 1, 2026-11-24): KDoc per-session rule
 (at each session's own `Opened` its `subagents` has every child its history announced), no barrier, no helper; reason: each session handles its own stream in order, announcements' setup included; G2 COMMITTED `092397b` (KDoc in `BaseClientSession.subagents` `### After a load`, `SessionEvent.Opened`,
-`ClientSubagentSession`, AGENTS.md clause; `check` green); 3 `ClientSubagentSession` getters
-ahead during the prompt Flow; 4 WARN `CancelRequest for unknown request` log level. 2–4 not discussed yet. E2+E3
+`ClientSubagentSession`, AGENTS.md clause; `check` green); 3 getters ahead during the prompt Flow → DECIDED (user 2026-11-24): KDoc only, getters = latest received from the
+agent, the buffered prompt flow lags behind them (no 'not exact' wording); G3 IN PROGRESS; 4 WARN `CancelRequest for unknown request` log level. 2–4 not discussed yet. E2+E3
 COMMITTED by the user `107763e`. E4 (E0 leftovers) still pending after E5.
 
 Subagent examples goal (user 2026-11-23): comprehensive samples of subagent use from the agent side and the client
@@ -825,6 +825,9 @@ Notes:
   response on one bad field; v2 string patch fields under lenient `ACPJson`; client `close()` removes the holder
   by id not identity; a failed `session/close` leaves the id taken; `elicitation/complete` failed-holder quirk;
   no protocol signal for a finished child, so child holders live until their root closes.
+  v1 `ClientSession.prompt`: an update arriving after the prompt response goes to `notify` while the flow still
+  drains the turn's buffered updates (can overtake them; fix before ever applying patches at collection time);
+  `Event.SessionUpdateEvent` drops the notification's `_meta`.
 - Temporary `.agents/` references left in code by programmers: none reported.
 
 ## Open questions (waiting on the user)
