@@ -370,6 +370,12 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   tests; `check` green (2nd run, JS flake); no API change.
 
 ## Next
+E6 SessionHistory removal (user 2026-11-25: "try to rebuild and see if it actually simplifies things"): replace the
+generic wire-recording `agent/SessionHistory.kt` with replay rebuilt from the agent's own domain record (prompt,
+delegated tasks, outcomes, relayed workers, grandchild); `replayHistory` becomes a plain function in the root; no new
+major component in the sample. Experimental: Opus programmer, single mode, UNCOMMITTED for the user's judgement
+(report a before/after line count and what got simpler or harder). E4 still pending after it.
+
 SDK gaps from E1–E3 (user 2026-11-24, one by one): 1 replay/factory KDoc → DONE, E5 COMMITTED `3e8548b` (9 files;
 wrapper drops the announcement deferred; `check` + `:acp:apiCheck` green, no dump change; deviations: cancelled caller
 during the factory = factory failure, events never collected; probe announces without state, `running` as first
