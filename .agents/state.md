@@ -375,6 +375,13 @@ generic wire-recording `agent/SessionHistory.kt` with replay rebuilt from the ag
 delegated tasks, outcomes, relayed workers, grandchild); `replayHistory` becomes a plain function in the root; no new
 major component in the sample. Experimental: Opus programmer, single mode, UNCOMMITTED for the user's judgement
 (report a before/after line count and what got simpler or harder). E4 still pending after it.
+E6 DONE, UNCOMMITTED (programmer report 2026-11-25): `SessionHistory.kt` deleted, new `agent/TurnRecord.kt`
+(TurnRecord + SubagentRecord with steps), replay in `DelegatingAgentSession` (sections 11-14 renumbered), capability
+filter dropped; main 1770 -> 1740 lines, test 401 -> 447 (3 new replay tests, 15 total); `--rerun` x6, runSubagents,
+`check` green. Costs: recording spread over each send site (a task emitting via the collector would be missed),
+child records still store raw updates, intermediate patches (requires_action/running/title) not replayed, root links
+after all children's histories. Draft commit `refactor: replay the subagents sample from the agent's own turn record`.
+WAITING on the user: keep, adjust (e.g. make `DelegatedTaskScope.say` the only emit path) or revert.
 
 SDK gaps from E1–E3 (user 2026-11-24, one by one): 1 replay/factory KDoc → DONE, E5 COMMITTED `3e8548b` (9 files;
 wrapper drops the announcement deferred; `check` + `:acp:apiCheck` green, no dump change; deviations: cancelled caller
