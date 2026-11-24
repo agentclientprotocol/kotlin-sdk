@@ -14,13 +14,13 @@ import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.model.StateUpdate
 import com.agentclientprotocol.samples.subagents.Transcript
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.FlowCollector
 
 /**
  * Work that the root delegates to a child [id]. The `SampleTasks.kt` file defines the sample's tasks.
  *
  * @property instruction the task's text, sent to the child as a `session_message`
+ * @property name names the task's messages, so that two tasks of one child don't share a message id
  * @property sentMessageId the id of that message in the parent's stream
  * @property receivedMessageId the id of that message in the child's stream
  * @property work what the child does, see [DelegatedTaskScope]
@@ -30,10 +30,11 @@ internal class DelegatedTask(
     val title: String,
     val description: String,
     val instruction: String,
+    val name: String = "task",
     val work: suspend DelegatedTaskScope.() -> Unit,
 ) {
-    val sentMessageId = MessageId("${id.value}-task-sent")
-    val receivedMessageId = MessageId("${id.value}-task")
+    val sentMessageId = MessageId("${id.value}-$name-sent")
+    val receivedMessageId = MessageId("${id.value}-$name")
 }
 
 /**
@@ -45,10 +46,12 @@ internal class DelegatedTask(
  * - 5. patches to a child are ordinary events of the child.
  *
  * @property context the child's context from the factory
+ * @property history the history of the child's stream, where the children it announces are recorded
  */
 internal class DelegatedTaskScope(
     val context: AgentSubagentContext,
     private val collector: FlowCollector<SessionUpdate>,
+    val history: SessionHistory,
     private val transcript: Transcript,
 ) {
     /**
@@ -68,6 +71,18 @@ internal class DelegatedTaskScope(
 
     suspend fun setState(state: StateUpdate) = say(subagentState(context.sessionId, state))
 
+    /**
+     * Grants the client `session/cancel` for this child again, and reports it `running`: the fresh grant after a
+     * `session/load` (scenario 13, in `DelegatingAgentSession`).
+     */
+    suspend fun grantCancel() = say(
+        SessionUpdate.SubagentUpdate(
+            context.sessionId,
+            capabilities = MaybeUndefined.Value(cancelGrant),
+            state = MaybeUndefined.Value(StateUpdate.Running()),
+        )
+    )
+
     /*
      * 3. A child's own requests
      *
@@ -79,8 +94,11 @@ internal class DelegatedTaskScope(
         setState(StateUpdate.RequiresAction())
         val outcome = context.client.requestPermissions(toolCall, listOf(allowOnce, rejectOnce)).outcome
 
-        // The client answers `cancelled` only when it cancels this child or closes its root: the work stops.
-        if (outcome !is RequestPermissionOutcome.Selected) throw CancellationException("The permission was cancelled")
+        /*
+         * A client answers a pending permission request `cancelled` when it cancels the session's work, or closes it or
+         * a session above it, so the work stops.
+         */
+        if (outcome !is RequestPermissionOutcome.Selected) throw PermissionCancelledException()
         transcript.agentLine(context.sessionId, "permission for ${toolCall.title}: ${outcome.optionId.value}")
 
         setState(StateUpdate.Running())
@@ -92,3 +110,10 @@ internal class DelegatedTaskScope(
         val rejectOnce = PermissionOption(PermissionOptionId("reject-once"), "Reject", PermissionOptionKind.REJECT_ONCE)
     }
 }
+
+/**
+ * Thrown by [DelegatedTaskScope.askPermission] when the client answers the request `cancelled`. It is a plain
+ * exception, not a `CancellationException`: the work is stopped by a decision of the client, not by coroutine
+ * cancellation, and `runDelegatedWork` reports it as `idle(cancelled)`.
+ */
+internal class PermissionCancelledException : Exception("The permission request was answered cancelled")

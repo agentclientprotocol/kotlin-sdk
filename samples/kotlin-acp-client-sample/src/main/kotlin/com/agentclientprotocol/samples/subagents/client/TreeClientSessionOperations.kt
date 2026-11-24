@@ -19,12 +19,23 @@ import kotlinx.serialization.json.JsonElement
  *
  * Scenarios in this file, numbered as its section comments:
  * - 2. operations that implement [SubagentOperations], so that their session can have subagents;
- * - 3. a parent's stream: announcements and patches of its subagents, and links to them.
+ * - 3. a parent's stream: announcements and patches of its subagents, and links to them;
+ * - 8. the history that `session/load` replays, before [SessionEvent.Opened];
+ * - 11. the replayed subagents of each session, shown at its `Opened`.
+ *
+ * @property sessionId the id of the session these operations serve
  */
 internal abstract class TreeClientSessionOperations<S : BaseClientSession>(
+    protected val sessionId: SessionId,
     protected val view: ClientTranscript,
     private val user: ScriptedUser,
 ) : ClientSessionOperations, SubagentOperations {
+    /*
+     * Whether this stream's `Opened` was delivered. Only `notify` reads and writes it, and the calls of one stream come
+     * one at a time.
+     */
+    private var opened = false
+
     /**
      * The session of the current call, read from its coroutine context.
      */
@@ -34,6 +45,20 @@ internal abstract class TreeClientSessionOperations<S : BaseClientSession>(
      * Shows the [SessionEvent.Opened] of [session].
      */
     protected abstract fun showOpened(session: S)
+
+    /*
+     * 11. The replayed tree, at each `Opened`
+     *
+     * At a parent's `Opened`, the client has set up every subagent announced in the parent's stream before the
+     * opening call's answer, and after a load it has just dropped what their history said about their state and
+     * grant. Later patches aren't applied yet. So `subagents` and their getters are exact here, for the parent's own
+     * subagents. Deeper ones get their turn at their own parent's `Opened`, whose stream runs on its own.
+     */
+    private fun showSubagentsAtOpen(session: S) {
+        for (subagent in session.subagents) {
+            view.show(subagent.sessionId, "at open: ${subagent.describe()}, under ${session.sessionId.value}")
+        }
+    }
 
     /*
      * 2. Operations that support subagents
@@ -46,7 +71,7 @@ internal abstract class TreeClientSessionOperations<S : BaseClientSession>(
      * them. Inside the returned operations, the context gives the subagent's session.
      */
     override suspend fun createSubagentOperations(sessionId: SessionId): ClientSessionOperations =
-        SubagentClientSessionOperations(view, user)
+        SubagentClientSessionOperations(sessionId, view, user)
 
     /*
      * 3. A parent's stream
@@ -56,11 +81,28 @@ internal abstract class TreeClientSessionOperations<S : BaseClientSession>(
      * the subagent from there.
      */
     override suspend fun notify(event: SessionEvent) {
-        val session = session()
         when (event) {
-            is SessionEvent.Opened -> showOpened(session)
-            is SessionEvent.Update -> showUpdate(session, event.update)
+            is SessionEvent.Opened -> {
+                opened = true
+                val session = session()
+                showOpened(session)
+                showSubagentsAtOpen(session)
+            }
+
+            is SessionEvent.Update -> if (opened) showUpdate(session(), event.update) else showHistory(event.update)
         }
+    }
+
+    /*
+     * 8. History, before `Opened`
+     *
+     * The updates before `Opened` came before the answer of the call that opened the root: here the history that
+     * `session/load` replays. While the client's early `loadSession` overload delivers it, the root's `ClientSession`
+     * doesn't exist yet, so the context has no root session, and the `capabilities` and `state` of a replayed
+     * subagent are held back and then dropped. So show the update itself.
+     */
+    private fun showHistory(update: SessionUpdate) {
+        view.show(sessionId, "history: ${update.describe()}", update)
     }
 
     private fun showUpdate(parent: BaseClientSession, update: SessionUpdate) {

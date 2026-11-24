@@ -15,25 +15,36 @@ import com.agentclientprotocol.model.StateUpdate
 import com.agentclientprotocol.samples.subagents.Transcript
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.receiveAsFlow
 
 /**
- * A relayed worker of the native agent: its events are the ones the relay feeds into the channel.
+ * A relayed worker of the native agent: its events are the updates the relay [feed]s it, which [history] records on
+ * the stream they go on as the SDK sends them.
  *
  * Scenario in this file: 10. relay, an agent that wraps a native agent with a flat event stream announces nested
  * children with `parent`.
  */
-internal class NativeRelayedSubagentSession(feed: ReceiveChannel<SessionUpdate>) : AgentSubagentSession {
+internal class NativeRelayedSubagentSession(val history: SessionHistory) : AgentSubagentSession {
+    private val updates = Channel<SessionUpdate>(Channel.UNLIMITED)
+
     /**
      * Completes once the SDK has sent the last of the events.
      */
     val drained = CompletableDeferred<Unit>()
 
-    override val events: Flow<SessionUpdate> = feed.receiveAsFlow().onCompletion { drained.complete(Unit) }
+    override val events: Flow<SessionUpdate> =
+        history.recording(updates.receiveAsFlow()).onCompletion { drained.complete(Unit) }
+
+    fun feed(update: SessionUpdate) {
+        updates.trySend(update)
+    }
+
+    fun end() {
+        updates.close()
+    }
 }
 
 /*
@@ -47,17 +58,21 @@ internal class NativeRelayedSubagentSession(feed: ReceiveChannel<SessionUpdate>)
  * `parent` defaults to the session that `subagents` belongs to, here the root. It may name any announced subagent
  * below it, and then the announcement goes on that subagent's stream.
  */
-internal suspend fun FlowCollector<Event>.relayNativeAgent(subagents: AgentSubagents, transcript: Transcript) {
-    val feeds = mutableMapOf<String, Channel<SessionUpdate>>()
-    val relayed = mutableListOf<NativeRelayedSubagentSession>()
-    fakeNativeAgentEvents().collect { event ->
+internal suspend fun FlowCollector<Event>.relayNativeAgent(
+    subagents: AgentSubagents,
+    rootHistory: SessionHistory,
+    transcript: Transcript,
+) {
+    val relayed = mutableMapOf<String, NativeRelayedSubagentSession>()
+    FakeNativeAgent.events().collect { event ->
         when (event) {
             is NativeEvent.Spawned -> {
                 val id = relayedId(event.worker)
-                val feed = Channel<SessionUpdate>(Channel.UNLIMITED).also { feeds[event.worker] = it }
+                val parentHistory = event.parent?.let { relayed.getValue(it).history } ?: rootHistory
+                val session = NativeRelayedSubagentSession(parentHistory.child(id))
 
                 // The announcement is the first item of the events this time: `announce` waits until it is sent.
-                feed.send(
+                session.feed(
                     SessionUpdate.SubagentUpdate(
                         id,
                         title = MaybeUndefined.Value(event.title),
@@ -65,21 +80,21 @@ internal suspend fun FlowCollector<Event>.relayNativeAgent(subagents: AgentSubag
                     )
                 )
                 val parent = event.parent?.let(::relayedId)
-                relayed += subagents.announce(id, AgentSubagentFactory { NativeRelayedSubagentSession(feed) }, parent)
+                relayed[event.worker] = subagents.announce(id, AgentSubagentFactory { session }, parent)
                 transcript.agentLine(id, "relays native worker ${event.worker} under ${event.parent ?: "the root"}")
             }
 
-            is NativeEvent.Output -> feeds.getValue(event.worker).send(message(event.text))
+            is NativeEvent.Output -> relayed.getValue(event.worker).feed(message(event.text))
 
-            is NativeEvent.Finished -> feeds.remove(event.worker)?.run {
-                send(subagentState(relayedId(event.worker), StateUpdate.Idle(IdleStopReason.EndTurn)))
-                close()
+            is NativeEvent.Finished -> relayed.getValue(event.worker).run {
+                feed(subagentState(relayedId(event.worker), StateUpdate.Idle(IdleStopReason.EndTurn)))
+                end()
             }
         }
     }
 
     // The turn's response then follows every relayed update.
-    relayed.forEach { it.drained.await() }
+    relayed.values.forEach { it.drained.await() }
     say(message("Relayed ${relayed.size} workers of the native agent"))
 }
 

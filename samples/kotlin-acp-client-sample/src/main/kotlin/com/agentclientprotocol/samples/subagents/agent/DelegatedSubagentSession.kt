@@ -8,6 +8,7 @@ import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.ContentBlock
 import com.agentclientprotocol.model.IdleStopReason
 import com.agentclientprotocol.model.MaybeUndefined
+import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.model.StateUpdate
@@ -15,32 +16,38 @@ import com.agentclientprotocol.rpc.JsonRpcError
 import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import com.agentclientprotocol.samples.subagents.Transcript
 import com.agentclientprotocol.samples.subagents.describe
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * A delegated child: it runs one [task] for its parent [parentId].
  *
  * The work runs inside [events], which the SDK collects once the factory has returned, so each update the work emits
- * is sent before the work goes on. That flow is the one path for every update of the child.
+ * is sent before the work goes on. That flow is the one path for every update of the child, and [history] records
+ * each one on the stream it goes on.
  *
  * Scenarios in this file, numbered as its section comments:
  * - 6. cancel: the client cancels the child, which stops its work and reports `idle(cancelled)`;
  * - 7. failure: work that throws reports `idle(error)`.
+ *
+ * @param parentMessageId the id of the parent's own view of the task's message, if the parent sent one; the child's
+ * view links to it
  */
 internal class DelegatedSubagentSession(
     val task: DelegatedTask,
     private val parentId: SessionId,
+    private val parentMessageId: MessageId?,
     private val context: AgentSubagentContext,
+    private val history: SessionHistory,
     private val transcript: Transcript,
 ) : AgentSubagentSession {
     private val cancelRequested = CompletableDeferred<Unit>()
@@ -50,19 +57,22 @@ internal class DelegatedSubagentSession(
      */
     val outcome = CompletableDeferred<IdleStopReason>()
 
-    override val events: Flow<SessionUpdate> = flow {
+    override val events: Flow<SessionUpdate> = history.recording(flow {
         // The incoming view of the parent's message starts the child's stream, before the child's answer to it.
         emit(
             SessionUpdate.SessionMessage(
                 task.receivedMessageId,
                 senderSessionId = MaybeUndefined.Value(parentId),
                 recipientSessionId = MaybeUndefined.Value(task.id),
-                senderMessageId = MaybeUndefined.Value(task.sentMessageId),
+                senderMessageId = parentMessageId?.let { MaybeUndefined.Value(it) } ?: MaybeUndefined.Undefined,
                 content = MaybeUndefined.Value(listOf(ContentBlock.Text(task.instruction))),
             )
         )
 
-        val stopReason = runTask(this)
+        val collector = this
+        val stopReason = runDelegatedWork(cancelRequested) {
+            DelegatedTaskScope(context, collector, history, transcript).(task.work)()
+        }
         emit(subagentState(task.id, StateUpdate.Idle(stopReason)))
         transcript.agentLine(task.id, "task ended: ${stopReason.describe()}")
         outcome.complete(stopReason)
@@ -72,31 +82,7 @@ internal class DelegatedSubagentSession(
          * sample gives it none, so the feed stays open until the SDK removes the child with its root.
          */
         awaitCancellation()
-    }
-
-    private suspend fun runTask(collector: FlowCollector<SessionUpdate>): IdleStopReason = try {
-        coroutineScope {
-            val cancelWatch = launch {
-                cancelRequested.await()
-                this@coroutineScope.cancel("Cancelled by the client")
-            }
-            DelegatedTaskScope(context, collector, transcript).(task.work)()
-            cancelWatch.cancel()
-        }
-        IdleStopReason.EndTurn
-    } catch (e: CancellationException) {
-        // A cancellation of the collection itself, as when the SDK removes the child, is not an outcome to report.
-        currentCoroutineContext().ensureActive()
-        IdleStopReason.Cancelled
-    } catch (e: Exception) {
-        /*
-         * 7. Failure
-         *
-         * A failure that ends the work is `idle` with the `error` stop reason and, when available, a JSON-RPC error.
-         * It doesn't close the child.
-         */
-        IdleStopReason.Error(JsonRpcError(JsonRpcErrorCode.INTERNAL_ERROR.code, e.message ?: "The task failed"))
-    }
+    })
 
     /*
      * 6. Cancel
@@ -116,3 +102,48 @@ internal class DelegatedSubagentSession(
         outcome.await()
     }
 }
+
+/**
+ * Runs [work] until it ends or [cancelRequested] completes, and tells how it ended:
+ * - [IdleStopReason.EndTurn] when [work] returns;
+ * - [IdleStopReason.Cancelled] when [cancelRequested] completes first, or the work's permission request is answered
+ *   `cancelled` ([PermissionCancelledException]);
+ * - [IdleStopReason.Error] when [work] throws, a timeout inside it included.
+ *
+ * A cancellation of the caller, as when the SDK removes the child, isn't an outcome: it propagates.
+ */
+internal suspend fun runDelegatedWork(cancelRequested: Deferred<Unit>, work: suspend () -> Unit): IdleStopReason {
+    // Decides once whether the work finished or the cancel stopped it, so a late cancel changes nothing.
+    val ending = AtomicReference(WorkEnding.RUNNING)
+
+    return try {
+        coroutineScope {
+            val cancelWatch = launch {
+                cancelRequested.await()
+                if (ending.compareAndSet(WorkEnding.RUNNING, WorkEnding.CANCELLED)) this@coroutineScope.cancel()
+            }
+            work()
+            ending.compareAndSet(WorkEnding.RUNNING, WorkEnding.FINISHED)
+            cancelWatch.cancel()
+        }
+        if (ending.get() == WorkEnding.CANCELLED) IdleStopReason.Cancelled else IdleStopReason.EndTurn
+    } catch (e: PermissionCancelledException) {
+        IdleStopReason.Cancelled
+    } catch (e: Exception) {
+        currentCoroutineContext().ensureActive()
+        if (ending.get() == WorkEnding.CANCELLED) {
+            IdleStopReason.Cancelled
+        } else {
+            /*
+             * 7. Failure
+             *
+             * A failure that ends the work is `idle` with the `error` stop reason and, when available, a JSON-RPC
+             * error. It doesn't close the child. A `TimeoutCancellationException` from a `withTimeout` in the work
+             * lands here too: the caller is still active, so it is the work's failure, not a cancellation.
+             */
+            IdleStopReason.Error(JsonRpcError(JsonRpcErrorCode.INTERNAL_ERROR.code, e.message ?: "The task failed"))
+        }
+    }
+}
+
+private enum class WorkEnding { RUNNING, FINISHED, CANCELLED }

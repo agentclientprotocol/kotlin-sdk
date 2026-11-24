@@ -24,8 +24,10 @@ import kotlinx.coroutines.flow.flow
  * The child's own `subagents`, from its context, announce under the child: the announcement goes on the child's
  * stream. As for the root, `announce` returning is the point after which the child's updates may name the grandchild.
  */
-internal suspend fun DelegatedTaskScope.startRemoteProbe(id: SessionId): RemoteProbeSubagentSession =
-    context.subagents.announce(id, AgentSubagentFactory { RemoteProbeSubagentSession(id, parent = context.sessionId) })
+internal suspend fun DelegatedTaskScope.startRemoteProbe(id: SessionId): RemoteProbeSubagentSession {
+    val probe = RemoteProbeSubagentSession(id, parent = context.sessionId, history.child(id))
+    return context.subagents.announce(id, AgentSubagentFactory { probe })
+}
 
 /**
  * The tester's grandchild: a probe on a remote runner that the agent observes only through the runner's connection.
@@ -36,12 +38,17 @@ internal suspend fun DelegatedTaskScope.startRemoteProbe(id: SessionId): RemoteP
  * - 8. a grandchild, announced through the child's own `subagents`.
  *
  * Unlike a delegated child, the probe's announcement is the first item of its [events], not sent by the factory.
+ * [history] records every item on the stream it goes on.
  */
-internal class RemoteProbeSubagentSession(val id: SessionId, private val parent: SessionId) : AgentSubagentSession {
+internal class RemoteProbeSubagentSession(
+    val id: SessionId,
+    private val parent: SessionId,
+    private val history: SessionHistory,
+) : AgentSubagentSession {
     private val assigned = CompletableDeferred<String>()
     private val result = CompletableDeferred<String>()
 
-    override val events: Flow<SessionUpdate> = flow {
+    override val events: Flow<SessionUpdate> = history.recording(flow {
         emit(
             SessionUpdate.SubagentUpdate(
                 id,
@@ -71,7 +78,7 @@ internal class RemoteProbeSubagentSession(val id: SessionId, private val parent:
          * ended reports `idle` with a stop reason instead.
          */
         result.completeExceptionally(IllegalStateException("Lost the connection to the Linux runner"))
-    }
+    })
 
     /**
      * Gives the probe its task and waits for the result.

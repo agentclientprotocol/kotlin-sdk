@@ -32,6 +32,12 @@ internal class ScriptedUser(private val view: ClientTranscript) {
         val options: List<PermissionOption>,
     ) {
         val answer = CompletableDeferred<RequestPermissionOutcome>()
+
+        /**
+         * Set before the user cancels the asking subagent, so the request's handler knows why it was cancelled.
+         */
+        @Volatile
+        var subagentCancelled = false
     }
 
     private val prompts = Channel<PermissionPrompt>(Channel.UNLIMITED)
@@ -57,7 +63,9 @@ internal class ScriptedUser(private val view: ClientTranscript) {
         try {
             return RequestPermissionResponse(prompt.answer.await())
         } catch (e: CancellationException) {
-            view.show(session.sessionId, PERMISSION_ANSWERED_CANCELLED)
+            // Other cancellations, like the connection's end, answer nothing.
+            val text = if (prompt.subagentCancelled) PERMISSION_ANSWERED_CANCELLED else "permission request dismissed"
+            view.show(session.sessionId, text)
             throw e
         }
     }
@@ -66,20 +74,31 @@ internal class ScriptedUser(private val view: ClientTranscript) {
      * 5. Answering a subagent's permission request, and 6. cancelling a subagent
      *
      * The user allows everything except deleting files. When a subagent asks to delete, the user cancels the subagent
-     * instead of answering. `canCancel` follows the agent's latest grant, and `cancel()` checks it again. `cancel()`
-     * sends `session/cancel` for the subagent and answers its pending permission requests `cancelled`.
+     * instead of answering, if the agent granted cancel for it, and rejects the request otherwise. `canCancel` follows
+     * the agent's latest grant, and `cancel()` checks it again. `cancel()` sends `session/cancel` for the subagent and
+     * answers its pending permission requests `cancelled`.
      */
     suspend fun run() {
         for (prompt in prompts) {
             val subagent = prompt.session as? ClientSubagentSession
-            if (prompt.toolCall.kind == ToolKind.DELETE && subagent != null && subagent.canCancel) {
-                view.show(subagent.sessionId, USER_CANCELS)
-                subagent.cancel()
-            } else {
-                val allow = prompt.options.first { it.kind == PermissionOptionKind.ALLOW_ONCE }
-                view.show(prompt.session.sessionId, "user allows: ${prompt.toolCall.title}")
-                prompt.answer.complete(RequestPermissionOutcome.Selected(allow.optionId))
+            when {
+                prompt.toolCall.kind != ToolKind.DELETE -> answer(prompt, PermissionOptionKind.ALLOW_ONCE, "allows")
+
+                subagent != null && subagent.canCancel -> {
+                    prompt.subagentCancelled = true
+                    view.show(subagent.sessionId, USER_CANCELS)
+                    subagent.cancel()
+                }
+
+                else -> answer(prompt, PermissionOptionKind.REJECT_ONCE, "rejects")
             }
         }
+    }
+
+    // The sample's agent offers both an allow and a reject option with every request.
+    private fun answer(prompt: PermissionPrompt, kind: PermissionOptionKind, verb: String) {
+        val option = prompt.options.first { it.kind == kind }
+        view.show(prompt.session.sessionId, "user $verb: ${prompt.toolCall.title}")
+        prompt.answer.complete(RequestPermissionOutcome.Selected(option.optionId))
     }
 }

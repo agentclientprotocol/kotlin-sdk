@@ -18,30 +18,39 @@ import com.agentclientprotocol.samples.subagents.Side
 import com.agentclientprotocol.samples.subagents.Transcript
 import com.agentclientprotocol.samples.subagents.agent.NATIVE_AGENT_REQUEST
 import com.agentclientprotocol.transport.Transport
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+
+/**
+ * The two root session objects of one run: the one [runSubagentsClient] opened, and the one it loaded after closing
+ * the first. Both are closed when the run ends.
+ */
+class SubagentsSessions(val opened: ClientSession, val loaded: ClientSession)
 
 /**
  * Runs the client of the subagents sample over [transport], and the place to start reading it. The client opens a
  * session, sends two prompts, shows the subagents the agent announces, answers their permission requests through a
- * [ScriptedUser], and closes the session at the end.
+ * [ScriptedUser], and closes the session. Then it loads the session again, cancels the subagent that the agent granted
+ * cancel again, and closes the session once more.
  *
  * Scenarios in this file, numbered as its section comments:
  * - 1. declaring the `subagents` capability in [ClientInfo];
  * - 3. a parent's stream during a turn, where the root's updates come through the prompt's flow;
- * - 7. closing the root, which closes every subagent below it.
+ * - 7. closing the root, which closes every subagent below it;
+ * - 9. loading the closed session again;
+ * - 10. cancelling a replayed subagent once the agent granted cancel again.
  *
  * The other client scenarios are in [TreeClientSessionOperations] and its subclasses, and in [ScriptedUser]. Every
  * line the client writes to [transcript] is marked [Side.CLIENT].
  *
  * @param declareSubagents whether to declare the `subagents` capability; without it the agent exposes no subagents
- * @return the root session, closed
+ * @return both root session objects, closed
  */
-suspend fun CoroutineScope.runSubagentsClient(
+suspend fun runSubagentsClient(
     transport: Transport,
     transcript: Transcript,
     declareSubagents: Boolean = true,
-): ClientSession {
+): SubagentsSessions = coroutineScope {
     val protocol = Protocol(this, transport)
     val client = Client(protocol)
     protocol.start()
@@ -63,12 +72,12 @@ suspend fun CoroutineScope.runSubagentsClient(
         view.show(null, "initialized ACP v${agentInfo.protocolVersion} with $agentName, subagents $declared")
 
         val parameters = SessionCreationParameters("/work/project", emptyList())
-        val session = client.newSession(parameters) { _, _ -> RootClientSessionOperations(view, user) }
+        val session = client.newSession(parameters) { id, _ -> RootClientSessionOperations(id, view, user) }
         runTurn(session, view, "Review, clean up and test the change")
         runTurn(session, view, "Ask the $NATIVE_AGENT_REQUEST to plan the release")
 
-        // Before closing, wait until no subagent reports foreground work.
-        view.awaitUntil { session.subagents.descendants().none { it.state.isActive() } }
+        // Before closing, wait until every listed subagent has opened and none reports foreground work.
+        view.awaitSettled(session)
         view.showTree(session.subagents, "before close")
 
         /*
@@ -80,7 +89,42 @@ suspend fun CoroutineScope.runSubagentsClient(
          */
         session.close()
         view.showTree(session.subagents, "after close")
-        return session
+
+        /*
+         * 9. Loading the session again
+         *
+         * The close freed the id, so the client can load the session on the same connection. This overload of
+         * `loadSession` takes the operations object up front and delivers the replayed history as it arrives, instead
+         * of buffering it until the answer. Every stream of the tree, the root's and each replayed subagent's, gets its
+         * history, then `Opened`, then live updates (section 8 in `TreeClientSessionOperations`).
+         *
+         * The loaded session is a new object with a new tree of subagents, rebuilt from the replayed announcements.
+         * After a load, a replayed subagent starts with no confirmed state and no cancel grant: what the history said
+         * about them is dropped at its parent's `Opened`, where the client shows the parent's subagents.
+         */
+        view.show(session.sessionId, LOADING)
+        val loadedOperations = RootClientSessionOperations(session.sessionId, view, user)
+        val loaded = client.loadSession(session.sessionId, parameters, loadedOperations)
+
+        /*
+         * 10. Cancelling a replayed subagent
+         *
+         * A replayed subagent can be cancelled only once the agent grants cancel again, through a live
+         * `subagent_update` after the load's answer. The user cancels the one that is running with such a grant.
+         */
+        if (loaded.subagents.isNotEmpty()) {
+            val running = view.awaitValue {
+                loaded.subagents.descendants().firstOrNull { it.canCancel && it.state is StateUpdate.Running }
+            }
+            view.show(running.sessionId, "user cancels the replayed subagent after its fresh grant")
+            running.cancel()
+        }
+
+        view.awaitSettled(loaded)
+        view.showTree(loaded.subagents, "before the second close")
+        loaded.close()
+        view.showTree(loaded.subagents, "after the second close")
+        SubagentsSessions(session, loaded)
     } finally {
         userJob.cancel()
         protocol.close()
@@ -105,4 +149,26 @@ private suspend fun runTurn(session: ClientSession, view: ClientTranscript, requ
     }
 }
 
-private fun StateUpdate?.isActive() = this is StateUpdate.Running || this is StateUpdate.RequiresAction
+/**
+ * The client's line that marks where the load of the closed session starts.
+ */
+const val LOADING = "user: load the closed session again"
+
+/**
+ * Waits until every subagent listed below [root] has delivered its `Opened` and none reports foreground work.
+ *
+ * A subagent's `Opened` follows the announcements of its own subagents in its stream, so once every listed one has
+ * opened, the list is complete as far as the agent had announced before the opening call's answer.
+ */
+private suspend fun ClientTranscript.awaitSettled(root: ClientSession) = awaitUntil {
+    val all = root.subagents.descendants()
+    all.all(::hasOpened) && all.none { it.state.isActive() }
+}
+
+/**
+ * Whether a state reports foreground work. An unrecognized state counts as active, as the SDK and the spec treat it.
+ */
+private fun StateUpdate?.isActive() = when (this) {
+    is StateUpdate.Running, is StateUpdate.RequiresAction, is StateUpdate.Other -> true
+    is StateUpdate.Idle, is StateUpdate.Unknown, null -> false
+}

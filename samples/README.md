@@ -88,7 +88,12 @@ Package `com.agentclientprotocol.samples.subagents`. Run with `runSubagents`.
 A scripted run, with no input: the client opens a session and sends two prompts, then closes the session. The agent
 delegates the first prompt to three subagents. The reviewer completes, the user cancels the cleaner while its
 permission request is pending, and the tester fails after it started a grandchild whose feed is lost. The agent relays
-the second prompt to a native agent, whose workers become nested subagents. The app prints what each side sees.
+the second prompt to a native agent, whose workers become nested subagents.
+
+Then the client loads the closed session again. The agent replays the session's history, subagents included, and each
+stream gets its history, then `Opened`, then live updates. The replayed subagents start with no confirmed state and no
+cancel grant. The agent grants cancel again to the reviewer, which works on a new task, and the user cancels it. The
+client then closes the session again. The app prints what each side sees.
 
 Read `agent/DelegatingAgentSession.kt` first for the agent side and `client/SubagentsClient.kt` for the client side.
 `SubagentsApp.kt` wires them together in one process, and `Transcript.kt` holds the lines both sides write.
@@ -100,14 +105,15 @@ Each file is named after the SDK type it implements or mainly uses. The agent si
 - `DelegatedSubagentFactory.kt`: the `AgentSubagentFactory` that sends a delegated child's announcement.
 - `DelegatedSubagentSession.kt`: the `AgentSubagentSession` of a delegated child; it runs a `DelegatedTask`.
 - `DelegatedTask.kt`: a task, and what its work can do through the child's context.
-- `SampleTasks.kt`: the reviewer, cleaner and tester tasks.
+- `SampleTasks.kt`: the reviewer, cleaner and tester tasks, and the reviewer's task after the load.
+- `SessionHistory.kt`: the recorded stream of each session, in its live order, and its replay for `session/load`.
 - `RemoteProbeSubagentSession.kt`: the tester's grandchild.
 - `NativeRelayedSubagentSession.kt`: a relayed worker of a native agent, and the relay loop.
-- `FakeNativeAgent.kt`: the simulated native agent's flat event stream; it uses no SDK type.
+- `FakeNativeAgent.kt`: the simulated native agent and its flat event stream; it uses no SDK type.
 
 The client side, in package `client`:
 
-- `SubagentsClient.kt`: runs the `Client`: initialize, the two prompts, close.
+- `SubagentsClient.kt`: runs the `Client`: initialize, the two prompts, close, load, close.
 - `TreeClientSessionOperations.kt`: the `ClientSessionOperations` and `SubagentOperations` shared by every session.
 - `RootClientSessionOperations.kt` and `SubagentClientSessionOperations.kt`: the operations of the root and of a
   subagent.
@@ -129,15 +135,23 @@ Where each scenario lives:
 | A grandchild | `RemoteProbeSubagentSession` (8) | `TreeClientSessionOperations` (3) |
 | Closing the root | `DelegatingAgentSession` (9) | `SubagentsClient` (7) |
 | Relay of a native agent, `announce(…, parent = …)` | `NativeRelayedSubagentSession` (10) | |
+| Recording each stream in its live order, children included | `SessionHistory` (11) | |
+| `session/load`: replaying each stream in that order | `SessionHistory` (12) | `SubagentsClient` (9), `TreeClientSessionOperations` (8) |
+| The replayed tree, at each parent's `Opened` | | `TreeClientSessionOperations` (11) |
+| A fresh cancel grant after the load | `DelegatingAgentSession` (13) | `SubagentsClient` (10) |
+| The current state of a finished child after the load | `SessionHistory` (14) | |
 
 The numbers are those of the section comments in each side's files.
 
 The streams of different sessions are delivered concurrently, so lines of different sessions may interleave differently
-from run to run. The run task logs only warnings, to stderr. One is expected: the agent stops the cleaner's work while
-its permission request is pending, which cancels the request, and the client logs the `$/cancel_request` for a request
-it has already answered `cancelled`.
+from run to run. The run task logs only warnings, to stderr. One may appear, depending on timing: when the user
+cancels the cleaner, the client answers its pending permission request `cancelled`, and the agent stops the cleaner's
+work. If the agent's stop cancels the request before the answer arrives, the agent sends `$/cancel_request` for it, and
+the client logs that it got a cancel for a request it has already answered.
 
-`SubagentsSampleTest` runs the same script and checks its key events, so `./gradlew check` fails if the sample breaks.
+`SubagentsSampleTest` runs the same script, on one thread and on `Dispatchers.Default`, and checks its key events, so
+`./gradlew check` fails if the sample breaks. `agent/DelegatedWorkTest` checks how a task's end maps to its `idle`
+stop reason.
 
 ## support
 

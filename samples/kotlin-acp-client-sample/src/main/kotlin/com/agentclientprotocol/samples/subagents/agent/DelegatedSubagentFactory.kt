@@ -15,13 +15,20 @@ import com.agentclientprotocol.model.SubagentSessionCapabilities
 import com.agentclientprotocol.samples.subagents.Transcript
 
 /**
- * Builds the child that runs [task] for the parent [parentId], for `AgentSubagents.announce`.
+ * The `capabilities` that let the client send `session/cancel` for a child.
+ */
+internal val cancelGrant = SubagentSessionCapabilities(cancel = SessionCancelCapabilities())
+
+/**
+ * Builds the child that runs [task] for the parent [parentId], for `AgentSubagents.announce`, and records the child's
+ * updates through [history], the child's own.
  *
  * Scenario in this file: 2. announcing a child.
  */
 internal class DelegatedSubagentFactory(
     private val task: DelegatedTask,
     private val parentId: SessionId,
+    private val history: SessionHistory,
     private val transcript: Transcript,
 ) : AgentSubagentFactory<DelegatedSubagentSession> {
     /*
@@ -35,15 +42,14 @@ internal class DelegatedSubagentFactory(
      * - the state `running`, because the work starts with the announcement.
      */
     override suspend fun createSubagent(context: AgentSubagentContext): DelegatedSubagentSession {
-        context.client.notify(
-            SessionUpdate.SubagentUpdate(
-                task.id,
-                title = MaybeUndefined.Value(task.title),
-                description = MaybeUndefined.Value(task.description),
-                capabilities = MaybeUndefined.Value(SubagentSessionCapabilities(cancel = SessionCancelCapabilities())),
-                state = MaybeUndefined.Value(StateUpdate.Running()),
-            )
+        val announcement = SessionUpdate.SubagentUpdate(
+            task.id,
+            title = MaybeUndefined.Value(task.title),
+            description = MaybeUndefined.Value(task.description),
+            capabilities = MaybeUndefined.Value(cancelGrant),
+            state = MaybeUndefined.Value(StateUpdate.Running()),
         )
-        return DelegatedSubagentSession(task, parentId, context, transcript)
+        history.send(announcement) { context.client.notify(it) }
+        return DelegatedSubagentSession(task, parentId, task.sentMessageId, context, history, transcript)
     }
 }

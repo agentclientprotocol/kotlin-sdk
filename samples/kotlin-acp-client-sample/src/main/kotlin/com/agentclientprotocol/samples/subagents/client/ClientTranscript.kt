@@ -14,7 +14,9 @@ import com.agentclientprotocol.samples.subagents.TranscriptLine
 import com.agentclientprotocol.samples.subagents.describe
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.update
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * What the client shows: it writes the client's lines to the transcript and renders sessions and updates.
@@ -25,6 +27,18 @@ internal class ClientTranscript(private val transcript: Transcript) {
      * wants a flow of a subagent's values keeps its own like this, updated from the events.
      */
     private val shown = MutableStateFlow(0)
+
+    // Compared by identity: a loaded session's subagents are new objects with the same ids.
+    private val openedSubagents: MutableSet<ClientSubagentSession> = ConcurrentHashMap.newKeySet()
+
+    /**
+     * Records that [subagent] delivered its `Opened`. Called before its line is shown, so [awaitUntil] sees it.
+     */
+    fun markOpened(subagent: ClientSubagentSession) {
+        openedSubagents += subagent
+    }
+
+    fun hasOpened(subagent: ClientSubagentSession): Boolean = subagent in openedSubagents
 
     fun show(sessionId: SessionId?, text: String, update: SessionUpdate? = null) {
         transcript.add(TranscriptLine(Side.CLIENT, sessionId, text, update))
@@ -37,6 +51,11 @@ internal class ClientTranscript(private val transcript: Transcript) {
     suspend fun awaitUntil(condition: () -> Boolean) {
         shown.first { condition() }
     }
+
+    /**
+     * Waits until [read] returns a value, checking it again after each line shown.
+     */
+    suspend fun <T : Any> awaitValue(read: () -> T?): T = shown.mapNotNull { read() }.first()
 
     fun showTree(subagents: List<ClientSubagentSession>, moment: String) {
         for (subagent in subagents.descendants()) {
@@ -66,6 +85,7 @@ internal fun SessionUpdate.describe(): String = when (this) {
     is SessionUpdate.ToolCall -> "tool call \"$title\": ${status?.name?.lowercase()}" + sessionLinks(content)
     is SessionUpdate.ToolCallUpdate -> "tool call ${toolCallId.value}: ${status?.name?.lowercase()}"
     is SessionUpdate.AgentMessageChunk -> "says: ${listOf(content).text()}"
+    is SessionUpdate.UserMessageChunk -> "user said: ${listOf(content).text()}"
     else -> this::class.simpleName ?: "update"
 }
 

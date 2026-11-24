@@ -5,6 +5,7 @@ package com.agentclientprotocol.samples.subagents.client
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.ClientSubagentSession
 import com.agentclientprotocol.client.clientSubagentSession
+import com.agentclientprotocol.model.SessionId
 import kotlinx.coroutines.currentCoroutineContext
 
 /**
@@ -15,8 +16,8 @@ import kotlinx.coroutines.currentCoroutineContext
  * - 4. a subagent's own stream: history, then `Opened`, then live updates;
  * - 5. a subagent's permission request, which the user answers on the subagent's behalf (see [ScriptedUser]).
  */
-internal class SubagentClientSessionOperations(view: ClientTranscript, user: ScriptedUser) :
-    TreeClientSessionOperations<ClientSubagentSession>(view, user) {
+internal class SubagentClientSessionOperations(sessionId: SessionId, view: ClientTranscript, user: ScriptedUser) :
+    TreeClientSessionOperations<ClientSubagentSession>(sessionId, view, user) {
     /*
      * 4. A subagent's own stream
      *
@@ -33,6 +34,7 @@ internal class SubagentClientSessionOperations(view: ClientTranscript, user: Scr
     override suspend fun session(): ClientSubagentSession = currentCoroutineContext().clientSubagentSession
 
     override fun showOpened(session: ClientSubagentSession) {
+        view.markOpened(session)
         val parent = session.parentSessionId.value
         view.show(session.sessionId, "opened under $parent as \"${session.title}\", live from here")
     }

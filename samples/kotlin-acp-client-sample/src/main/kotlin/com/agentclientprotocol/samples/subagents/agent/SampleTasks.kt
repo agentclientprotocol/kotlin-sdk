@@ -7,6 +7,7 @@ import com.agentclientprotocol.model.ToolCallContent
 import com.agentclientprotocol.model.ToolCallId
 import com.agentclientprotocol.model.ToolCallStatus
 import com.agentclientprotocol.model.ToolKind
+import kotlinx.coroutines.awaitCancellation
 
 /**
  * The three tasks the root delegates for the first prompt:
@@ -61,3 +62,16 @@ internal val sampleTasks = listOf(
         probe.rerun("Rerun FooTest")
     },
 )
+
+/**
+ * The reviewer's task after the session is loaded again (scenario 13): it grants cancel again once it watches the
+ * file, and watches until the user cancels it.
+ */
+internal val reviewerFollowUp = DelegatedTask(
+    sampleTasks.first().id, "Reviewer", "Reviews the change in Foo.kt", "Watch src/Foo.kt for new changes",
+    name = "watch",
+) {
+    say(SessionUpdate.ToolCall(ToolCallId("watch-foo"), "Watch src/Foo.kt", ToolKind.READ, ToolCallStatus.IN_PROGRESS))
+    grantCancel()
+    awaitCancellation()
+}
