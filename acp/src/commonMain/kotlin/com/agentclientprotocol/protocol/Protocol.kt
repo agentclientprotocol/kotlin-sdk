@@ -136,7 +136,11 @@ public class Protocol(
             val incomingRequestId = IncomingRequestId(request.requestId)
             val incoming = pendingIncomingRequests.value[incomingRequestId]
             if (incoming == null) {
-                logger.warn { "Received CancelRequest for unknown request: ${request.requestId}" }
+                /*
+                 * Not a warning: once the entry is gone this is indistinguishable from the already-answered
+                 * case below. The counterpart cancels while our answer is on its way or already sent.
+                 */
+                logger.debug { "Ignoring CancelRequest for unknown request: ${request.requestId}" }
                 return@setNotificationHandler
             }
             val cancelled = incoming.cancelByCounterpart(
@@ -655,7 +659,11 @@ public class Protocol(
                 )
             }
         } else {
-            logger.warn { "Received response for unknown request ID: ${response.id}" }
+            /*
+             * Not a warning: a call cancelled on this side drops its pending entry, either after the graceful
+             * wait times out or at once for a batch, and the counterpart's answer may still arrive later.
+             */
+            logger.debug { "Ignoring response for unknown request ID: ${response.id}" }
         }
     }
 
