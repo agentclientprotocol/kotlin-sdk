@@ -177,6 +177,17 @@ class AgentSubagentsTest {
     }
 
     /**
+     * A factory that sends the child's plain announcement and returns a [TestSubagent] with [events].
+     */
+    private fun announcing(
+        events: Flow<SessionUpdate> = emptyFlow(),
+        onCancel: suspend () -> Unit = {},
+    ) = AgentSubagentFactory { context ->
+        context.client.notify(announcement(context.sessionId))
+        TestSubagent(events, onCancel)
+    }
+
+    /**
      * An initialized agent with one root session. [rootContext] holds only the root's session element, so
      * `withContext(rootContext)` runs a block as the root's code while keeping the caller's job.
      */
@@ -372,26 +383,25 @@ class AgentSubagentsTest {
     }
 
     @Test
-    fun `announce through the first events item`() = withSubagents { f ->
+    fun `events follow the factory's announcement, and their first item is not special`() = withSubagents { f ->
         val patch = SessionUpdate.SubagentUpdate(childId, state = MaybeUndefined.Value(StateUpdate.Running()))
-        f.rootSubagents.announce(childId, { TestSubagent(flowOf(announcement(childId), text("from events"), patch)) })
+        f.rootSubagents.announce(childId, announcing(flowOf(patch, text("from events"))))
 
         assertEquals(SessionNotification(rootId, announcement(childId)), f.nextNotification())
-        assertEquals(SessionNotification(childId, text("from events")), f.nextNotification())
         assertEquals(SessionNotification(rootId, patch), f.nextNotification())
+        assertEquals(SessionNotification(childId, text("from events")), f.nextNotification())
     }
 
     @Test
-    fun `announce returns after the announcement and a parent message sent then follows it`() = withSubagents { f ->
+    fun `announce returns after the factory and a parent message sent then follows it`() = withSubagents { f ->
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val announcing = async {
-            f.rootSubagents.announce(childId, {
-                TestSubagent(flow {
-                    started.complete(Unit)
-                    release.await()
-                    emit(announcement(childId))
-                })
+            f.rootSubagents.announce(childId, { context ->
+                started.complete(Unit)
+                release.await()
+                context.client.notify(announcement(childId))
+                TestSubagent()
             })
         }
         withTimeout(5.seconds) { started.await() }
@@ -486,12 +496,12 @@ class AgentSubagentsTest {
             capabilities = MaybeUndefined.Value(SubagentSessionCapabilities())
         )
         val events = Channel<SessionUpdate>(Channel.UNLIMITED)
-        events.send(announcement(childId, granted = true))
         events.send(revoke)
 
         lateinit var context: AgentSubagentContext
         f.rootSubagents.announce(childId, {
             context = it
+            it.client.notify(announcement(childId, granted = true))
             TestSubagent(events.consumeAsFlow())
         })
         repeat(2) { f.nextNotification() }
@@ -574,46 +584,44 @@ class AgentSubagentsTest {
     }
 
     @Test
-    fun `a first events item that is not the child's announcement fails announce`() = withSubagents { f ->
-        assertFailsWith<IllegalStateException> {
-            f.rootSubagents.announce(childId, { TestSubagent(flowOf(text("too early"), announcement(childId))) })
+    fun `a factory that returns without announcing fails announce, never collects the events and frees the id`() =
+        withSubagents { f ->
+            val collected = CompletableDeferred<Unit>()
+            lateinit var context: AgentSubagentContext
+            val failure = assertFailsWith<IllegalStateException> {
+                f.rootSubagents.announce(childId, {
+                    context = it
+                    // An announcement in the events doesn't count: they are collected only after an announcement.
+                    TestSubagent(flow {
+                        collected.complete(Unit)
+                        emit(announcement(childId))
+                    })
+                })
+            }
+
+            assertTrue(failure.message!!.contains("not announced"), failure.message)
+            assertNull(f.agent.subagentOrNull(childId))
+            f.awaitCollectionsEnded()
+            assertFalse(collected.isCompleted)
+            assertFailsWith<IllegalStateException> { context.client.notify(announcement(childId)) }
+            f.assertNothingMoreSent()
+
+            announceChild(f, childId)
         }
-        assertNull(f.agent.subagentOrNull(childId))
+
+    @Test
+    fun `a factory that sends nothing but another session's update first fails announce`() = withSubagents { f ->
         assertFailsWith<IllegalStateException> {
-            f.rootSubagents.announce(childId, { TestSubagent(flowOf(announcement(siblingId), announcement(childId))) })
+            f.rootSubagents.announce(childId, { context ->
+                assertFailsWith<IllegalStateException> { context.client.notify(text("too early")) }
+                assertFailsWith<IllegalArgumentException> { context.client.notify(announcement(siblingId)) }
+                TestSubagent()
+            })
         }
+
         assertNull(f.agent.subagentOrNull(childId))
         f.assertNothingMoreSent()
-
         announceChild(f, childId)
-    }
-
-    @Test
-    fun `empty events with nothing sent fail announce`() = withSubagents { f ->
-        assertFailsWith<IllegalStateException> { f.rootSubagents.announce(childId, { TestSubagent() }) }
-        assertNull(f.agent.subagentOrNull(childId))
-        f.assertNothingMoreSent()
-    }
-
-    @Test
-    fun `events that throw before emitting fail announce`() = withSubagents { f ->
-        val failure = assertFailsWith<IllegalStateException> {
-            f.rootSubagents.announce(childId, { TestSubagent(flow { throw RuntimeException("feed down") }) })
-        }
-        assertTrue(failure.causes().any { it.message == "feed down" }, failure.stackTraceToString())
-        assertNull(f.agent.subagentOrNull(childId))
-        f.assertNothingMoreSent()
-    }
-
-    @Test
-    fun `a cancellation thrown by events before emitting surfaces as IllegalStateException`() = withSubagents { f ->
-        val failure = assertFailsWith<IllegalStateException> {
-            f.rootSubagents.announce(childId, { TestSubagent(flow { throw CancellationException("app timeout") }) })
-        }
-        assertWrapsCancellation(failure)
-        assertTrue(currentCoroutineContext().isActive)
-        assertNull(f.agent.subagentOrNull(childId))
-        f.assertNothingMoreSent()
     }
 
     @Test
@@ -739,59 +747,60 @@ class AgentSubagentsTest {
         }
 
     @Test
-    fun `a caller cancelled before the announcement unregisters the child and stops its events`() =
-        withSubagents { f ->
-            val started = CompletableDeferred<Unit>()
-            val stopped = CompletableDeferred<Unit>()
-            val caller = launch {
-                f.rootSubagents.announce(childId, {
-                    TestSubagent(flow {
-                        started.complete(Unit)
-                        try {
-                            awaitCancellation()
-                        } finally {
-                            stopped.complete(Unit)
-                        }
-                    })
-                })
-            }
-            withTimeout(5.seconds) { started.await() }
-            caller.cancelAndJoin()
-
-            withTimeout(5.seconds) { stopped.await() }
-            assertNull(f.agent.subagentOrNull(childId))
-            f.assertNothingMoreSent()
-            announceChild(f, childId)
-        }
-
-    @Test
-    fun `a caller cancelled after the announcement keeps the child and its events`() = withSubagents { f ->
-        lateinit var caller: Job
-        f.transport.onSend = { message ->
-            val update = message.sessionNotificationOrNull()?.update
-            if (update is SessionUpdate.SubagentUpdate && update.sessionId == childId) caller.cancel()
-        }
-        val more = Channel<SessionUpdate>(Channel.UNLIMITED)
+    fun `a caller cancelled before the announcement unregisters the child`() = withSubagents { f ->
+        val started = CompletableDeferred<Unit>()
         var outcome: Result<AgentSubagentSession>? = null
-        caller = launch {
+        val caller = launch {
             outcome = runCatching {
                 f.rootSubagents.announce(childId, {
-                    TestSubagent(flow {
-                        emit(announcement(childId))
-                        emitAll(more)
-                    })
+                    started.complete(Unit)
+                    awaitCancellation()
                 })
             }
         }
-        caller.join()
+        withTimeout(5.seconds) { started.await() }
+        caller.cancelAndJoin()
 
         assertIs<CancellationException>(outcome?.exceptionOrNull())
-        assertEquals(SessionNotification(rootId, announcement(childId)), f.nextNotification())
-        assertTrue(assertNotNull(f.agent.subagentOrNull(childId)).isAnnounced)
-        more.send(text("still flowing"))
-        assertEquals(SessionNotification(childId, text("still flowing")), f.nextNotification())
-        more.close()
+        assertNull(f.agent.subagentOrNull(childId))
+        f.assertNothingMoreSent()
+        announceChild(f, childId)
     }
+
+    /*
+     * The factory doesn't suspend after the announcement, but its call ends with the caller's cancellation anyway.
+     */
+    @Test
+    fun `a caller cancelled after the announcement keeps the child registered and never collects its events`() =
+        withSubagents { f ->
+            lateinit var caller: Job
+            f.transport.onSend = { message ->
+                val update = message.sessionNotificationOrNull()?.update
+                if (update is SessionUpdate.SubagentUpdate && update.sessionId == childId) caller.cancel()
+            }
+            val collected = CompletableDeferred<Unit>()
+            lateinit var context: AgentSubagentContext
+            var outcome: Result<AgentSubagentSession>? = null
+            caller = launch {
+                outcome = runCatching {
+                    f.rootSubagents.announce(childId, {
+                        context = it
+                        it.client.notify(announcement(childId))
+                        TestSubagent(flow { collected.complete(Unit) })
+                    })
+                }
+            }
+            caller.join()
+            f.transport.onSend = {}
+
+            assertIs<CancellationException>(outcome?.exceptionOrNull())
+            assertEquals(SessionNotification(rootId, announcement(childId)), f.nextNotification())
+            assertTrue(assertNotNull(f.agent.subagentOrNull(childId)).isAnnounced)
+            context.client.notify(text("still valid"))
+            assertEquals(SessionNotification(childId, text("still valid")), f.nextNotification())
+            f.awaitCollectionsEnded()
+            assertFalse(collected.isCompleted)
+        }
 
     // Routing
 
@@ -825,12 +834,9 @@ class AgentSubagentsTest {
 
     @Test
     fun `updates sent through the child's coroutine context go on the child's stream`() = withSubagents { f ->
-        f.rootSubagents.announce(childId, {
-            TestSubagent(flow {
-                emit(announcement(childId))
-                currentCoroutineContext().client.notify(text("from context"))
-            })
-        })
+        f.rootSubagents.announce(childId, announcing(flow {
+            currentCoroutineContext().client.notify(text("from context"))
+        }))
 
         assertEquals(SessionNotification(rootId, announcement(childId)), f.nextNotification())
         assertEquals(SessionNotification(childId, text("from context")), f.nextNotification())
@@ -840,7 +846,7 @@ class AgentSubagentsTest {
     fun `a grandchild announced from the child's context goes on the child's stream`() = withSubagents { f ->
         val child = announceChild(f, childId)
 
-        child.subagents.announce(grandchildId, { TestSubagent(flowOf(announcement(grandchildId), text("grand"))) })
+        child.subagents.announce(grandchildId, announcing(flowOf(text("grand"))))
 
         assertEquals(SessionNotification(childId, announcement(grandchildId)), f.nextNotification())
         assertEquals(SessionNotification(grandchildId, text("grand")), f.nextNotification())
@@ -849,12 +855,12 @@ class AgentSubagentsTest {
     @Test
     fun `an explicit parent naming a descendant puts the announcement on that parent's stream`() = withSubagents { f ->
         val child = announceChild(f, childId)
-        child.subagents.announce(grandchildId, { TestSubagent(flowOf(announcement(grandchildId))) })
+        child.subagents.announce(grandchildId, announcing())
         f.nextNotification()
 
         val greatGrandchildId = SessionId("great-grandchild")
-        f.rootSubagents.announce(greatGrandchildId, { TestSubagent(flowOf(announcement(greatGrandchildId))) }, parent = grandchildId)
-        f.rootSubagents.announce(siblingId, { TestSubagent(flowOf(announcement(siblingId))) }, parent = rootId)
+        f.rootSubagents.announce(greatGrandchildId, announcing(), parent = grandchildId)
+        f.rootSubagents.announce(siblingId, announcing(), parent = rootId)
 
         assertEquals(SessionNotification(grandchildId, announcement(greatGrandchildId)), f.nextNotification())
         assertEquals(SessionNotification(rootId, announcement(siblingId)), f.nextNotification())
@@ -932,20 +938,12 @@ class AgentSubagentsTest {
     fun `a failing collection does not affect a sibling`() = withSubagents { f ->
         val failed = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
-        f.rootSubagents.announce(childId, {
-            TestSubagent(flow {
-                emit(announcement(childId))
-                release.await()
-                throw RuntimeException("child feed down")
-            }.onCompletion { failed.complete(Unit) })
-        })
+        f.rootSubagents.announce(childId, announcing(flow<SessionUpdate> {
+            release.await()
+            throw RuntimeException("child feed down")
+        }.onCompletion { failed.complete(Unit) }))
         val siblingEvents = Channel<SessionUpdate>(Channel.UNLIMITED)
-        f.rootSubagents.announce(siblingId, {
-            TestSubagent(flow {
-                emit(announcement(siblingId))
-                emitAll(siblingEvents)
-            })
-        })
+        f.rootSubagents.announce(siblingId, announcing(siblingEvents.consumeAsFlow()))
         repeat(2) { f.nextNotification() }
 
         release.complete(Unit)
@@ -1021,9 +1019,9 @@ class AgentSubagentsTest {
             withSubagents { f ->
                 val cancels = Channel<SessionId>(Channel.UNLIMITED)
                 val events = Channel<SessionUpdate>(Channel.UNLIMITED)
-                events.send(announcement(childId, granted = true))
                 events.send(revocation)
                 f.rootSubagents.announce(childId, {
+                    it.client.notify(announcement(childId, granted = true))
                     TestSubagent(events.consumeAsFlow(), onCancel = { cancels.send(childId) })
                 })
                 repeat(2) { f.nextNotification() }
@@ -1228,7 +1226,8 @@ class AgentSubagentsTest {
         val cancels = Channel<SessionId>(Channel.UNLIMITED)
         val running = stateUpdate(childId, StateUpdate.Running())
         f.rootSubagents.announce(childId, {
-            TestSubagent(flowOf(announcement(childId, granted = true), running), onCancel = { cancels.send(childId) })
+            it.client.notify(announcement(childId, granted = true))
+            TestSubagent(flowOf(running), onCancel = { cancels.send(childId) })
         })
         repeat(2) { f.nextNotification() }
         assertEquals(SessionNotification(rootId, stateUpdate(childId, StateUpdate.Unknown())), f.nextNotification())
@@ -1303,13 +1302,10 @@ class AgentSubagentsTest {
         for ((index, state) in activeStates.withIndex()) {
             for (fails in listOf(false, true)) {
                 val id = SessionId("child-$index-$fails")
-                f.rootSubagents.announce(id, {
-                    TestSubagent(flow {
-                        emit(announcement(id))
-                        emit(stateUpdate(id, state))
-                        if (fails) throw RuntimeException("feed down")
-                    })
-                })
+                f.rootSubagents.announce(id, announcing(flow {
+                    emit(stateUpdate(id, state))
+                    if (fails) throw RuntimeException("feed down")
+                }))
 
                 assertEquals(SessionNotification(rootId, announcement(id)), f.nextNotification())
                 assertEquals(SessionNotification(rootId, stateUpdate(id, state)), f.nextNotification())
@@ -1335,13 +1331,10 @@ class AgentSubagentsTest {
                 val updates = states.map { state ->
                     SessionUpdate.SubagentUpdate(id, state = state?.let { MaybeUndefined.Value(it) } ?: MaybeUndefined.Null)
                 }
-                f.rootSubagents.announce(id, {
-                    TestSubagent(flow {
-                        emit(announcement(id))
-                        updates.forEach { emit(it) }
-                        if (fails) throw RuntimeException("feed down")
-                    })
-                })
+                f.rootSubagents.announce(id, announcing(flow {
+                    updates.forEach { emit(it) }
+                    if (fails) throw RuntimeException("feed down")
+                }))
 
                 assertEquals(SessionNotification(rootId, announcement(id)), f.nextNotification())
                 for (update in updates) assertEquals(SessionNotification(rootId, update), f.nextNotification())
@@ -1355,14 +1348,11 @@ class AgentSubagentsTest {
     @Test
     fun `a cancellation thrown by the app's feed reports unknown and completes the collection`() = withSubagents { f ->
         val collectionJob = CompletableDeferred<Job>()
-        f.rootSubagents.announce(childId, {
-            TestSubagent(flow {
-                collectionJob.complete(currentCoroutineContext().job)
-                emit(announcement(childId))
-                emit(stateUpdate(childId, StateUpdate.Running()))
-                throw CancellationException("app timeout")
-            })
-        })
+        f.rootSubagents.announce(childId, announcing(flow {
+            collectionJob.complete(currentCoroutineContext().job)
+            emit(stateUpdate(childId, StateUpdate.Running()))
+            throw CancellationException("app timeout")
+        }))
 
         repeat(2) { f.nextNotification() }
         assertEquals(SessionNotification(rootId, stateUpdate(childId, StateUpdate.Unknown())), f.nextNotification())
@@ -1382,14 +1372,11 @@ class AgentSubagentsTest {
         for (ending in endings) {
             withSubagents { f ->
                 val waiting = CompletableDeferred<Unit>()
-                f.rootSubagents.announce(childId, {
-                    TestSubagent(flow {
-                        emit(announcement(childId))
-                        emit(stateUpdate(childId, StateUpdate.Running()))
-                        waiting.complete(Unit)
-                        ending()
-                    })
-                })
+                f.rootSubagents.announce(childId, announcing(flow {
+                    emit(stateUpdate(childId, StateUpdate.Running()))
+                    waiting.complete(Unit)
+                    ending()
+                }))
                 repeat(2) { f.nextNotification() }
                 withTimeout(5.seconds) { waiting.await() }
 
@@ -1417,12 +1404,12 @@ class AgentSubagentsTest {
 
     @Test
     fun `a child whose feed ended keeps its id and can be named as a parent`() = withSubagents { f ->
-        f.rootSubagents.announce(childId, { TestSubagent(flowOf(announcement(childId))) })
+        f.rootSubagents.announce(childId, announcing())
         f.nextNotification()
         f.awaitCollectionsEnded()
 
         assertFailsWith<IllegalArgumentException> { f.rootSubagents.announce(childId, { TestSubagent() }) }
-        f.rootSubagents.announce(grandchildId, { TestSubagent(flowOf(announcement(grandchildId))) }, parent = childId)
+        f.rootSubagents.announce(grandchildId, announcing(), parent = childId)
 
         assertEquals(SessionNotification(childId, announcement(grandchildId)), f.nextNotification())
     }
@@ -1430,22 +1417,16 @@ class AgentSubagentsTest {
     @Test
     fun `a feed that ends while active does not affect a sibling's collection`() = withSubagents { f ->
         val release = CompletableDeferred<Unit>()
-        f.rootSubagents.announce(childId, {
-            TestSubagent(flow {
-                emit(announcement(childId))
-                emit(stateUpdate(childId, StateUpdate.Running()))
-                release.await()
-                throw RuntimeException("child feed down")
-            })
-        })
+        f.rootSubagents.announce(childId, announcing(flow {
+            emit(stateUpdate(childId, StateUpdate.Running()))
+            release.await()
+            throw RuntimeException("child feed down")
+        }))
         val siblingEvents = Channel<SessionUpdate>(Channel.UNLIMITED)
-        f.rootSubagents.announce(siblingId, {
-            TestSubagent(flow {
-                emit(announcement(siblingId))
-                emit(stateUpdate(siblingId, StateUpdate.Running()))
-                emitAll(siblingEvents)
-            })
-        })
+        f.rootSubagents.announce(siblingId, announcing(flow {
+            emit(stateUpdate(siblingId, StateUpdate.Running()))
+            emitAll(siblingEvents)
+        }))
         repeat(4) { f.nextNotification() }
 
         release.complete(Unit)
@@ -1520,9 +1501,40 @@ class AgentSubagentsTest {
         f.assertNothingMoreSent()
 
         val reused = announceChild(f, childId)
-        reused.subagents.announce(grandchildId, { TestSubagent(flowOf(announcement(grandchildId))) })
+        reused.subagents.announce(grandchildId, announcing())
         assertEquals(SessionNotification(childId, announcement(grandchildId)), f.nextNotification())
     }
+
+    @Test
+    fun `closing a root while a factory runs before its announcement fails its sends and its announce`() =
+        withSubagents { f ->
+            val closingContext = f.newRoot(RootSession(closingId))
+            val factoryStarted = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            var sendFailure: Throwable? = null
+            val announcing = async {
+                runCatching {
+                    assertNotNull(closingContext.subagents).announce(childId, { context ->
+                        factoryStarted.complete(Unit)
+                        release.await()
+                        // A factory that swallows the failure and returns still fails its announce.
+                        sendFailure = runCatching { context.client.notify(announcement(childId)) }.exceptionOrNull()
+                        TestSubagent()
+                    })
+                }
+            }
+            withTimeout(5.seconds) { factoryStarted.await() }
+
+            assertIs<JsonRpcSuccessResponse>(f.close(closingId).single())
+            release.complete(Unit)
+
+            val failure = assertIs<IllegalStateException>(announcing.await().exceptionOrNull())
+            assertTrue(failure.message!!.contains("not announced"), failure.message)
+            assertIs<IllegalStateException>(sendFailure)
+            assertNull(f.agent.subagentOrNull(childId))
+            f.assertNothingMoreSent()
+            announceChild(f, childId)
+        }
 
     @Test
     fun `a close that throws leaves the subagents registered and working`() = withSubagents { f ->
@@ -1545,9 +1557,9 @@ class AgentSubagentsTest {
         assertEquals(SessionNotification(childId, text("from events")), f.nextNotification())
         child.client.notify(text("from client"))
         assertEquals(SessionNotification(childId, text("from client")), f.nextNotification())
-        child.subagents.announce(grandchildId, { TestSubagent(flowOf(announcement(grandchildId))) })
+        child.subagents.announce(grandchildId, announcing())
         assertEquals(SessionNotification(childId, announcement(grandchildId)), f.nextNotification())
-        assertNotNull(closingContext.subagents).announce(siblingId, { TestSubagent(flowOf(announcement(siblingId))) })
+        assertNotNull(closingContext.subagents).announce(siblingId, announcing())
         assertEquals(SessionNotification(closingId, announcement(siblingId)), f.nextNotification())
         events.close()
     }
@@ -1585,19 +1597,15 @@ class AgentSubagentsTest {
         lateinit var child: AgentSubagentContext
         f.rootSubagents.announce(childId, {
             child = it
+            it.client.notify(announcement(childId))
             TestSubagent(flow {
-                emit(announcement(childId, state = StateUpdate.Running()))
+                emit(stateUpdate(childId, StateUpdate.Running()))
                 release.await()
             })
         })
-        f.nextNotification()
+        repeat(2) { f.nextNotification() }
         val grandchildEvents = Channel<SessionUpdate>(Channel.UNLIMITED)
-        child.subagents.announce(grandchildId, {
-            TestSubagent(flow {
-                emit(announcement(grandchildId))
-                emitAll(grandchildEvents)
-            })
-        })
+        child.subagents.announce(grandchildId, announcing(grandchildEvents.consumeAsFlow()))
         f.nextNotification()
 
         release.complete(Unit)
@@ -1705,20 +1713,25 @@ class AgentSubagentsTest {
     }
 
     @Test
-    fun `a replaying factory that returns without announcing fails announce right away`() = withSubagents { f ->
+    fun `a replaying factory that returns without announcing fails announce and frees the id`() = withSubagents { f ->
         val loaded = RootSession(loadedId)
         var failure: Throwable? = null
         loaded.replay = {
             failure = runCatching {
                 currentSubagents().announce(childId, { TestSubagent(flowOf(announcement(childId))) })
             }.exceptionOrNull()
+            currentSubagents().announce(childId, announcing())
         }
 
         val received = f.load(loaded)
 
         assertIs<IllegalStateException>(failure)
-        assertIs<JsonRpcSuccessResponse>(received.single())
-        assertNull(f.agent.subagentOrNull(childId))
+        assertEquals(
+            listOf(SessionNotification(loadedId, announcement(childId))),
+            received.dropLast(1).map { it.sessionNotificationOrNull() },
+        )
+        assertIs<JsonRpcSuccessResponse>(received.last())
+        assertNotNull(f.agent.subagentOrNull(childId))
         f.awaitCollectionsEnded(loaded.wrapper())
         f.assertNothingMoreSent()
     }
@@ -1736,7 +1749,7 @@ class AgentSubagentsTest {
                     TestSubagent(flowOf(text("grandchild live")))
                 })
                 nestedFailure = runCatching {
-                    context.subagents.announce(siblingId, { TestSubagent(flowOf(announcement(siblingId))) })
+                    context.subagents.announce(siblingId, { TestSubagent() })
                 }.exceptionOrNull()
                 TestSubagent(flowOf(text("child live")))
             })
@@ -1943,12 +1956,9 @@ class AgentSubagentsTest {
             val id = SessionId("child-$name")
             val announced = CompletableDeferred<AgentSubagentSession>()
             session.afterInitialize = {
-                /*
-                 * A live child may announce itself in its events: a replayed one could not, and its announce
-                 * would fail right away.
-                 */
                 announced.complete(currentSubagents().announce(id, {
-                    TestSubagent(flowOf(announcement(id, granted = true)), onCancel = { cancels.send(id) })
+                    it.client.notify(announcement(id, granted = true))
+                    TestSubagent(onCancel = { cancels.send(id) })
                 }))
             }
 
@@ -2076,7 +2086,7 @@ class AgentSubagentsTest {
         assertEquals(SessionNotification(childId, text("still collected")), f.nextNotification())
         f.fireCancel(childId)
         assertEquals(childId, withTimeout(5.seconds) { cancels.receive() })
-        firstSubagents.announce(siblingId, { TestSubagent(flowOf(announcement(siblingId))) })
+        firstSubagents.announce(siblingId, announcing())
         assertEquals(SessionNotification(loadedId, announcement(siblingId)), f.nextNotification())
         assertIs<JsonRpcSuccessResponse>(
             f.request(AcpMethod.AgentMethods.V1.SessionPrompt, PromptRequest(loadedId, listOf(ContentBlock.Text("go"))))
@@ -2163,7 +2173,7 @@ class AgentSubagentsTest {
         assertEquals(SessionNotification(childId, text("still collected")), f.nextNotification())
         f.fireCancel(childId)
         assertEquals(childId, withTimeout(5.seconds) { cancels.receive() })
-        assertNotNull(second.wrapper().subagents).announce(siblingId, { TestSubagent(flowOf(announcement(siblingId))) })
+        assertNotNull(second.wrapper().subagents).announce(siblingId, announcing())
         assertEquals(SessionNotification(loadedId, announcement(siblingId)), f.nextNotification())
         events.close()
     }
@@ -2193,11 +2203,11 @@ class AgentSubagentsTest {
 
         assertIs<IllegalStateException>(pending.await().exceptionOrNull())
         assertNull(f.agent.subagentOrNull(childId))
-        assertFailsWith<IllegalStateException> { firstSubagents.announce(siblingId, { TestSubagent(flowOf(announcement(siblingId))) }) }
+        assertFailsWith<IllegalStateException> { firstSubagents.announce(siblingId, announcing()) }
         assertNull(f.agent.subagentOrNull(siblingId))
         f.assertNothingMoreSent()
 
-        assertNotNull(second.wrapper().subagents).announce(childId, { TestSubagent(flowOf(announcement(childId))) })
+        assertNotNull(second.wrapper().subagents).announce(childId, announcing())
         assertEquals(SessionNotification(loadedId, announcement(childId)), f.nextNotification())
     }
 
@@ -2220,7 +2230,7 @@ class AgentSubagentsTest {
                      */
                     continuation.invokeOnCancellation {
                         testScope.launch(start = CoroutineStart.UNDISPATCHED) {
-                            reannounced.complete(runCatching { f.rootSubagents.announce(childId, { TestSubagent(flowOf(announcement(childId))) }) })
+                            reannounced.complete(runCatching { f.rootSubagents.announce(childId, announcing()) })
                         }
                     }
                     suspended.complete(Unit)
@@ -2294,8 +2304,8 @@ class AgentSubagentsTest {
     private suspend fun RootSession.wrapper(): RootSessionWrapper = withTimeout(5.seconds) { context.await() }.rootWrapper
 
     /**
-     * Announces a child that reports itself running in hot events that never complete, and completes [stopped] when
-     * their collection stops.
+     * Announces a child as running from its factory, with hot events that never complete, and completes [stopped]
+     * when their collection stops. Returns once the collection has started.
      */
     private suspend fun announceActive(
         subagents: AgentSubagents,
@@ -2303,17 +2313,13 @@ class AgentSubagentsTest {
         stopped: CompletableDeferred<Unit>,
     ): AgentSubagentContext {
         lateinit var context: AgentSubagentContext
+        val started = CompletableDeferred<Unit>()
         subagents.announce(sessionId, {
             context = it
-            TestSubagent(flow {
-                emit(announcement(sessionId, state = StateUpdate.Running()))
-                try {
-                    awaitCancellation()
-                } finally {
-                    stopped.complete(Unit)
-                }
-            })
+            it.client.notify(announcement(sessionId, state = StateUpdate.Running()))
+            TestSubagent(endlessEvents(started, stopped))
         })
+        withTimeout(5.seconds) { started.await() }
         return context
     }
 
@@ -2328,22 +2334,29 @@ class AgentSubagentsTest {
         cancels: Channel<SessionId>,
     ): AgentSubagentContext {
         lateinit var context: AgentSubagentContext
+        val started = CompletableDeferred<Unit>()
         subagents.announce(sessionId, {
             context = it
-            TestSubagent(
-                flow {
-                    emit(announcement(sessionId, granted = true, state = StateUpdate.Running()))
-                    try {
-                        awaitCancellation()
-                    } finally {
-                        stopped.complete(Unit)
-                    }
-                },
-                onCancel = { cancels.send(sessionId) },
-            )
+            it.client.notify(announcement(sessionId, granted = true, state = StateUpdate.Running()))
+            TestSubagent(endlessEvents(started, stopped), onCancel = { cancels.send(sessionId) })
         })
+        withTimeout(5.seconds) { started.await() }
         return context
     }
+
+    /**
+     * Hot events that never complete: they complete [started] once collected, and [stopped] when the collection
+     * stops.
+     */
+    private fun endlessEvents(started: CompletableDeferred<Unit>, stopped: CompletableDeferred<Unit>) =
+        flow<SessionUpdate> {
+            try {
+                started.complete(Unit)
+                awaitCancellation()
+            } finally {
+                stopped.complete(Unit)
+            }
+        }
 
     /**
      * A child with a grandchild below it, both announced from a root's replay as running, with events that never
@@ -2481,21 +2494,14 @@ class AgentSubagentsTest {
 
     /**
      * Announces a child whose hot events never complete, and returns a signal that completes when their collection
-     * stops.
+     * stops, once it has started.
      */
     private suspend fun announceEndlessChild(f: Fixture): CompletableDeferred<Unit> {
+        val started = CompletableDeferred<Unit>()
         val stopped = CompletableDeferred<Unit>()
-        f.rootSubagents.announce(childId, {
-            TestSubagent(flow {
-                emit(announcement(childId))
-                try {
-                    awaitCancellation()
-                } finally {
-                    stopped.complete(Unit)
-                }
-            })
-        })
+        f.rootSubagents.announce(childId, announcing(endlessEvents(started, stopped)))
         f.nextNotification()
+        withTimeout(5.seconds) { started.await() }
         assertFalse(stopped.isCompleted)
         return stopped
     }

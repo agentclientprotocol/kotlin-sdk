@@ -235,9 +235,9 @@ abstract class SubagentsTest(protocolDriver: ProtocolDriver) : ProtocolDriver by
             val session = client.openNew { world.create(it) }
             val context = support.rootContext()
 
-            context.subagents!!.announce(childId, AgentSubagentFactory {
+            context.subagents!!.announce(childId, AgentSubagentFactory { ctx ->
+                ctx.client.notify(announcement(childId, title = "Reviewer", description = "Reviews the diff"))
                 ScriptedChild(flow {
-                    emit(announcement(childId, title = "Reviewer", description = "Reviews the diff"))
                     // The parent's stream order is fixed by waiting for the parent's own update.
                     toolCallSent.await()
                     emit(announcement(childId, state = running))
@@ -352,8 +352,8 @@ abstract class SubagentsTest(protocolDriver: ProtocolDriver) : ProtocolDriver by
             client.openNew { world.create(it) }
 
             support.rootContext().subagents!!.announce(childId, AgentSubagentFactory { ctx ->
+                ctx.client.notify(announcement(childId, title = "Editor"))
                 ScriptedChild(flow {
-                    emit(announcement(childId, title = "Editor"))
                     permission.complete(ctx.client.requestPermissions(toolCall, listOf(allowOption)))
                     fileContent.complete(ctx.client.fsReadTextFile("/work/Foo.kt").content)
                 })
@@ -396,9 +396,9 @@ abstract class SubagentsTest(protocolDriver: ProtocolDriver) : ProtocolDriver by
             val session = client.openNew { world.create(it) }
 
             support.rootContext().subagents!!.announce(childId, AgentSubagentFactory { ctx ->
+                ctx.client.notify(announcement(childId, title = "Worker", capabilities = cancelGrant, state = running))
                 ScriptedChild(
                     events = flow {
-                        emit(announcement(childId, title = "Worker", capabilities = cancelGrant, state = running))
                         outcome.complete(ctx.client.requestPermissions(toolCall, listOf(allowOption)).outcome)
                         cancelCalled.await()
                         emit(announcement(childId, state = idle(IdleStopReason.Cancelled)))
@@ -467,10 +467,10 @@ abstract class SubagentsTest(protocolDriver: ProtocolDriver) : ProtocolDriver by
             val subagents = support.rootContext().subagents!!
             val updates = listOf(childId, secondChildId).associateWith { id ->
                 val feed = Channel<SessionUpdate>(Channel.UNLIMITED)
-                subagents.announce(id, AgentSubagentFactory {
+                subagents.announce(id, AgentSubagentFactory { ctx ->
+                    ctx.client.notify(announcement(id, capabilities = cancelGrant))
                     ScriptedChild(
                         events = flow {
-                            emit(announcement(id, capabilities = cancelGrant))
                             for (update in feed) emit(update)
                         },
                         onCancel = { cancelled.complete(id) },
@@ -548,14 +548,16 @@ abstract class SubagentsTest(protocolDriver: ProtocolDriver) : ProtocolDriver by
             val context = support.rootContext()
             val subagents = context.subagents!!
 
-            subagents.announce(childId, AgentSubagentFactory {
+            subagents.announce(childId, AgentSubagentFactory { ctx ->
+                ctx.client.notify(announcement(childId))
                 ScriptedChild(flow {
                     // The collection's job: joined later, once the SDK has handled the end of the feed.
                     endingRunning.complete(currentCoroutineContext().job)
                     emit(announcement(childId, state = running))
                 })
             })
-            subagents.announce(secondChildId, AgentSubagentFactory {
+            subagents.announce(secondChildId, AgentSubagentFactory { ctx ->
+                ctx.client.notify(announcement(secondChildId))
                 ScriptedChild(flow {
                     endingIdle.complete(currentCoroutineContext().job)
                     emit(announcement(secondChildId, state = running))
@@ -571,16 +573,24 @@ abstract class SubagentsTest(protocolDriver: ProtocolDriver) : ProtocolDriver by
             val rootOps = world[rootId]
             val marker = rootOps.awaitUpdate { it == agentTextChunk("end") }
             assertEquals(
-                listOf(announcement(childId, state = running), SessionUpdate.SubagentUpdate(childId, state = MaybeUndefined.Value(StateUpdate.Unknown()))),
+                listOf(
+                    announcement(childId),
+                    announcement(childId, state = running),
+                    SessionUpdate.SubagentUpdate(childId, state = MaybeUndefined.Value(StateUpdate.Unknown())),
+                ),
                 rootOps.subagentUpdates(childId),
                 "a feed that ends while running owes unknown",
             )
             assertEquals(
-                listOf(announcement(secondChildId, state = running), announcement(secondChildId, state = idle(IdleStopReason.EndTurn))),
+                listOf(
+                    announcement(secondChildId),
+                    announcement(secondChildId, state = running),
+                    announcement(secondChildId, state = idle(IdleStopReason.EndTurn)),
+                ),
                 rootOps.subagentUpdates(secondChildId),
                 "a feed that ends after idle owes nothing",
             )
-            assertEquals(5, rootOps.updates.size, "four child updates and the marker")
+            assertEquals(7, rootOps.updates.size, "six child updates and the marker")
             assertEquals(StateUpdate.Unknown(), marker.children!!.first { it.sessionId == childId }.state)
             assertEquals(StateUpdate.Unknown(), session.subagents[0].state)
             assertEquals(StateUpdate.Idle(IdleStopReason.EndTurn), session.subagents[1].state)
@@ -718,10 +728,10 @@ abstract class SubagentsTest(protocolDriver: ProtocolDriver) : ProtocolDriver by
             val support = ScriptedAgentSupport().apply {
                 resumeRoot {
                     postInitializeScript = {
-                        currentCoroutineContext().subagents!!.announce(childId, AgentSubagentFactory {
+                        currentCoroutineContext().subagents!!.announce(childId, AgentSubagentFactory { ctx ->
+                            ctx.client.notify(announcement(childId, title = "Resumed", capabilities = cancelGrant, state = running))
                             ScriptedChild(
                                 events = flow {
-                                    emit(announcement(childId, title = "Resumed", capabilities = cancelGrant, state = running))
                                     emit(agentTextChunk("child live"))
                                     awaitCancellation()
                                 },
@@ -784,9 +794,9 @@ abstract class SubagentsTest(protocolDriver: ProtocolDriver) : ProtocolDriver by
             val subagents = rootContext.subagents!!
 
             subagents.announce(childId, AgentSubagentFactory { ctx ->
+                ctx.client.notify(announcement(childId, title = "Worker", capabilities = cancelGrant, state = running))
                 ScriptedChild(
-                    flow {
-                        emit(announcement(childId, title = "Worker", capabilities = cancelGrant, state = running))
+                    flow<SessionUpdate> {
                         outcome.complete(ctx.client.requestPermissions(toolCall, listOf(allowOption)).outcome)
                         awaitCancellation()
                     }.onCompletion { collectionEnded.complete(it) }
@@ -843,8 +853,8 @@ abstract class SubagentsTest(protocolDriver: ProtocolDriver) : ProtocolDriver by
             val context = support.rootContext()
 
             context.subagents!!.announce(childId, AgentSubagentFactory { ctx ->
+                ctx.client.notify(announcement(childId, title = "Orphan"))
                 ScriptedChild(flow {
-                    emit(announcement(childId, title = "Orphan"))
                     emit(agentTextChunk("child text"))
                     requestFailure.complete(runCatching { ctx.client.requestPermissions(toolCall, listOf(allowOption)) }.exceptionOrNull())
                 })

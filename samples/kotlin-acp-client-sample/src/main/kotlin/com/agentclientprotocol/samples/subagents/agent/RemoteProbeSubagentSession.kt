@@ -5,6 +5,7 @@ package com.agentclientprotocol.samples.subagents.agent
 import com.agentclientprotocol.agent.AgentSubagentFactory
 import com.agentclientprotocol.agent.AgentSubagentSession
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.common.notify
 import com.agentclientprotocol.model.ContentBlock
 import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.MessageId
@@ -25,8 +26,20 @@ import kotlinx.coroutines.flow.flow
  * stream. As for the root, `announce` returning is the point after which the child's updates may name the grandchild.
  */
 internal suspend fun DelegatedTaskScope.startRemoteProbe(id: SessionId): RemoteProbeSubagentSession {
-    val probe = RemoteProbeSubagentSession(id, parent = context.sessionId, history.child(id))
-    return context.subagents.announce(id, AgentSubagentFactory { probe })
+    val probeHistory = history.child(id)
+    return context.subagents.announce(id, AgentSubagentFactory { probeContext ->
+        /*
+         * The probe isn't running yet: its runner reports that through the events. So the announcement leaves the
+         * state out, and the running state follows as a patch.
+         */
+        val announcement = SessionUpdate.SubagentUpdate(
+            id,
+            title = MaybeUndefined.Value("Linux probe"),
+            description = MaybeUndefined.Value("Reruns a test on a remote Linux runner"),
+        )
+        probeHistory.send(announcement) { probeContext.client.notify(it) }
+        RemoteProbeSubagentSession(id, parent = context.sessionId, probeHistory)
+    })
 }
 
 /**
@@ -37,8 +50,8 @@ internal suspend fun DelegatedTaskScope.startRemoteProbe(id: SessionId): RemoteP
  * - 7. lost observability: the SDK reports `unknown` for a feed that ends while active;
  * - 8. a grandchild, announced through the child's own `subagents`.
  *
- * Unlike a delegated child, the probe's announcement is the first item of its [events], not sent by the factory.
- * [history] records every item on the stream it goes on.
+ * Its factory sends the announcement, and its [events] report its work from the running state on, so that the SDK
+ * sees the state when the feed ends. [history] records every item on the stream it goes on.
  */
 internal class RemoteProbeSubagentSession(
     val id: SessionId,
@@ -49,14 +62,7 @@ internal class RemoteProbeSubagentSession(
     private val result = CompletableDeferred<String>()
 
     override val events: Flow<SessionUpdate> = history.recording(flow {
-        emit(
-            SessionUpdate.SubagentUpdate(
-                id,
-                title = MaybeUndefined.Value("Linux probe"),
-                description = MaybeUndefined.Value("Reruns a test on a remote Linux runner"),
-                state = MaybeUndefined.Value(StateUpdate.Running()),
-            )
-        )
+        emit(subagentState(id, StateUpdate.Running()))
 
         val instruction = assigned.await()
         emit(

@@ -23,9 +23,7 @@ import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -37,14 +35,14 @@ private val logger = KotlinLogging.logger {}
  * A subagent registered on the connection: its client operations, its own [AgentSubagents], and what the SDK tracks
  * about it.
  *
- * The child is pending until its announcement, the first [SessionUpdate.SubagentUpdate] for it, has been sent. Until
- * then every other operation fails. If its announcement can't be sent, it's dropped: unregistered, and every
- * operation fails for good. Once announced, it stays registered until subtree cleanup removes it, and then every
- * operation fails for good too.
+ * The child is pending until its factory has sent its announcement, the first [SessionUpdate.SubagentUpdate] for it.
+ * Until then every other operation fails. If the factory throws or returns before the announcement has been sent,
+ * the child is dropped: unregistered, and every operation fails for good. Once announced, it stays registered until
+ * subtree cleanup removes it, and then every operation fails for good too.
  *
- * A child announced while its root's replay window is open is a replayed one: its factory must send the
- * announcement, its collection starts once the transport has accepted the load response, and the SDK doesn't track
- * the grants and states sent in the window, because they are history.
+ * The events are collected only once the factory has returned an announced child. A child announced while its root's
+ * replay window is open is a replayed one: its collection starts once the transport has accepted the load response,
+ * and the SDK doesn't track the grants and states sent in the window, because they are history.
  *
  * @property parent the session whose stream carries this child's [SessionUpdate.SubagentUpdate]s
  */
@@ -97,12 +95,6 @@ internal class SubagentSessionWrapper(
      * active. Only the collection writes it: state sent through the client operations is not seen here.
      */
     private var eventsState: StateUpdate? = null
-
-    /**
-     * Completes once the announcement has been sent, or fails with [IllegalStateException] when the child is dropped
-     * before that.
-     */
-    private val announcement = CompletableDeferred<Unit>()
 
     private val _session = atomic<AgentSubagentSession?>(null)
 
@@ -157,9 +149,8 @@ internal class SubagentSessionWrapper(
     }
 
     /**
-     * Runs the `announce` steps after registration: the factory, then the collection, then the wait for the
-     * announcement. A replayed child's collection waits for the load response instead, and its factory must have
-     * sent the announcement.
+     * Runs the `announce` steps after registration: the factory, which must send the announcement, then the
+     * collection. A replayed child's collection waits for the load response.
      */
     suspend fun <S : AgentSubagentSession> announce(factory: AgentSubagentFactory<S>): S {
         val session = try {
@@ -179,28 +170,13 @@ internal class SubagentSessionWrapper(
             throw e
         }
 
-        if (isReplayed) {
-            /*
-             * Waiting for the events would deadlock: their collection starts only after the load response, which
-             * waits for the replay that called this.
-             */
-            if (dropUnlessAnnounced()) {
-                throw IllegalStateException(
-                    "Subagent $sessionId is not announced: during the parent's session/load, its factory must send " +
-                        "the announcement"
-                )
-            }
-            root.startAfterReplay { startCollection(session) }
-            return session
+        if (dropUnlessAnnounced()) {
+            throw IllegalStateException(
+                "Subagent $sessionId is not announced: its factory must send the announcement before returning"
+            )
         }
 
-        val collection = startCollection(session)
-        try {
-            announcement.await()
-        } catch (e: CancellationException) {
-            if (dropUnlessAnnounced()) collection.cancel()
-            throw e
-        }
+        if (isReplayed) root.startAfterReplay { startCollection(session) } else startCollection(session)
         return session
     }
 
@@ -252,30 +228,16 @@ internal class SubagentSessionWrapper(
 
     /**
      * Subtree cleanup for this child, after the caller removed it from the session table: every operation fails from
-     * now on, and an `announce` still waiting for an announcement that wasn't sent fails.
+     * now on. A child whose factory is still running before its announcement is dropped, so its factory can't send
+     * the announcement any more and its `announce` fails.
      */
     fun remove() {
-        val wasPending = synchronized(lock) {
+        synchronized(lock) {
             when (_phase.value) {
-                Phase.PENDING -> {
-                    _phase.value = Phase.DROPPED
-                    true
-                }
-                Phase.ANNOUNCED -> {
-                    _phase.value = Phase.REMOVED
-                    false
-                }
-                Phase.DROPPED, Phase.REMOVED -> false
+                Phase.PENDING -> _phase.value = Phase.DROPPED
+                Phase.ANNOUNCED -> _phase.value = Phase.REMOVED
+                Phase.DROPPED, Phase.REMOVED -> {}
             }
-        }
-        /*
-         * A sent announcement precedes the close response, and its sender completes the wait right after the send,
-         * so that `announce` returns.
-         */
-        if (wasPending) {
-            announcement.completeExceptionally(
-                IllegalStateException("Subagent $sessionId is not announced: its root session ${root.sessionId} is closed")
-            )
         }
     }
 
@@ -294,8 +256,8 @@ internal class SubagentSessionWrapper(
             .onFailure { logger.debug(it) { "Could not correct subagent $sessionId after its factory failed" } }
     }
 
-    private fun startCollection(session: AgentSubagentSession): Job {
-        val collection = root.subtreeScope.launch(asContextElement() + CoroutineName("Subagent $sessionId events")) {
+    private fun startCollection(session: AgentSubagentSession) {
+        root.subtreeScope.launch(asContextElement() + CoroutineName("Subagent $sessionId events")) {
             val failure = try {
                 session.events.collect { update ->
                     clientOperations.notify(update)
@@ -313,14 +275,6 @@ internal class SubagentSessionWrapper(
             }
             onFeedEnd(failure)
         }
-        collection.invokeOnCompletion { cause ->
-            if (cause != null && dropUnlessAnnounced()) {
-                announcement.completeExceptionally(
-                    IllegalStateException("Subagent $sessionId is not announced: its events were cancelled", cause)
-                )
-            }
-        }
-        return collection
     }
 
     /**
@@ -330,13 +284,6 @@ internal class SubagentSessionWrapper(
      * child, and the SDK doesn't invent an outcome. The child stays registered.
      */
     private suspend fun onFeedEnd(failure: Throwable?) {
-        if (dropUnlessAnnounced()) {
-            val reason = if (failure == null) "completed" else "failed"
-            announcement.completeExceptionally(
-                IllegalStateException("Subagent $sessionId is not announced: its events $reason before announcing it", failure)
-            )
-            return
-        }
         if (failure != null) {
             logger.warn(failure) { "Events of subagent $sessionId failed" }
         } else {
@@ -417,11 +364,10 @@ internal class SubagentSessionWrapper(
 
     /**
      * Sends this child's own [SessionUpdate.SubagentUpdate] on the parent's stream, for
-     * [SubagentClientOperations.notify], and completes the announcement wait.
+     * [SubagentClientOperations.notify].
      */
     fun sendOwnUpdate(update: SessionUpdate.SubagentUpdate, _meta: JsonElement?) {
         synchronized(lock) { sendOwnUpdateLocked(update, _meta) }
-        announcement.complete(Unit)
     }
 
     private fun sendFactoryFailureCorrection() {

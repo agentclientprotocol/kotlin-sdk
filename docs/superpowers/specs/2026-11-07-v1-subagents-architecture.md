@@ -244,13 +244,13 @@ public class AgentSubagentContext internal constructor(
 @UnstableApi
 public interface AgentSubagentSession {
     /**
-     * The child's live events, as the subagents spec defines them.
+     * The child's live work after its announcement, as the subagents spec defines it.
      *
-     * A SubagentUpdate for this child goes on the parent's stream: it announces the child if nothing was sent for
-     * the child before, and otherwise patches it and carries its work state. Every other update goes on the child's
-     * own stream. The SDK collects this once, after the factory returns, in the child's session context, so it
-     * should be cold (or hot with replay). For a child replayed during the parent's `session/load`, collection starts
-     * after the parent's response. It may be empty for a history-only child.
+     * A SubagentUpdate for this child goes on the parent's stream, where it patches the child and carries its work
+     * state. Every other update goes on the child's own stream. The SDK collects this once, after the factory
+     * returns, in the child's session context, so it should be cold (or hot with replay). For a child replayed
+     * during the parent's `session/load`, collection starts after the parent's response. It may be empty for a
+     * history-only child.
      */
     public val events: Flow<SessionUpdate> get() = emptyFlow()
 
@@ -339,19 +339,17 @@ public val CoroutineContext.subagents: AgentSubagents?
 4. Register a `SubagentSessionWrapper` (below) under the parent, and call `factory.createSubagent(context)` in the child's
    context.
 5. **Enforce the announcement first.** The first thing sent for the child must be a `SubagentUpdate` whose
-   `sessionId` is the child's, whether it goes through `context.client.notify` inside the factory or comes as the
-   first item of `events`. Both paths go through the child's operations, so it's one check in one place.
+   `sessionId` is the child's, and the factory must send it through `context.client.notify` before it returns, live
+   and during a replay. `events` are collected only afterwards, so their first item isn't special.
    - Until the announcement has been sent, the child's client operations (permission, fs, terminal, elicitation,
      `notify` of anything else) fail with `IllegalStateException`, so nothing about the child can overtake it.
-   - If **nothing has been sent yet** and the factory throws, or `events` completes or throws before emitting, or the
-     first item of `events` isn't the child's `SubagentUpdate`: stop, unregister the child, send nothing more, and
-     make `announce` throw `IllegalStateException`. The first-item check applies only when the factory sent nothing.
-     This includes a `CancellationException` from the app's `events` while the collector's job is active (see "Feed
-     end and failure"). `announce` must never pass it on as a `CancellationException`: the caller's coroutine is
-     still active, and a foreign one would tear down its scope, usually the parent's prompt flow. That's the bug
-     class #131 fixed for a peer's `-32800`.
-   - If the factory throws **after** the announcement went out, the child exists on the wire, as in the cancelled
-     wait of step 7. A `CancellationException` from a cancelled caller is handled the same way.
+   - If **nothing has been sent yet** and the factory throws or returns: stop, unregister the child, send nothing
+     more, and make `announce` throw `IllegalStateException`. This includes a `CancellationException` from the app's
+     factory while the caller is active. `announce` must never pass it on as a `CancellationException`: the caller's
+     coroutine is still active, and a foreign one would tear down its scope, usually the parent's prompt flow. That's
+     the bug class #131 fixed for a peer's `-32800`.
+   - If the factory throws **after** the announcement went out, the child exists on the wire. A
+     `CancellationException` from a cancelled caller is handled the same way.
      - The child stays registered until subtree cleanup, like a child whose feed ended: its id stays unique and it
        can still be named as a `parent`.
      - `announce` rethrows the factory's exception unchanged. No collection starts, because there is no session.
@@ -372,19 +370,11 @@ public val CoroutineContext.subagents: AgentSubagents?
        `unknown` is. If that scope is already cancelled, nothing is sent.
      - During the parent's replay window, the SDK sends nothing: history grants are never in effect, and the client
        treats the child's state as unconfirmed after the load anyway.
-   - **During the parent's replay window, the factory must send the announcement itself.** If it returns without
-     sending one, `announce` throws `IllegalStateException` right away and unregisters the child. Waiting for
-     `events` would deadlock: its collection starts only after the load response, which waits for `replayHistory()`,
-     which waits for `announce`.
 6. After the factory returns, start collecting `events` in the child's context, in a scope owned by the root session
    (see "Lifetimes"): right away for a live announcement, after the parent's load response for a replayed child.
-7. Return the session once the announcement has been sent and the factory has returned. This is the caller's
-   ordering point. For example, the parent may then send its own `session_message` naming the child (`sub:88-93`).
-   - A live child that announces itself only in `events` makes `announce` wait for that first item, with no
-     timeout. The SDK puts no timeouts on app code. An app that wants a bound wraps the call in `withTimeout`.
-   - **If the caller is cancelled while waiting** and nothing has been sent yet, cancel the collection, unregister
-     the child and rethrow. If the announcement has already gone out, the child exists on the wire: it stays
-     registered and its collection keeps running. Only the caller gets the `CancellationException`.
+7. Return the session once the factory has returned, after the announcement. This is the caller's ordering point.
+   For example, the parent may then send its own `session_message` naming the child (`sub:88-93`). `announce` waits
+   for nothing else: a cancelled caller reaches the factory, and is handled as a factory failure in step 5.
 
 ### Routing
 
@@ -1760,8 +1750,8 @@ cover externally observable behaviour.
 - Without `subagents`, a root's `client.notify` and its prompt flow both fail on `session_message` and
   `session_message_chunk` with `IllegalStateException`, and nothing reaches the wire. With `subagents`, both are
   sent. The same for a `tool_call` and a `tool_call_update` with `ToolCallContent.Session` in `content`.
-- First-send rule: a factory that throws, a wrong first send or first item, an empty flow with nothing sent, or a
-  flow that throws first all make `announce` throw, and nothing more reaches the wire.
+- First-send rule: a factory that throws or returns before sending the announcement, live or during a replay,
+  makes `announce` throw, nothing more reaches the wire, and the id is free again.
 - Factory failure after the announcement:
   - announced with `running` and a cancel grant, then throws: `announce` rethrows the same exception, the child
     stays registered (announcing the id again fails), one `SubagentUpdate` with `capabilities = null` and
@@ -1776,12 +1766,11 @@ cover externally observable behaviour.
   - with a grant in effect, it is delivered to `cancel()` once, after the factory returns and outside `announce`;
   - with the grant revoked before the factory returns, it is dropped;
   - with no grant, or when the factory throws, it is ignored.
-- The announcement may come from the factory (`context.client.notify`) or as the first item of `events`.
 - Client operations fail before the announcement.
 - `announce` returns only after the announcement has been sent. A parent `session_message` sent right after it
   arrives after the announcement.
-- Cancelling a waiting `announce`: with nothing sent, the child is unregistered and its id is free again; with
-  the announcement already sent, the child stays registered and its `events` keep flowing.
+- Cancelling the caller while the factory runs: with nothing sent, the child is unregistered and its id is free
+  again; with the announcement already sent, the child stays registered.
 - Routing:
   - own `SubagentUpdate` → parent's stream;
   - other updates → child's stream;
@@ -1806,8 +1795,6 @@ cover externally observable behaviour.
     registered; the same with `idle` as the last state: nothing is sent; closing the parent while `events` is
     suspended: nothing is sent;
   - after a routed `session/cancel`, `events` throws a `CancellationException`: `unknown`, not `idle(cancelled)`;
-  - a live `events` that throws a `CancellationException` before its first item makes `announce` throw
-    `IllegalStateException`, and the caller's coroutine stays active.
 - Subtree cleanup:
   - collections are cancelled, ids are freed, and `AgentSubagents`/client operations fail afterwards;
   - no child update reaches the wire after the `session/close` response. A request that a child had in flight, and
@@ -2240,8 +2227,9 @@ The design moved through several shapes before landing on the factory-based `ann
    - Both paths are allowed: `events` and `ctx.client.notify` (or the context's `client`).
    - Routing, the announcement-first gate and grant tracking apply to every path, because they decide what is valid on the wire.
    - Only `events` feeds the `state` used by the automatic `unknown`, as in the existing v1/v2 runtimes (see "What the SDK tracks per child"). Document it: report state through `events` to get the automatic `unknown`.
-3. **A live announcement that never comes. Decided:** `announce` waits for the first item of `events` with no
-   timeout. During replay the factory must announce, and a cancelled wait cleans up only if nothing was sent (see
+3. **A live announcement that never comes. Decided (revised 2026-11-24):** the factory always sends the announcement
+   before it returns, live and during a replay, and `announce` drops the child and throws otherwise. The earlier
+   design, where `announce` waited for the first item of `events`, was removed: `events` are live work only (see
    "`announce` semantics", steps 5 and 7).
 4. **Names. Decided:** keep `AgentSubagentSession`, `AgentSubagentFactory.createSubagent`, `AgentSubagentContext`, `AgentSubagents.announce` and `CoroutineContext.subagents`. Replace `isSupported` with a nullable `CoroutineContext.subagents` (see "Public API").
 
@@ -2304,8 +2292,7 @@ The design moved through several shapes before landing on the factory-based `ann
       no guarantee depends on that thread.
 14. **A `CancellationException` from the app's `events`. Decided:** it counts as cancelled only when the
     collector's own job is no longer active. Otherwise it's a feed failure: `unknown` if the child is active, then
-    the collector completes normally (see "Feed end and failure"). Before the first item, `announce` throws
-    `IllegalStateException`, never the CE.
+    the collector completes normally (see "Feed end and failure").
     - Treating every CE as an SDK cancel was rejected. An SDK cancel of the collection is silent because the child
       is being torn down, so the same silence on a live parent would leave a `running` child on the client for
       good. Passing the CE through `announce` would also cancel the caller's active scope.

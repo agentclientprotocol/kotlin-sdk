@@ -7,6 +7,7 @@ import com.agentclientprotocol.agent.AgentSubagentSession
 import com.agentclientprotocol.agent.AgentSubagents
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.Event
+import com.agentclientprotocol.common.notify
 import com.agentclientprotocol.model.IdleStopReason
 import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.SessionId
@@ -52,8 +53,8 @@ internal class NativeRelayedSubagentSession(val history: SessionHistory) : Agent
  *
  * An agent that wraps a native agent may learn about the native agent's workers from one flat event stream, where
  * each event names its worker and the worker's parent. The relay announces each worker through the root's
- * `subagents`, naming the parent with `parent`, and feeds the worker's events into a channel that becomes the child's
- * `events`.
+ * `subagents`, naming the parent with `parent`: the factory sends the announcement. It then feeds the worker's events
+ * into a channel that becomes the child's `events`.
  *
  * `parent` defaults to the session that `subagents` belongs to, here the root. It may name any announced subagent
  * below it, and then the announcement goes on that subagent's stream.
@@ -70,17 +71,16 @@ internal suspend fun FlowCollector<Event>.relayNativeAgent(
                 val id = relayedId(event.worker)
                 val parentHistory = event.parent?.let { relayed.getValue(it).history } ?: rootHistory
                 val session = NativeRelayedSubagentSession(parentHistory.child(id))
-
-                // The announcement is the first item of the events this time: `announce` waits until it is sent.
-                session.feed(
-                    SessionUpdate.SubagentUpdate(
-                        id,
-                        title = MaybeUndefined.Value(event.title),
-                        state = MaybeUndefined.Value(StateUpdate.Running()),
-                    )
+                val announcement = SessionUpdate.SubagentUpdate(
+                    id,
+                    title = MaybeUndefined.Value(event.title),
+                    state = MaybeUndefined.Value(StateUpdate.Running()),
                 )
                 val parent = event.parent?.let(::relayedId)
-                relayed[event.worker] = subagents.announce(id, AgentSubagentFactory { session }, parent)
+                relayed[event.worker] = subagents.announce(id, AgentSubagentFactory { context ->
+                    session.history.send(announcement) { context.client.notify(it) }
+                    session
+                }, parent)
                 transcript.agentLine(id, "relays native worker ${event.worker} under ${event.parent ?: "the root"}")
             }
 

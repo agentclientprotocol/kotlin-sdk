@@ -34,6 +34,37 @@ public interface AgentSession {
      * If it throws, `session/load` fails with that error and the session is not registered.
      *
      * See protocol docs: [Loading Sessions](https://agentclientprotocol.com/protocol/session-setup#loading-sessions)
+     *
+     * ### Subagents
+     *
+     * Recorded subagents are replayed through the unstable [AgentSubagents] API: send each recorded update in its
+     * recorded order through the client of the session that sent it, and turn each recorded announcement into an
+     * [AgentSubagents.announce] call whose factory sends it, see [AgentSubagents] for the rules.
+     *
+     * In this example, which assumes that the client advertised the `subagents` capability, `record` is the app's list
+     * of updates in the order they went out, each with the id of the session whose client sent it and, for an
+     * announcement, the id of its parent. `ReplayedSubagent` is the app's [AgentSubagentSession] that keeps the
+     * factory's context and has empty events.
+     *
+     * ```
+     * override suspend fun replayHistory() {
+     *     val root = currentCoroutineContext()
+     *     val children = mutableMapOf<SessionId, AgentSubagentContext>()
+     *     for ((sender, parent, update) in record) {
+     *         val client = if (sender == sessionId) root.client else children[sender]?.client
+     *         if (client != null) {
+     *             client.notify(update)
+     *         } else {
+     *             // A child's first recorded update is its announcement.
+     *             val subagents = parent?.let { children.getValue(it).subagents } ?: root.subagents!!
+     *             children[sender] = subagents.announce(sender, AgentSubagentFactory { context ->
+     *                 context.client.notify(update)
+     *                 ReplayedSubagent(context)
+     *             }).context
+     *         }
+     *     }
+     * }
+     * ```
      */
     public suspend fun replayHistory() {}
 
