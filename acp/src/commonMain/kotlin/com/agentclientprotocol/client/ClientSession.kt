@@ -32,6 +32,10 @@ public interface ClientSession : BaseClientSession {
      * Sends a message to the agent for execution and waits for the whole turn to be completed.
      * During execution, the agent can send notifications or requests to the client.
      *
+     * While the turn runs, the session's updates come through the returned flow instead of
+     * [ClientSessionOperations.notify]. The flow buffers them, so state the client keeps for the session, such as the
+     * values of its [subagents], may already reflect updates that the flow hasn't emitted yet.
+     *
      * Corresponds to the [com.agentclientprotocol.model.AcpMethod.AgentMethods.V1.SessionPrompt]
      */
     public suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement? = null): Flow<Event>

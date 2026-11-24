@@ -51,10 +51,16 @@ import kotlinx.atomicfu.atomic
  * of the parent. So the properties are plain getters, not flows. A flow beside the stream would be a second channel
  * with its own timing: a collector on another thread could see a value before the event that caused it.
  *
- * **Contract:** inside a `notify` of the parent's operations, the getters reflect every event delivered so far,
- * including the current one. Elsewhere they return the latest applied value. Each value is read atomically, so any
- * thread may read them, but values read one after the other may come from different moments. An application that
- * wants a flow keeps its own and updates it from `notify`.
+ * **Contract:** the getters return the values the client has received from the agent so far. Inside a `notify` of
+ * the parent's operations they match the parent's stream: they reflect every event delivered so far, including the
+ * current one. Each value is read atomically, so any thread may read them, but values read one after the other may
+ * come from different moments. An application that wants a flow keeps its own and updates it from `notify`.
+ *
+ * During a turn, a root session's updates don't go to `notify`: they come from the [ClientSession.prompt] flow, which
+ * buffers them. When the application takes an update from that flow, the getters may already reflect updates that
+ * the flow hasn't emitted yet. To show what an update changed, read the update, which carries the patch; read the
+ * getters for the subagent's current values. A subagent that an update from the flow names is already in the
+ * parent's [BaseClientSession.subagents], unless its setup failed.
  *
  * @property operations the operations that [SubagentOperations.createSubagentOperations] returned for this subagent
  * @param holder the holder of this subagent's session, which its parent holder registered when the announcement arrived
