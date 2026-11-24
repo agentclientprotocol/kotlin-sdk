@@ -30,10 +30,11 @@ import kotlinx.atomicfu.atomic
  * Inside the parent's [ClientSessionOperations.notify] for the announcement, the subagent is already in the parent's
  * [BaseClientSession.subagents], with its operations and the announced values. The subagent's own stream gets
  * its history, then exactly one [com.agentclientprotocol.common.SessionEvent.Opened] without a response, at the
- * place of the root's answer, then its live updates. The live updates, and the agent's requests for the subagent,
- * wait until the opening call of the root session has completed. A permission request that waits there is still
- * answered `cancelled`, without reaching [operations], if the subagent's work is cancelled or its root is closed
- * meanwhile, see [cancel].
+ * place of the root's answer, then its live updates. Nothing orders that `Opened` against the parent's, and the
+ * subagent's own [BaseClientSession.subagents] lists what its history announced by then. The live updates, and the
+ * agent's requests for the subagent, wait until the opening call of the root session has completed. A permission
+ * request that waits there is still answered `cancelled`, without reaching [operations], if the subagent's work is
+ * cancelled or its root is closed meanwhile, see [cancel].
  *
  * The client never prompts a subagent, so there is no prompt, mode, model, configuration or close here. A subagent is
  * closed together with its root session, see [ClientSession.close], whether or not it has finished opening. It is also

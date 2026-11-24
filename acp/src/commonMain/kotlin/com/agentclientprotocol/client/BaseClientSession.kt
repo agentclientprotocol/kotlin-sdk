@@ -52,6 +52,21 @@ public sealed interface BaseClientSession {
      * Each read returns a snapshot, so a list never changes under its reader. A reloaded session is a new object
      * with a new list, and the list of the closed object stays as it was.
      *
+     * ### After a load
+     *
+     * Each session's own stream sets up the subagents that its history announced, and the session lists them before
+     * its own [com.agentclientprotocol.common.SessionEvent.Opened]. So at a session's `Opened`, this list has every
+     * subagent that the session's history announced, except those whose setup failed.
+     *
+     * The levels below are not ready then:
+     * - A subagent's own list is complete at that subagent's `Opened`, which comes on its own stream.
+     * - Nothing orders a subagent's `Opened` against its parent's: it may come before or after.
+     * - A session's `Opened` doesn't wait for any subagent's opening, and a slow `notify` of a subagent doesn't
+     *   hold up its parent.
+     *
+     * An application that needs the whole replayed tree waits for the `Opened` of each subagent it finds, and reads
+     * that subagent's list then.
+     *
      * See [ClientSubagentSession] for when the value is up to date.
      */
     @UnstableApi
