@@ -377,8 +377,9 @@ events patch; follow-ups: `ReplayedTree` test start race, misleading message whe
 failure; draft commit `feat: make the subagent factory the only way to announce a child` in the report; amended per user note: `createSubagent` grant sentence now says a grant sent during the replay is history); 2 tree incomplete at loaded root's `Opened` (grandchildren) — DECIDED (user agreed option 1, 2026-11-24): KDoc per-session rule
 (at each session's own `Opened` its `subagents` has every child its history announced), no barrier, no helper; reason: each session handles its own stream in order, announcements' setup included; G2 COMMITTED `092397b` (KDoc in `BaseClientSession.subagents` `### After a load`, `SessionEvent.Opened`,
 `ClientSubagentSession`, AGENTS.md clause; `check` green); 3 getters ahead during the prompt Flow → DECIDED (user 2026-11-24): KDoc only, getters = latest received from the
-agent, the buffered prompt flow lags behind them (no 'not exact' wording); G3 COMMITTED `650ab99` (ClientSubagentSession contract, ClientSession.prompt, AGENTS.md sentence; `check` green); 4 WARN `CancelRequest for unknown request` log level — IN DISCUSSION (proposed: debug, same race as 'already
-answered'; maybe also 'response for unknown request ID' if the code confirms the mirror race). E2+E3
+agent, the buffered prompt flow lags behind them (no 'not exact' wording); G3 COMMITTED `650ab99` (ClientSubagentSession contract, ClientSession.prompt, AGENTS.md sentence; `check` green); 4 cancel-race WARNs → G4 COMMITTED `d9b84c9` (both 'unknown request' logs in Protocol at debug; mirror race confirmed:
+local cancel drops the pending entry after the graceful wait or at once for a batch). All four gaps done. Next: the
+user continues the sample review (replay showcase per the new replayHistory rule, SessionHistory discussion), then E4. E2+E3
 COMMITTED by the user `107763e`. E4 (E0 leftovers) still pending after E5.
 
 Subagent examples goal (user 2026-11-23): comprehensive samples of subagent use from the agent side and the client
