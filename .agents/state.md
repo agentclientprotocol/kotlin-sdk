@@ -86,6 +86,16 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   `subtreeScope`/`cancelSubtreeScope` stay; add public `@UnstableApi` `CoroutineContext.clientSubagentSession`
   (name follows the type like `clientSession`; `baseClientSession` already follows `BaseClientSession`, no rename).
   `SubagentClientOperations` <-> `SubagentSessionWrapper` cycle kept (inherent; KDoc states the split).
+- SDK-gap discussion (user 2026-11-24), gap 1 decided: the factory ALWAYS sends the announcement through
+  `context.client` before returning, live and replay; events-first announcement is removed (no wait on `events`,
+  no `withTimeout` advice). `events` are live work only, collected after the factory returns (replayed child: after
+  the load response). No `AgentSubagentSession.history`, no `AgentSession.client` (v1/v2) and no
+  `AgentSubagentSession.context`: the factory's context is the only way to reach a child, the app keeps it (e.g. in
+  the returned session). Replay rule: send each recorded update in recorded order through the client of the session
+  that sent it live (routing by `context.client` puts a child's own patch on the parent's stream); a recorded
+  announcement becomes `announce` with a factory that sends it and keeps the context. A shortened flat-record replay
+  snippet goes into the `AgentSession.replayHistory` KDoc. Samples: only the changes E5 needs now (probe/relay
+  announce from the factory); the replay showcase and `SessionHistory` come later with the user's sample review.
 
 ## Done
 - M0 research — report `.agents/research/subagents-wire-shapes.md` (upstream `13b76582`): no wire-shape change since
@@ -360,6 +370,11 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   tests; `check` green (2nd run, JS flake); no API change.
 
 ## Next
+SDK gaps from E1–E3 (user 2026-11-24, one by one): 1 replay/factory KDoc → DECIDED (see Decisions), E5 IN PROGRESS
+(opus programmer); 2 tree incomplete at loaded root's `Opened` (grandchildren); 3 `ClientSubagentSession` getters
+ahead during the prompt Flow; 4 WARN `CancelRequest for unknown request` log level. 2–4 not discussed yet. E2+E3
+COMMITTED by the user `107763e`. E4 (E0 leftovers) still pending after E5.
+
 Subagent examples goal (user 2026-11-23): comprehensive samples of subagent use from the agent side and the client
 side, with straightforward structured comments. Plan APPROVED (user 2026-11-23):
 - Layout like Koog `examples/simple-examples`: same module (`samples/kotlin-acp-client-sample`, name kept), one
