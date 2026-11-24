@@ -370,12 +370,13 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   tests; `check` green (2nd run, JS flake); no API change.
 
 ## Next
-SDK gaps from E1–E3 (user 2026-11-24, one by one): 1 replay/factory KDoc → DECIDED (see Decisions), E5 DONE, UNCOMMITTED, awaiting the user's review (9 files;
+SDK gaps from E1–E3 (user 2026-11-24, one by one): 1 replay/factory KDoc → DONE, E5 COMMITTED `3e8548b` (9 files;
 wrapper drops the announcement deferred; `check` + `:acp:apiCheck` green, no dump change; deviations: cancelled caller
 during the factory = factory failure, events never collected; probe announces without state, `running` as first
 events patch; follow-ups: `ReplayedTree` test start race, misleading message when a factory swallows the close
 failure; draft commit `feat: make the subagent factory the only way to announce a child` in the report; amended per user note: `createSubagent` grant sentence now says a grant sent during the replay is history); 2 tree incomplete at loaded root's `Opened` (grandchildren) — DECIDED (user agreed option 1, 2026-11-24): KDoc per-session rule
-(at each session's own `Opened` its `subagents` has every child its history announced), no barrier, no helper; reason: each session handles its own stream in order, announcements' setup included; slice waits for the E5 commit; 3 `ClientSubagentSession` getters
+(at each session's own `Opened` its `subagents` has every child its history announced), no barrier, no helper; reason: each session handles its own stream in order, announcements' setup included; G2 COMMITTED `092397b` (KDoc in `BaseClientSession.subagents` `### After a load`, `SessionEvent.Opened`,
+`ClientSubagentSession`, AGENTS.md clause; `check` green); 3 `ClientSubagentSession` getters
 ahead during the prompt Flow; 4 WARN `CancelRequest for unknown request` log level. 2–4 not discussed yet. E2+E3
 COMMITTED by the user `107763e`. E4 (E0 leftovers) still pending after E5.
 
