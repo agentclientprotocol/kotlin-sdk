@@ -386,7 +386,13 @@ User 2026-11-25: keeps E6 ("more explicit now"); asked for stdlib atomics instea
 (SessionRecord/TurnRecord/SubagentRecord, private `kotlin.concurrent.atomics.AtomicReference` + `List` getter + named
 append fns, file-level `@OptIn(ExperimentalAtomicApi::class)`), `ScriptedUser` AtomicBoolean, `runDelegatedWork`
 stdlib atomic; ConcurrentHashMaps kept; main 1740 -> 1782; tests `--rerun` x4, `check`, runSubagents green. Draft
-commit `refactor: replay the subagents sample from the agent's own session record`. WAITING on the user's review.
+commit `refactor: replay the subagents sample from the agent's own session record`.
+User 2026-11-25: atomics looked heavier; switched to `@Volatile var … private set` + named append fns (single writer
+per record). Second follow-up DONE, UNCOMMITTED: all record props @Volatile except `SessionRecord.turns` (atomic:
+load of a still-open session gives two root objects / lazy turn job); reviewer continues after load only if its
+record has an outcome (old work's last write); `children` @Volatile private var; ScriptedUser back to HEAD; main
+1816 lines; tests `--rerun` x6, `check`, runSubagents green. WAITING on the user (proposal: reject `session/load` of
+a still-open session in the sample to drop the open-load edge handling).
 
 SDK gaps from E1–E3 (user 2026-11-24, one by one): 1 replay/factory KDoc → DONE, E5 COMMITTED `3e8548b` (9 files;
 wrapper drops the announcement deferred; `check` + `:acp:apiCheck` green, no dump change; deviations: cancelled caller
