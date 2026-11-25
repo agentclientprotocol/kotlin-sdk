@@ -20,6 +20,14 @@ import kotlinx.coroutines.flow.FlowCollector
  */
 internal suspend fun FlowCollector<Event>.say(update: SessionUpdate) = emit(Event.SessionUpdateEvent(update))
 
+/**
+ * Sends [update] on the root's stream, and keeps it in [turn] as something the root said.
+ */
+internal suspend fun FlowCollector<Event>.say(turn: TurnRecord, update: SessionUpdate) {
+    turn.said(update)
+    say(update)
+}
+
 internal fun message(text: String) = SessionUpdate.AgentMessageChunk(ContentBlock.Text(text))
 
 /**

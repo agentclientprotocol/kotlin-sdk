@@ -1,4 +1,4 @@
-@file:OptIn(UnstableApi::class)
+@file:OptIn(UnstableApi::class, ExperimentalAtomicApi::class)
 
 package com.agentclientprotocol.samples.subagents.agent
 
@@ -26,14 +26,15 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
-import java.util.concurrent.atomic.AtomicReference
+import kotlin.concurrent.atomics.AtomicReference
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
  * A delegated child: it runs one [task] for its parent [parentId].
  *
  * The work runs inside [events], which the SDK collects once the factory has returned, so each update the work emits
- * is sent before the work goes on. That flow is the one path for every update of the child, and [history] records
- * each one on the stream it goes on.
+ * is sent before the work goes on. That flow is the one path for every update of the child. What the child says and
+ * how its work ends also go into [record], for `session/load`.
  *
  * Scenarios in this file, numbered as its section comments:
  * - 6. cancel: the client cancels the child, which stops its work and reports `idle(cancelled)`;
@@ -41,13 +42,14 @@ import java.util.concurrent.atomic.AtomicReference
  *
  * @param parentMessageId the id of the parent's own view of the task's message, if the parent sent one; the child's
  * view links to it
+ * @property record what the child did; a child that continues after a load adds to the record it was replayed from
  */
 internal class DelegatedSubagentSession(
     val task: DelegatedTask,
     private val parentId: SessionId,
     private val parentMessageId: MessageId?,
     private val context: AgentSubagentContext,
-    private val history: SessionHistory,
+    val record: SubagentRecord,
     private val transcript: Transcript,
 ) : AgentSubagentSession {
     private val cancelRequested = CompletableDeferred<Unit>()
@@ -57,9 +59,11 @@ internal class DelegatedSubagentSession(
      */
     val outcome = CompletableDeferred<IdleStopReason>()
 
-    override val events: Flow<SessionUpdate> = history.recording(flow {
+    override val events: Flow<SessionUpdate> = flow {
+        val scope = DelegatedTaskScope(context, this, record, transcript)
+
         // The incoming view of the parent's message starts the child's stream, before the child's answer to it.
-        emit(
+        scope.say(
             SessionUpdate.SessionMessage(
                 task.receivedMessageId,
                 senderSessionId = MaybeUndefined.Value(parentId),
@@ -69,11 +73,9 @@ internal class DelegatedSubagentSession(
             )
         )
 
-        val collector = this
-        val stopReason = runDelegatedWork(cancelRequested) {
-            DelegatedTaskScope(context, collector, history, transcript).(task.work)()
-        }
-        emit(subagentState(task.id, StateUpdate.Idle(stopReason)))
+        val stopReason = runDelegatedWork(cancelRequested) { scope.(task.work)() }
+        record.ended(stopReason)
+        scope.setState(StateUpdate.Idle(stopReason))
         transcript.agentLine(task.id, "task ended: ${stopReason.describe()}")
         outcome.complete(stopReason)
 
@@ -82,7 +84,7 @@ internal class DelegatedSubagentSession(
          * sample gives it none, so the feed stays open until the SDK removes the child with its root.
          */
         awaitCancellation()
-    })
+    }
 
     /*
      * 6. Cancel
@@ -126,12 +128,12 @@ internal suspend fun runDelegatedWork(cancelRequested: Deferred<Unit>, work: sus
             ending.compareAndSet(WorkEnding.RUNNING, WorkEnding.FINISHED)
             cancelWatch.cancel()
         }
-        if (ending.get() == WorkEnding.CANCELLED) IdleStopReason.Cancelled else IdleStopReason.EndTurn
+        if (ending.load() == WorkEnding.CANCELLED) IdleStopReason.Cancelled else IdleStopReason.EndTurn
     } catch (e: PermissionCancelledException) {
         IdleStopReason.Cancelled
     } catch (e: Exception) {
         currentCoroutineContext().ensureActive()
-        if (ending.get() == WorkEnding.CANCELLED) {
+        if (ending.load() == WorkEnding.CANCELLED) {
             IdleStopReason.Cancelled
         } else {
             /*

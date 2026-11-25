@@ -30,9 +30,9 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class DelegatingAgentSupport(private val transcript: Transcript) : AgentSupport {
     /*
-     * The history of every session this agent opened, kept after a close so that the session can be loaded again.
+     * The record of every session this agent opened, kept after a close so that the session can be loaded again.
      */
-    private val histories = ConcurrentHashMap<SessionId, SessionHistory>()
+    private val records = ConcurrentHashMap<SessionId, SessionRecord>()
 
     override suspend fun initialize(clientInfo: ClientInfo): AgentInfo = AgentInfo(
         capabilities = AgentCapabilities(
@@ -44,13 +44,13 @@ class DelegatingAgentSupport(private val transcript: Transcript) : AgentSupport 
 
     override suspend fun createSession(sessionParameters: SessionCreationParameters): AgentSession {
         val id = SessionId("root")
-        val history = SessionHistory(id).also { histories[id] = it }
-        return DelegatingAgentSession(id, history, transcript)
+        val record = SessionRecord().also { records[id] = it }
+        return DelegatingAgentSession(id, record, transcript)
     }
 
     override suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters): AgentSession {
-        val history = histories[sessionId]
+        val record = records[sessionId]
             ?: throw JsonRpcException(JsonRpcErrorCode.RESOURCE_NOT_FOUND.code, "Unknown session ${sessionId.value}")
-        return DelegatingAgentSession(sessionId, history, transcript)
+        return DelegatingAgentSession(sessionId, record, transcript)
     }
 }

@@ -22,13 +22,14 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.receiveAsFlow
 
 /**
- * A relayed worker of the native agent: its events are the updates the relay [feed]s it, which [history] records on
- * the stream they go on as the SDK sends them.
+ * A relayed worker of the native agent: its events are the updates the relay [feed]s it.
  *
  * Scenario in this file: 10. relay, an agent that wraps a native agent with a flat event stream announces nested
  * children with `parent`.
+ *
+ * @property record what the worker did, built by the relay from the native agent's events
  */
-internal class NativeRelayedSubagentSession(val history: SessionHistory) : AgentSubagentSession {
+internal class NativeRelayedSubagentSession(val record: SubagentRecord) : AgentSubagentSession {
     private val updates = Channel<SessionUpdate>(Channel.UNLIMITED)
 
     /**
@@ -36,8 +37,7 @@ internal class NativeRelayedSubagentSession(val history: SessionHistory) : Agent
      */
     val drained = CompletableDeferred<Unit>()
 
-    override val events: Flow<SessionUpdate> =
-        history.recording(updates.receiveAsFlow()).onCompletion { drained.complete(Unit) }
+    override val events: Flow<SessionUpdate> = updates.receiveAsFlow().onCompletion { drained.complete(Unit) }
 
     fun feed(update: SessionUpdate) {
         updates.trySend(update)
@@ -61,7 +61,7 @@ internal class NativeRelayedSubagentSession(val history: SessionHistory) : Agent
  */
 internal suspend fun FlowCollector<Event>.relayNativeAgent(
     subagents: AgentSubagents,
-    rootHistory: SessionHistory,
+    turn: TurnRecord,
     transcript: Transcript,
 ) {
     val relayed = mutableMapOf<String, NativeRelayedSubagentSession>()
@@ -69,25 +69,30 @@ internal suspend fun FlowCollector<Event>.relayNativeAgent(
         when (event) {
             is NativeEvent.Spawned -> {
                 val id = relayedId(event.worker)
-                val parentHistory = event.parent?.let { relayed.getValue(it).history } ?: rootHistory
-                val session = NativeRelayedSubagentSession(parentHistory.child(id))
                 val announcement = SessionUpdate.SubagentUpdate(
                     id,
                     title = MaybeUndefined.Value(event.title),
                     state = MaybeUndefined.Value(StateUpdate.Running()),
                 )
-                val parent = event.parent?.let(::relayedId)
+                val session = NativeRelayedSubagentSession(SubagentRecord(announcement))
+                val parent = event.parent?.let(relayed::getValue)
                 relayed[event.worker] = subagents.announce(id, AgentSubagentFactory { context ->
-                    session.history.send(announcement) { context.client.notify(it) }
+                    context.client.notify(announcement)
                     session
-                }, parent)
+                }, parent?.record?.id)
+                if (parent == null) turn.started(session.record) else parent.record.started(session.record)
                 transcript.agentLine(id, "relays native worker ${event.worker} under ${event.parent ?: "the root"}")
             }
 
-            is NativeEvent.Output -> relayed.getValue(event.worker).feed(message(event.text))
+            is NativeEvent.Output -> relayed.getValue(event.worker).run {
+                val output = message(event.text)
+                record.said(output)
+                feed(output)
+            }
 
             is NativeEvent.Finished -> relayed.getValue(event.worker).run {
-                feed(subagentState(relayedId(event.worker), StateUpdate.Idle(IdleStopReason.EndTurn)))
+                record.ended(IdleStopReason.EndTurn)
+                feed(subagentState(record.id, StateUpdate.Idle(IdleStopReason.EndTurn)))
                 end()
             }
         }
@@ -95,7 +100,7 @@ internal suspend fun FlowCollector<Event>.relayNativeAgent(
 
     // The turn's response then follows every relayed update.
     relayed.values.forEach { it.drained.await() }
-    say(message("Relayed ${relayed.size} workers of the native agent"))
+    say(turn, message("Relayed ${relayed.size} workers of the native agent"))
 }
 
 private fun relayedId(worker: String) = SessionId("relay-$worker")

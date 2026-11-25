@@ -26,8 +26,7 @@ import kotlinx.coroutines.flow.flow
  * stream. As for the root, `announce` returning is the point after which the child's updates may name the grandchild.
  */
 internal suspend fun DelegatedTaskScope.startRemoteProbe(id: SessionId): RemoteProbeSubagentSession {
-    val probeHistory = history.child(id)
-    return context.subagents.announce(id, AgentSubagentFactory { probeContext ->
+    val probe = context.subagents.announce(id, AgentSubagentFactory { probeContext ->
         /*
          * The probe isn't running yet: its runner reports that through the events. So the announcement leaves the
          * state out, and the running state follows as a patch.
@@ -37,9 +36,11 @@ internal suspend fun DelegatedTaskScope.startRemoteProbe(id: SessionId): RemoteP
             title = MaybeUndefined.Value("Linux probe"),
             description = MaybeUndefined.Value("Reruns a test on a remote Linux runner"),
         )
-        probeHistory.send(announcement) { probeContext.client.notify(it) }
-        RemoteProbeSubagentSession(id, parent = context.sessionId, probeHistory)
+        probeContext.client.notify(announcement)
+        RemoteProbeSubagentSession(id, parent = context.sessionId, SubagentRecord(announcement))
     })
+    record.started(probe.record)
+    return probe
 }
 
 /**
@@ -51,29 +52,34 @@ internal suspend fun DelegatedTaskScope.startRemoteProbe(id: SessionId): RemoteP
  * - 8. a grandchild, announced through the child's own `subagents`.
  *
  * Its factory sends the announcement, and its [events] report its work from the running state on, so that the SDK
- * sees the state when the feed ends. [history] records every item on the stream it goes on.
+ * sees the state when the feed ends.
+ *
+ * @property record what the probe did; it never gets an outcome, since the agent loses sight of the probe
  */
 internal class RemoteProbeSubagentSession(
     val id: SessionId,
     private val parent: SessionId,
-    private val history: SessionHistory,
+    val record: SubagentRecord,
 ) : AgentSubagentSession {
     private val assigned = CompletableDeferred<String>()
     private val result = CompletableDeferred<String>()
 
-    override val events: Flow<SessionUpdate> = history.recording(flow {
+    override val events: Flow<SessionUpdate> = flow {
         emit(subagentState(id, StateUpdate.Running()))
 
         val instruction = assigned.await()
-        emit(
-            SessionUpdate.SessionMessage(
-                MessageId("probe-task"),
-                senderSessionId = MaybeUndefined.Value(parent),
-                recipientSessionId = MaybeUndefined.Value(id),
-                content = MaybeUndefined.Value(listOf(ContentBlock.Text(instruction))),
-            )
+        val received = SessionUpdate.SessionMessage(
+            MessageId("probe-task"),
+            senderSessionId = MaybeUndefined.Value(parent),
+            recipientSessionId = MaybeUndefined.Value(id),
+            content = MaybeUndefined.Value(listOf(ContentBlock.Text(instruction))),
         )
-        emit(SessionUpdate.ToolCall(ToolCallId("rerun"), instruction, ToolKind.EXECUTE, ToolCallStatus.IN_PROGRESS))
+        val rerun =
+            SessionUpdate.ToolCall(ToolCallId("rerun"), instruction, ToolKind.EXECUTE, ToolCallStatus.IN_PROGRESS)
+        for (update in listOf(received, rerun)) {
+            record.said(update)
+            emit(update)
+        }
 
         /*
          * 7. Lost observability
@@ -84,7 +90,7 @@ internal class RemoteProbeSubagentSession(
          * ended reports `idle` with a stop reason instead.
          */
         result.completeExceptionally(IllegalStateException("Lost the connection to the Linux runner"))
-    })
+    }
 
     /**
      * Gives the probe its task and waits for the result.

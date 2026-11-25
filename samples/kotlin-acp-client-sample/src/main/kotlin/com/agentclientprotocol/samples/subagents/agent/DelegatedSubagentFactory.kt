@@ -20,15 +20,13 @@ import com.agentclientprotocol.samples.subagents.Transcript
 internal val cancelGrant = SubagentSessionCapabilities(cancel = SessionCancelCapabilities())
 
 /**
- * Builds the child that runs [task] for the parent [parentId], for `AgentSubagents.announce`, and records the child's
- * updates through [history], the child's own.
+ * Builds the child that runs [task] for the parent [parentId], for `AgentSubagents.announce`.
  *
  * Scenario in this file: 2. announcing a child.
  */
 internal class DelegatedSubagentFactory(
     private val task: DelegatedTask,
     private val parentId: SessionId,
-    private val history: SessionHistory,
     private val transcript: Transcript,
 ) : AgentSubagentFactory<DelegatedSubagentSession> {
     /*
@@ -49,7 +47,8 @@ internal class DelegatedSubagentFactory(
             capabilities = MaybeUndefined.Value(cancelGrant),
             state = MaybeUndefined.Value(StateUpdate.Running()),
         )
-        history.send(announcement) { context.client.notify(it) }
-        return DelegatedSubagentSession(task, parentId, task.sentMessageId, context, history, transcript)
+        context.client.notify(announcement)
+        val record = SubagentRecord(announcement)
+        return DelegatedSubagentSession(task, parentId, task.sentMessageId, context, record, transcript)
     }
 }

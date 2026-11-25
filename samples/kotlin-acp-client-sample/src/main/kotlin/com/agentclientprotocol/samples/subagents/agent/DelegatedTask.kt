@@ -46,36 +46,43 @@ internal class DelegatedTask(
  * - 5. patches to a child are ordinary events of the child.
  *
  * @property context the child's context from the factory
- * @property history the history of the child's stream, where the children it announces are recorded
+ * @property record what the child did, where its messages, tool calls and the children it starts are kept
  */
 internal class DelegatedTaskScope(
     val context: AgentSubagentContext,
     private val collector: FlowCollector<SessionUpdate>,
-    val history: SessionHistory,
+    val record: SubagentRecord,
     private val transcript: Transcript,
 ) {
     /**
-     * Sends [update] through the child's `events`: a `subagent_update` for the child on the parent's stream,
-     * everything else on the child's own stream. It returns once the SDK has sent it.
+     * Sends [update] on the child's own stream through the child's `events`, and keeps it in [record]. It returns
+     * once the SDK has sent it.
      */
-    suspend fun say(update: SessionUpdate) = collector.emit(update)
+    suspend fun say(update: SessionUpdate) {
+        record.said(update)
+        collector.emit(update)
+    }
 
     /*
      * 5. Patching a child
      *
      * A new title or state is a `subagent_update` for the child, emitted like any other event: the SDK sends it on
-     * the parent's stream. There is no update method.
+     * the parent's stream. There is no update method. The record keeps only the latest title, which a load announces
+     * the child with.
      */
-    suspend fun patchTitle(title: String) =
-        say(SessionUpdate.SubagentUpdate(context.sessionId, title = MaybeUndefined.Value(title)))
+    suspend fun patchTitle(title: String) {
+        val patch = SessionUpdate.SubagentUpdate(context.sessionId, title = MaybeUndefined.Value(title))
+        record.retitled(patch.title)
+        collector.emit(patch)
+    }
 
-    suspend fun setState(state: StateUpdate) = say(subagentState(context.sessionId, state))
+    suspend fun setState(state: StateUpdate) = collector.emit(subagentState(context.sessionId, state))
 
     /**
      * Grants the client `session/cancel` for this child again, and reports it `running`: the fresh grant after a
      * `session/load` (scenario 13, in `DelegatingAgentSession`).
      */
-    suspend fun grantCancel() = say(
+    suspend fun grantCancel() = collector.emit(
         SessionUpdate.SubagentUpdate(
             context.sessionId,
             capabilities = MaybeUndefined.Value(cancelGrant),

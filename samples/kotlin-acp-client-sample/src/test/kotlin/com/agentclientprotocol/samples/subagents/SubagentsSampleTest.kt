@@ -51,6 +51,9 @@ class SubagentsSampleTest {
     private val planner = SessionId("relay-planner")
     private val notes = SessionId("relay-notes")
     private val allSubagents = listOf(reviewer, cleaner, tester, probe, planner, notes)
+    private val parents = mapOf(
+        reviewer to root, cleaner to root, tester to root, probe to tester, planner to root, notes to planner,
+    )
 
     private class Part(val lines: List<TranscriptLine>) {
         fun client(sessionId: SessionId) = lines.filter { it.side == Side.CLIENT && it.sessionId == sessionId }
@@ -214,20 +217,50 @@ class SubagentsSampleTest {
     }
 
     @Test
-    fun `each replayed stream keeps its live order`() = eachRun { run ->
-        for (id in listOf(root) + allSubagents) {
-            // The SDK sends the probe's `unknown` on its own, and the client sent the user's prompts: neither is recorded.
-            val live = run.live.liveUpdates(id).filterNot { it == stateUpdate(probe, StateUpdate.Unknown()) }
-            val replayed = run.load.historyUpdates(id).filterNot { it is SessionUpdate.UserMessageChunk }
-            assertEquals(live, replayed, "the replay of the stream of $id")
-        }
+    fun `each replayed stream tells what the stream showed live`() = eachRun { run ->
+        // The client sent the user's prompts, so it shows them only as history.
+        val prompts = run.load.historyUpdates(root).filterIsInstance<SessionUpdate.UserMessageChunk>()
+        assertEquals(2, prompts.size, "both prompts are replayed")
 
-        val rootHistory = run.load.historyUpdates(root)
-        val delegation = rootHistory.indexOfFirst { it is SessionUpdate.ToolCall && it.title == "Delegate: Reviewer" }
-        val titlePatch = rootHistory.indexOfFirst {
-            it is SessionUpdate.SubagentUpdate && it.title.valueOrNull() == "Reviewer: 2 findings"
+        // The subagent_updates on a stream come from its children, whose histories are told apart from its own.
+        for (id in listOf(root) + allSubagents) {
+            val live = run.live.liveUpdates(id).filterNot { it is SessionUpdate.SubagentUpdate }
+            val replayed = run.load.historyUpdates(id)
+                .filterNot { it is SessionUpdate.SubagentUpdate || it is SessionUpdate.UserMessageChunk }
+            assertEquals(live, replayed, "the messages and tool calls of the stream of $id, in their live order")
         }
-        assertTrue(delegation in 0 until titlePatch, "the reviewer's title patch still follows its delegation")
+    }
+
+    @Test
+    fun `each replayed child is announced under its latest title before anything about it`() = eachRun { run ->
+        for ((child, parent) in parents) {
+            val parentHistory = run.load.historyUpdates(parent)
+            val about = parentHistory.filter { it.names(child) }
+            val announcement = assertIs<SessionUpdate.SubagentUpdate>(about.first(), "$child is announced first")
+            assertEquals(run.sessions.opened.descendant(child).title, announcement.title.valueOrNull())
+
+            val patches = about.drop(1).filterIsInstance<SessionUpdate.SubagentUpdate>()
+            assertTrue(patches.all { it.title == MaybeUndefined.Undefined }, "no title patch follows for $child")
+        }
+    }
+
+    @Test
+    fun `a replayed child ends with its live outcome, or with no state when it had none`() = eachRun { run ->
+        for ((child, parent) in parents) {
+            fun states(updates: List<SessionUpdate>) = updates
+                .filterIsInstance<SessionUpdate.SubagentUpdate>()
+                .filter { it.sessionId == child }
+                .mapNotNull { it.state.valueOrNull() }
+
+            val replayed = states(run.load.historyUpdates(parent))
+            if (child == probe) {
+                assertTrue(replayed.isEmpty(), "the probe never got an outcome: ${replayed.map { it.describe() }}")
+            } else {
+                val liveEnd = states(run.live.liveUpdates(parent)).last()
+                assertIs<StateUpdate.Idle>(liveEnd)
+                assertEquals(liveEnd, replayed.last(), "the history of $child ends with its outcome")
+            }
+        }
     }
 
     @Test
@@ -296,8 +329,21 @@ class SubagentsSampleTest {
 
     private fun ClientSession.subagent(id: SessionId): ClientSubagentSession = subagents.single { it.sessionId == id }
 
+    private fun ClientSession.descendant(id: SessionId): ClientSubagentSession =
+        subagents.descendants().single { it.sessionId == id }
+
     private fun List<ClientSubagentSession>.descendants(): List<ClientSubagentSession> =
         flatMap { listOf(it) + it.subagents.descendants() }
+
+    /**
+     * Whether this update is about the subagent [id]: patches it, sends it a message, or links to it.
+     */
+    private fun SessionUpdate.names(id: SessionId) = when (this) {
+        is SessionUpdate.SubagentUpdate -> sessionId == id
+        is SessionUpdate.SessionMessage -> recipientSessionId.valueOrNull() == id
+        is SessionUpdate.ToolCall -> ToolCallContent.Session(id) in content
+        else -> false
+    }
 
     private fun idle(stopReason: IdleStopReason) = StateUpdate.Idle(stopReason)
 
