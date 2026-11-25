@@ -370,6 +370,13 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   tests; `check` green (2nd run, JS flake); no API change.
 
 ## Next
+User 2026-11-25 on the E0 leftovers: do NOT touch the other samples' code or comments (renames, single-line KDocs,
+`v2-sample-*` names) — not part of this PR. E4 narrowed: `build.gradle.kts` logback -> `libs.logback.classic`;
+AGENTS.md samples paragraph mentions subagents. Committed right away. Then E7 (uncommitted for review): READMEs —
+root README mentions only `samples/README.md`; `samples/README.md` = concise table of contents with a short summary
+per sample, linking each sample's own README; each sample gets a dedicated README in its package directory
+(`samples/kotlin-acp-client-sample/src/main/kotlin/com/agentclientprotocol/samples/<pkg>/README.md`) with the details.
+
 E6 SessionHistory removal (user 2026-11-25: "try to rebuild and see if it actually simplifies things"): replace the
 generic wire-recording `agent/SessionHistory.kt` with replay rebuilt from the agent's own domain record (prompt,
 delegated tasks, outcomes, relayed workers, grandchild); `replayHistory` becomes a plain function in the root; no new
