@@ -9,7 +9,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlin.logging)
     implementation(libs.kotlinx.io.core)
-    implementation("ch.qos.logback:logback-classic:1.5.13")
+    implementation(libs.logback.classic)
 }
 
 /*

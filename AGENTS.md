@@ -59,7 +59,7 @@ Cross-transport integration and conformance-style tests. Use this module for beh
 
 ### `:samples:kotlin-acp-client-sample`
 
-Runnable examples for stable ACP, direct v2 use, negotiation, and external-agent integration. Samples should demonstrate supported public APIs, not internal shortcuts.
+Runnable examples for stable ACP, direct v2 use, negotiation, authentication, subagents, and external-agent integration. Samples should demonstrate supported public APIs, not internal shortcuts.
 
 Each sample has its own package under `com.agentclientprotocol.samples`, with shared helpers in `support`, and its own Gradle run task registered with `registerSampleTask` in the module's `build.gradle.kts`. `samples/README.md` is the table of contents. A new sample adds a package, a task and a README row. The module's JVM tests (`src/test`) run scripted samples through their entry points, so `./gradlew check` catches a sample that an SDK change breaks.
 
