@@ -382,6 +382,7 @@ v2 README, AuthStatusApp line removed, modules row links samples/README); sample
 summary/protocol/task/needs/link, `support` paragraph, How to run, Adding a sample); new READMEs in simple, gemini,
 v2, auth, subagents packages; AGENTS.md adds "its own README in its package"; links + task names checked. Draft
 commit `docs: split the samples documentation into per-sample READMEs`.
+E7 COMMITTED by the user `98a074c`. Next: discussing `NativeRelayedSubagentSession` shape (user note 2026-11-25).
 
 E6 SessionHistory removal (user 2026-11-25: "try to rebuild and see if it actually simplifies things"): replace the
 generic wire-recording `agent/SessionHistory.kt` with replay rebuilt from the agent's own domain record (prompt,
