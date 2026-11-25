@@ -399,7 +399,14 @@ M2 programmer slices (mechanical+accuracy per area; long-form rewrites only as a
 - M1 audit DONE (2026-11-25): `.agents/research/kdoc-audit-{agent,client,model}.md`. Verdicts: no material shrink
   of `AgentSubagents`/`announce` (restructure + accuracy; `announce` has a contradiction on CE→ISE); bug in the
   `replayHistory` example (S5); v2 client S10 (replaced object never marked ended) is a behaviour question.
-  WAITING on the user: long-form proposals, FIXME/TODO trimming, S10.
+- User answers (2026-11-25, final): no v2 changes at all (skip `agent/v2`, `client/v2`, `model/v2/**` incl.
+  conversions; S10 dropped); follow the orchestrator's recommendations: all audit long-form texts approved,
+  `AgentSubagents` = restructure + move the replay recipe into `AgentSession.replayHistory` (class keeps the window,
+  history vs live, failed-load removal); FIXME/TODO plans go to issues with a short comment referencing them:
+  v1 `RootSessionWrapper.prompt` FIXME → #166, `ClientOperationsFactory` TODO → #167 (both created upstream by the
+  orchestrator). Programmers leave the KDoc changes UNCOMMITTED for the user's review.
+- M2 slices (single, sequential, uncommitted): K1 model+build-logic+samples → K2 agent+protocol → K3 client+common →
+  `./gradlew check` → reviewer over the uncommitted diff.
 
 Current status (2026-11-25, end of session): the sample review continues in a new orchestrator session. Everything
 up to `ca9c764` is committed; the working tree is clean; nothing is pushed. No slice is in progress, and no follow-up
