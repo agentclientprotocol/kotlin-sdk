@@ -97,6 +97,12 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   snippet goes into the `AgentSession.replayHistory` KDoc. Samples: only the changes E5 needs now (probe/relay
   announce from the factory); the replay showcase and `SessionHistory` come later with the user's sample review.
 
+- Sample rules (user 2026-11-25): samples introduce no major custom components unrelated to the SDK; don't touch the
+  other samples' code or comments in this PR; each sample has its own README in its package directory and a row in the
+  `samples/README.md` table of contents; shared concurrency style in the subagents sample: single-writer properties
+  are `@Volatile var … private set` holding immutable values, a stdlib atomic only where two writers exist (with a
+  comment), no `CopyOnWriteArrayList`-typed properties; each subagent session class owns its own behaviour.
+
 ## Done
 - M0 research — report `.agents/research/subagents-wire-shapes.md` (upstream `13b76582`): no wire-shape change since
   `c392d7e9`; only line numbers shifted and the RFD is now Preview. Report lists decoding details the spec omits.
@@ -369,55 +375,23 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   review); `ClientSubagentSession(children: () -> List<…>)`; `awaitSession`; KDoc restructured; AGENTS.md; 2 new
   tests; `check` green (2nd run, JS flake); no API change.
 
-## Next
-User 2026-11-25 on the E0 leftovers: do NOT touch the other samples' code or comments (renames, single-line KDocs,
-`v2-sample-*` names) — not part of this PR. E4 narrowed: `build.gradle.kts` logback -> `libs.logback.classic`;
-AGENTS.md samples paragraph mentions subagents. Committed right away. Then E7 (uncommitted for review): READMEs —
-root README mentions only `samples/README.md`; `samples/README.md` = concise table of contents with a short summary
-per sample, linking each sample's own README; each sample gets a dedicated README in its package directory
-(`samples/kotlin-acp-client-sample/src/main/kotlin/com/agentclientprotocol/samples/<pkg>/README.md`) with the details.
-E4 COMMITTED `134751c` (logback from catalog; AGENTS.md list adds authentication + subagents; build + `check` green).
-E7 DONE, UNCOMMITTED, awaiting the user's review: root README "Samples" = pointer only (v2 response-mode text ->
-v2 README, AuthStatusApp line removed, modules row links samples/README); samples/README 172 -> 60 lines (table:
-summary/protocol/task/needs/link, `support` paragraph, How to run, Adding a sample); new READMEs in simple, gemini,
-v2, auth, subagents packages; AGENTS.md adds "its own README in its package"; links + task names checked. Draft
-commit `docs: split the samples documentation into per-sample READMEs`.
-E7 COMMITTED by the user `98a074c`. E8 APPROVED (user 2026-11-25): `NativeRelayedSubagentSession` owns one worker's translation (builds announcement +
-record from id/title; private channel, drained, record writes; `relayOutput(text)`, `relayFinished()`, `awaitSent()`);
-`relayNativeAgent` only builds the tree (announce with `parent`, add record to turn/parent) and routes by worker name.
-No `handle(NativeEvent)`. Programmer (default model), single mode, UNCOMMITTED for review.
-E8 DONE, UNCOMMITTED, awaiting the user's review (3 files +51/-35: NativeRelayedSubagentSession.kt, SessionRecord.kt
-KDoc, subagents README file row; tests `--rerun` x3, runSubagents same lines (sorted), `check` green). Draft commit
-`refactor(samples): make the relayed subagent session translate its worker`.
+- E6 SessionHistory removal — `1fb1ac9` — replay rebuilt from the agent's own `SessionRecord`/`TurnRecord`/
+  `SubagentRecord` (`agent/SessionRecord.kt`); `@Volatile var … private set` per single-writer property, `turns` the one
+  stdlib atomic (load of an open session gives a second writer), reviewer continues after load only if its record has
+  an outcome; tried and reverted: rejecting `session/load` of an open session (more code, new gaps).
+- E4 build/AGENTS.md — `134751c` — samples' logback from `libs.logback.classic`; AGENTS.md sample list adds
+  authentication and subagents.
+- E7 per-sample READMEs — `98a074c` (user commit) — root README points only to `samples/README.md` (a table of
+  contents); each sample has its own README in its package directory; AGENTS.md "Adding a sample" rule updated.
+- E8 relayed worker — `ca9c764` (user commit) — `NativeRelayedSubagentSession(id, title)` translates one worker
+  (`relayOutput`, `relayFinished`, `awaitSent`; private channel/drain/record writes); `relayNativeAgent` builds the
+  tree with `parent` and routes by worker name.
 
-E6 SessionHistory removal (user 2026-11-25: "try to rebuild and see if it actually simplifies things"): replace the
-generic wire-recording `agent/SessionHistory.kt` with replay rebuilt from the agent's own domain record (prompt,
-delegated tasks, outcomes, relayed workers, grandchild); `replayHistory` becomes a plain function in the root; no new
-major component in the sample. Experimental: Opus programmer, single mode, UNCOMMITTED for the user's judgement
-(report a before/after line count and what got simpler or harder). E4 still pending after it.
-E6 DONE, UNCOMMITTED (programmer report 2026-11-25): `SessionHistory.kt` deleted, new `agent/TurnRecord.kt`
-(TurnRecord + SubagentRecord with steps), replay in `DelegatingAgentSession` (sections 11-14 renumbered), capability
-filter dropped; main 1770 -> 1740 lines, test 401 -> 447 (3 new replay tests, 15 total); `--rerun` x6, runSubagents,
-`check` green. Costs: recording spread over each send site (a task emitting via the collector would be missed),
-child records still store raw updates, intermediate patches (requires_action/running/title) not replayed, root links
-after all children's histories. Draft commit `refactor: replay the subagents sample from the agent's own turn record`.
-User 2026-11-25: keeps E6 ("more explicit now"); asked for stdlib atomics instead of `@Volatile` and read-only
-`List` types instead of `CopyOnWriteArrayList`. E6 follow-up DONE, UNCOMMITTED: `TurnRecord.kt` -> `agent/SessionRecord.kt`
-(SessionRecord/TurnRecord/SubagentRecord, private `kotlin.concurrent.atomics.AtomicReference` + `List` getter + named
-append fns, file-level `@OptIn(ExperimentalAtomicApi::class)`), `ScriptedUser` AtomicBoolean, `runDelegatedWork`
-stdlib atomic; ConcurrentHashMaps kept; main 1740 -> 1782; tests `--rerun` x4, `check`, runSubagents green. Draft
-commit `refactor: replay the subagents sample from the agent's own session record`.
-User 2026-11-25: atomics looked heavier; switched to `@Volatile var … private set` + named append fns (single writer
-per record). Second follow-up DONE, UNCOMMITTED: all record props @Volatile except `SessionRecord.turns` (atomic:
-load of a still-open session gives two root objects / lazy turn job); reviewer continues after load only if its
-record has an outcome (old work's last write); `children` @Volatile private var; ScriptedUser back to HEAD; main
-1816 lines; tests `--rerun` x6, `check`, runSubagents green. User 2026-11-25 approved rejecting `session/load` of an open session. Third follow-up DONE, UNCOMMITTED: `openIds`
-claim set in DelegatingAgentSupport (`acpFail` -> -32602 "Session root is still open"), `onClosed` ctor arg on
-DelegatingAgentSession, `turns` @Volatile, reviewer condition removed, new `agent/DelegatingAgentSupportTest.kt` (raw
-SessionLoad); main 1820, test 517; tests `--rerun` x4, `check`, runSubagents green. Residual: failed load after
-`loadSession` returns leaves the id claimed; lazy old turn after close+load can still append to `turns`. User 2026-11-25: revert the third follow-up and commit. E6 COMMITTED `1fb1ac9` (third follow-up reverted: `turns`
-atomic, reviewer `outcome != null` condition back; 12 files; main 1816, test 447; tests `--rerun` x4, `check`,
-runSubagents green). Next: E4 (E0 leftovers), unless the user continues the sample review first.
+## Next
+Current status (2026-11-25, end of session): the sample review continues in a new orchestrator session. Everything
+up to `ca9c764` is committed; the working tree is clean; nothing is pushed. No slice is in progress, and no follow-up
+is queued from this session. Ask the user for the next review question. The E0 leftovers in the other samples
+(renames, single-line KDocs, `v2-sample-*` transport names) are out of scope for this PR (user decision), not pending.
 
 SDK gaps from E1–E3 (user 2026-11-24, one by one): 1 replay/factory KDoc → DONE, E5 COMMITTED `3e8548b` (9 files;
 wrapper drops the announcement deferred; `check` + `:acp:apiCheck` green, no dump change; deviations: cancelled caller
