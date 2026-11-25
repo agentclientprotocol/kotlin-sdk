@@ -391,8 +391,12 @@ User 2026-11-25: atomics looked heavier; switched to `@Volatile var … private 
 per record). Second follow-up DONE, UNCOMMITTED: all record props @Volatile except `SessionRecord.turns` (atomic:
 load of a still-open session gives two root objects / lazy turn job); reviewer continues after load only if its
 record has an outcome (old work's last write); `children` @Volatile private var; ScriptedUser back to HEAD; main
-1816 lines; tests `--rerun` x6, `check`, runSubagents green. WAITING on the user (proposal: reject `session/load` of
-a still-open session in the sample to drop the open-load edge handling).
+1816 lines; tests `--rerun` x6, `check`, runSubagents green. User 2026-11-25 approved rejecting `session/load` of an open session. Third follow-up DONE, UNCOMMITTED: `openIds`
+claim set in DelegatingAgentSupport (`acpFail` -> -32602 "Session root is still open"), `onClosed` ctor arg on
+DelegatingAgentSession, `turns` @Volatile, reviewer condition removed, new `agent/DelegatingAgentSupportTest.kt` (raw
+SessionLoad); main 1820, test 517; tests `--rerun` x4, `check`, runSubagents green. Residual: failed load after
+`loadSession` returns leaves the id claimed; lazy old turn after close+load can still append to `turns`. WAITING on
+the user: orchestrator recommends reverting this third follow-up (net more code, new gaps) back to the second.
 
 SDK gaps from E1–E3 (user 2026-11-24, one by one): 1 replay/factory KDoc → DONE, E5 COMMITTED `3e8548b` (9 files;
 wrapper drops the announcement deferred; `check` + `:acp:apiCheck` green, no dump change; deviations: cancelled caller
