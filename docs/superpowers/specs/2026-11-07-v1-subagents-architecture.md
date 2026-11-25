@@ -1222,6 +1222,19 @@ completed (`withInitializingSession` there), and the holder is typed to `ClientS
   runs under `NonCancellable` and must not wait for the app's `notify`. A subagent's object, once built, is marked
   closed, and stays in its parent's `subagents`.
 
+  **The first stop settles the holder.** Whoever stops a subagent's opening first fails its holder, unless the stop
+  found the opening `Finished`, which then completes it. Nothing else fails it:
+  - the cascade skips a subagent whose opening is already stopped, with its subtree, and `failSessionTree` returns
+    `false` for it;
+  - the close leaves one that an earlier failure or close stopped;
+  - an opening, or a setup in `createSubagentOperations`, that fails after its coroutine was cancelled only logs the
+    failure. App code that turns the cancellation into another exception would otherwise fail the holder while the
+    stopper fails it too: a waiting request could get the wrong error, and two drains of one queue could reorder its
+    updates on their way to `globalSessionUpdateHandler`.
+
+  A genuine failure of a running, unstopped opening, or an app `CancellationException` while it is active, still
+  fails the holder, through the same stop.
+
   **A failed child holder stays in the session map while its parent's holder is live,** so its id stays taken:
   its later patches are sorted as patches of a failed child, `getOrCreateSessionHolderOrNull` doesn't replace it
   with a speculative holder, and an opening of that id is refused under the one-opening rule. Once its parent's
@@ -1348,8 +1361,9 @@ root can be closed.
      permissions (which changes nothing if the first step ran, and answers the requests of a child that was
      announced after it), marks each child object closed, and fails each child holder whose opening hadn't
      finished when step 2 stopped it (waiting in `createSubagentOperations`, not yet set up, still in its `notify`
-     before `Opened`, or still delivering its queue) with "session closed" through `failSessionTree`, so its
-     waiting requests get the error and its queue goes to `globalSessionUpdateHandler`;
+     before `Opened`, or still delivering its queue) with "session closed", so its waiting requests get the error
+     and its queue goes to `globalSessionUpdateHandler`. A child that an earlier failure or close had stopped is left
+     to that stopper;
   5. it returns the removed ids, and `Client` removes their elicitation entries, as `removeSessionHolder` does for a
      root today.
 
@@ -1364,7 +1378,8 @@ root can be closed.
   and the close decides from that result, not from a later read of the holder:
   - `Running`: the opening never completes the holder, so the close fails it;
   - `Finished`: the child counts as opened and then closed; it is marked closed and not failed;
-  - `NotStarted` or `Stopped`: the close fails the holder unless it has completed, as before.
+  - `NotStarted`: the close fails the holder;
+  - `Stopped`: an earlier failure or close stopped it and settles the holder, so this close leaves it alone.
 
   The failure cascade can't meet the claim: an opening reaches it only after its parent's holder completed, and a
   completed holder never fails. So only the close needs it.
@@ -1490,12 +1505,12 @@ suspend fun removeSessionTree(root: RootSessionHolder): Set<SessionId> {
             if (holder !is SubagentSessionHolder) continue
             holder.permissions.close()
             holder.markClosed()
-            val opened = when (stoppedOpenings.getValue(holder)) {
-                is OpeningState.Running -> false
-                OpeningState.Finished -> true
-                OpeningState.NotStarted, OpeningState.Stopped -> holder.session.isCompleted
+            val stoppedHere = when (stoppedOpenings.getValue(holder)) {
+                is OpeningState.Running, OpeningState.NotStarted -> true
+                OpeningState.Finished, OpeningState.Stopped -> false  // the opening or an earlier stopper settles it
             }
-            if (!opened) failSessionTree(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
+            // fails the holder this removal stopped, and the subagents below it that no one stopped before
+            if (stoppedHere) failStoppedTree(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
         }
         removedIds
     }
@@ -1506,7 +1521,7 @@ internal sealed class ClientSessionHolder(
     val sessionId: SessionId,
     val protocol: Protocol,                   // for the subagents' session/cancel
     val openingScope: CoroutineScope,         // from Protocol.newConnectionScope, for the subagents' openings
-    val failSessionTree: suspend (ClientSessionHolder, Throwable) -> Unit,
+    val failSessionTree: suspend (ClientSessionHolder, Throwable) -> Boolean,  // false: already stopped, failed nothing
 ) {
     private data class Children(
         val byId: PersistentMap<SessionId, SubagentSessionHolder> = persistentMapOf(),
@@ -1531,7 +1546,7 @@ internal class RootSessionHolder(
     sessionId: SessionId,
     protocol: Protocol,
     openingScope: CoroutineScope,
-    failSessionTree: suspend (ClientSessionHolder, Throwable) -> Unit,
+    failSessionTree: suspend (ClientSessionHolder, Throwable) -> Boolean,
 ) : ClientSessionHolder(sessionId, protocol, openingScope, failSessionTree) {
     // UNCLAIMED, CLAIMED, ANSWERED (the root's opened marker was queued), CLOSING (the close started; stays if it fails),
     // with the claim's opening, in one atomic snapshot
@@ -1958,9 +1973,13 @@ cover externally observable behaviour.
   and its waiting requests get the error.
 - A child inside a suspended `notify` when the response arrives: `close()` returns while that `notify` still runs,
   and the `notify` is cancelled.
-- An opening stopped after its last cancellation check doesn't complete its holder, and the removal fails it, so a
-  request waiting in `awaitSession` gets "session closed" (a registry unit test that stops the opening without
-  cancelling it); a child whose opening finished counts as opened and closed.
+- An opening stopped after its last cancellation check doesn't complete its holder, and the stop's caller settles
+  it: a later removal or failure leaves it alone (a registry unit test that stops the opening without cancelling it);
+  a child whose opening finished counts as opened and closed.
+- A child whose `notify` before `Opened` turns the close's cancellation into another exception doesn't fail its own
+  holder: a request waiting in `awaitSession` gets "session closed", and one drain hands the queue to
+  `globalSessionUpdateHandler`, in order (a registry unit test). Likewise, a grandchild's setup that fails after the
+  cascade cancelled it leaves the grandchild to the cascade, which fails it with "parent failed".
 - An announcement that arrives during the removal registers nothing.
 - A failed close removes nothing, and the permissions stay closed: later requests on the root and its children are
   still answered `cancelled`. The root stays `CLOSING` too: a child announced after a failed close has its

@@ -700,7 +700,7 @@ class ClientSubagentSessionTest {
 
     private data class Child(val holder: SubagentSessionHolder, val session: ClientSubagentSession)
 
-    private fun rootHolder() = RootSessionHolder(SessionId("root"), protocol, scope) { _, _ -> }
+    private fun rootHolder() = RootSessionHolder(SessionId("root"), protocol, scope) { _, _ -> true }
 
     private fun rootSession(holder: RootSessionHolder, parameters: SessionCreationParameters) = ClientSessionImpl(
         client = Client(protocol),

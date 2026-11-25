@@ -18,6 +18,7 @@ import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.rpc.TransportFrame
 import com.agentclientprotocol.transport.BaseTransport
 import com.agentclientprotocol.transport.Transport
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +27,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -235,7 +237,7 @@ class ClientSessionRegistryTest {
 
     @Test
     fun `an opening starts once and stopping it returns the running one`() = runTest {
-        val holder = SubagentSessionHolder(child, RootSessionHolder(root, protocol, this) { _, _ -> })
+        val holder = SubagentSessionHolder(child, RootSessionHolder(root, protocol, this) { _, _ -> true })
         val session = ClientSubagentSession(holder, Recorder(), protocol)
         holder.startOpening(session)
         runCurrent()
@@ -247,7 +249,7 @@ class ClientSessionRegistryTest {
     }
 
     @Test
-    fun `an opening stopped after its last cancellation check does not complete its holder and the removal fails it`() = runTest {
+    fun `an opening stopped after its last cancellation check does not complete its holder`() = runTest {
         val liveEntered = CompletableDeferred<Unit>()
         val releaseLive = CompletableDeferred<Unit>()
         val childOperations = object : ClientSessionOperations by Recorder() {
@@ -276,8 +278,126 @@ class ClientSessionRegistryTest {
             openingScheduler.runCurrent()
             assertFalse(childHolder.session.isCompleted, "a stopped opening doesn't complete its holder")
 
+            // The stop's caller settles the holder, so neither a later removal nor a later failure takes it over.
             assertEquals(setOf(root, child), registry.removeSessionTree(rootHolder))
+            assertFalse(registry.failSessionTree(childHolder, IllegalStateException("late failure")))
+            assertFalse(childHolder.session.isCompleted)
+            request.cancel()
+        }
+    }
+
+    @Test
+    fun `an opening whose notify fails after the close cancelled it leaves its holder to the close`() = runTest {
+        val handedOn = mutableListOf<String>()
+        val drainEntered = CompletableDeferred<Unit>()
+        val releaseDrain = CompletableDeferred<Unit>()
+        val drainingRegistry = ClientSessionRegistry({ _, update, _ ->
+            handedOn += "enter $update"
+            if (update == text("second")) {
+                drainEntered.complete(Unit)
+                releaseDrain.await()
+            }
+            handedOn += "exit $update"
+        }, protocol, openingScope)
+
+        val notifyEntered = CompletableDeferred<Unit>()
+        val childOperations = object : ClientSessionOperations by Recorder() {
+            override suspend fun notify(event: SessionEvent) {
+                if (event is SessionEvent.Update && event.update == text("first")) {
+                    notifyEntered.complete(Unit)
+                    try {
+                        awaitCancellation()
+                    } catch (ce: CancellationException) {
+                        throw IllegalStateException("notify turned its cancellation into a failure", ce)
+                    }
+                }
+            }
+        }
+
+        drainingRegistry.withInitializingSession {
+            val (rootHolder, _) = openRootWithChild(
+                childOperations,
+                history = listOf(text("first"), text("second"), text("third")),
+                registry = drainingRegistry,
+            )
+            val request = async { runCatching { drainingRegistry.awaitSession(child) } }
+            runCurrent()
+            openingScheduler.runCurrent()
+            assertTrue(notifyEntered.isCompleted, "the opening is in notify before the opened marker")
+
+            /*
+             * The close cancels the opening and fails the holder, and its drain waits in the handler. The opening then
+             * runs, on its own scheduler, into the failure of its notify, while the close's drain is not done.
+             */
+            val closing = launch { drainingRegistry.removeSessionTree(rootHolder) }
+            runCurrent()
+            assertTrue(drainEntered.isCompleted)
+            openingScheduler.runCurrent()
+            releaseDrain.complete(Unit)
+            closing.join()
+
             assertEquals("Session $child closed", request.await().exceptionOrNull()?.message)
+            assertEquals(
+                listOf("enter ${text("second")}", "exit ${text("second")}", "enter ${text("third")}", "exit ${text("third")}"),
+                handedOn,
+                "one drain hands the queue on, in order",
+            )
+        }
+    }
+
+    @Test
+    fun `a setup that fails after the failure cascade cancelled it leaves the subagent to the cascade`() = runTest {
+        val drainEntered = CompletableDeferred<Unit>()
+        val releaseDrain = CompletableDeferred<Unit>()
+        val drainingRegistry = ClientSessionRegistry({ _, update, _ ->
+            if (update == text("child-queued")) {
+                drainEntered.complete(Unit)
+                releaseDrain.await()
+            }
+        }, protocol, openingScope)
+
+        val factoryEntered = CompletableDeferred<Unit>()
+        val childOperations = object : ClientSessionOperations by Recorder(), SubagentOperations {
+            override suspend fun createSubagentOperations(sessionId: SessionId): ClientSessionOperations {
+                factoryEntered.complete(Unit)
+                try {
+                    awaitCancellation()
+                } catch (ce: CancellationException) {
+                    throw IllegalStateException("the factory turned its cancellation into a failure", ce)
+                }
+            }
+        }
+        val rootOperations = object : ClientSessionOperations by Recorder(), SubagentOperations {
+            override suspend fun createSubagentOperations(sessionId: SessionId): ClientSessionOperations = childOperations
+        }
+
+        drainingRegistry.withInitializingSession {
+            val rootHolder = drainingRegistry.claimSessionHolder(root, replayRequested = true, parameters)
+            drainingRegistry.deliverSessionUpdate(root, announce(child), null)
+            val childHolder = assertNotNull(rootHolder.childOrNull(child))
+            drainingRegistry.deliverSessionUpdate(child, announce(grandchild), null)
+            val grandchildHolder = assertNotNull(childHolder.childOrNull(grandchild))
+            drainingRegistry.deliverSessionUpdate(child, text("child-queued"), null)
+            assertTrue(rootHolder.markOpened(LoadSessionResponse()))
+            assertNotNull(rootHolder.deliverEarly(rootOperations))
+            openingScheduler.runCurrent()
+            assertTrue(factoryEntered.isCompleted, "the child's opening sets the grandchild up")
+
+            /*
+             * The cascade cancels the child's opening and waits in the drain of the child's queue, before it reaches
+             * the grandchild. The opening then runs into the failure of the grandchild's setup.
+             */
+            val failing = launch { drainingRegistry.failSessionTree(rootHolder, IllegalStateException("load failed")) }
+            runCurrent()
+            assertTrue(drainEntered.isCompleted)
+            openingScheduler.runCurrent()
+            releaseDrain.complete(Unit)
+            failing.join()
+
+            assertEquals(
+                "Session $child, the parent of subagent session $grandchild, failed",
+                grandchildHolder.session.getCompletionExceptionOrNull()?.message,
+            )
         }
     }
 
@@ -421,13 +541,15 @@ class ClientSessionRegistryTest {
     }
 
     /**
-     * Opens [root] without a replay, with the subagent [child] announced before the answer and set up with
-     * [childOperations], and [liveUpdate], if any, queued for [child] after its opened marker. Returns the holders of
-     * both; the root's has completed, the child's opening is started but hasn't run.
+     * Opens [root] in [registry] without a replay, with the subagent [child] announced before the answer and set up
+     * with [childOperations], [history] queued for [child] before its opened marker and [liveUpdate], if any, after
+     * it. Returns the holders of both; the root's has completed, the child's opening is started but hasn't run.
      */
     private suspend fun openRootWithChild(
         childOperations: ClientSessionOperations,
         liveUpdate: SessionUpdate? = null,
+        history: List<SessionUpdate> = emptyList(),
+        registry: ClientSessionRegistry = this.registry,
     ): Pair<RootSessionHolder, SubagentSessionHolder> {
         val rootOperations = object : ClientSessionOperations by Recorder(), SubagentOperations {
             override suspend fun createSubagentOperations(sessionId: SessionId): ClientSessionOperations = childOperations
@@ -435,6 +557,7 @@ class ClientSessionRegistryTest {
         val rootHolder = registry.claimSessionHolder(root, replayRequested = false, parameters)
         registry.deliverSessionUpdate(root, announce(child), null)
         val childHolder = assertNotNull(rootHolder.childOrNull(child))
+        for (update in history) registry.deliverSessionUpdate(child, update, null)
         assertTrue(rootHolder.markOpened(LoadSessionResponse()))
         if (liveUpdate != null) registry.deliverSessionUpdate(child, liveUpdate, null)
 

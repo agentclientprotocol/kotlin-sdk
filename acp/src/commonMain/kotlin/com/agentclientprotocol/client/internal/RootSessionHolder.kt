@@ -28,7 +28,7 @@ internal class RootSessionHolder(
     sessionId: SessionId,
     protocol: Protocol,
     openingScope: CoroutineScope,
-    failSessionTree: suspend (ClientSessionHolder, Throwable) -> Unit,
+    failSessionTree: suspend (ClientSessionHolder, Throwable) -> Boolean,
 ) : ClientSessionHolder(sessionId, protocol, openingScope, failSessionTree) {
     /**
      * The opening call that claimed a root's holder.

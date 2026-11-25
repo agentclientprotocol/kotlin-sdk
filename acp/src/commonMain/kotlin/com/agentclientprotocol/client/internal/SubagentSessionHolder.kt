@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 private val logger = KotlinLogging.logger {}
@@ -57,7 +58,8 @@ internal class SubagentSessionHolder(
         object Finished : OpeningState()
 
         /**
-         * [markOpeningStopped] has run, so no opening starts or completes the holder any more.
+         * [markOpeningStopped] has run, so no opening starts any more, and only one that had claimed its completion
+         * ([Finished]) still completes the holder.
          */
         object Stopped : OpeningState()
     }
@@ -155,8 +157,12 @@ internal class SubagentSessionHolder(
      *   caller cancels it and fails the holder;
      * - [OpeningState.Finished]: the opening has completed the holder, or is about to, so the subagent counts as
      *   opened;
-     * - [OpeningState.NotStarted]: no opening was started;
-     * - [OpeningState.Stopped]: an earlier call stopped it.
+     * - [OpeningState.NotStarted]: no opening was started, and the caller fails the holder;
+     * - [OpeningState.Stopped]: an earlier call stopped it, and that call's caller fails the holder, unless it found
+     *   [OpeningState.Finished].
+     *
+     * So the first stop decides who settles the holder: the opening, if the stop found it finished, and otherwise the
+     * stop's caller. An opening that fails after a stop leaves the holder to that caller.
      */
     fun markOpeningStopped(): OpeningState = opening.getAndSet(OpeningState.Stopped)
 
@@ -179,7 +185,10 @@ internal class SubagentSessionHolder(
      *   [CancellationException] that the operations throw while the opening is active counts as such a failure;
      * - after it, a failure is logged, as for any live update;
      * - if the parent's holder failed, this returns, and the failure cascade fails this holder;
-     * - the opening's own cancellation is rethrown and fails nothing.
+     * - the opening's own cancellation is rethrown and fails nothing;
+     * - a failure after the opening was cancelled or stopped, such as an operations call that turns the cancellation
+     *   into another exception, fails nothing either. Whoever stopped the opening, the failure cascade or the close,
+     *   fails this holder with its own error, so two failures never drain the queue at once.
      */
     private suspend fun completeOpening() {
         try {
@@ -238,14 +247,30 @@ internal class SubagentSessionHolder(
         } catch (ce: CancellationException) {
             // A stopped opening's holder is already failing, and the end of the connection fails nothing.
             currentCoroutineContext().ensureActive()
-            logger.error(ce) { "ClientSessionOperations.notify of subagent session $sessionId was cancelled" }
-            failSessionTree(this, IllegalStateException("ClientSessionOperations.notify was cancelled", ce))
-        } catch (t: Throwable) {
-            logger.error(t) { "ClientSessionOperations.notify of subagent session $sessionId failed" }
-            failSessionTree(
-                this,
-                IllegalStateException("Failed to deliver the history of subagent session $sessionId", t),
+            failOpening(
+                ce,
+                IllegalStateException("ClientSessionOperations.notify was cancelled", ce),
+                "ClientSessionOperations.notify of subagent session $sessionId was cancelled",
             )
+        } catch (t: Throwable) {
+            failOpening(
+                t,
+                IllegalStateException("Failed to deliver the history of subagent session $sessionId", t),
+                "ClientSessionOperations.notify of subagent session $sessionId failed",
+            )
+        }
+    }
+
+    /**
+     * Fails this holder with [failure], for what the opening [caught], and logs [message], unless the opening was
+     * cancelled or stopped: then the stopper fails the holder, or the connection has ended, and [caught] is only
+     * logged at debug level.
+     */
+    private suspend fun failOpening(caught: Throwable, failure: Throwable, message: String) {
+        if (currentCoroutineContext().isActive && failSessionTree(this, failure)) {
+            logger.error(caught) { message }
+        } else {
+            logger.debug(caught) { "$message after its opening was stopped" }
         }
     }
 

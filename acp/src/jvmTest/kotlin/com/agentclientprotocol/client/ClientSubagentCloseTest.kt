@@ -569,7 +569,9 @@ class ClientSubagentCloseTest {
         sessions.getValue(otherRoot).complete(openLive(c, otherRoot, world))
         c.agent.sendUpdate(root, announce(child))
         c.agent.sendUpdate(otherRoot, announce(otherChild))
-        repeat(2) { c.agent.answer(c.agent.receiveRequest(CLOSE.methodName), CLOSE.responseSerializer, CloseSessionResponse()) }
+        // Both closes are sent before either is answered, so neither removal stops the other subagent before its close.
+        val requests = List(2) { c.agent.receiveRequest(CLOSE.methodName) }
+        for (request in requests) c.agent.answer(request, CLOSE.responseSerializer, CloseSessionResponse())
 
         for ((id, closed) in closes) assertEquals(CloseSessionResponse(), withTimeout(5.seconds) { closed.await() }.getOrThrow(), "$id")
         for (id in listOf(root, child, otherRoot, otherChild)) {

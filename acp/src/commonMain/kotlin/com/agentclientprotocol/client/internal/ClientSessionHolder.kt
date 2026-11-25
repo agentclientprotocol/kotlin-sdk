@@ -32,6 +32,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.serialization.json.JsonElement
 
 private val logger = KotlinLogging.logger {}
@@ -137,13 +138,13 @@ internal sealed class QueuedItem {
  * @property openingScope the scope of the subagents' openings, which belongs to the connection, so they end with it and
  * don't run on the protocol's handler thread
  * @property failSessionTree fails the holder of a subagent whose setup or opening failed, and every holder below it,
- * see [ClientSessionRegistry.failSessionTree]
+ * unless its opening was already stopped, see [ClientSessionRegistry.failSessionTree]
  */
 internal sealed class ClientSessionHolder(
     val sessionId: SessionId,
     val protocol: Protocol,
     val openingScope: CoroutineScope,
-    val failSessionTree: suspend (ClientSessionHolder, Throwable) -> Unit,
+    val failSessionTree: suspend (ClientSessionHolder, Throwable) -> Boolean,
 ) {
     /**
      * The subagents of a holder, in one atomic state, so [sealChildren] stops both collections in one update.
@@ -373,6 +374,9 @@ internal sealed class ClientSessionHolder(
      *   with the holders below it, and the failure is logged. A [CancellationException] from the factory while the
      *   caller is active counts as a throw.
      * - The caller is cancelled and the factory throws a [CancellationException]: the cancellation is rethrown.
+     * - The caller is cancelled and the factory throws something else, or the subagent's opening was stopped by the
+     *   failure cascade or the close: the failure is logged, and the subagent's holder is left to the cascade or the
+     *   close, which fail it with their own error.
      * - This holder failed or was closed while the factory ran: the subagent is neither listed nor opened, and its
      *   holder never gets the session.
      * - The subagent's holder failed, or was removed with its root's tree, after the listing: the subagent is listed,
@@ -424,8 +428,17 @@ internal sealed class ClientSessionHolder(
     }
 
     private suspend fun failSetup(child: SubagentSessionHolder, cause: Throwable) {
-        logger.error(cause) { "Failed to create the operations of subagent session ${child.sessionId}" }
-        failSessionTree(child, IllegalStateException("Failed to set up subagent session ${child.sessionId}", cause))
+        /*
+         * A cancelled caller is the consumer of a holder that is failing or closing, or of a connection that ended.
+         * The cascade or the close fails the child, and the end of the connection fails nothing.
+         */
+        val failed = currentCoroutineContext().isActive &&
+            failSessionTree(child, IllegalStateException("Failed to set up subagent session ${child.sessionId}", cause))
+        if (failed) {
+            logger.error(cause) { "Failed to create the operations of subagent session ${child.sessionId}" }
+        } else {
+            logger.debug(cause) { "Ignored the failed setup of subagent session ${child.sessionId}, which was stopped" }
+        }
     }
 
     /**
