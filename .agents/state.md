@@ -376,6 +376,12 @@ AGENTS.md samples paragraph mentions subagents. Committed right away. Then E7 (u
 root README mentions only `samples/README.md`; `samples/README.md` = concise table of contents with a short summary
 per sample, linking each sample's own README; each sample gets a dedicated README in its package directory
 (`samples/kotlin-acp-client-sample/src/main/kotlin/com/agentclientprotocol/samples/<pkg>/README.md`) with the details.
+E4 COMMITTED `134751c` (logback from catalog; AGENTS.md list adds authentication + subagents; build + `check` green).
+E7 DONE, UNCOMMITTED, awaiting the user's review: root README "Samples" = pointer only (v2 response-mode text ->
+v2 README, AuthStatusApp line removed, modules row links samples/README); samples/README 172 -> 60 lines (table:
+summary/protocol/task/needs/link, `support` paragraph, How to run, Adding a sample); new READMEs in simple, gemini,
+v2, auth, subagents packages; AGENTS.md adds "its own README in its package"; links + task names checked. Draft
+commit `docs: split the samples documentation into per-sample READMEs`.
 
 E6 SessionHistory removal (user 2026-11-25: "try to rebuild and see if it actually simplifies things"): replace the
 generic wire-recording `agent/SessionHistory.kt` with replay rebuilt from the agent's own domain record (prompt,
