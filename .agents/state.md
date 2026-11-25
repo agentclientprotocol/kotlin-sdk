@@ -412,7 +412,7 @@ M2 programmer slices (mechanical+accuracy per area; long-form rewrites only as a
   slices; the user reviews and commits.
 - `./gradlew check` green over K1–K3. Review: 0 blockers, 1 should-fix, 6 nits. K4 DONE, UNCOMMITTED: should-fix +
   nits 2,3,4,6,7 + `createClientOperations` rewrap; nit 5 skipped (user-approved drop). Compile + `apiCheck` green.
-  NEXT: the user reviews the uncommitted diff and says when to commit (draft message:
+  COMMITTED `2cbbd0a` (user 2026-11-25). Goal done; nothing pushed. Was: the user reviews (draft message:
   `docs: bring the subagent KDoc in line with the comment rules and the code`).
 
 Current status (2026-11-25, end of session): the sample review continues in a new orchestrator session. Everything
