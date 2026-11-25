@@ -1,8 +1,10 @@
 package com.agentclientprotocol.client.internal
 
 import com.agentclientprotocol.annotations.UnstableApi
+import com.agentclientprotocol.client.Client
 import com.agentclientprotocol.client.ClientSubagentSession
 import com.agentclientprotocol.client.SubagentOperations
+import com.agentclientprotocol.client.internal.SubagentSessionHolder.OpeningState
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.common.SessionEvent
@@ -23,6 +25,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,6 +42,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -236,10 +240,59 @@ class ClientSessionRegistryTest {
         holder.startOpening(session)
         runCurrent()
 
-        val running = assertNotNull(holder.markOpeningStopped())
+        val running = assertIs<OpeningState.Running>(holder.markOpeningStopped()).job
         assertTrue(running.isActive, "the opening started and waits for the opened marker, and marking it stopped doesn't cancel it")
         running.cancel()
-        assertNull(holder.markOpeningStopped(), "a stopped opening is returned once")
+        assertSame(OpeningState.Stopped, holder.markOpeningStopped(), "a stopped opening is returned once")
+    }
+
+    @Test
+    fun `an opening stopped after its last cancellation check does not complete its holder and the removal fails it`() = runTest {
+        val liveEntered = CompletableDeferred<Unit>()
+        val releaseLive = CompletableDeferred<Unit>()
+        val childOperations = object : ClientSessionOperations by Recorder() {
+            override suspend fun notify(event: SessionEvent) {
+                if (event is SessionEvent.Update && event.update == text("live")) {
+                    liveEntered.complete(Unit)
+                    releaseLive.await()
+                }
+            }
+        }
+
+        registry.withInitializingSession {
+            val (rootHolder, childHolder) = openRootWithChild(childOperations, liveUpdate = text("live"))
+            val request = async { runCatching { registry.awaitSession(child) } }
+            runCurrent()
+            openingScheduler.runCurrent()
+            assertTrue(liveEntered.isCompleted, "the opening delivers the last live update")
+
+            /*
+             * The opening took the last update before the close stopped it, so it passed its last cancellation check:
+             * stopping it without the cancellation lets it run on, as an opening on another thread can, into the
+             * empty queue and up to the completion of its holder.
+             */
+            assertIs<OpeningState.Running>(childHolder.markOpeningStopped())
+            releaseLive.complete(Unit)
+            openingScheduler.runCurrent()
+            assertFalse(childHolder.session.isCompleted, "a stopped opening doesn't complete its holder")
+
+            assertEquals(setOf(root, child), registry.removeSessionTree(rootHolder))
+            assertEquals("Session $child closed", request.await().exceptionOrNull()?.message)
+        }
+    }
+
+    @Test
+    fun `a subagent whose opening finished counts as opened and closed after the removal`() = runTest {
+        registry.withInitializingSession {
+            val (rootHolder, childHolder) = openRootWithChild(Recorder())
+            openingScheduler.runCurrent()
+            val session = assertIs<ClientSubagentSession>(childHolder.session.await())
+
+            assertEquals(setOf(root, child), registry.removeSessionTree(rootHolder))
+            assertSame(session, childHolder.session.getCompleted(), "the removal doesn't fail an opened subagent")
+            assertClosed(session)
+            assertSame(OpeningState.Stopped, childHolder.markOpeningStopped())
+        }
     }
 
     @Test
@@ -368,6 +421,39 @@ class ClientSessionRegistryTest {
     }
 
     /**
+     * Opens [root] without a replay, with the subagent [child] announced before the answer and set up with
+     * [childOperations], and [liveUpdate], if any, queued for [child] after its opened marker. Returns the holders of
+     * both; the root's has completed, the child's opening is started but hasn't run.
+     */
+    private suspend fun openRootWithChild(
+        childOperations: ClientSessionOperations,
+        liveUpdate: SessionUpdate? = null,
+    ): Pair<RootSessionHolder, SubagentSessionHolder> {
+        val rootOperations = object : ClientSessionOperations by Recorder(), SubagentOperations {
+            override suspend fun createSubagentOperations(sessionId: SessionId): ClientSessionOperations = childOperations
+        }
+        val rootHolder = registry.claimSessionHolder(root, replayRequested = false, parameters)
+        registry.deliverSessionUpdate(root, announce(child), null)
+        val childHolder = assertNotNull(rootHolder.childOrNull(child))
+        assertTrue(rootHolder.markOpened(LoadSessionResponse()))
+        if (liveUpdate != null) registry.deliverSessionUpdate(child, liveUpdate, null)
+
+        val rootSession = ClientSessionImpl(
+            client = Client(protocol),
+            sessionId = root,
+            parameters = parameters,
+            operations = rootOperations,
+            createdResponse = LoadSessionResponse(),
+            protocol = protocol,
+            isOpen = { true },
+            onClosed = {},
+            holder = rootHolder,
+        )
+        rootHolder.completeOpening(rootSession, rootHolder.drainHistory(rootSession))
+        return rootHolder to childHolder
+    }
+
+    /**
      * Returns `cancelled` if a permission request of [holder] would be answered `cancelled` without reaching the app.
      */
     private suspend fun answerOf(holder: SubagentSessionHolder): String =
@@ -382,7 +468,7 @@ class ClientSessionRegistryTest {
         val session = ClientSubagentSession(holder, operations, protocol)
         holder.startOpening(session)
         openingScheduler.runCurrent()
-        assertNotNull(holder.markOpeningStopped()).cancel()
+        assertIs<OpeningState.Running>(holder.markOpeningStopped()).job.cancel()
         openingScheduler.runCurrent()
         return operations
     }

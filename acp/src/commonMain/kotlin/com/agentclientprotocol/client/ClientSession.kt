@@ -85,29 +85,19 @@ public interface ClientSession : BaseClientSession {
      * arrives, and the delivery of an update that arrived before the response and waits behind such a call, can still
      * run after this function returns, as for [operations].
      *
-     * This function cancels the openings of the subagents that haven't finished opening and waits for them to end. So
-     * it returns only once each [ClientSessionOperations.notify] call of such a subagent, and each
-     * [SubagentOperations.createSubagentOperations] call that such a subagent's operations run for its own subagents,
-     * reacts to the cancellation.
+     * This function cancels the openings of the subagents that haven't finished opening and doesn't wait for them. So
+     * a [ClientSessionOperations.notify] call of such a subagent, or a [SubagentOperations.createSubagentOperations]
+     * call that such a subagent's operations run for its own subagents, may still run after this function returns.
+     * The opening may hand that `notify` at most the one event it took before the cancellation; every other update
+     * queued for such a subagent goes to the [GlobalSessionUpdateHandler].
+     *
+     * A subagent's operations may call this function, for example from their `notify`.
      *
      * ### Errors
      *
      * An answer with `-32002` (resource not found) means the agent no longer knows the session, so it counts as a
      * successful close, as ACP asks: the tree is removed and this function returns an empty [CloseSessionResponse].
      * Any other error is thrown, and nothing is removed.
-     *
-     * ### A close from a subagent's own operations
-     *
-     * A subagent's operations may call this function, for example from their `notify`. It then doesn't wait for that
-     * subagent's opening, which would wait for itself, and cancels it before returning. It recognizes the call when
-     * this function runs:
-     * - in the call's coroutine or in one below it;
-     * - or in a coroutine that kept the call's context elements, as `withContext(NonCancellable)` does, so a
-     *   coroutine of another scope that copied them doesn't wait either.
-     *
-     * A close in a coroutine of another scope with a context of its own, such as `scope.async { session.close() }`,
-     * waits like any other: if the call waits for that close without reacting to cancellation, for example under
-     * `NonCancellable`, neither of them ever finishes.
      *
      * ### Repeated and stale calls
      *

@@ -155,6 +155,7 @@ class ClientSubagentCloseTest {
         val blocking = text("blocking")
         val notifyEntered = CompletableDeferred<Unit>()
         val notifyCancelled = CompletableDeferred<Throwable>()
+        val releaseNotify = CompletableDeferred<Unit>()
         val factoryEntered = CompletableDeferred<Unit>()
         val releaseFactory = CompletableDeferred<Unit>()
         world.configure = { operations ->
@@ -166,6 +167,8 @@ class ClientSubagentCloseTest {
                             awaitCancellation()
                         } catch (ce: CancellationException) {
                             notifyCancelled.complete(ce)
+                            // Reacts to the cancellation only when the test lets it, after the close has returned.
+                            withContext(NonCancellable) { releaseNotify.await() }
                             throw ce
                         }
                     }
@@ -201,7 +204,10 @@ class ClientSubagentCloseTest {
         c.agent.awaitHandled()
         for (read in reads.values) assertNull(c.agent.responseOrNull(read), "a request waits until its subagent has opened")
 
-        // The removal joins the openings of the first two, which wait in the app's notify and for the parent.
+        /*
+         * The removal cancels the openings of the first two, which wait in the app's notify and for the parent, and
+         * returns without waiting for them: the cancelled notify is held until the close has returned.
+         */
         closeSession(c, session)
 
         assertIs<CancellationException>(notifyCancelled.await())
@@ -213,6 +219,7 @@ class ClientSubagentCloseTest {
         awaitUnconnected(c, notSetUp, text("not-set-up-queued"))
         awaitUnconnected(c, beforeSwitch, text("before-switch-queued"))
         awaitUnconnected(c, inFactory, text("in-factory-queued"))
+        releaseNotify.complete(Unit)
         assertFalse(TreeOperations.OPENED in world.awaitOperations(inNotify).events.value)
 
         // The factory returns after the close: the subagent is dropped and its id stays free.
@@ -279,7 +286,7 @@ class ClientSubagentCloseTest {
                     try {
                         awaitCancellation()
                     } catch (ce: CancellationException) {
-                        // Holds the removal after it closed the holders' subagents and while it joins this opening.
+                        // Holds the cancelled opening in its notify; the close doesn't wait for it.
                         notifyCancelled.complete(Unit)
                         withContext(NonCancellable) { releaseNotify.await() }
                         throw ce
@@ -304,8 +311,8 @@ class ClientSubagentCloseTest {
         c.agent.sendUpdate(lateChild, text("late-child-update"))
         c.agent.sendUpdate(lateGrandchild, text("late-grandchild-update"))
         c.agent.awaitHandled()
+        withTimeout(5.seconds) { closing.await() }
         releaseNotify.complete(Unit)
-        closing.await()
 
         awaitUnconnected(c, lateChild, text("late-child-update"))
         awaitUnconnected(c, lateGrandchild, text("late-grandchild-update"))
@@ -408,13 +415,12 @@ class ClientSubagentCloseTest {
         releaseOpened.complete(Unit)
         firstEntered.await()
 
-        val closing = async { session.close() }
-        c.agent.answer(c.agent.receiveRequest(CLOSE.methodName), CLOSE.responseSerializer, CloseSessionResponse())
+        // The close returns while the cancelled notify still holds the opening, and hands the rest on without it.
+        closeSession(c, session)
         notifyCancelled.await()
-        releaseNotify.complete(Unit)
-        withTimeout(5.seconds) { closing.await() }
-
         awaitUnconnected(c, child, second)
+        releaseNotify.complete(Unit)
+
         assertFalse(second in world.awaitOperations(child).events.value)
     }
 
@@ -423,7 +429,7 @@ class ClientSubagentCloseTest {
         val world = SubagentWorld()
         val rootSession = CompletableDeferred<ClientSession>()
         val closed = CompletableDeferred<Result<CloseSessionResponse>>()
-        val treeRegisteredAtCancel = CompletableDeferred<Boolean>()
+        val notifyCancelled = CompletableDeferred<Unit>()
         val releaseNotify = CompletableDeferred<Unit>()
         val appScope: CoroutineScope = this
         world.configure = { operations ->
@@ -436,7 +442,7 @@ class ClientSubagentCloseTest {
                     try {
                         awaitCancellation()
                     } catch (ce: CancellationException) {
-                        treeRegisteredAtCancel.complete(runCatching { c.client.getSession(root) }.isSuccess)
+                        notifyCancelled.complete(Unit)
                         withContext(NonCancellable) { releaseNotify.await() }
                         throw ce
                     }
@@ -447,15 +453,14 @@ class ClientSubagentCloseTest {
         c.agent.sendUpdate(root, announce(child))
         c.agent.answer(c.agent.receiveRequest(CLOSE.methodName), CLOSE.responseSerializer, CloseSessionResponse())
 
-        // The copied context looks like the opening's own, which only costs the join.
         assertEquals(CloseSessionResponse(), withTimeout(5.seconds) { closed.await() }.getOrThrow())
-        assertFalse(treeRegisteredAtCancel.await(), "the opening is cancelled after the tree is removed")
+        notifyCancelled.await()
         assertFailsWith<IllegalStateException> { c.client.getSession(root) }
         releaseNotify.complete(Unit)
     }
 
     @Test
-    fun `a close that a subagent's own notify waits for under a replaced job does not wait for itself`() {
+    fun `a close that a subagent's own notify waits for under a replaced job finishes`() {
         val variants = listOf<Pair<String, suspend (CoroutineScope, suspend () -> CloseSessionResponse) -> CloseSessionResponse>>(
             "NonCancellable" to { _, close -> withContext(NonCancellable) { close() } },
             "the context of another scope" to { appScope, close -> withContext(appScope.coroutineContext) { close() } },
@@ -512,7 +517,7 @@ class ClientSubagentCloseTest {
         c.agent.sendUpdate(root, announce(child))
         c.agent.answer(c.agent.receiveRequest(CLOSE.methodName), CLOSE.responseSerializer, CloseSessionResponse())
 
-        // The close joins the opening like any other, and the cancellation ends the notify's wait.
+        // The close cancels the opening without waiting for it, and the cancellation ends the notify's wait.
         assertEquals(CloseSessionResponse(), withTimeout(5.seconds) { closing.await().await() })
         assertIs<CancellationException>(notifyFailure.await())
         c.agent.sendUpdate(child, text("after"))
@@ -520,7 +525,7 @@ class ClientSubagentCloseTest {
     }
 
     @Test
-    fun `a close that a subagent's own notify starts does not wait for itself`() = withConnection { c ->
+    fun `a close that a subagent's own notify starts finishes`() = withConnection { c ->
         val world = SubagentWorld()
         val rootSession = CompletableDeferred<ClientSession>()
         val closed = CompletableDeferred<Result<CloseSessionResponse>>()
@@ -536,6 +541,38 @@ class ClientSubagentCloseTest {
 
         assertEquals(CloseSessionResponse(), withTimeout(5.seconds) { closed.await() }.getOrThrow())
         for (id in listOf(root, child)) {
+            c.agent.sendUpdate(id, text("after-$id"))
+            awaitUnconnected(c, id, text("after-$id"))
+        }
+    }
+
+    @Test
+    fun `two roots that close each other from their subagents' notify under NonCancellable both finish`() = withConnection { c ->
+        val world = SubagentWorld()
+        val otherRoot = SessionId("other-root")
+        val otherChild = SessionId("other-child")
+        val sessions = mapOf(root to CompletableDeferred<ClientSession>(), otherRoot to CompletableDeferred())
+        val closes = mapOf(child to CompletableDeferred<Result<CloseSessionResponse>>(), otherChild to CompletableDeferred())
+        // Each subagent's notify closes the other root, and waits for that close without reacting to cancellation.
+        val closedBy = mapOf(child to otherRoot, otherChild to root)
+        world.configure = { operations ->
+            val target = closedBy[operations.id]
+            if (target != null) operations.onNotify = { event, _ ->
+                if (event is SessionEvent.Opened) {
+                    closes.getValue(operations.id).complete(
+                        runCatching { withContext(NonCancellable) { sessions.getValue(target).await().close() } },
+                    )
+                }
+            }
+        }
+        sessions.getValue(root).complete(openLive(c, root, world))
+        sessions.getValue(otherRoot).complete(openLive(c, otherRoot, world))
+        c.agent.sendUpdate(root, announce(child))
+        c.agent.sendUpdate(otherRoot, announce(otherChild))
+        repeat(2) { c.agent.answer(c.agent.receiveRequest(CLOSE.methodName), CLOSE.responseSerializer, CloseSessionResponse()) }
+
+        for ((id, closed) in closes) assertEquals(CloseSessionResponse(), withTimeout(5.seconds) { closed.await() }.getOrThrow(), "$id")
+        for (id in listOf(root, child, otherRoot, otherChild)) {
             c.agent.sendUpdate(id, text("after-$id"))
             awaitUnconnected(c, id, text("after-$id"))
         }

@@ -1185,14 +1185,13 @@ completed (`withInitializingSession` there), and the holder is typed to `ClientS
     never returns, like any `notify` that waits for a later event of a stream. The KDoc of `ClientSubagentSession`
     says so.
   - An opening checks for cancellation (`ensureActive()`) before it takes each item, before and after `Opened`, and
-    nowhere between taking an item and handing it to the operations. The failure cascade cancels openings without
-    joining them (see "Reaping and failure"), so an opening that was cancelled in the middle of a `notify` leaves
-    the rest of its queue for the drain. Only an item that it took just after passing the check can still reach its
-    `notify`.
+    nowhere between taking an item and handing it to the operations. The failure cascade and the close cancel openings
+    without joining them (see "Reaping and failure" and "Close and connection end"), so an opening that was cancelled
+    in the middle of a `notify` leaves the rest of its queue for the drain. Only an item that it took just after
+    passing the check can still reach its `notify`.
   - The parent's consumer starts it with `startOpening`, which launches it into `openingScope`, a scope from
     `Protocol.newConnectionScope` (see "Lifetimes" on the agent side), which `Client` creates once. So it ends with
-    the connection, and it doesn't run on the handler thread. Its coroutine context carries a `SubagentOpening`
-    element of the holder (see "Close and connection end").
+    the connection, and it doesn't run on the handler thread.
   - Running it in the coroutine of the `session/update` handler that registered the child was rejected (it was the
     first version of question 19). For a parent that is already open, that coroutine is the one delivering the
     announcement to the parent's `notify`, so the child's history and requests would wait until that `notify`
@@ -1336,10 +1335,10 @@ root can be closed.
      holder that is going away (such a grandchild would block its id forever, and no close would reach it). This
      also closes the holder's `subagents` list, so a setup that finishes later drops its child;
   2. it stops the opening of every subagent in the subtree (`markOpeningStopped`), which keeps one that hasn't
-     started from starting, then cancels the running ones and joins them, so none starts or delivers afterwards. The
-     cost: `close()` waits for a child's `notify` to react to cancellation. The opening that the close itself runs in
-     is the exception: a subagent's own operations may call `close()` from their `notify`, and joining that opening
-     would wait for itself. The close doesn't join it, and cancels it at the end;
+     started from starting and one that runs from completing its holder, then cancels the running ones without
+     joining them. So a child's `notify`, or a `createSubagentOperations` it runs, may still run after `close()`
+     returns, and the opening hands that `notify` at most the one item it took before the cancellation. A subagent's
+     own operations may call `close()` from their `notify`: nothing waits for that opening;
   3. the rest runs under `NonCancellable`, so a cancelled caller can't leave a half-removed tree, because the agent
      has already dropped the sessions. It removes the root and every descendant from the session map in one
      compare-and-set, each only if its id still maps to that holder, so no half-removed tree is ever visible. A
@@ -1347,31 +1346,28 @@ root can be closed.
      the map before this update, and is removed, or stays out of it;
   4. outside that update, bottom-up, because it calls app code or suspends: it closes each child's pending
      permissions (which changes nothing if the first step ran, and answers the requests of a child that was
-     announced after it), marks each child object closed, and fails each child holder that hasn't completed
-     (waiting in `createSubagentOperations`, not yet set up, or still in its `notify` before `Opened`) with "session
-     closed" through `failSessionTree`, so its waiting requests get the error and its queue goes to
-     `globalSessionUpdateHandler`;
+     announced after it), marks each child object closed, and fails each child holder whose opening hadn't
+     finished when step 2 stopped it (waiting in `createSubagentOperations`, not yet set up, still in its `notify`
+     before `Opened`, or still delivering its queue) with "session closed" through `failSessionTree`, so its
+     waiting requests get the error and its queue goes to `globalSessionUpdateHandler`;
   5. it returns the removed ids, and `Client` removes their elicitation entries, as `removeSessionHolder` does for a
      root today.
 
   After that, updates for those ids are unconnected, as a closed root's are today.
-- **Detecting the opening that the close runs in.** Either of two signs counts, and the close skips the join of
-  every opening that matches one:
-  - the close's job is the opening's job or below it, through the job hierarchy (`Job.children`): a close that a
-    subagent's `notify` starts runs in its opening's job tree, directly or in a coroutine that `notify` launched,
-    even one whose context lost the element below;
-  - the close's context carries the opening's `SubagentOpening` element, which `startOpening` puts into the
-    opening's context. It survives `withContext(NonCancellable)`, `withContext(Job())` and
-    `withContext(otherScope.coroutineContext)`, which replace the job: the opening then waits for the close without
-    reacting to cancellation, and isn't above it any more, so ancestry alone would join it and deadlock.
+- **The opening's completion claim.** Without a join, an opening that passed its last cancellation check before the
+  close cancelled it can find its queue empty and complete its holder after the close stopped it, before or after the
+  close read the holder's state. The closed child would then count as opened: a request already waiting in
+  `awaitSession` would get the session, and a late update waiting in `lateDeliveries` would reach its `notify`. So
+  the opening state has a `Finished` stage. The opening completes its holder only after it moves the state from its
+  own `Running` to `Finished` in one compare-and-set, and returns without completing it otherwise.
+  `markOpeningStopped` swaps the state to `Stopped` and returns the one it replaced, so exactly one of them wins,
+  and the close decides from that result, not from a later read of the holder:
+  - `Running`: the opening never completes the holder, so the close fails it;
+  - `Finished`: the child counts as opened and then closed; it is marked closed and not failed;
+  - `NotStarted` or `Stopped`: the close fails the holder unless it has completed, as before.
 
-  A false match only skips a join: a close from an app coroutine that copied the opening's context into another
-  scope returns before that opening reacts, and cancels it at the end. A missed one deadlocks, so the check errs
-  that way. Ancestry alone, an earlier version, was rejected for that deadlock. A close in a coroutine of another
-  scope with a context of its own, such as `otherScope.async { close() }`, matches neither sign and joins the
-  opening: if `notify` awaits it cancellably, the cancellation ends that wait and the close completes; if `notify`
-  waits for it without reacting to cancellation, neither finishes. The `ClientSession.close` KDoc states that
-  limitation.
+  The failure cascade can't meet the claim: an opening reaches it only after its parent's holder completed, and a
+  completed holder never fails. So only the close needs it.
 - **If the request fails,** nothing is removed, as for a root today and as on the agent side. An answer with
   `-32002` (resource not found) is not a failure: the agent no longer knows the session, and ACP asks the client to
   treat it as a successful close (`docs/protocol/v1/session-setup.mdx`, "Closing a session"), so the subtree is
@@ -1480,31 +1476,29 @@ suspend fun removeSessionTree(root: RootSessionHolder): Set<SessionId> {
         visit(root)
     }
 
-    val context = currentCoroutineContext()
-    val openings = subtree.mapNotNull { holder -> (holder as? SubagentSessionHolder)?.markOpeningStopped()?.let { holder to it } }
-    // the opening's SubagentOpening element, or job ancestry
-    val ownOpenings = openings.filter { (holder, job) -> context.runsIn(holder, job) }.map { it.second }.toSet()
-    try {
-        for ((_, job) in openings) if (job !in ownOpenings) job.cancel()
-        for ((_, job) in openings) if (job !in ownOpenings) job.join()
-    } finally {
-        withContext(NonCancellable) {
-            _sessions.update { storage ->  // registerChild checks the root's entry inside its own update
-                storage.copy(sessions = storage.sessions.mutate { map ->
-                    for (holder in subtree) if (map[holder.sessionId] === holder) map.remove(holder.sessionId)
-                })
-            }
+    val stoppedOpenings = subtree.filterIsInstance<SubagentSessionHolder>().associateWith { it.markOpeningStopped() }
+    for (stopped in stoppedOpenings.values) (stopped as? OpeningState.Running)?.job?.cancel()  // not joined
 
-            for (holder in subtree.asReversed()) {  // bottom-up
-                if (holder !is SubagentSessionHolder) continue
-                holder.permissions.close()
-                holder.markClosed()
-                if (!holder.session.isCompleted) failSessionTree(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
-            }
+    return withContext(NonCancellable) {
+        _sessions.update { storage ->  // registerChild checks the root's entry inside its own update
+            storage.copy(sessions = storage.sessions.mutate { map ->
+                for (holder in subtree) if (map[holder.sessionId] === holder) map.remove(holder.sessionId)
+            })
         }
-        for (job in ownOpenings) job.cancel()
+
+        for (holder in subtree.asReversed()) {  // bottom-up
+            if (holder !is SubagentSessionHolder) continue
+            holder.permissions.close()
+            holder.markClosed()
+            val opened = when (stoppedOpenings.getValue(holder)) {
+                is OpeningState.Running -> false
+                OpeningState.Finished -> true
+                OpeningState.NotStarted, OpeningState.Stopped -> holder.session.isCompleted
+            }
+            if (!opened) failSessionTree(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
+        }
+        removedIds
     }
-    return removedIds
 }
 
 // ClientSessionHolder, which now knows its own id, with a subclass per kind of session
@@ -1553,18 +1547,19 @@ internal class SubagentSessionHolder(sessionId: SessionId, val parent: ClientSes
     ClientSessionHolder(sessionId, parent.protocol, parent.openingScope, parent.failSessionTree) {
     val permissions = SubagentPendingPermissions()
 
-    private sealed class OpeningState {
+    sealed class OpeningState {
         object NotStarted : OpeningState()
         class Running(val job: Job) : OpeningState()
+        object Finished : OpeningState()  // claimed by the opening right before it completes the holder
         object Stopped : OpeningState()
     }
     private val opening = atomic<OpeningState>(OpeningState.NotStarted)
     private val _subagent = atomic<ClientSubagentSession?>(null)  // stored by startOpening, read by the holder's methods
 
-    // Stores the session, then launches completeOpening() into openingScope with a SubagentOpening element in its
-    // context. If markOpeningStopped has run, it starts none and marks the session closed instead.
+    // Stores the session, then launches completeOpening() into openingScope. If markOpeningStopped has run, it
+    // starts none and marks the session closed instead.
     fun startOpening(session: ClientSubagentSession)
-    fun markOpeningStopped(): Job?
+    fun markOpeningStopped(): OpeningState  // swaps in Stopped and returns the state it replaced
 
     fun markOpened(promote: Boolean)  // from the root's response hook, or at the registration after the answer
     fun applyPatch(update: SessionUpdate.SubagentUpdate, parentOpened: Boolean)  // the parent's Patch branch
@@ -1961,8 +1956,11 @@ cover externally observable behaviour.
   requests fail at once with `-32002` "session not found", and its elicitation entries are gone.
 - A child waiting in `createSubagentOperations` when the close is answered is failed: its opening never starts,
   and its waiting requests get the error.
-- A child inside a suspended `notify` when the response arrives: `close()` returns only after that `notify` has
-  reacted to the cancellation.
+- A child inside a suspended `notify` when the response arrives: `close()` returns while that `notify` still runs,
+  and the `notify` is cancelled.
+- An opening stopped after its last cancellation check doesn't complete its holder, and the removal fails it, so a
+  request waiting in `awaitSession` gets "session closed" (a registry unit test that stops the opening without
+  cancelling it); a child whose opening finished counts as opened and closed.
 - An announcement that arrives during the removal registers nothing.
 - A failed close removes nothing, and the permissions stay closed: later requests on the root and its children are
   still answered `cancelled`. The root stays `CLOSING` too: a child announced after a failed close has its
@@ -1972,11 +1970,11 @@ cover externally observable behaviour.
   permissions).
 - A child registered while the removal runs stays out of the session map (the root's entry is gone), and its
   subagent object is closed.
-- A close that a child's own `notify` starts returns without joining that opening, and cancels the opening at the
-  end, also when `notify` waits for it under `withContext(NonCancellable)`, `withContext(Job())` or another scope's
-  context. A close that an app coroutine starts after copying the opening's context into another scope doesn't
-  join the opening either. A close in another scope with a fresh context that `notify` awaits joins the opening,
-  whose cancellation ends that wait.
+- A close that a child's own `notify` starts finishes, also when `notify` waits for it under
+  `withContext(NonCancellable)`, `withContext(Job())` or another scope's context, and a close from an app coroutine
+  that copied the opening's context into another scope does too. A close in another scope with a fresh context that
+  `notify` awaits cancels the opening, which ends that wait. Two roots that close each other from their children's
+  `notify` under `NonCancellable` both finish.
 - The closed `subagents` list: a child whose setup finishes after the close is dropped, not added.
 - A closed child keeps `subagents`, `state` and `title`; `canCancel` is `false`, and `cancel()` throws without
   sending anything.
@@ -2035,8 +2033,8 @@ cover externally observable behaviour.
     successful response, and sessions reach the client only through callbacks, never through `Client`;
   - the root holder's `CLOSING` stage (reached first by `startClosing`, read by `registerChild` after
     `addChild`, kept after a failed close) and the check of the root's entry inside `registerChild`'s update of the
-    map, the close order, own-opening detection by job ancestry or the opening's `SubagentOpening` context element,
-    and that a failed child is marked closed and stays in `subagents`;
+    map, the close order, that the close cancels the openings without joining them and decides from the opening
+    state's `Finished` claim, and that a failed child is marked closed and stays in `subagents`;
   - a child's opening waits for its parent's holder before it switches to synchronous delivery.
 - A release note for the breaking `ClientSessionOperations.notify(SessionEvent)` change, and the samples moved to
   it. It also says that opening a session that is already open, or being opened, now fails for the factory
@@ -2466,15 +2464,16 @@ The design moved through several shapes before landing on the factory-based `ann
       there, which the removal takes out.
       The removal also closes every subagent's permissions. Narrowing the KDoc to the subagents that existed when the
       close started was rejected: the page says the client handles the pending requests of the closed session's descendants together with the parent's own (`sub:482`).
-    - A close that a child's own `notify` starts doesn't join that child's opening. It detects the opening by job
-      ancestry or by the opening's `SubagentOpening` context element, either one: the element survives
-      `withContext(NonCancellable)` and other replaced jobs, and ancestry covers a coroutine below the opening whose
-      context dropped the element. A false match only skips a join, while a missed one deadlocks (see "Close and
-      connection end").
-    - Detecting it by job ancestry alone was rejected: a close that `notify` waits for under
-      `withContext(NonCancellable)` leaves the opening's job tree and would join its own opening forever. Detecting
-      it by the element alone was rejected too: it misses a coroutine below the opening started with a context of
-      its own.
+    - The close cancels the openings of unfinished children and doesn't join them, so a child's `notify` may still
+      run after `close()` returns. The opening state's `Finished` claim keeps a stopped opening from completing its
+      holder (see "Close and connection end").
+    - Joining the openings, so that `close()` returned only after each such `notify` had reacted to the
+      cancellation, was the earlier decision and was rejected. It needed the close to detect the opening it runs in,
+      by job ancestry or a context element of the opening, or it would join itself. That detection had false
+      matches, hung for a close in another scope that `notify` waited for under `NonCancellable`, and couldn't cover
+      two roots that close each other from their children's `notify` under `NonCancellable`, which deadlocked. The
+      guarantee was partial anyway: a child that had finished opening could already run its `notify` after
+      `close()` returned, and the failure cascade never joined.
     - Closing descendants bottom-up, the earlier recommendation, was rejected: the order mattered only for removing
       holders one at a time, and one update removes them all.
     - Closing every session on connection end, also in the earlier recommendation, was rejected: v1 does nothing

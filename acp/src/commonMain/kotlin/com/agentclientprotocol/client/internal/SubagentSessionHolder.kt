@@ -19,19 +19,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
-import kotlin.coroutines.AbstractCoroutineContextElement
-import kotlin.coroutines.CoroutineContext
 
 private val logger = KotlinLogging.logger {}
-
-/**
- * Marks the coroutine of the opening of [holder], and everything that inherits its context, so a close of the root
- * that the subagent's own operations start there can tell that it runs in that opening, see
- * [ClientSessionRegistry.removeSessionTree].
- */
-internal class SubagentOpening(val holder: SubagentSessionHolder) : AbstractCoroutineContextElement(Key) {
-    companion object Key : CoroutineContext.Key<SubagentOpening>
-}
 
 /**
  * The holder of a subagent session, registered under the holder of the session it was announced in.
@@ -48,13 +37,31 @@ internal class SubagentSessionHolder(
     sessionId: SessionId,
     val parent: ClientSessionHolder,
 ) : ClientSessionHolder(sessionId, parent.protocol, parent.openingScope, parent.failSessionTree) {
-    private sealed class OpeningState {
+    /**
+     * The state of this subagent's opening, which consumes its queue. A root's opening is its opening call.
+     */
+    sealed class OpeningState {
+        /**
+         * No opening was started: the holder isn't set up yet, or its setup failed.
+         */
         object NotStarted : OpeningState()
+
+        /**
+         * The opening runs in [job] and hasn't completed the holder.
+         */
         class Running(val job: Job) : OpeningState()
+
+        /**
+         * The opening has delivered its whole queue and claimed the right to complete the holder, which it does next.
+         */
+        object Finished : OpeningState()
+
+        /**
+         * [markOpeningStopped] has run, so no opening starts or completes the holder any more.
+         */
         object Stopped : OpeningState()
     }
 
-    // The opening of this subagent, which consumes its queue; a root's opening is its opening call.
     private val opening = atomic<OpeningState>(OpeningState.NotStarted)
 
     /*
@@ -119,8 +126,7 @@ internal class SubagentSessionHolder(
     /**
      * Stores [session], the subagent session that the setup built for this holder, and then starts the opening of
      * this subagent in [openingScope], see [completeOpening], unless [markOpeningStopped] has run: a holder that
-     * failed or was removed with its root's tree gets no opening, and this closes [session] instead. The opening's
-     * context has a [SubagentOpening] of this holder.
+     * failed or was removed with its root's tree gets no opening, and this closes [session] instead.
      *
      * The session is stored first, so a failure that stops the opening after the store closes the session itself, and
      * a failure that stopped it before leaves the close to this call.
@@ -128,7 +134,7 @@ internal class SubagentSessionHolder(
     fun startOpening(session: ClientSubagentSession) {
         check(_subagent.compareAndSet(null, session)) { "Subagent session $sessionId is already set up" }
 
-        val job = openingScope.launch(SubagentOpening(this), start = CoroutineStart.LAZY) { completeOpening() }
+        val job = openingScope.launch(start = CoroutineStart.LAZY) { completeOpening() }
         if (opening.compareAndSet(OpeningState.NotStarted, OpeningState.Running(job))) {
             job.start()
         } else {
@@ -143,10 +149,16 @@ internal class SubagentSessionHolder(
     }
 
     /**
-     * Marks the opening stopped, so [startOpening] starts none from now on, and returns the running one, if any.
-     * It doesn't cancel the opening: the caller does, and decides whether to join it.
+     * Marks the opening stopped, so from now on [startOpening] starts none and a running one can't complete the
+     * holder, and returns the state it replaced:
+     * - [OpeningState.Running]: the opening will never complete the holder. It isn't cancelled or joined here: the
+     *   caller cancels it and fails the holder;
+     * - [OpeningState.Finished]: the opening has completed the holder, or is about to, so the subagent counts as
+     *   opened;
+     * - [OpeningState.NotStarted]: no opening was started;
+     * - [OpeningState.Stopped]: an earlier call stopped it.
      */
-    fun markOpeningStopped(): Job? = (opening.getAndSet(OpeningState.Stopped) as? OpeningState.Running)?.job
+    fun markOpeningStopped(): OpeningState = opening.getAndSet(OpeningState.Stopped)
 
     /**
      * Delivers this subagent's queue to its session's operations, with the session in the context of the calls:
@@ -155,6 +167,11 @@ internal class SubagentSessionHolder(
      * - once the parent's holder has completed: closes the queue, delivers the rest and completes this holder.
      *
      * It is the body of the opening that [startOpening] starts, after the session is stored.
+     *
+     * It completes this holder only if it moves the opening state from its own [OpeningState.Running] to
+     * [OpeningState.Finished] first. The stop in [markOpeningStopped] and that claim both swap the state atomically,
+     * so exactly one of them wins: a stopped opening that passed its last cancellation check before the stop, and so
+     * found the queue empty, returns without completing a holder that the stop's caller fails.
      *
      * ### Failure
      *
@@ -171,9 +188,9 @@ internal class SubagentSessionHolder(
                 while (true) {
                     /*
                      * `receiveCatching` doesn't check for cancellation when it finds an item without suspending, and
-                     * the client application's `notify` may return without suspending too. The failure cascade cancels
-                     * this opening without joining it, so without this check a cancelled opening would keep taking
-                     * items meant for the drain of [failAndDrainQueue].
+                     * the client application's `notify` may return without suspending too. The failure cascade and the
+                     * close cancel this opening without joining it, so without this check a cancelled opening would
+                     * keep taking items meant for the drain of [failAndDrainQueue].
                      */
                     currentCoroutineContext().ensureActive()
                     when (val item = queue.receiveCatching().getOrNull() ?: return@executeWithSession false) {
@@ -199,9 +216,9 @@ internal class SubagentSessionHolder(
             queue.close()
             /*
              * `tryReceive` never suspends, so it never checks for cancellation, the client application's `notify` may
-             * return without suspending, and [deliverLive] swallows its failures. The failure cascade cancels this
-             * opening without joining it, so without this check a cancelled opening would keep taking items meant for
-             * the drain of [failAndDrainQueue].
+             * return without suspending, and [deliverLive] swallows its failures. The failure cascade and the close
+             * cancel this opening without joining it, so without this check a cancelled opening would keep taking
+             * items meant for the drain of [failAndDrainQueue].
              *
              * Check before taking each item, and nowhere between taking it and handing it to the operations, so one
              * loop runs in one context: an item that a stopped opening took would reach neither the session nor the
@@ -214,6 +231,9 @@ internal class SubagentSessionHolder(
                     deliverLive(item, session)
                 }
             }
+            // Claims the completion unless a stop came first. Only this opening sets the state to Running.
+            val running = opening.value as? OpeningState.Running ?: return
+            if (!opening.compareAndSet(running, OpeningState.Finished)) return
             _session.complete(session)
         } catch (ce: CancellationException) {
             // A stopped opening's holder is already failing, and the end of the connection fails nothing.
