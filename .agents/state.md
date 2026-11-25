@@ -381,7 +381,12 @@ filter dropped; main 1770 -> 1740 lines, test 401 -> 447 (3 new replay tests, 15
 `check` green. Costs: recording spread over each send site (a task emitting via the collector would be missed),
 child records still store raw updates, intermediate patches (requires_action/running/title) not replayed, root links
 after all children's histories. Draft commit `refactor: replay the subagents sample from the agent's own turn record`.
-WAITING on the user: keep, adjust (e.g. make `DelegatedTaskScope.say` the only emit path) or revert.
+User 2026-11-25: keeps E6 ("more explicit now"); asked for stdlib atomics instead of `@Volatile` and read-only
+`List` types instead of `CopyOnWriteArrayList`. E6 follow-up DONE, UNCOMMITTED: `TurnRecord.kt` -> `agent/SessionRecord.kt`
+(SessionRecord/TurnRecord/SubagentRecord, private `kotlin.concurrent.atomics.AtomicReference` + `List` getter + named
+append fns, file-level `@OptIn(ExperimentalAtomicApi::class)`), `ScriptedUser` AtomicBoolean, `runDelegatedWork`
+stdlib atomic; ConcurrentHashMaps kept; main 1740 -> 1782; tests `--rerun` x4, `check`, runSubagents green. Draft
+commit `refactor: replay the subagents sample from the agent's own session record`. WAITING on the user's review.
 
 SDK gaps from E1–E3 (user 2026-11-24, one by one): 1 replay/factory KDoc → DONE, E5 COMMITTED `3e8548b` (9 files;
 wrapper drops the announcement deferred; `check` + `:acp:apiCheck` green, no dump change; deviations: cancelled caller
