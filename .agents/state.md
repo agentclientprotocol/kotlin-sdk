@@ -1,4 +1,4 @@
-# State: implement v1 subagents per docs/superpowers/specs/2026-11-07-v1-subagents-architecture.md
+# State: KDoc improvements pass over the PR (current goal, 2026-11-25); earlier goal: implement v1 subagents per docs/superpowers/specs/2026-11-07-v1-subagents-architecture.md
 
 ## Settings
 mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per finished milestone)
@@ -388,6 +388,15 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   tree with `parent` and routes by worker name.
 
 ## Next
+KDoc pass goal (user 2026-11-25): (1) bring every comment/KDoc this PR adds or changes in line with AGENTS.md
+"Comments and KDoc" (structure rules, property/param placement, no single-line KDoc, no consecutive `//`);
+(2) honestly assess whether the long ones (e.g. `AgentSubagents` class KDoc and `announce`) should shrink without
+losing information ("no" is valid); (3) every KDoc on a component the PR affects matches actual behaviour.
+Rule (user): before rewriting an especially long comment, show the user the proposal and discuss it.
+Plan: M1 audit (3 researchers in parallel: model+build-logic+samples, agent+protocol, client+common) →
+reports `.agents/research/kdoc-audit-{model,agent,client}.md` → show the user the plan and the long-form proposals →
+M2 programmer slices (mechanical+accuracy per area; long-form rewrites only as agreed) → reviewer over M2.
+
 Current status (2026-11-25, end of session): the sample review continues in a new orchestrator session. Everything
 up to `ca9c764` is committed; the working tree is clean; nothing is pushed. No slice is in progress, and no follow-up
 is queued from this session. Ask the user for the next review question. The E0 leftovers in the other samples
