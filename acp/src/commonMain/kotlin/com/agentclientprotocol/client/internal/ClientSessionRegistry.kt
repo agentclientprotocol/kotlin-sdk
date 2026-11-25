@@ -97,7 +97,8 @@ internal class ClientSessionRegistry(
     }
 
     /**
-     * Creates a new entry only if there are some currently initializing sessions. Otherwise, throws in the case of missing session.
+     * Creates a new entry only if there are some currently initializing sessions. Otherwise, throws in the case of
+     * missing session.
      */
     private fun getOrCreateSessionHolder(sessionId: SessionId): ClientSessionHolder =
         getOrCreateSessionHolderOrNull(sessionId) ?: acpFail("Session $sessionId not found")
@@ -120,6 +121,9 @@ internal class ClientSessionRegistry(
     /**
      * Removes [root] and every subagent below it, after the agent answered its `session/close`.
      *
+     * A second removal of [root], after a second close that was sent while the first was in flight, removes nothing
+     * from the map.
+     *
      * ### Steps
      *
      * 1. Each holder is sealed, top-down, so a late announcement registers no subagent that no close would reach.
@@ -140,9 +144,6 @@ internal class ClientSessionRegistry(
      *
      * The removal finishes even if the caller is cancelled while it joins the openings, because the agent has
      * already dropped the sessions.
-     *
-     * A second removal of [root], after a second close that was sent while the first was in flight, removes nothing
-     * from the map.
      *
      * @return the ids that were removed from the session map
      */
@@ -262,14 +263,14 @@ internal class ClientSessionRegistry(
     suspend fun deliverSessionUpdate(sessionId: SessionId, update: SessionUpdate, _meta: JsonElement?) {
         /*
          * The agent may report an update (e.g., a status change on `session/list`) for a session this client
-         * never called `session/new` / `session/load` / `session/resume` for.  That's not a protocol violation, so
+         * never called `session/new` / `session/load` / `session/resume` for. That's not a protocol violation, so
          * unlike other session-scoped methods, an unknown/unconnected session here must not fail the call.
          * A speculative holder can also be reaped by `withInitializingSession` after we found it here.
          *
          * The lookup and the sorting are not `suspend`, and must stay that way: `Protocol` runs a notification handler
          * only until its first suspension before it handles the next message. So a subagent is registered before the
-         * agent's next message for it, which would otherwise be unconnected, or a request for it would fail with
-         * "session not found", while the parent's `notify` runs app code.
+         * agent's next message for it is handled, even while the parent's `notify` runs app code. Otherwise that
+         * message would count as unconnected, or, for a request, fail with "session not found".
          */
         val holder = getOrCreateSessionHolderOrNull(sessionId) ?: return handleUnconnectedSessionUpdate(sessionId, update, _meta)
         val item = queuedItemFor(holder, update, _meta)
@@ -330,7 +331,7 @@ internal class ClientSessionRegistry(
      * compare-and-set has to check the id itself in either order, because an opening may create a root holder for
      * it at any time.
      *
-     * @return the child's holder, or `null` if nothing was registered
+     * @return the child's holder, or `null` if it didn't enter the session map, so the announcement is a plain update
      */
     private fun registerChild(parent: ClientSessionHolder, childId: SessionId): SubagentSessionHolder? {
         val child = SubagentSessionHolder(childId, parent) // takes the root's opened marker if answered
@@ -365,8 +366,8 @@ internal class ClientSessionRegistry(
     }
 
     /**
-     * Returns the holder of [sessionId], claimed by an opening call that knows the id before its request: `session/load`
-     * with [replayRequested], or `session/resume` without it, with its [parameters]. Must run under
+     * Returns the holder of [sessionId], claimed by an opening call that knows the id before its request:
+     * `session/load` with [replayRequested], or `session/resume` without it, with its [parameters]. Must run under
      * [withInitializingSession], which makes sure the holder exists.
      *
      * @throws IllegalStateException if the session is open or being opened
@@ -445,6 +446,11 @@ internal class ClientSessionRegistry(
         }
     }
 
+    /**
+     * Runs [block], an opening call, while counting it as an initializing session, so that early updates for unknown
+     * ids get speculative root holders. When the last such call ends, every root holder that is unclaimed, incomplete
+     * or failed is removed and failed, with its subagents.
+     */
     suspend fun <T> withInitializingSession(block: suspend () -> T): T {
         _sessions.update { it.copy(initializingSessionsCount = it.initializingSessionsCount + 1) }
         try {
@@ -460,9 +466,10 @@ internal class ClientSessionRegistry(
                 val newCount = currentStorage.initializingSessionsCount - 1
                 return@update if (newCount == 0) {
                     /*
-                     * this means that currently no sessions can be in initializing state during to ongoing load/new/fork/resume calls
-                     * so if on exit from these methods we observe any entries with not completed or failed state we assume that someone sent us events with non-existent session ids
-                     * and we have to remove them and report errors.
+                     * No opening is in progress any more, so an unclaimed root holder, or a failed one, belongs to no
+                     * session: the agent sent updates for an id that no opening claimed. Remove those and fail them
+                     * below.
+                     *
                      * A subagent's holder is exempt: it may wait for its operations long after any opening, and it ends
                      * with its own setup or with its parent.
                      */

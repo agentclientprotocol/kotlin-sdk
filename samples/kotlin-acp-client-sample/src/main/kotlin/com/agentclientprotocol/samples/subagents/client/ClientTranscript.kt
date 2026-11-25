@@ -22,13 +22,15 @@ import java.util.concurrent.ConcurrentHashMap
  * What the client shows: it writes the client's lines to the transcript and renders sessions and updates.
  */
 internal class ClientTranscript(private val transcript: Transcript) {
-    /*
+    /**
      * Counts the lines shown, so the script can wait for a condition on the getters to change. An application that
      * wants a flow of a subagent's values keeps its own like this, updated from the events.
      */
     private val shown = MutableStateFlow(0)
 
-    // Compared by identity: a loaded session's subagents are new objects with the same ids.
+    /**
+     * Compared by identity: a loaded session's subagents are new objects with the same ids.
+     */
     private val openedSubagents: MutableSet<ClientSubagentSession> = ConcurrentHashMap.newKeySet()
 
     /**

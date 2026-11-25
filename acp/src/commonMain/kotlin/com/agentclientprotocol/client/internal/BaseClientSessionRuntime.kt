@@ -45,7 +45,7 @@ internal suspend fun BaseClientSession.deliverUpdate(update: SessionUpdate, meta
  *
  * The request joins the race when this is called, before anything suspends, so call it when the request arrives:
  * a cancel that comes while the holder is still incomplete answers it too. The application sees the request only once
- * the holder's session has completed. The receiver is the holder, because the subagent's session doesn't exist yet
+ * the holder's session has completed. The receiver is the holder, because the subagent's session may not exist yet
  * when the request arrives.
  */
 internal suspend fun SubagentSessionHolder.answerPermissionRequest(
@@ -60,8 +60,8 @@ internal suspend fun SubagentSessionHolder.answerPermissionRequest(
 }
 
 /**
- * Runs [block] with this session in the coroutine context, so [baseClientSession] and, for a root, [clientSession]
- * return it.
+ * Runs [block] with this session in the coroutine context, so [baseClientSession] returns it, and [clientSession] or
+ * [com.agentclientprotocol.client.clientSubagentSession] does by its kind.
  */
 internal suspend fun <T> BaseClientSession.executeWithSession(block: suspend () -> T): T =
     withContext(asContextElement()) { block() }

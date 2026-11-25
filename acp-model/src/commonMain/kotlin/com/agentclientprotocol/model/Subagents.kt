@@ -20,7 +20,8 @@ import kotlinx.serialization.json.buildJsonObject
  * Subagent capabilities supported by the client.
  *
  * By supplying `{}` in `clientCapabilities.subagents` the client opts in to `subagent_update`,
- * `session_message` and `session_message_chunk` session updates. Without it the agent must not send them.
+ * `session_message` and `session_message_chunk` session updates and to `session` tool call content. Without it the
+ * agent must not send those updates, and sends no `session` content.
  * An omitted or `null` value means unsupported, and so does a malformed one.
  *
  * @property _meta extension metadata; a value that is not a JSON object decodes as `null`

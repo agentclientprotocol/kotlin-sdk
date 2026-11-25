@@ -38,7 +38,8 @@ private val logger = KotlinLogging.logger {}
  * The child is pending until its factory has sent its announcement, the first [SessionUpdate.SubagentUpdate] for it.
  * Until then every other operation fails. If the factory throws or returns before the announcement has been sent,
  * the child is dropped: unregistered, and every operation fails for good. Once announced, it stays registered until
- * subtree cleanup removes it, and then every operation fails for good too.
+ * subtree cleanup removes it, and then every operation fails for good too. Subtree cleanup drops a child that is still
+ * pending too.
  *
  * The events are collected only once the factory has returned an announced child. A child announced while its root's
  * replay window is open is a replayed one: its collection starts once the transport has accepted the load response,
@@ -78,10 +79,14 @@ internal class SubagentSessionWrapper(
     private val _cancelGranted = atomic(false)
 
     /**
-     * Whether the factory is running, and the last `state` the child's operations sent while it ran. Guarded by
-     * [lock]. The state is used only when the factory throws after the announcement.
+     * Whether the factory is running. Guarded by [lock].
      */
     private var factoryRunning = false
+
+    /**
+     * The last `state` the child's operations sent while the factory ran, used only when the factory throws after the
+     * announcement. Guarded by [lock].
+     */
     private var factoryState: StateUpdate? = null
 
     /**
@@ -127,6 +132,9 @@ internal class SubagentSessionWrapper(
      */
     val session: AgentSubagentSession? get() = _session.value
 
+    /**
+     * Throws [IllegalStateException] unless the announcement has been sent and the child is still registered.
+     */
     fun checkAnnounced() {
         if (_phase.value == Phase.PENDING) error("Subagent $sessionId is not announced yet: send its SubagentUpdate first")
         checkRegistered()
@@ -150,7 +158,7 @@ internal class SubagentSessionWrapper(
 
     /**
      * Runs the `announce` steps after registration: the factory, which must send the announcement, then the
-     * collection. A replayed child's collection waits for the load response.
+     * collection. A replayed child's collection waits until the transport has accepted the root's load response.
      */
     suspend fun <S : AgentSubagentSession> announce(factory: AgentSubagentFactory<S>): S {
         val session = try {

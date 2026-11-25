@@ -38,15 +38,17 @@ internal open class RemoteClientSessionOperations(
     /**
      * Sends the update of [event] for this root session.
      *
-     * Every root path sends through here: `client.notify`, the prompt flow and replay, so the subagents rules for a
-     * root are checked once, here. A [SessionUpdate.SubagentUpdate] is always rejected, because the SDK must see
-     * every announcement and grant. The other updates the subagents page defines need the `subagents` client
-     * capability: an agent MUST NOT send `session_message` or `session_message_chunk` without it
-     * (`docs/protocol/v1/subagents.mdx`, "Checking support"; `docs/protocol/v1/initialization.mdx`, "Subagents"), and
-     * it sends `session` tool call content only to a client that advertised it
-     * (`docs/protocol/v1/tool-calls.mdx`, "Sessions"). The SDK rejects both the same way.
+     * Every root path sends through here (`client.notify`, the prompt flow and replay), so the subagents rules for a
+     * root are checked once, here:
+     * - a [SessionUpdate.SubagentUpdate] is always rejected, because the SDK must see every announcement and grant;
+     * - without the `subagents` client capability, `session_message`, `session_message_chunk` and `session` tool call
+     *   content are rejected. An agent MUST NOT send the messages without it (`docs/protocol/v1/subagents.mdx`,
+     *   "Checking support"; `docs/protocol/v1/initialization.mdx`, "Subagents"), and sends `session` content only to
+     *   a client that advertised it (`docs/protocol/v1/tool-calls.mdx`, "Sessions").
      *
-     * @throws IllegalStateException for [SessionEvent.Opened], which only the client runtime delivers
+     * @throws IllegalArgumentException for a [SessionUpdate.SubagentUpdate]
+     * @throws IllegalStateException for an update that needs the missing `subagents` capability, or for
+     * [SessionEvent.Opened], which only the client runtime delivers
      */
     @OptIn(UnstableApi::class)
     override suspend fun notify(event: SessionEvent) {
@@ -190,8 +192,9 @@ internal open class RemoteClientSessionOperations(
 }
 
 /**
- * The client operations of [subagent]: requests for the child's session, gated until the announcement, and the
- * subagents routing rule for updates. The child's send state stays in [subagent], which does the sending.
+ * The client operations of [subagent]: requests for the child's session, allowed only while the child is announced and
+ * registered, and the subagents routing rule for updates. The child's send state stays in [subagent], which does the
+ * sending.
  */
 @OptIn(UnstableApi::class)
 internal class SubagentClientOperations(

@@ -92,10 +92,10 @@ public fun <T> MaybeUndefined<T>.update(previous: T?): T? = when (this) {
  * [MaybeUndefined.Null], otherwise the decoded value.
  *
  * A present-but-malformed value degrades to [MaybeUndefined.Undefined] instead of failing,
- * mirroring Rust's `DefaultOnError` on the `MaybeUndefined` fields of the schema. This helper
- * is always lenient. Some fields are deliberately strict and are decoded by their own
- * serializer instead, such as the v1 `SubagentUpdate.cwd` and `additionalDirectories`, where
- * a malformed value fails the update.
+ * mirroring Rust's `DefaultOnError` on the `MaybeUndefined` fields of the schema. `ACPJson` is
+ * lenient, so a JSON number or boolean still decodes as a string: a string field that must reject
+ * them checks the element itself, as the v1 `SubagentUpdate.title` does. Fields that must fail on
+ * a malformed value, such as `SubagentUpdate.cwd` and `additionalDirectories`, don't use this helper.
  */
 internal fun <T> JsonObject.decodeMaybeUndefined(
     json: Json,

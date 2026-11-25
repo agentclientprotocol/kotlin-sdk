@@ -271,24 +271,33 @@ public sealed class SessionUpdate {
     ) : SessionUpdate(), AcpWithMeta
 
     /**
-     * A patch of a subagent session's state, sent by the agent as `subagent_update`.
+     * A patch of a subagent session, sent by the agent as `subagent_update` on the parent's stream. Needs the
+     * `subagents` client capability.
      *
-     * Every field except [sessionId] is a [MaybeUndefined] patch: omitted leaves the stored value unchanged,
-     * `null` clears it, and a value replaces it. [capabilities] replaces the stored capabilities as a whole,
-     * so `{}` and `null` are different patches. The SDK does not validate or rewrite patch contents.
+     * The first update for a [sessionId] announces the subagent under the session whose stream carries it; later
+     * updates patch it.
      *
-     * Decoding is lenient for [title], [description], [capabilities], [state] and [_meta]: a malformed value
-     * decodes as [MaybeUndefined.Undefined]. [cwd] and [additionalDirectories] are strict, because the client
-     * acts on them: a malformed value fails the whole update.
+     * ### Patch semantics
+     *
+     * Every field except [sessionId] is a [MaybeUndefined] patch: omitted leaves the stored value unchanged, `null`
+     * clears it, and a value replaces it. [capabilities] is replaced as a whole, not merged, so `{}` permits nothing,
+     * like `null`. The SDK does not validate or rewrite patch contents; for example, it does not check that [cwd] is
+     * absolute.
+     *
+     * ### Decoding
+     *
+     * Decoding is lenient for [title], [description], [capabilities], [state] and [_meta]: a malformed value decodes
+     * as [MaybeUndefined.Undefined]. [cwd] and [additionalDirectories] are strict, because the client acts on them: a
+     * malformed value fails the whole update.
      *
      * This type does not implement [AcpWithMeta], because [_meta] is a patch field.
      *
-     * @property sessionId the subagent session this update describes
-     * @property title human-readable name of the subagent session
-     * @property description short description of what the subagent session is doing
-     * @property capabilities controls the client may use on the session; replaced as a whole
-     * @property state the work state of the session; a malformed known state decodes as
-     * [MaybeUndefined.Undefined], never as [StateUpdate.Other]
+     * @property sessionId the subagent session this update announces or patches
+     * @property title the parent's display label for the subagent session
+     * @property description the parent's description of the subagent session's role
+     * @property capabilities what the client may send for the subagent session
+     * @property state the work state of the session; a value that is not a JSON object or has no string `state`
+     * decodes as [MaybeUndefined.Undefined]
      * @property cwd absolute working directory of the session
      * @property additionalDirectories absolute additional roots of the session
      * @property _meta extension metadata; a value that is not a JSON object decodes as
@@ -310,11 +319,11 @@ public sealed class SessionUpdate {
      * A message exchanged between sessions, sent as `session_message`. Needs the `subagents` client
      * capability.
      *
-     * Messages are keyed by [messageId]: repeated updates with the same ID patch the stored message. Every
-     * other field is a [MaybeUndefined] patch: omitted leaves the stored value unchanged, `null` clears it,
-     * and a value replaces it. For [content], `[]` clears it too, but stays distinct from `null` on the wire
-     * and round-trips as it came in. A [content] value replaces everything accumulated for the message so
-     * far, including chunks of [SessionMessageChunk].
+     * Messages are keyed by [messageId] within the session whose stream carries the update: repeated updates with
+     * the same ID patch the stored message. Every other field is a [MaybeUndefined] patch: omitted leaves the
+     * stored value unchanged, `null` clears it, and a value replaces it. For [content], `[]` clears it too, but
+     * stays distinct from `null` on the wire and round-trips as it came in. A [content] value replaces everything
+     * accumulated for the message so far, including chunks of [SessionMessageChunk].
      *
      * Decoding is lenient: a malformed patch field decodes as [MaybeUndefined.Undefined], an unparseable
      * content block is skipped, and a content array whose items are all invalid decodes as `[]`.

@@ -86,6 +86,8 @@ internal fun <T> decodeParams(deserializer: DeserializationStrategy<T>, params: 
 
 /**
  * Register a handler for incoming requests.
+ *
+ * The handler starts in arrival order as described on [RpcMethodsOperations.setRequestOutcomeHandlerRaw].
  */
 public fun<TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOperations.setRequestHandler(
     method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
@@ -99,6 +101,12 @@ public fun<TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOperations.
     }
 }
 
+/**
+ * Register a handler for incoming requests that returns a [RequestOutcome], to schedule work and cleanup around the
+ * response.
+ *
+ * The handler starts in arrival order as described on [RpcMethodsOperations.setRequestOutcomeHandlerRaw].
+ */
 @UnstableApi
 public fun <TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOperations.setRequestOutcomeHandler(
     method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,

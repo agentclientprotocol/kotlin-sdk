@@ -28,6 +28,10 @@ testing {
     }
 }
 
+/*
+ * The plain `run` task starts the simple agent by default; override it with
+ * `-PmainClass=<fully qualified main class>`.
+ */
 application {
     mainClass.set(
         providers.gradleProperty("mainClass")
@@ -40,8 +44,7 @@ kotlin {
 }
 
 /*
- * Each sample has one run task. The plain `run` task starts the simple agent by default; override it with
- * `-PmainClass=<fully qualified main class>`.
+ * Each sample has one run task.
  */
 fun registerSampleTask(name: String, sampleDescription: String, sampleMainClass: String) =
     tasks.register<JavaExec>(name) {

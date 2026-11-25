@@ -21,8 +21,6 @@ import kotlinx.coroutines.flow.FlowCollector
  *
  * @property instruction the task's text, sent to the child as a `session_message`
  * @property name names the task's messages, so that two tasks of one child don't share a message id
- * @property sentMessageId the id of that message in the parent's stream
- * @property receivedMessageId the id of that message in the child's stream
  * @property work what the child does, see [DelegatedTaskScope]
  */
 internal class DelegatedTask(
@@ -33,7 +31,14 @@ internal class DelegatedTask(
     val name: String = "task",
     val work: suspend DelegatedTaskScope.() -> Unit,
 ) {
+    /**
+     * The id of the instruction's message in the parent's stream.
+     */
     val sentMessageId = MessageId("${id.value}-$name-sent")
+
+    /**
+     * The id of the instruction's message in the child's stream.
+     */
     val receivedMessageId = MessageId("${id.value}-$name")
 }
 

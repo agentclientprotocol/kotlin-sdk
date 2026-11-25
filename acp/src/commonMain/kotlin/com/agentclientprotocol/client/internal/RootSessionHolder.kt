@@ -36,8 +36,8 @@ internal class RootSessionHolder(
      * @property replayRequested whether the call asked the agent to replay the history: `true` for `session/load`,
      * `false` for the other opening calls
      * @property parameters the parameters of the call, which the effective working directories of the root's
-     * subagents come from. They are known from the claim on, so subagents can read them before the root's
-     * [ClientSession] exists.
+     * subagents come from; known from the claim on, so subagents can read them before the root's [ClientSession]
+     * exists
      */
     class Opening(val replayRequested: Boolean, val parameters: SessionCreationParameters)
 
@@ -280,8 +280,8 @@ internal class RootSessionHolder(
      *
      * Only the opening uses it, in [drainHistory] and [completeOpening]. A [CancellationException] that app code throws
      * while the caller is still active becomes an [IllegalStateException], so the opening fails rather than looks like
-     * the caller's own cancellation. Live deliveries log such failures instead, see
-     * [SubagentSessionHolder.completeOpening].
+     * the caller's own cancellation. Live deliveries log such failures instead: a subagent's in
+     * [SubagentSessionHolder.deliverLive], a root's in the protocol's notification handler.
      */
     private suspend fun deliverDuringOpening(session: BaseClientSession, block: suspend () -> Unit) {
         try {

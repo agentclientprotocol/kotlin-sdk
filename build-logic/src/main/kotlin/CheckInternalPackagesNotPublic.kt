@@ -12,8 +12,8 @@ import org.gradle.api.tasks.TaskAction
 /**
  * Fails when a binary-compatibility-validator API dump lists a class from a package with an `internal` segment.
  *
- * The dump is the compiler's own view of the public API. The task is meant to run next to `apiCheck`: `apiCheck`
- * fails if the dump was not regenerated, and this task fails if it was.
+ * The dump is the compiler's own view of the public API. Run the task next to `apiCheck`: `apiCheck` fails if the dump
+ * is out of date, and this task fails if an up-to-date dump lists such a class.
  */
 @CacheableTask
 abstract class CheckInternalPackagesNotPublic : DefaultTask() {

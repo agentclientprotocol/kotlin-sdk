@@ -9,6 +9,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.json.JsonElement
 
+/**
+ * A root session that the application opened with [Client.newSession], [Client.loadSession], [Client.resumeSession]
+ * or [Client.forkSession]. For the sessions the agent starts under it, see [subagents] and [ClientSubagentSession].
+ */
 @OptIn(UnstableApi::class)
 public interface ClientSession : BaseClientSession {
     override val sessionId: SessionId
@@ -81,20 +85,22 @@ public interface ClientSession : BaseClientSession {
      * arrives, and the delivery of an update that arrived before the response and waits behind such a call, can still
      * run after this function returns, as for [operations].
      *
-     * This function cancels the deliveries to the subagents that haven't finished opening and waits for them to end, so
-     * it returns only once each [ClientSessionOperations.notify] or [SubagentOperations.createSubagentOperations] call
-     * in progress for such a subagent reacts to the cancellation.
+     * This function cancels the openings of the subagents that haven't finished opening and waits for them to end. So
+     * it returns only once each [ClientSessionOperations.notify] call of such a subagent, and each
+     * [SubagentOperations.createSubagentOperations] call that such a subagent's operations run for its own subagents,
+     * reacts to the cancellation.
      *
      * ### Errors
      *
      * An answer with `-32002` (resource not found) means the agent no longer knows the session, so it counts as a
-     * successful close, as ACP asks: the tree is removed and this function returns an empty [CloseSessionResponse]. If
-     * the request fails with any other error, nothing is removed.
+     * successful close, as ACP asks: the tree is removed and this function returns an empty [CloseSessionResponse].
+     * Any other error is thrown, and nothing is removed.
      *
      * ### A close from a subagent's own operations
      *
-     * Such a call may close the root itself. Then this function doesn't wait for that subagent's delivery, which
-     * would wait for itself, and cancels it before returning. It recognizes the call when this function runs:
+     * A subagent's operations may call this function, for example from their `notify`. It then doesn't wait for that
+     * subagent's opening, which would wait for itself, and cancels it before returning. It recognizes the call when
+     * this function runs:
      * - in the call's coroutine or in one below it;
      * - or in a coroutine that kept the call's context elements, as `withContext(NonCancellable)` does, so a
      *   coroutine of another scope that copied them doesn't wait either.
@@ -105,21 +111,24 @@ public interface ClientSession : BaseClientSession {
      *
      * ### Repeated and stale calls
      *
-     * Only this session object sends `session/close` for its id, and only while the session is open:
+     * This object sends `session/close` only while the session it was opened as is still open:
      * - after a successful close, a later call returns an empty [CloseSessionResponse] at once, sends nothing and
      *   touches no other session, even if the id has been opened again since, because the request carries only the id
      *   and would close the new session;
      * - a call after a failed close sends the request again, and calls made while a close is in flight send their own
      *   requests;
      * - if the opening of this session failed, which a call of [operations] that reads this session from its context
-     *   during the opening can see, this function throws [IllegalStateException] and sends nothing. The agent's
-     *   session then stays open until the connection ends.
+     *   during the opening can see, this function throws [IllegalStateException] and sends nothing. The client then
+     *   doesn't close the agent's session. It stays open until the connection ends, unless the id is loaded or
+     *   resumed again and then closed.
      *
      * Only available if the agent advertises the `session.close` capability.
      *
      * Corresponds to the [com.agentclientprotocol.model.AcpMethod.AgentMethods.V1.SessionClose]
      *
      * @throws IllegalStateException if the opening of this session failed
+     * @throws com.agentclientprotocol.protocol.JsonRpcException if the agent answers with an error other than
+     *   `-32002`
      */
     public suspend fun close(_meta: JsonElement? = null): CloseSessionResponse
 
@@ -134,7 +143,7 @@ public interface ClientSession : BaseClientSession {
     public val availableModes: List<SessionMode>
 
     /**
-     * Returns the current mode for the session. Check for [modelsSupported] before calling this method.
+     * Returns the current mode for the session. Check for [modesSupported] before calling this method.
      *
      * Unreliable after `session/load`, and therefore deprecated for removal. The agent replays the history before it
      * answers, so the mode in the response is newer than every replayed `current_mode_update`. This flow starts from
@@ -151,7 +160,8 @@ public interface ClientSession : BaseClientSession {
     )
     public val currentMode: StateFlow<SessionModeId>
     /**
-     * Changes the session mode to the specified mode. The real change will be reported by an agent via [ClientSessionOperations.notify].
+     * Changes the session mode to the specified mode. The real change will be reported by an agent via
+     * [ClientSessionOperations.notify].
      */
     public suspend fun setMode(modeId: SessionModeId, _meta: JsonElement? = null): SetSessionModeResponse
 

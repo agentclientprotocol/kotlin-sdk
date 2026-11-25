@@ -84,9 +84,10 @@ internal sealed class QueuedItem {
     ) : Received()
 
     /**
-     * The point where the answer of the root's opening call fell among the updates, see [SessionEvent.Opened]. Only
-     * [RootSessionHolder.markOpened] puts it into the queues, in the response hook of the opening call, and the
-     * registration of a subagent after that answer.
+     * The point where the answer of the root's opening call fell among the updates, see [SessionEvent.Opened].
+     * [RootSessionHolder.markOpened] puts it into the root's queue and, through [SubagentSessionHolder.markOpened],
+     * into every subagent's, in the response hook of the opening call; a subagent registered after that answer gets it
+     * when its holder is created.
      *
      * @property response the answer, for a root; `null` for a subagent
      */
@@ -109,8 +110,8 @@ internal sealed class QueuedItem {
  *
  * Every update that arrives before the session exists goes into one queue, and so does the [QueuedItem.Opened] marker
  * of the root's answer. The queue has one consumer at a time:
- * - for a root with ready operations (a load): [RootSessionHolder.deliverEarly], until the opened marker, then
- *   [RootSessionHolder.completeOpening] with that marker;
+ * - for a root with ready operations (a load or a resume): [RootSessionHolder.deliverEarly], until the opened marker,
+ *   then [RootSessionHolder.completeOpening] with that marker;
  * - for a root with a factory: [RootSessionHolder.drainHistory], until the opened marker, then
  *   [RootSessionHolder.completeOpening] with that marker;
  * - for a subagent: its opening, which the parent's consumer starts with [SubagentSessionHolder.startOpening] once it
@@ -127,14 +128,14 @@ internal sealed class QueuedItem {
  * ### Subagents
  *
  * Each holder keeps its subagents in two collections of one state, see [Children]:
- * - the holders by id, failed ones included, which [RootSessionHolder.markOpened], the failure cascade of
- *   [ClientSessionRegistry.failSessionTree] and the close of the root walk;
+ * - the holders by id, failed ones included, which [RootSessionHolder.markOpened], the failure cascade
+ *   of [ClientSessionRegistry.failSessionTree] and the root's close walk;
  * - the [subagents] that the application sees, in announcement order.
  *
  * @property sessionId the id of this holder's session
  * @property protocol the connection, for the subagents' `session/cancel`
- * @property openingScope the scope of the subagents' openings. It belongs to the connection, so they end with it, and
- * they don't run on the protocol's handler thread.
+ * @property openingScope the scope of the subagents' openings, which belongs to the connection, so they end with it and
+ * don't run on the protocol's handler thread
  * @property failSessionTree fails the holder of a subagent whose setup or opening failed, and every holder below it,
  * see [ClientSessionRegistry.failSessionTree]
  */
@@ -330,8 +331,8 @@ internal sealed class ClientSessionHolder(
     }
 
     /**
-     * Like the overload for a session, for a consumer that has no session object yet: [deliver] hands the update on, and
-     * [operations] are the operations of this holder's session.
+     * Like the overload for a session, for a consumer that has no session object yet: [deliver] hands the update on,
+     * and [operations] are the operations of this holder's session.
      */
     protected suspend fun deliverItem(
         item: QueuedItem,

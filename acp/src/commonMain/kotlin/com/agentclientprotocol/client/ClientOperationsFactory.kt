@@ -8,35 +8,8 @@ import com.agentclientprotocol.model.SessionId
 public typealias ClientSupport = ClientOperationsFactory
 
 /*
- * TODO Deprecate ClientOperationsFactory and every opening overload that takes it.
- *
- * Roots don't need a factory. What session/new and session/fork need is only that the client buffers updates until
- * the answer names the session id, and the holder does that whether the operations come from a factory or from the
- * caller. The factory's arguments aren't needed either:
- * - sessionId: every operations call runs with the session in its context (`Client.kt`, the handlers wrap the call
- *   in `executeWithSession`), so `coroutineContext.clientSession.sessionId` works there. The early load/resume
- *   overloads already rely on the caller knowing the id.
- * - sessionResponse: it's harmful. The factory gets it before the buffered history is delivered, but the history is
- *   older than the response, so state built from the response and then from `notify` ends up stale. That's the same
- *   problem as the deprecated ClientSession.configOptions and currentMode.
- * The only v1 sample ignores both arguments (`TerminalClientSupport.kt`), and v2 has no factory: its newSession,
- * resumeSession and forkSession take `operations` directly.
- *
- * Fix:
- * - Add `newSession(sessionParameters, operations: ClientSessionOperations)` and
- *   `forkSession(sessionParameters, operations: ClientSessionOperations)`, like the load/resume overloads from #146.
- *   They keep the current buffering and drain the buffer into the given object after the answer, instead of calling
- *   the factory. Overload resolution stays as for loadSession: a lambda converts to the factory, and an object that
- *   implements ClientSessionOperations picks the new overload.
- * - Deprecate this interface and the four factory overloads in favour of them, and rewrite the KDoc above, which
- *   still says the factory is "necessary" for session/new and session/fork.
- * - Tests: the new overloads deliver updates that arrived before the answer, in order; a failing open cleans up the
- *   holder, like "new session should cleanup holder when createClientOperations fails" in SimpleAgentTest; samples
- *   move to the new overloads. Run apiDump and review the diff.
- *
- * History versus live updates is solved separately, by `SessionEvent.Opened` in the update stream, which also keeps
- * this path in the right order. Children keep a genuine factory, `createSubagentOperations`, because the agent
- * creates them.
+ * TODO Deprecate ClientOperationsFactory and its opening overloads in favour of `newSession` and `forkSession`
+ * overloads that take `ClientSessionOperations`, see https://github.com/agentclientprotocol/kotlin-sdk/issues/167.
  */
 
 /**
@@ -48,13 +21,20 @@ public typealias ClientSupport = ClientOperationsFactory
  * This is necessary for `session/new` and `session/fork`, because the client learns the session id only from the
  * answer.
  *
- * The opening call fails if the agent answers with an error, or if the factory throws, the caller is cancelled, or
- * `notify` throws before the call returns. A call that fails before the answer arrives doesn't call the factory, so
- * nothing gets [com.agentclientprotocol.common.SessionEvent.Opened]. Once the answer has arrived, `Opened` may have
- * been delivered even though the call then fails, so treat a failed call as a failed opening. The session's updates
- * that the operations did not receive yet, and its later ones, then go to the client's
- * [GlobalSessionUpdateHandler], and the session id can be opened again. After the call has returned, a failure of
- * `notify` is logged, as for any live update.
+ * ### Failure
+ *
+ * The opening call fails when:
+ * - the agent answers with an error;
+ * - the factory throws;
+ * - the caller is cancelled, or `notify` throws, before the call returns.
+ *
+ * A call that fails before the answer arrives doesn't call the factory, so nothing gets
+ * [com.agentclientprotocol.common.SessionEvent.Opened]. Once the answer has arrived, `Opened` may have been delivered
+ * even though the call then fails, so treat a failed call as a failed opening. The session's updates that the
+ * operations did not receive yet, and its later ones, then go to the client's [GlobalSessionUpdateHandler], and the
+ * session id can be opened again. After the call has returned, a failure of `notify` is logged, as for any live update.
+ *
+ * ### Load and resume
  *
  * For `session/load` and `session/resume`, the client knows the session id before the request. An agent can replay
  * the whole history before it answers. If the client has the operations object before the request, use the
@@ -63,11 +43,15 @@ public typealias ClientSupport = ClientOperationsFactory
  */
 public fun interface ClientOperationsFactory {
     /**
-     * This method should return an implementation of [ClientSessionOperations] that provides basic features on the client side.
-     * If you need to provide additional features like file system or terminal support, you have to implement [com.agentclientprotocol.common.FileSystemOperations] and [com.agentclientprotocol.common.TerminalOperations] on this object as well.
-     * Remember to specify a corresponding capability when initializing an agent.
+     * Returns the [ClientSessionOperations] that provides the basic features on the client side.
      *
-     * [sessionId] an existing id in the case when the session is being loaded or a new id when the session is newly created (id is returned from the agent)
+     * If you need additional features like file system or terminal support, implement
+     * [com.agentclientprotocol.common.FileSystemOperations] and [com.agentclientprotocol.common.TerminalOperations] on
+     * the returned object as well, and specify the corresponding capability when initializing the client.
+     *
+     * @param sessionId the id of the session being loaded or resumed, or the id that the agent returned for a newly
+     * created one
+     * @param sessionResponse the agent's answer to the call that opens the session
      */
     public suspend fun createClientOperations(sessionId: SessionId, sessionResponse: AcpCreatedSessionResponse): ClientSessionOperations
 }

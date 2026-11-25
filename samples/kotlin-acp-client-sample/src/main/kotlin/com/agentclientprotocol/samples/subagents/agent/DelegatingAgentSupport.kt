@@ -29,7 +29,7 @@ import java.util.concurrent.ConcurrentHashMap
  * Every line the agent writes to [transcript] is marked [Side.AGENT].
  */
 class DelegatingAgentSupport(private val transcript: Transcript) : AgentSupport {
-    /*
+    /**
      * The record of every session this agent opened, kept after a close so that the session can be loaded again.
      */
     private val records = ConcurrentHashMap<SessionId, SessionRecord>()

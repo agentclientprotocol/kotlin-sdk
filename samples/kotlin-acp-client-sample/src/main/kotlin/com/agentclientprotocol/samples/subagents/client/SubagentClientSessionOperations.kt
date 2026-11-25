@@ -22,9 +22,9 @@ internal class SubagentClientSessionOperations(sessionId: SessionId, view: Clien
      * 4. A subagent's own stream
      *
      * The operations don't hold their session: `clientSubagentSession` gives it inside each call. The stream starts
-     * with the history the agent replays, if any, then exactly one `Opened` without a response, then live updates. A
-     * live subagent has no history, so `Opened` comes first. The stream also carries the announcements of the
-     * subagent's own subagents, as a parent's stream does.
+     * with the history the agent replays, if any, then exactly one `Opened`, which carries no response, then live
+     * updates. A live subagent has no history, so `Opened` comes first. The stream also carries the announcements of
+     * the subagent's own subagents, as a parent's stream does.
      *
      * 5. A subagent's permission request
      *

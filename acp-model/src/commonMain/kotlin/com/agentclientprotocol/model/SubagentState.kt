@@ -23,8 +23,9 @@ import kotlinx.serialization.json.buildJsonObject
  * preserved when storing or forwarding. This differs from the v2 `StateUpdate`, whose `Unknown` means
  * unrecognized.
  *
- * Decoding fails for a value that is not a JSON object and for a missing or non-string `state`. A known state
- * whose payload is malformed never decodes as [Other]. `subagent_update` treats a failed state as an absent one.
+ * Decoding fails for a value that is not a JSON object and for a missing or non-string `state`, and
+ * `subagent_update` treats such a state as absent. A known state always decodes as that state: a malformed field
+ * of it decodes as `null`.
  */
 @Serializable(with = StateUpdateSerializer::class)
 public sealed class StateUpdate {
@@ -40,9 +41,10 @@ public sealed class StateUpdate {
     /**
      * The subagent is not doing foreground work.
      *
-     * @property stopReason why the work stopped; omitted, `null`, malformed and known-but-invalid values all decode
-     * as `null`, meaning no stop reason is reported
-     * @property usage token usage of the completed work; omitted, `null` and malformed values decode as `null`
+     * @property stopReason why the work stopped; omitted, `null` and non-string values decode as `null`, meaning no
+     * stop reason is reported
+     * @property usage token usage of the completed work; omitted, `null` and malformed values decode as `null`;
+     * unstable: not part of the stable v1 schema
      * @property _meta extension metadata; a value that is not a JSON object decodes as `null`
      */
     @OptIn(UnstableApi::class)
@@ -125,7 +127,7 @@ public sealed class IdleStopReason {
     /**
      * The work failed.
      *
-     * @property error the JSON-RPC error describing the failure; agents should include it. Omitted, `null` and
+     * @property error the JSON-RPC error describing the failure, which agents should include; omitted, `null` and
      * malformed values decode as `null`
      */
     public data class Error(

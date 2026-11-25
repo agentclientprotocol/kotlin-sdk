@@ -100,7 +100,8 @@ suspend fun runSubagentsClient(
          *
          * The loaded session is a new object with a new tree of subagents, rebuilt from the replayed announcements.
          * After a load, a replayed subagent starts with no confirmed state and no cancel grant: what the history said
-         * about them is dropped at its parent's `Opened`, where the client shows the parent's subagents.
+         * about its state and grant is dropped at its parent's `Opened`, where the client shows the parent's
+         * subagents.
          */
         view.show(session.sessionId, LOADING)
         val loadedOperations = RootClientSessionOperations(session.sessionId, view, user)
@@ -166,7 +167,8 @@ private suspend fun ClientTranscript.awaitSettled(root: ClientSession) = awaitUn
 }
 
 /**
- * Whether a state reports foreground work. An unrecognized state counts as active, as the SDK and the spec treat it.
+ * Whether a state reports foreground work. An unrecognized state counts as active, as the SDK's agent side treats it:
+ * the spec says it doesn't mean the work ended.
  */
 private fun StateUpdate?.isActive() = when (this) {
     is StateUpdate.Running, is StateUpdate.RequiresAction, is StateUpdate.Other -> true

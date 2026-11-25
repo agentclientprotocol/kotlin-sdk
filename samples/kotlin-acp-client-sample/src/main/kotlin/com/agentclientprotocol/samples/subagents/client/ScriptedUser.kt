@@ -63,7 +63,10 @@ internal class ScriptedUser(private val view: ClientTranscript) {
         try {
             return RequestPermissionResponse(prompt.answer.await())
         } catch (e: CancellationException) {
-            // Other cancellations, like the connection's end, answer nothing.
+            /*
+             * Only the user's cancel of the subagent is named; any other cancellation, such as the root's close or the
+             * connection's end, shows as dismissed.
+             */
             val text = if (prompt.subagentCancelled) PERMISSION_ANSWERED_CANCELLED else "permission request dismissed"
             view.show(session.sessionId, text)
             throw e

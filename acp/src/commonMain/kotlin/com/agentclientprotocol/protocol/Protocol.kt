@@ -42,9 +42,9 @@ public open class ProtocolOptions(
  * This class manages request/response correlation, notifications, and error handling.
  *
  * Incoming requests and notifications are dispatched in arrival order to handlers that run one at a time on a single
- * thread. Each handler runs until it first suspends before the handler of a later message starts, while responses are
- * handled directly in the read loop; see [setNotificationHandlerRaw] and [setRequestOutcomeHandlerRaw] for exactly
- * what that orders.
+ * thread. Each handler runs until it first suspends, or returns, before the handler of a later message starts, while
+ * responses are handled directly in the read loop; see [setNotificationHandlerRaw] and [setRequestOutcomeHandlerRaw]
+ * for exactly what that orders.
  */
 public class Protocol(
     parentScope: CoroutineScope,
@@ -269,6 +269,9 @@ public class Protocol(
             throw ce
         }
         finally {
+            /*
+             * Match by the deferred: the cancel path above may have replaced the entry with a copy that drops the hook.
+             */
             pendingOutgoingRequests.update { if (it[requestId]?.response === response) it.remove(requestId) else it }
         }
     }
@@ -746,7 +749,8 @@ internal class ResponseSlot(val responseFrameQueued: CompletableDeferred<Unit>) 
     var onSuccessQueued: (() -> Unit)? = null
 
     /**
-     * Returns [onSuccessQueued] if [response] is a success, once the frame carrying it was accepted by the transport.
+     * Called once the transport has accepted the frame, when every slot's [response] is complete: returns
+     * [onSuccessQueued] if [response] is a success, `null` otherwise.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     fun successQueuedHook(): (() -> Unit)? =

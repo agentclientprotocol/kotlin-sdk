@@ -14,8 +14,9 @@ import com.agentclientprotocol.model.SessionUpdate
 import kotlinx.serialization.json.JsonElement
 
 /**
- * The operations of any session in the client's tree, the root or a subagent. The subclasses differ only in how they
- * find their session in the call's context: [RootClientSessionOperations] and [SubagentClientSessionOperations].
+ * The operations of any session in the client's tree, the root or a subagent. The subclasses differ in how they find
+ * their session in the call's context and how they show its `Opened`: [RootClientSessionOperations] and
+ * [SubagentClientSessionOperations].
  *
  * Scenarios in this file, numbered as its section comments:
  * - 2. operations that implement [SubagentOperations], so that their session can have subagents;
@@ -30,7 +31,7 @@ internal abstract class TreeClientSessionOperations<S : BaseClientSession>(
     protected val view: ClientTranscript,
     private val user: ScriptedUser,
 ) : ClientSessionOperations, SubagentOperations {
-    /*
+    /**
      * Whether this stream's `Opened` was delivered. Only `notify` reads and writes it, and the calls of one stream come
      * one at a time.
      */
@@ -97,9 +98,9 @@ internal abstract class TreeClientSessionOperations<S : BaseClientSession>(
      * 8. History, before `Opened`
      *
      * The updates before `Opened` came before the answer of the call that opened the root: here the history that
-     * `session/load` replays. While the client's early `loadSession` overload delivers it, the root's `ClientSession`
-     * doesn't exist yet, so the context has no root session, and the `capabilities` and `state` of a replayed
-     * subagent are held back and then dropped. So show the update itself.
+     * `session/load` replays. While the `loadSession` overload that takes the operations up front delivers it, the
+     * root's `ClientSession` doesn't exist yet, so the context has no root session, and the `capabilities` and `state`
+     * of a replayed subagent are held back and then dropped. So show the update itself.
      */
     private fun showHistory(update: SessionUpdate) {
         view.show(sessionId, "history: ${update.describe()}", update)

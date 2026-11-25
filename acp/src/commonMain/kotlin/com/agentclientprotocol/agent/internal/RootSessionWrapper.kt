@@ -29,7 +29,8 @@ import kotlinx.serialization.json.JsonElement
 private val logger = KotlinLogging.logger {}
 
 /**
- * A root session.
+ * A root session: runs its turns one at a time (see [AgentSession.prompt]) and owns the replay window and the subtree
+ * scope of its subagents.
  *
  * @param replaying whether the session is being opened by `session/load`: its replay window is then open until
  * [endReplay]
@@ -51,7 +52,7 @@ internal class RootSessionWrapper(
     /**
      * The supervisor scope of this root's subtree: the collections of its subagents' events run here.
      *
-     * Created on first use, so a session without subagents doesn't attach a job to the connection. It is a
+     * Created on first use, so a session that never has subagents keeps no job attached to the connection. It is a
      * connection scope, so the connection's end cancels it.
      */
     val subtreeScope: CoroutineScope by lazy { protocol.newConnectionScope("Subagents of session $sessionId") }
@@ -134,37 +135,11 @@ internal class RootSessionWrapper(
                     }
                 } catch (e: CancellationException) {
                     /*
-                     * FIXME: a CancellationException that the app's own flow throws is treated as a client
-                     *  cancel. Example: an uncaught `withTimeout` inside `AgentSession.prompt()`, with no
-                     *  `session/cancel` from the client. Rethrowing it here cancels `promptJob`, so
-                     *  `isCancelled` below is true, the failure is never recorded, and `session/prompt`
-                     *  answers `stopReason: cancelled`. The v1 schema defines `cancelled` as "The turn was
-                     *  cancelled by the client via `session/cancel`" (`StopReason` in `schema/v1/schema.json`),
-                     *  so the client sees a cancel it never sent and the real failure isn't reported.
+                     * FIXME: a CancellationException that the app's own flow throws, such as an uncaught
+                     *  `withTimeout`, is treated as a client cancel: rethrowing it cancels `promptJob`, so the turn
+                     *  answers `cancelled` and the real failure is lost.
                      *
-                     *  #131 fixed only the SDK-made case: a peer's `-32800` response is now
-                     *  `AcpRequestCancelledException`, not a `CancellationException`. A CancellationException
-                     *  the app throws itself still lands here.
-                     *
-                     *  Suggested fix: tell an app CE from a real cancellation by whether this job is still
-                     *  active. `RootSessionWrapper.cancel()` and the handler's own cancellation (protocol close,
-                     *  the peer's `$/cancel_request`) cancel `promptJob`, so `isActive` is false for them and
-                     *  the CE must still be rethrown. If `currentCoroutineContext().isActive` is still true,
-                     *  the CE came from the app: record it as `failure` instead. The code after `join()`
-                     *  then does the right thing on its own: after a client cancel (`isCancelRequested`) it
-                     *  still answers `cancelled`, which the schema requires "even if the cancellation causes
-                     *  exceptions in underlying operations", and otherwise it rethrows the failure as an
-                     *  error response. Wrap the CE in a non-cancellation exception first (for example
-                     *  `IllegalStateException("Prompt flow threw CancellationException", e)`): `Protocol`
-                     *  maps any CancellationException thrown from a handler to `-32800 Cancelled`
-                     *  (`toJsonRpcError` in `protocol/Exceptions.kt`), which would mislabel the turn again,
-                     *  this time as a cancelled request. Wrapped, it becomes `-32603`.
-                     *
-                     *  This changes stable v1 behaviour. Cover it with lifecycle tests: an app CE without a
-                     *  cancel answers with an error; an app CE after `session/cancel` answers `cancelled`;
-                     *  `RootSessionWrapper.cancel()` and protocol close still answer or stop as today. The v2
-                     *  counterpart is the FIXME in `agent/v2/Agent.kt` `runTurn`. Subagent feeds use the
-                     *  same `isActive` rule.
+                     *  See https://github.com/agentclientprotocol/kotlin-sdk/issues/166.
                      */
                     throw e
                 } catch (e: Throwable) {
@@ -209,18 +184,14 @@ internal class RootSessionWrapper(
          */
         val promptToCancel = _activePrompt.value?.takeIf { it.startCancel() }
         try {
-            // notify AgentSession about upcoming cancellation, this way implementations can gracefully stop ongoing requests
             agentSession.cancel()
 
             if (promptToCancel != null) {
                 logger.trace { "Cancelling prompt" }
-                // we expect that all nested outgoing jobs will be cancelled automatically due to structured concurrency
-                // -> prompt task
-                //   <- [request] read file
-                //   -> [response] read file
-                //   <- [request] permissions
-                //   |suspended|
-                // cancelling the whole prompt should cancel all nested outgoing requests. These requests on CE will propagate cancellation to the other side
+                /*
+                 * Cancelling the turn's job cancels every outgoing request it has in flight, such as a pending
+                 * `fs/read_text_file` or `session/request_permission`, and each of them sends `$/cancel_request`.
+                 */
                 promptToCancel.promptJob.cancel()
             }
         } finally {

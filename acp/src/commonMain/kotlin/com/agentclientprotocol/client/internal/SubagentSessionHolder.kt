@@ -156,7 +156,8 @@ internal class SubagentSessionHolder(
      *
      * It is the body of the opening that [startOpening] starts, after the session is stored.
      *
-     * Failures:
+     * ### Failure
+     *
      * - before the opened marker is delivered, a failure is logged and fails this holder, with [failSessionTree]. A
      *   [CancellationException] that the operations throw while the opening is active counts as such a failure;
      * - after it, a failure is logged, as for any live update;

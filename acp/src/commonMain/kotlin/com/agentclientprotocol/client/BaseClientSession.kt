@@ -43,16 +43,18 @@ public sealed interface BaseClientSession {
      * The subagent sessions that the agent has started directly under this session, in the order it announced
      * them. A subagent of a subagent is in that subagent's list.
      *
-     * The list only grows: a subagent whose operations couldn't be created is never in it, and it stays as it was
-     * after this session is closed. A listed subagent may be closed, because its own stream or that of a session
-     * above it failed, or its root session was closed, see [ClientSubagentSession]. A `subagent_update` whose subagent is not in the list is one
-     * that the client didn't accept: the setup of the subagent failed, or the update was rejected because the agent
-     * announced an id that another session owns.
+     * The list only grows, until this session is closed or its stream fails, and then it stays as it was. A subagent
+     * whose operations couldn't be created is never in it. A listed subagent may be closed, because its own stream or
+     * that of a session above it failed, or its root session was closed, see [ClientSubagentSession].
+     *
+     * A `subagent_update` whose subagent is not in the list is one that the client didn't accept: the setup of the
+     * subagent failed, the update arrived after this session was closed or failed, or the agent announced an id that
+     * another session owns.
      *
      * Each read returns a snapshot, so a list never changes under its reader. A reloaded session is a new object
      * with a new list, and the list of the closed object stays as it was.
      *
-     * ### After a load
+     * ### At this session's Opened
      *
      * Each session's own stream sets up the subagents that its history announced, and the session lists them before
      * its own [com.agentclientprotocol.common.SessionEvent.Opened]. So at a session's `Opened`, this list has every

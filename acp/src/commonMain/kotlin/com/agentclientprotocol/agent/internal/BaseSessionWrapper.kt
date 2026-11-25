@@ -27,6 +27,7 @@ internal fun BaseSessionWrapper.asContextElement() = SessionWrapperContextElemen
  * The root session or subagent of this context.
  *
  * @param feature what the caller needs from the session, for the error message
+ * @throws IllegalStateException outside a session context or in a NES session context
  */
 internal fun CoroutineContext.sessionWrapper(feature: String): SessionWrapper {
     val wrapper = this[SessionWrapperContextElement.Key]?.sessionWrapper

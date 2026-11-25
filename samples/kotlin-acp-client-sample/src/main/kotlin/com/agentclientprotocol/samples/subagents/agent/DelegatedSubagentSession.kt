@@ -33,8 +33,9 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * A delegated child: it runs one [task] for its parent [parentId].
  *
  * The work runs inside [events], which the SDK collects once the factory has returned, so each update the work emits
- * is sent before the work goes on. That flow is the one path for every update of the child. What the child says and
- * how its work ends also go into [record], for `session/load`.
+ * is sent before the work goes on. After the announcement, which the factory sends, that flow carries every update of
+ * the child except the announcements of its own subagents. What the child says and how its work ends also go into
+ * [record], for `session/load`.
  *
  * Scenarios in this file, numbered as its section comments:
  * - 6. cancel: the client cancels the child, which stops its work and reports `idle(cancelled)`;

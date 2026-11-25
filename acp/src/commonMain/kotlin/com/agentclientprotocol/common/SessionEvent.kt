@@ -30,9 +30,8 @@ public sealed class SessionEvent {
      *   call delivers [Opened] and the updates that arrived before the session took over. [Opened] may already have
      *   been delivered then, so treat a failed opening call as a failed opening, whatever events the operations got.
      *
-     * After a load, the session's [com.agentclientprotocol.client.BaseClientSession.subagents] lists every subagent
-     * that its history announced. The subagents' own lists are complete only at their own [Opened], which nothing
-     * orders against this one.
+     * At this point the session's [com.agentclientprotocol.client.BaseClientSession.subagents] lists every subagent
+     * announced before it whose setup succeeded. The subagents' own lists complete at their own `Opened`, see there.
      *
      * Only the client runtime delivers it; agent code can't create one.
      *

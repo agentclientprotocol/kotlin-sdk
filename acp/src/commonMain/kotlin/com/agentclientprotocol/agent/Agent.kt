@@ -514,6 +514,9 @@ public class Agent(
         }
     }
 
+    /**
+     * Removes [child] if it is still the subagent registered under its id.
+     */
     internal fun unregisterSubagent(child: SubagentSessionWrapper) {
         _sessions.update { table ->
             if (table.subagents[child.sessionId] !== child) return@update table
@@ -536,9 +539,9 @@ public class Agent(
     }
 
     /**
-     * Subtree cleanup for [root], once [removed], its subagents at every depth, have left the table with it or with
-     * its replacement: cancels their collections and makes their operations fail. No app code is called for them:
-     * stopping their work belongs to the root's [AgentSession.close].
+     * Subtree cleanup for [root], once [removed], its subagents at every depth, have left the table, together with
+     * [root] or when a re-opening replaced it: cancels their collections and makes their operations fail. No app
+     * code is called for them.
      */
     private fun cleanUpSubtree(root: RootSessionWrapper, removed: List<SubagentSessionWrapper>) {
         root.cancelSubtreeScope()

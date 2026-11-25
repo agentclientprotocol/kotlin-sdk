@@ -27,6 +27,13 @@ import kotlinx.serialization.json.JsonElement
 
 private val logger = KotlinLogging.logger {}
 
+/**
+ * The root session of the client.
+ *
+ * @param isOpen whether [holder] is still the registered holder of the id and blocks it, read once by [close]
+ * @param onClosed removes the closed root's tree after a successful close
+ * @param holder this root's holder, which keeps its subagents and its closing stage
+ */
 internal class ClientSessionImpl(
     // Kept only to implement the deprecated getter.
     @Suppress("OVERRIDE_DEPRECATION")

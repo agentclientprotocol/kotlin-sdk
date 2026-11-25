@@ -50,7 +50,10 @@ class TerminalClientSessionOperations : ClientSessionOperations, FileSystemOpera
                 println("Agent sent notification:")
                 event.update.render()
             }
-            // Updates before the marker came before the answer, like the history that session/load replays.
+            /*
+             * Updates before Opened arrived before the opening call's answer, like the history that session/load
+             * replays.
+             */
             is SessionEvent.Opened -> println("Session opened, later updates are live")
         }
     }

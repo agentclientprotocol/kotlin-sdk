@@ -22,45 +22,55 @@ import kotlinx.atomicfu.atomic
  * is unstable. It may change or be removed at any point.
  *
  * A session that the agent started under another session, to do work for it. The client builds it when the agent
- * announces the subagent, from the operations that [SubagentOperations.createSubagentOperations] returned, and it
- * lists it in the parent's [BaseClientSession.subagents]. The `subagents` client capability,
- * [com.agentclientprotocol.model.ClientCapabilities.subagents], enables the announcements. The client doesn't declare
- * it on its own: the application declares it in the [ClientInfo] it passes to [Client.initialize].
+ * announces the subagent, from the operations that [SubagentOperations.createSubagentOperations] returned, and lists
+ * it in the parent's [BaseClientSession.subagents]. The agent announces subagents only if the application declares
+ * the `subagents` client capability, [com.agentclientprotocol.model.ClientCapabilities.subagents], in the
+ * [ClientInfo] it passes to [Client.initialize]. The client doesn't declare it on its own.
+ *
+ * The client never prompts a subagent, so there is no prompt, mode, model, configuration or close here. Every update
+ * of the subagent, `config_option_update` and `current_mode_update` included, reaches its [operations] through
+ * [ClientSessionOperations.notify], and none of them changes a root session's mode or options.
+ *
+ * ### Stream
  *
  * Inside the parent's [ClientSessionOperations.notify] for the announcement, the subagent is already in the parent's
- * [BaseClientSession.subagents], with its operations and the announced values. The subagent's own stream gets
- * its history, then exactly one [com.agentclientprotocol.common.SessionEvent.Opened] without a response, at the
- * place of the root's answer, then its live updates. Nothing orders that `Opened` against the parent's, and the
- * subagent's own [BaseClientSession.subagents] lists what its history announced by then. The live updates, and the
- * agent's requests for the subagent, wait until the opening call of the root session has completed. A permission
- * request that waits there is still answered `cancelled`, without reaching [operations], if the subagent's work is
- * cancelled or its root is closed meanwhile, see [cancel].
+ * [BaseClientSession.subagents], with its operations and the announced values. The subagent's own stream then gets:
+ * - its history;
+ * - exactly one [com.agentclientprotocol.common.SessionEvent.Opened] without a response, at the place of the root's
+ *   answer. Nothing orders it against the parent's `Opened`, and by then the subagent's own
+ *   [BaseClientSession.subagents] lists what its history announced;
+ * - its live updates.
  *
- * The client never prompts a subagent, so there is no prompt, mode, model, configuration or close here. A subagent is
- * closed together with its root session, see [ClientSession.close], whether or not it has finished opening. It is also
- * closed when its stream fails before it has finished opening: when its own [ClientSessionOperations.notify] throws
- * before its [com.agentclientprotocol.common.SessionEvent.Opened], or when the stream of a session above it fails, as
- * when the root's opening fails. Its later updates then go to the [GlobalSessionUpdateHandler] and the agent's
- * requests for it fail. A closed subagent stays in its parent's [BaseClientSession.subagents] with the values it had:
- * [canCancel] is `false`, [cancel] throws, and later `subagent_update`s don't change it. Every update of the subagent reaches its
- * [operations] through [ClientSessionOperations.notify], including `config_option_update` and `current_mode_update`,
- * and none of them changes a root session's mode or options.
+ * The live updates, and the agent's requests for the subagent, wait until the opening call of the root session has
+ * completed. A permission request that waits there is still answered `cancelled`, without reaching [operations], if
+ * the subagent's work is cancelled meanwhile, by [cancel] or by an `idle` state with `cancelled`, or if its root is
+ * closed.
  *
- * Everything that changes on this object reaches the application as an event of a stream it already receives:
- * a `subagent_update` in the parent's [ClientSessionOperations.notify], or the [com.agentclientprotocol.common.SessionEvent.Opened]
- * of the parent. So the properties are plain getters, not flows. A flow beside the stream would be a second channel
- * with its own timing: a collector on another thread could see a value before the event that caused it.
+ * ### Closing
  *
- * **Contract:** the getters return the values the client has received from the agent so far. Inside a `notify` of
- * the parent's operations they match the parent's stream: they reflect every event delivered so far, including the
- * current one. Each value is read atomically, so any thread may read them, but values read one after the other may
- * come from different moments. An application that wants a flow keeps its own and updates it from `notify`.
+ * A subagent is closed:
+ * - with its root session, see [ClientSession.close], whether or not it has finished opening;
+ * - when its own [ClientSessionOperations.notify] throws before its `Opened` is delivered, or while it is;
+ * - when the stream of a session above it fails, as when the root's opening fails.
  *
- * During a turn, a root session's updates don't go to `notify`: they come from the [ClientSession.prompt] flow, which
- * buffers them. When the application takes an update from that flow, the getters may already reflect updates that
- * the flow hasn't emitted yet. To show what an update changed, read the update, which carries the patch; read the
- * getters for the subagent's current values. A subagent that an update from the flow names is already in the
- * parent's [BaseClientSession.subagents], unless its setup failed.
+ * Its later updates then go to the [GlobalSessionUpdateHandler], and the agent's requests for it fail. A closed
+ * subagent stays in its parent's [BaseClientSession.subagents] with the values it had: [canCancel] is `false`,
+ * [cancel] throws, and later `subagent_update`s don't change it.
+ *
+ * ### Reading the properties
+ *
+ * The getters return the values the client has received from the agent so far. Every change reaches the application
+ * as an event of a stream it already receives: a `subagent_update` in the parent's [ClientSessionOperations.notify],
+ * or the parent's `Opened`. Inside a `notify` of the parent's operations the getters match the parent's stream: they
+ * reflect every event delivered so far, including the current one.
+ *
+ * The properties are plain getters, not flows, because a flow beside the stream could show a value before the event
+ * that caused it. An application that wants a flow keeps its own and updates it from `notify`. Each value is read
+ * atomically, so any thread may read them, but values read one after the other may come from different moments.
+ *
+ * During a turn, a root's updates come from the buffered [ClientSession.prompt] flow, so the getters may be ahead of
+ * it. To show what an update changed, read the update, which carries the patch. A subagent that an update from the
+ * flow names is already in the parent's [BaseClientSession.subagents], unless its setup failed.
  *
  * @property operations the operations that [SubagentOperations.createSubagentOperations] returned for this subagent
  * @param holder the holder of this subagent's session, which its parent holder registered when the announcement arrived
@@ -95,7 +105,7 @@ public class ClientSubagentSession internal constructor(
      *
      * There is no parent object, because the parent's [ClientSession] may not exist yet when the subagent is built,
      * while the history of a loading session is being delivered.
-     **/
+     */
     public val parentSessionId: SessionId get() = holder.parent.sessionId
 
     /**
@@ -111,10 +121,13 @@ public class ClientSubagentSession internal constructor(
     /**
      * The work state the agent last confirmed.
      *
-     * `null` means no confirmed current state: before the first state that arrives after the parent's answer, and
-     * after the agent reported the state as unconfirmed with `null`, which does not mean idle.
-     * [StateUpdate.Unknown] is different: the agent confirmed that it lost track of the subagent's state. There is no
-     * last known value, because a state that was replayed from history is never shown as current.
+     * `null` means no confirmed current state: before the first state takes effect, and after the agent reported the
+     * state as unconfirmed with `null`, which does not mean idle. [StateUpdate.Unknown] is different: the agent
+     * confirmed that it lost track of the subagent's state.
+     *
+     * A state that arrives before the root's answer takes effect at the parent's
+     * [com.agentclientprotocol.common.SessionEvent.Opened] if the root's opening call replayed no history, and is
+     * dropped after a load: a replayed state is never shown as current.
      */
     public val state: StateUpdate? get() = _state.value
 
@@ -122,9 +135,11 @@ public class ClientSubagentSession internal constructor(
      * Whether [cancel] may be called: the agent granted the cancel control, and this session isn't closed.
      *
      * The latest `capabilities` of the subagent decide it. There is no grant before the agent sends them, and none
-     * if the cancel control is omitted or `null`. A [StateUpdate.Unknown] state doesn't revoke the grant. The grant
-     * resets when the parent is loaded or resumed again, and a grant that was reported while the history was
-     * replayed never takes effect.
+     * if the cancel control is omitted or `null`. A [StateUpdate.Unknown] state doesn't revoke the grant.
+     *
+     * A load or resume of the root builds new subagent objects, which start without a grant. A grant that arrives
+     * before the root's answer takes effect at the parent's `Opened` if the root's opening replayed no history, and
+     * never after a load.
      */
     public val canCancel: Boolean get() = !closed.value && capabilities.value?.cancel != null
 
@@ -161,16 +176,17 @@ public class ClientSubagentSession internal constructor(
     /**
      * Applies a `subagent_update` of this subagent, in the order the parent's stream delivers it.
      *
-     * `title`, `description`, `cwd` and `additionalDirectories` are applied at once: the history may stay visible.
-     * `capabilities` and `state` are applied only if [parentOpened], or else held back until [onParentOpened]. For
-     * each field, an omitted value leaves it unchanged, `null` clears it, and a value replaces it. `cwd` and
-     * `additionalDirectories` fall back to the parent's when cleared, each on its own. `capabilities` is replaced as a
-     * whole.
+     * `title`, `description`, `cwd` and `additionalDirectories` are applied at once, so values replayed from history
+     * stay visible. `capabilities` and `state` are applied only if [parentOpened], or else held back until
+     * [onParentOpened]. For each field, an omitted value leaves it unchanged, `null` clears it, and a value replaces
+     * it. `cwd` and `additionalDirectories` fall back to the parent's when cleared, each on its own. `capabilities`
+     * is replaced as a whole.
      *
      * Only the parent's consumer calls it, so there is one writer. A closed session ignores it, so it keeps the
      * values it had when it was closed.
      *
-     * @param parentOpened whether the parent's [com.agentclientprotocol.common.SessionEvent.Opened] was already delivered
+     * @param parentOpened whether the parent's [com.agentclientprotocol.common.SessionEvent.Opened] was already
+     * delivered
      */
     internal fun applyPatch(update: SessionUpdate.SubagentUpdate, parentOpened: Boolean) {
         if (closed.value) return
@@ -193,8 +209,10 @@ public class ClientSubagentSession internal constructor(
      * Resolves the `capabilities` and `state` that [applyPatch] held back, when the parent's
      * [com.agentclientprotocol.common.SessionEvent.Opened] is delivered.
      *
-     * @param promote `true` after a call that replayed no history: the held values were current, so they are applied.
-     * `false` after a load: they were history, and they are dropped. A closed session drops them too.
+     * A closed session drops the held values too.
+     *
+     * @param promote `true` after a call that replayed no history, so the held values were current and are applied;
+     * `false` after a load, so they were history and are dropped
      */
     internal fun onParentOpened(promote: Boolean) {
         if (promote && !closed.value) {

@@ -6,7 +6,9 @@ import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.model.StateUpdate
 
 /**
- * Where both sides of the sample write what they see. Called from several coroutines at once.
+ * Where both sides of the sample write what they see.
+ *
+ * [add] is called from several coroutines at once, so an implementation must be thread-safe.
  */
 fun interface Transcript {
     fun add(line: TranscriptLine)

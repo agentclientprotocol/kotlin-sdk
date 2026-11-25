@@ -35,7 +35,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.serialization.json.JsonElement
 
 /**
- * A prompt that mentions it is relayed to the native agent (scenario 10); any other prompt is delegated.
+ * A prompt that contains this text is relayed to the native agent (scenario 10); any other prompt is delegated.
  */
 const val NATIVE_AGENT_REQUEST = "native agent"
 
@@ -53,7 +53,8 @@ const val NATIVE_AGENT_REQUEST = "native agent"
  * - 14. a replayed child that does no more work reports its current state after the load.
  *
  * The children are [DelegatedSubagentSession]s built by [DelegatedSubagentFactory], running the tasks of
- * `SampleTasks.kt`, and the relayed [NativeRelayedSubagentSession]s.
+ * `SampleTasks.kt`, the relayed [NativeRelayedSubagentSession]s, and after a load, `FinishedSubagentSession` for a
+ * replayed child that does no more work.
  *
  * @param sessionRecord what this session did, kept by [DelegatingAgentSupport] across a close and a load
  */
@@ -62,10 +63,10 @@ internal class DelegatingAgentSession(
     private val sessionRecord: SessionRecord,
     private val transcript: Transcript,
 ) : AgentSession {
-    /*
+    /**
      * The delegated children of this session object that are still working or may get more work. They outlive the
-     * turn that started them, and only the root's close stops them (section 9). This object's replay adds to it, then
-     * its turns, one at a time.
+     * turn that started them, and only the root's close stops them (section 9). Its writers run one at a time: first
+     * this object's replay, then its turns. `close` reads it from another coroutine.
      */
     @Volatile
     private var children = emptyList<DelegatedSubagentSession>()
@@ -222,7 +223,7 @@ internal class DelegatingAgentSession(
      * The root sends no outgoing view of this task's message, so the reviewer's incoming view carries no
      * `senderMessageId` to link to.
      *
-     * The new task adds to the reviewer's record, so the reviewer continues only once its previous task has ended. A
+     * The new task adds to the reviewer's record, so the reviewer continues only if its previous task has ended. A
      * load of the still-open session cancels the old work without waiting for it, and that work must not write the
      * record any more.
      */

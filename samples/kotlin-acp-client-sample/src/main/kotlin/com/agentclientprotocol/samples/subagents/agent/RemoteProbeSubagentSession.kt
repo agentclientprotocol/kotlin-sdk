@@ -45,7 +45,7 @@ internal suspend fun DelegatedTaskScope.startRemoteProbe(id: SessionId): RemoteP
 
 /**
  * The tester's grandchild: a probe on a remote runner that the agent observes only through the runner's connection.
- * The runner is simulated: its connection drops as soon as the probe has started.
+ * The runner is simulated: its connection drops as soon as the probe has started the rerun.
  *
  * Scenarios in this file, numbered as its section comments:
  * - 7. lost observability: the SDK reports `unknown` for a feed that ends while active;

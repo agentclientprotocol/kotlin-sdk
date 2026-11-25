@@ -73,8 +73,7 @@ public class Client(
         val ops = session.operations as? ElicitationOperations
             ?: sessionMethodNotFound<ElicitationOperations>(AcpMethod.ClientMethods.V1.ElicitationCreate)
         val response = session.executeWithSession { ops.createElicitation(params) }
-        // Only track URL-mode elicitation → session after a successful Accept response,
-        // since elicitation/complete only follows an accepted URL elicitation
+        // elicitation/complete only follows an accepted URL elicitation, so track only those.
         trackUrlElicitationIfAccepted(params.mode, response, sessionId)
         return response
     }
@@ -362,9 +361,9 @@ public class Client(
      * also says when the call fails and what happens to the session's updates then.
      *
      * @param sessionParameters parameters for creating a new session
-     * @param operationsFactory a factory for creating [com.agentclientprotocol.common.ClientSessionOperations] for the new session.
-     * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
-     * See [ClientOperationsFactory.createClientOperations] for more details.
+     * @param operationsFactory creates the operations of the new session after the answer, see
+     * [ClientOperationsFactory.createClientOperations]; they must also implement the interfaces of the extra
+     * capabilities the client declares, like file system or terminal support
      * @return a [ClientSession] instance for the new session
      * @throws IllegalStateException if the agent answers with the id of a session that is open or being opened in
      *   this client
@@ -391,10 +390,10 @@ public class Client(
      * also says when the call fails and what happens to the session's updates then.
      *
      * @param sessionId the id of the existing session to load
-     * @param sessionParameters parameters for creating a new session
-     * @param operationsFactory a factory for creating [com.agentclientprotocol.common.ClientSessionOperations] for the new session.
-     * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
-     * See [ClientOperationsFactory.createClientOperations] for more details.
+     * @param sessionParameters parameters for loading the session
+     * @param operationsFactory creates the operations of the new session after the answer, see
+     * [ClientOperationsFactory.createClientOperations]; they must also implement the interfaces of the extra
+     * capabilities the client declares, like file system or terminal support
      * @return a [ClientSession] instance for the new session
      * @throws IllegalStateException before the request, if [sessionId] is open or being opened in this client. To
      *   load an open session again, close it first.
@@ -416,17 +415,20 @@ public class Client(
      * must not wait for this call to return. The mode and config options of the returned session are the same as with
      * the [ClientOperationsFactory] overload.
      *
-     * The load fails if the agent answers with an error, or if the caller is cancelled or `notify` throws before
-     * this call returns. A load that fails before the answer arrives delivers no opened marker to [operations]. Once
-     * the answer has arrived, the opened marker may have been delivered even though the load then fails, so treat a
-     * failed call as a failed load. The updates that [operations] did not receive yet, and all later updates for
-     * [sessionId], then go to [globalSessionUpdateHandler], and [sessionId] can be loaded again. After this call has
-     * returned, a failure of `notify` is logged, as for any live update.
+     * The load fails when:
+     * - the agent answers with an error;
+     * - the caller is cancelled, or `notify` throws, before this call returns.
+     *
+     * A load that fails before the answer arrives delivers no opened marker to [operations]. Once the answer has
+     * arrived, the opened marker may have been delivered even though the load then fails, so treat a failed call as a
+     * failed load. The updates that [operations] did not receive yet, and all later updates for [sessionId], then go to
+     * [globalSessionUpdateHandler], and [sessionId] can be loaded again. After this call has returned, a failure of
+     * `notify` is logged, as for any live update.
      *
      * @param sessionId the id of the existing session to load
      * @param sessionParameters parameters for loading the session
-     * @param operations the operations of the session. It must also implement the interfaces for the extra
-     * capabilities that the client declares, like file system or terminal support.
+     * @param operations the operations of the session, which must also implement the interfaces of the extra
+     * capabilities the client declares, like file system or terminal support
      * @return a [ClientSession] instance for the loaded session
      * @throws IllegalStateException before the request, if [sessionId] is open or being opened in this client. To
      *   load an open session again, close it first.
@@ -490,9 +492,9 @@ public class Client(
      *
      * @param sessionId the id of the session to fork
      * @param sessionParameters parameters for the forked session
-     * @param operationsFactory a factory for creating [com.agentclientprotocol.common.ClientSessionOperations] for the new session.
-     * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
-     * See [ClientOperationsFactory.createClientOperations] for more details.
+     * @param operationsFactory creates the operations of the new session after the answer, see
+     * [ClientOperationsFactory.createClientOperations]; they must also implement the interfaces of the extra
+     * capabilities the client declares, like file system or terminal support
      * @return a [ClientSession] instance for the forked session
      * @throws IllegalStateException if the agent answers with the id of a session that is open or being opened in
      *   this client
@@ -528,9 +530,9 @@ public class Client(
      *
      * @param sessionId the id of the session to resume
      * @param sessionParameters parameters for resuming the session
-     * @param operationsFactory a factory for creating [com.agentclientprotocol.common.ClientSessionOperations] for the session.
-     * A created object must also implement the necessary interfaces in the case when the client declares extra capabilities like file system or terminal support.
-     * See [ClientOperationsFactory.createClientOperations] for more details.
+     * @param operationsFactory creates the operations of the session after the answer, see
+     * [ClientOperationsFactory.createClientOperations]; they must also implement the interfaces of the extra
+     * capabilities the client declares, like file system or terminal support
      * @return a [ClientSession] instance for the resumed session
      * @throws IllegalStateException before the request, if [sessionId] is open or being opened in this client
      */
@@ -555,8 +557,8 @@ public class Client(
      *
      * @param sessionId the id of the session to resume
      * @param sessionParameters parameters for resuming the session
-     * @param operations the operations of the session. It must also implement the interfaces for the extra
-     * capabilities that the client declares, like file system or terminal support.
+     * @param operations the operations of the session, which must also implement the interfaces of the extra
+     * capabilities the client declares, like file system or terminal support
      * @return a [ClientSession] instance for the resumed session
      * @throws IllegalStateException before the request, if [sessionId] is open or being opened in this client
      */
@@ -638,9 +640,17 @@ public class Client(
             sessionHolder.completeOpening(session, opened)
             session
         }.getOrElse { throwable ->
-            // throw IllegalStateException to pass it as INTERNAL_ERROR to the other side (see in Protocol)
+            /*
+             * The holder fails with a wrapped cause, so an agent request already waiting for this session in
+             * `ClientSessionRegistry.awaitSession` gets an internal error (-32603). `toJsonRpcError` would map a bare
+             * `CancellationException`, as when the caller is cancelled, to cancelled (-32800). The caller gets the
+             * original failure.
+             */
             sessions.failSessionTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
-            // cleanup of this sessionId entry will be done in finally of withInitializingSession
+            /*
+             * The `finally` of `ClientSessionRegistry.withInitializingSession` removes the failed holder at the end of
+             * the last opening.
+             */
             throw throwable
         }
     }
@@ -717,8 +727,8 @@ public class Client(
     }
 
     /**
-     * Opens the session [sessionId] with [request] under [ClientSessionRegistry.withInitializingSession], and delivers its updates to
-     * [operations] before the answer.
+     * Opens the session [sessionId] with [request] under [ClientSessionRegistry.withInitializingSession], and delivers
+     * its updates to [operations] before the answer.
      *
      * The holder is claimed before [request] sends anything, and one consumer hands its queue to [operations] until
      * the opened marker that the response hook of [request] adds. The consumer stops at the marker, and only after
@@ -759,7 +769,10 @@ public class Client(
             sessionHolder.completeOpening(session, opened)
             session
         } catch (throwable: Throwable) {
-            // The cleanup of this sessionId entry is done in finally of withInitializingSession.
+            /*
+             * The `finally` of `ClientSessionRegistry.withInitializingSession` removes the failed holder at the end of
+             * the last opening.
+             */
             sessions.failSessionTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             throw throwable
         }
@@ -783,6 +796,12 @@ public class Client(
             sessionParameters._meta
         )
 
+    /**
+     * Returns the open root session [sessionId].
+     *
+     * @throws IllegalStateException if the id has no session, its opening hasn't finished or has failed, or it is a
+     *   subagent session
+     */
     public fun getSession(sessionId: SessionId): ClientSession {
         return sessions.getRootSession(sessionId)
     }

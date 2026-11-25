@@ -24,7 +24,7 @@ import kotlin.concurrent.atomics.update
  * What a root session did, kept across a close so that the session can be loaded again.
  */
 internal class SessionRecord {
-    /*
+    /**
      * Atomic, unlike the other records: a load of the still-open session gives the id a second root session object,
      * and a turn of the old one may still be starting, so two turns may append at once.
      */

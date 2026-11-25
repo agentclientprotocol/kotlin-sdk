@@ -25,7 +25,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
  * A relayed worker of the native agent. It translates that one worker: the relay tells it what the worker did, and it
  * turns that into the updates of its [events] and into its [record].
  *
- * Scenario in this file: 10. relay, an agent that wraps a native agent with a flat event stream announces nested
+ * Scenario in this file: 10. relay: an agent that wraps a native agent with one flat event stream announces nested
  * children with `parent`.
  *
  * Only the relay loop calls [relayOutput] and [relayFinished], one at a time, which keeps the single-writer rule of
@@ -33,16 +33,20 @@ import kotlinx.coroutines.flow.receiveAsFlow
  *
  * @param id the worker's session id
  * @param title the title the worker was announced with
- * @property announcement what the worker is announced with: its title, running
- * @property record what the worker did, written as the relay reports its output and end
  */
 internal class NativeRelayedSubagentSession(id: SessionId, title: String) : AgentSubagentSession {
+    /**
+     * What the worker is announced with: its title, running.
+     */
     val announcement = SessionUpdate.SubagentUpdate(
         id,
         title = MaybeUndefined.Value(title),
         state = MaybeUndefined.Value(StateUpdate.Running()),
     )
 
+    /**
+     * What the worker did, written as the relay reports its output and end.
+     */
     val record = SubagentRecord(announcement)
 
     private val updates = Channel<SessionUpdate>(Channel.UNLIMITED)

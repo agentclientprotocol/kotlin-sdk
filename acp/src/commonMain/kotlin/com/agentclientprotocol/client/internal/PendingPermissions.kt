@@ -124,9 +124,6 @@ internal class RootPendingPermissions : PendingPermissions() {
  *
  * A state that arrives before the root's answer is held back until [onOpened]: it takes effect after a call that
  * replayed no history, and is dropped after a load.
- *
- * As in [PendingPermissions], the race in [answerUnlessCancelled] is the only answering path, so each request gets
- * exactly one response.
  */
 internal class SubagentPendingPermissions : PendingPermissions() {
     private sealed class WorkState {

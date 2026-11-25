@@ -197,6 +197,8 @@ public interface AgentSupport {
     /**
      * Loads an existing session with the specified id and parameters.
      *
+     * If a session with this id is still open, the returned session replaces it, see [AgentSubagents].
+     *
      * @param sessionId the id of the session to load
      * @param sessionParameters parameters for loading the session
      * @return an [AgentSession] instance for the loaded session
@@ -213,10 +215,11 @@ public interface AgentSupport {
      * Forks an existing session, creating a new session based on the existing session's context.
      *
      * The fork starts with no subagents, and the source session keeps its own. If the fork copies the history of
-     * subagents, the app must give the copies new ids and remap them in message participant fields and in `session`
-     * tool call content, including references to the forked root session: the SDK doesn't rewrite update contents.
-     * The copied subagents reach the client only when the fork is loaded later, announced from the fork's
-     * [AgentSession.replayHistory] through [AgentSubagents.announce].
+     * subagents, the app must give the copies new ids and remap them in the `senderSessionId` and
+     * `recipientSessionId` of messages and in `session` tool call content, including references to the source
+     * session, which become the fork's id: the SDK doesn't rewrite update contents. The copied subagents reach the
+     * client only when the fork is loaded later, announced from the fork's [AgentSession.replayHistory] through
+     * [AgentSubagents.announce].
      *
      * @param sessionId the id of the session to fork
      * @param sessionParameters parameters for the forked session
@@ -233,6 +236,8 @@ public interface AgentSupport {
      * This capability is not part of the spec yet, and may be removed or changed at any point.
      *
      * Resumes an existing session without replaying message history.
+     *
+     * If a session with this id is still open, the returned session replaces it, see [AgentSubagents].
      *
      * @param sessionId the id of the session to resume
      * @param sessionParameters parameters for resuming the session
