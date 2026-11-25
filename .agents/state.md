@@ -396,6 +396,10 @@ Rule (user): before rewriting an especially long comment, show the user the prop
 Plan: M1 audit (3 researchers in parallel: model+build-logic+samples, agent+protocol, client+common) →
 reports `.agents/research/kdoc-audit-{model,agent,client}.md` → show the user the plan and the long-form proposals →
 M2 programmer slices (mechanical+accuracy per area; long-form rewrites only as agreed) → reviewer over M2.
+- M1 audit DONE (2026-11-25): `.agents/research/kdoc-audit-{agent,client,model}.md`. Verdicts: no material shrink
+  of `AgentSubagents`/`announce` (restructure + accuracy; `announce` has a contradiction on CE→ISE); bug in the
+  `replayHistory` example (S5); v2 client S10 (replaced object never marked ended) is a behaviour question.
+  WAITING on the user: long-form proposals, FIXME/TODO trimming, S10.
 
 Current status (2026-11-25, end of session): the sample review continues in a new orchestrator session. Everything
 up to `ca9c764` is committed; the working tree is clean; nothing is pushed. No slice is in progress, and no follow-up
