@@ -81,8 +81,8 @@ internal class TurnRecord(val request: String) {
  * What one subagent did.
  *
  * Only the subagent's own work writes it, one coroutine at a time: the `events` collection of a delegated child or of
- * the probe, or the relay loop for a relayed worker. A delegated child that continues after a load writes only once
- * its previous task has ended. `session/load` reads it from another coroutine.
+ * the probe, or the relay loop for a relayed worker, through its calls on the worker's session. A delegated child that
+ * continues after a load writes only once its previous task has ended. `session/load` reads it from another coroutine.
  *
  * @param announcement the announcement the subagent was announced with
  */

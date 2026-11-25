@@ -22,29 +22,58 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.receiveAsFlow
 
 /**
- * A relayed worker of the native agent: its events are the updates the relay [feed]s it.
+ * A relayed worker of the native agent. It translates that one worker: the relay tells it what the worker did, and it
+ * turns that into the updates of its [events] and into its [record].
  *
  * Scenario in this file: 10. relay, an agent that wraps a native agent with a flat event stream announces nested
  * children with `parent`.
  *
- * @property record what the worker did, built by the relay from the native agent's events
+ * Only the relay loop calls [relayOutput] and [relayFinished], one at a time, which keeps the single-writer rule of
+ * [record]. The relay loop also builds the tree: it announces the session, and decides under which parent.
+ *
+ * @param id the worker's session id
+ * @param title the title the worker was announced with
+ * @property announcement what the worker is announced with: its title, running
+ * @property record what the worker did, written as the relay reports its output and end
  */
-internal class NativeRelayedSubagentSession(val record: SubagentRecord) : AgentSubagentSession {
+internal class NativeRelayedSubagentSession(id: SessionId, title: String) : AgentSubagentSession {
+    val announcement = SessionUpdate.SubagentUpdate(
+        id,
+        title = MaybeUndefined.Value(title),
+        state = MaybeUndefined.Value(StateUpdate.Running()),
+    )
+
+    val record = SubagentRecord(announcement)
+
     private val updates = Channel<SessionUpdate>(Channel.UNLIMITED)
 
-    /**
-     * Completes once the SDK has sent the last of the events.
-     */
-    val drained = CompletableDeferred<Unit>()
+    private val drained = CompletableDeferred<Unit>()
 
     override val events: Flow<SessionUpdate> = updates.receiveAsFlow().onCompletion { drained.complete(Unit) }
 
-    fun feed(update: SessionUpdate) {
-        updates.trySend(update)
+    /**
+     * Records and sends a message of the worker.
+     */
+    fun relayOutput(text: String) {
+        val output = message(text)
+        record.said(output)
+        updates.trySend(output)
     }
 
-    fun end() {
+    /**
+     * Records that the worker ended its turn, sends the `idle` state and ends [events].
+     */
+    fun relayFinished() {
+        record.ended(IdleStopReason.EndTurn)
+        updates.trySend(subagentState(record.id, StateUpdate.Idle(IdleStopReason.EndTurn)))
         updates.close()
+    }
+
+    /**
+     * Waits until the SDK has sent every event of [events].
+     */
+    suspend fun awaitSent() {
+        drained.await()
     }
 }
 
@@ -52,9 +81,9 @@ internal class NativeRelayedSubagentSession(val record: SubagentRecord) : AgentS
  * 10. Relay
  *
  * An agent that wraps a native agent may learn about the native agent's workers from one flat event stream, where
- * each event names its worker and the worker's parent. The relay announces each worker through the root's
- * `subagents`, naming the parent with `parent`: the factory sends the announcement. It then feeds the worker's events
- * into a channel that becomes the child's `events`.
+ * each event names its worker and the worker's parent. The relay builds the tree from that stream: it announces each
+ * worker through the root's `subagents`, naming the parent with `parent`, and the factory sends the announcement.
+ * Each `NativeRelayedSubagentSession` then translates its own worker's events into the child's `events`.
  *
  * `parent` defaults to the session that `subagents` belongs to, here the root. It may name any announced subagent
  * below it, and then the announcement goes on that subagent's stream.
@@ -69,37 +98,30 @@ internal suspend fun FlowCollector<Event>.relayNativeAgent(
         when (event) {
             is NativeEvent.Spawned -> {
                 val id = relayedId(event.worker)
-                val announcement = SessionUpdate.SubagentUpdate(
-                    id,
-                    title = MaybeUndefined.Value(event.title),
-                    state = MaybeUndefined.Value(StateUpdate.Running()),
-                )
-                val session = NativeRelayedSubagentSession(SubagentRecord(announcement))
+                val session = NativeRelayedSubagentSession(id, event.title)
                 val parent = event.parent?.let(relayed::getValue)
-                relayed[event.worker] = subagents.announce(id, AgentSubagentFactory { context ->
-                    context.client.notify(announcement)
-                    session
-                }, parent?.record?.id)
+
+                relayed[event.worker] = subagents.announce(
+                    sessionId = id,
+                    factory = AgentSubagentFactory { context ->
+                        context.client.notify(session.announcement)
+                        session
+                    },
+                    parent = parent?.record?.id,
+                )
+
                 if (parent == null) turn.started(session.record) else parent.record.started(session.record)
                 transcript.agentLine(id, "relays native worker ${event.worker} under ${event.parent ?: "the root"}")
             }
 
-            is NativeEvent.Output -> relayed.getValue(event.worker).run {
-                val output = message(event.text)
-                record.said(output)
-                feed(output)
-            }
+            is NativeEvent.Output -> relayed.getValue(event.worker).relayOutput(event.text)
 
-            is NativeEvent.Finished -> relayed.getValue(event.worker).run {
-                record.ended(IdleStopReason.EndTurn)
-                feed(subagentState(record.id, StateUpdate.Idle(IdleStopReason.EndTurn)))
-                end()
-            }
+            is NativeEvent.Finished -> relayed.getValue(event.worker).relayFinished()
         }
     }
 
     // The turn's response then follows every relayed update.
-    relayed.values.forEach { it.drained.await() }
+    relayed.values.forEach { it.awaitSent() }
     say(turn, message("Relayed ${relayed.size} workers of the native agent"))
 }
 

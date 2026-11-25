@@ -70,8 +70,8 @@ The agent side, in package `agent`:
 - [`SessionRecord.kt`](agent/SessionRecord.kt): what the root, each of its turns and each subagent did, which the root
   tells again on `session/load`.
 - [`RemoteProbeSubagentSession.kt`](agent/RemoteProbeSubagentSession.kt): the tester's grandchild.
-- [`NativeRelayedSubagentSession.kt`](agent/NativeRelayedSubagentSession.kt): a relayed worker of a native agent, and
-  the relay loop.
+- [`NativeRelayedSubagentSession.kt`](agent/NativeRelayedSubagentSession.kt): the `AgentSubagentSession` of one
+  relayed worker of a native agent, and the relay loop that builds the tree from the flat event stream.
 - [`FakeNativeAgent.kt`](agent/FakeNativeAgent.kt): the simulated native agent and its flat event stream; it uses no SDK
   type.
 - [`SessionUpdates.kt`](agent/SessionUpdates.kt): small builders for the updates the agent sends, and its
