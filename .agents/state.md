@@ -386,6 +386,9 @@ E7 COMMITTED by the user `98a074c`. E8 APPROVED (user 2026-11-25): `NativeRelaye
 record from id/title; private channel, drained, record writes; `relayOutput(text)`, `relayFinished()`, `awaitSent()`);
 `relayNativeAgent` only builds the tree (announce with `parent`, add record to turn/parent) and routes by worker name.
 No `handle(NativeEvent)`. Programmer (default model), single mode, UNCOMMITTED for review.
+E8 DONE, UNCOMMITTED, awaiting the user's review (3 files +51/-35: NativeRelayedSubagentSession.kt, SessionRecord.kt
+KDoc, subagents README file row; tests `--rerun` x3, runSubagents same lines (sorted), `check` green). Draft commit
+`refactor(samples): make the relayed subagent session translate its worker`.
 
 E6 SessionHistory removal (user 2026-11-25: "try to rebuild and see if it actually simplifies things"): replace the
 generic wire-recording `agent/SessionHistory.kt` with replay rebuilt from the agent's own domain record (prompt,
