@@ -395,8 +395,9 @@ record has an outcome (old work's last write); `children` @Volatile private var;
 claim set in DelegatingAgentSupport (`acpFail` -> -32602 "Session root is still open"), `onClosed` ctor arg on
 DelegatingAgentSession, `turns` @Volatile, reviewer condition removed, new `agent/DelegatingAgentSupportTest.kt` (raw
 SessionLoad); main 1820, test 517; tests `--rerun` x4, `check`, runSubagents green. Residual: failed load after
-`loadSession` returns leaves the id claimed; lazy old turn after close+load can still append to `turns`. WAITING on
-the user: orchestrator recommends reverting this third follow-up (net more code, new gaps) back to the second.
+`loadSession` returns leaves the id claimed; lazy old turn after close+load can still append to `turns`. User 2026-11-25: revert the third follow-up and commit. E6 COMMITTED `1fb1ac9` (third follow-up reverted: `turns`
+atomic, reviewer `outcome != null` condition back; 12 files; main 1816, test 447; tests `--rerun` x4, `check`,
+runSubagents green). Next: E4 (E0 leftovers), unless the user continues the sample review first.
 
 SDK gaps from E1–E3 (user 2026-11-24, one by one): 1 replay/factory KDoc → DONE, E5 COMMITTED `3e8548b` (9 files;
 wrapper drops the announcement deferred; `check` + `:acp:apiCheck` green, no dump change; deviations: cancelled caller
