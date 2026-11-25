@@ -410,6 +410,10 @@ M2 programmer slices (mechanical+accuracy per area; long-form rewrites only as a
 - K1, K2, K3 DONE, UNCOMMITTED (48 files, comments only, `apiCheck` green each; no v2 file). `./gradlew check` and
   the reviewer (`.agents/research/review-kdoc-pass.md`) running. Then: show the user the findings; fixes become
   slices; the user reviews and commits.
+- `./gradlew check` green over K1–K3. Review: 0 blockers, 1 should-fix, 6 nits. K4 DONE, UNCOMMITTED: should-fix +
+  nits 2,3,4,6,7 + `createClientOperations` rewrap; nit 5 skipped (user-approved drop). Compile + `apiCheck` green.
+  NEXT: the user reviews the uncommitted diff and says when to commit (draft message:
+  `docs: bring the subagent KDoc in line with the comment rules and the code`).
 
 Current status (2026-11-25, end of session): the sample review continues in a new orchestrator session. Everything
 up to `ca9c764` is committed; the working tree is clean; nothing is pushed. No slice is in progress, and no follow-up
