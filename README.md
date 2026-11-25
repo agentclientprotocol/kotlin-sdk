@@ -33,7 +33,7 @@ ACP standardises how AI agents and clients exchange messages, negotiate capabili
 | `:acp-ktor-client`                  | Ktor HTTP/WebSocket client helper                         | `ktor.client`                              |
 | `:acp-ktor-server`                  | Ktor server-side transport utilities                      | `ktor.server`                              |
 | `:acp-integration-test`             | Integration tests over STDIO and WebSocket transports     | tests only, not published                  |
-| `:samples:kotlin-acp-client-sample` | Complete runnable client + agent reference implementation | `samples`                                  |
+| [`:samples:kotlin-acp-client-sample`](samples/README.md) | Complete runnable client + agent reference implementation | `samples`                                  |
 
 ## Requirements
 
@@ -291,24 +291,9 @@ fun main(): Unit = runBlocking {
 }
 ```
 
-### Run the samples
+### Samples
 
-Prefer a fully wired example? The repository samples pair an agent and a client in one process. Each has its own
-package and run task, and [samples/README.md](samples/README.md) lists them all:
-
-```bash
-./gradlew :samples:kotlin-acp-client-sample:runSimpleAgent
-```
-
-The v2 samples expose a response mode through session config options. The client selects “Uppercase once”
-with `session/set_config_option`; after replying, the agent resets to Echo and sends a `config_option_update`.
-`ClientSession.setConfigOption` returns the complete option list rather than the one option that changed,
-because one choice can affect the others, and later changes arrive on `session.updates` as
-`SessionUpdate.ConfigOptionUpdate` — also carrying the full list.
-
-Agents report those changes with `agent.v2.ClientOperations.notify(SessionUpdate.ConfigOptionUpdate(...))`,
-which works while the session is idle as well as mid-turn. ACP v2 uses config options for mode selection;
-dedicated modes remain available in the SDK's v1 API.
+The repository has runnable samples. See [samples/README.md](samples/README.md) for the list and how to run them.
 
 ### Authentication status (unstable)
 
@@ -321,7 +306,6 @@ After initialization, `Client.authStatus` queries the agent without a session or
 `AgentSupport.authStatus` with `AuthStatusResponse` in V1, or `StatusAuthResponse` in V2.
 The response can include a human-readable `message` and `_meta`. `authenticated` means credentials are configured, not necessarily valid.
 Calls with a missing or `false` capability fail locally. An agent without a status handler returns JSON-RPC method not found (`-32601`).
-`samples/kotlin-acp-client-sample/.../auth/AuthStatusApp.kt` shows the V1 and V2 flows end to end (`runAuthStatus` task).
 
 ## Capabilities
 
