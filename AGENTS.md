@@ -231,6 +231,12 @@ ACP model changes must be traceable to the upstream schema or an intentional SDK
 
 Do not infer wire compatibility from similar Kotlin types. Confirm serialized JSON shapes with tests.
 
+A serializer defines its type's wire shape, so it stays next to the model; there is no separate `serialization` package:
+
+- A type's custom serializer lives in the model's file.
+- A serializer base or helper used by several files gets its own file named after it, in the same package, such as `JsonObjectSerializer.kt` or v2 `OpenTaggedUnionSerializer.kt`.
+- A file over the length limit splits by model concern, and the serializers move with their types, as in `SubagentSessionUpdateSerializers.kt`.
+
 ## Kotlin Style
 
 Follow the official Kotlin style configured in `gradle.properties` and the existing package layout.
