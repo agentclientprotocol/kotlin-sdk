@@ -447,7 +447,10 @@ reviewer over the milestone.
   section of readability-suggestions.md (user request).
 - M1 COMMITTED `ddfc35b` (acp-model non-v2 + build-logic comments; small public trims in MaybeUndefined, StateUpdate,
   SubagentUpdate, ToolCallContent.Session; +5 suggestions). Samples out of scope (tutorial comments for readers).
-- R1: running (AGENTS.md Runtime and Lifecycle Rules trim).
+- R1 COMMITTED `f9bfc6f` (Runtime and Lifecycle Rules 3,811→1,775 words; three ### subsections: read-loop ordering,
+  v1 agent, v1 client; every must-keep fact kept as a short bullet; no .kt change).
+- Milestone done (product commits 91bdb5e a1e67b1 0bc29e3 54d4d45 ddfc35b f9bfc6f). Running: `./gradlew check` +
+  reviewer → `.agents/research/review-comment-trim.md`.
 
 KDoc pass goal (user 2026-11-25): (1) bring every comment/KDoc this PR adds or changes in line with AGENTS.md
 "Comments and KDoc" (structure rules, property/param placement, no single-line KDoc, no consecutive `//`);
