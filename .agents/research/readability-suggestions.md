@@ -59,6 +59,21 @@ Suggestions collected during the comment-trim pass. None of them is applied; the
     - Proposed: extract `private fun waitableHolderOrNull(sessionId): ClientSessionHolder?`.
     - Why: the rule "only a subagent or a claimed root is waited for" would be a name, and the rationale comment could sit on that function.
 
+12. **`claimSessionHolder` / `claimAnsweredSessionHolder`** (from the user discussion, 2026-11-26)
+    - Current: two names that differ by "Answered", while the real difference is when the claim runs.
+    - Proposed: name them by timing: `claimBeforeRequest` (load/resume: the id is known up front, runs before the request is sent, throws if taken) and `claimOnAnswer` (new/fork: the id first appears in the response, runs in the response hook, returns `null` if taken). Alternative: `claimKnownId` / `claimAnsweredId`.
+    - Why: the timing decides everything else (throw vs `null`, separate vs combined `markOpened`), and the names should say it.
+
+13. **`claimAnsweredSessionHolder` also marks the holder opened** (from the user discussion, 2026-11-26)
+    - Current: it claims and calls `markOpened` in one step; the load/resume path claims first and calls `markOpened` separately in its hook.
+    - Proposed: a name that says both steps, e.g. `claimAndOpenAnsweredHolder` (or `claimOnAnswer` from item 12 plus one KDoc line saying it also puts the opened marker, so the marker keeps its wire position).
+    - Why: the asymmetry with the load path is invisible at the call site.
+
+14. **Behaviour note, not readability: `session/new` / `session/fork` answered with an id that is already open** (from the user discussion, 2026-11-26)
+    - Current: the claim fails, the client call throws "already open or being opened", but the agent has already created that session and nothing closes it on the agent side.
+    - Options to discuss: document it as a limitation for agents that reuse ids, or have the client send `session/close` for that id.
+    - Why: today it is undocumented.
+
 ## `acp/src/commonMain/kotlin/com/agentclientprotocol/client/internal/ClientSessionHolder.kt`
 
 1. **`opened` / `parentOpened` parameters**

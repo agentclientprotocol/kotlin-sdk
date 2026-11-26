@@ -439,7 +439,13 @@ reviewer over the milestone.
 - C2 COMMITTED `0bc29e3` (Client.kt 324→299, ClientSubagentSession 140→127; other public client/common KDocs
   reverified, unchanged; +4 suggestions). R1 must keep: permission handler waits for the holder it found, no second
   lookup. Out of scope: pre-existing single-line KDoc on `Client.completeInitialize`.
-- A1: running (agent + protocol).
+- A1 COMMITTED `54d4d45` (agent+protocol; public KDocs reverified, one line fixed in `createSubagent`; internal
+  SubagentSessionWrapper 138→103, Protocol 143→123, Agent 82→65; +6 suggestions). R1 must keep: SubagentSessionWrapper
+  lifecycle; full SessionTable guarantee list; why the replay window closes from `onResponseQueued`.
+  Out of scope: pre-existing single-line KDoc on `Agent.recordNegotiated`.
+- Claim suggestions 12–14 (naming by timing, claim+markOpened, reused-id behaviour note) added to the registry
+  section of readability-suggestions.md (user request).
+- M1: running (acp-model non-v2). Samples out of scope (tutorial comments for readers).
 
 KDoc pass goal (user 2026-11-25): (1) bring every comment/KDoc this PR adds or changes in line with AGENTS.md
 "Comments and KDoc" (structure rules, property/param placement, no single-line KDoc, no consecutive `//`);
