@@ -454,8 +454,15 @@ reviewer over the milestone.
   its id so the parent's later patches stay patches and an opening of the id is refused); nits N1 wording
   "may not suspend", N2 registry speculative-holder comment, N3 pilot rewrapped `claimSessionHolder` signature
   (non-comment change), N4 AGENTS.md "marked closed" bullet, N5 restore spec citation for the `subagents` gate.
-  F1 (user 2026-11-26 "address reviews"): S1 + N1–N5, N3 reverted: running.
-  Pending user answer: serializer placement (recommended: colocate + 3 AGENTS.md rules; split oversized files?).
+  F1 COMMITTED `b9d7def` (S1 reason corrected against the code: `blocksId` keeps updates on a failed subagent's id
+  unconnected and refuses openings/announcements of it; patches stay patches via the parent's children, not blocksId;
+  N1 N2 N4 N5 applied; `check` green). Was: S1 + N1, N2, N4, N5. N3 NOT reverted: the rewrap was the
+  user's own edit (user 2026-11-26); keep it.
+  F2 (user 2026-11-26), running: SHORT AGENTS.md guideline on serializer placement (a type's custom serializer
+  lives in the model's file; a base/helper used by several files gets its own file named after it, same package; an
+  oversized file splits by model concern and serializers move with their types; no separate `serialization`
+  package) + rename `acp-model/.../model/SubagentSessionUpdates.kt` → `SubagentSessionUpdateSerializers.kt`.
+  No file splits now.
 
 KDoc pass goal (user 2026-11-25): (1) bring every comment/KDoc this PR adds or changes in line with AGENTS.md
 "Comments and KDoc" (structure rules, property/param placement, no single-line KDoc, no consecutive `//`);
