@@ -173,19 +173,28 @@ public class ClientSubagentSession internal constructor(
     /**
      * Applies a `subagent_update` of this subagent, unless it is closed.
      *
-     * The descriptive fields apply at once, so values replayed from history stay visible. `capabilities` and `state`
-     * are held back until [onParentOpened] unless [streamOpened].
-     *
      * @param streamOpened whether the parent's `Opened` was already delivered
      */
     internal fun applyPatch(update: SessionUpdate.SubagentUpdate, streamOpened: Boolean) {
         if (closed.value) return
+        applyDescriptiveFields(update)
+        applyOrHoldWorkFields(update, streamOpened)
+    }
 
+    /**
+     * Applies the descriptive fields at once, so values replayed from history stay visible.
+     */
+    private fun applyDescriptiveFields(update: SessionUpdate.SubagentUpdate) {
         _title.value = update.title.update(_title.value)
         _description.value = update.description.update(_description.value)
         ownCwd.value = update.cwd.update(ownCwd.value)
         ownAdditionalDirectories.value = update.additionalDirectories.update(ownAdditionalDirectories.value)
+    }
 
+    /**
+     * Applies `capabilities` and `state` if [streamOpened], or holds them back until [onParentOpened].
+     */
+    private fun applyOrHoldWorkFields(update: SessionUpdate.SubagentUpdate, streamOpened: Boolean) {
         if (streamOpened) {
             applyCapabilities(update.capabilities)
             applyState(update.state)
