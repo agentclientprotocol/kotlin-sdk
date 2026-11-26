@@ -92,8 +92,8 @@ public class Client(
     )
 
     /**
-     * Removes the closed root [sessionHolder] and its subagents, and the elicitation entries of the ids that left the
-     * session map with them. A later holder of one of those ids keeps its entries.
+     * Removes the closed root's tree and the elicitation entries of the ids removed with it, so a later session of
+     * such an id keeps its own.
      */
     private suspend fun removeClosedSession(sessionHolder: RootSessionHolder) {
         val removed = sessions.removeSessionTree(sessionHolder)
@@ -115,10 +115,8 @@ public class Client(
         // Set up request handlers for incoming agent requests
         protocol.setRequestHandler(AcpMethod.ClientMethods.V1.SessionRequestPermission) { params: RequestPermissionRequest ->
             /*
-             * A subagent's request joins its cancel race before the handler first suspends, so before any later
-             * notification is handled: a later `idle` with `cancelled`, a cancel or a close answers it even while it
-             * waits for the subagent's holder. It waits for the holder it found here, whose race it joined, and
-             * never looks the id up again.
+             * Looked up before the first suspension, so a subagent's request joins its cancel race before any later
+             * notification is handled, and a cancel answers it even while it waits for the holder.
              */
             val subagent = sessions.subagentHolderOrNull(params.sessionId)
             if (subagent != null) {
@@ -614,11 +612,8 @@ public class Client(
     }
 
     /**
-     * Creates the session with [factory] after the answer, and delivers the updates buffered in [sessionHolder] to it:
-     * the history, then the opened marker, then the live updates, see [RootSessionHolder.drainHistory] and
-     * [RootSessionHolder.completeOpening]. If the factory or the delivery fails, or the caller is cancelled, the
-     * holder fails, even if the operations got the opened marker. A cancellation that the factory throws while the
-     * caller is active becomes an [IllegalStateException].
+     * Creates the operations with [factory] after the answer, and delivers the buffered updates and the opened marker
+     * to the new session. Any failure fails the holder, even after the marker was delivered.
      */
     private suspend fun createSession(
         sessionHolder: RootSessionHolder,
@@ -641,28 +636,21 @@ public class Client(
             session
         }.getOrElse { throwable ->
             /*
-             * The holder fails with a wrapped cause, so an agent request already waiting for this session in
-             * `ClientSessionRegistry.awaitSession` gets an internal error (-32603). `toJsonRpcError` would map a bare
-             * `CancellationException`, as when the caller is cancelled, to cancelled (-32800). The caller gets the
-             * original failure.
+             * Wrapped, so an agent request waiting for the session gets an internal error (-32603) rather than
+             * cancelled (-32800) for a bare `CancellationException`. The caller gets the original failure.
              */
             sessions.failSessionTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
-            /*
-             * The `finally` of `ClientSessionRegistry.withInitializingSession` removes the failed holder at the end of
-             * the last opening.
-             */
+            // `withInitializingSession` removes the failed holder at the end of the last opening.
             throw throwable
         }
     }
 
     /**
-     * Opens the session [sessionId] with [request] under [ClientSessionRegistry.withInitializingSession], and buffers
-     * its updates until [factory] creates the operations after the answer.
+     * Opens a session whose id is known before the request, `session/load` or `session/resume`, and buffers its
+     * updates until [factory] creates the operations after the answer.
      *
-     * The holder is claimed before [request] sends anything, so another opening of the same id fails before its own
-     * request. [request] must pass its `onResponse` argument to the response hook of the call: it puts the opened
-     * marker into the holder's queue. If [request] fails, the holder fails, and the updates in its queue go to
-     * [globalSessionUpdateHandler].
+     * The holder is claimed before the request, so another opening of the id fails before it sends its own.
+     * [request] must pass `onResponse` to the call's response hook, which queues the opened marker.
      */
     private suspend fun withFactoryInitializingSession(
         sessionId: SessionId,
@@ -675,10 +663,7 @@ public class Client(
         val sessionResponse = try {
             request { response -> sessionHolder.markOpened(response) }
         } catch (throwable: Throwable) {
-            /*
-             * The hook may have put the opened marker into the queue before a cancellation won. Failing the holder
-             * drops the marker, so nothing delivers it.
-             */
+            // The hook may have queued the opened marker before a cancellation won; failing the holder drops it.
             sessions.failSessionTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             throw throwable
         }
@@ -686,13 +671,11 @@ public class Client(
     }
 
     /**
-     * Opens a session whose id first appears in the answer, `session/new` or `session/fork`, with [request] under
-     * [ClientSessionRegistry.withInitializingSession], and buffers its updates until [factory] creates the operations
-     * after the answer.
+     * Opens a session whose id first appears in the answer, `session/new` or `session/fork`, and buffers its updates
+     * until [factory] creates the operations.
      *
-     * [request] must pass its `onResponse` argument to the response hook of the call: it claims the holder of the
-     * answered id and puts the opened marker into its queue in one step, in the read loop, so the marker keeps its
-     * place among the updates that the agent sent for the new id before and after the answer.
+     * [request] must pass `onResponse` to the call's response hook, which claims the answered id's holder and queues
+     * the opened marker in one step, so the marker keeps its place among the id's updates.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     private suspend fun <R : AcpCreatedSessionResponse> withAnsweredSessionId(
@@ -709,9 +692,9 @@ public class Client(
             }
         } catch (throwable: Throwable) {
             /*
-             * The hook may have claimed a holder before a cancellation won: fail it, which drops its opened marker.
-             * In the rare case that the hook still runs after this check, for example while the connection closes,
-             * the holder stays incomplete, and the reaping at the end of the last opening fails it.
+             * The hook may have claimed a holder before a cancellation won: fail it, which drops its marker. A hook
+             * that runs after this check, as while the connection closes, leaves the holder to the reaping at the end
+             * of the last opening.
              */
             val claimedHolder = if (claimed.isCompleted) claimed.getCompleted() else null
             if (claimedHolder != null) {
@@ -727,15 +710,10 @@ public class Client(
     }
 
     /**
-     * Opens the session [sessionId] with [request] under [ClientSessionRegistry.withInitializingSession], and delivers
-     * its updates to [operations] before the answer.
+     * Opens a session whose id is known before the request, and delivers its updates to [operations] as they arrive.
      *
-     * The holder is claimed before [request] sends anything, and one consumer hands its queue to [operations] until
-     * the opened marker that the response hook of [request] adds. The consumer stops at the marker, and only after
-     * [request] has returned is the marker delivered, so a call that fails, even by a cancellation that races with
-     * the answer, delivers none. If the opening fails, also in [ClientSessionOperations.notify] or by a cancellation,
-     * before or after the opened marker is delivered, the holder fails, and the updates still in its queue go to
-     * [globalSessionUpdateHandler].
+     * [request] must pass `onResponse` to the call's response hook, which queues the opened marker. The early delivery
+     * stops at the marker, and the marker is delivered only after [request] returns, so a failed call delivers none.
      */
     private suspend fun withEarlyInitializingSession(
         sessionId: SessionId,
@@ -753,8 +731,8 @@ public class Client(
                         sessionHolder.deliverEarly(operations)
                     } catch (ce: CancellationException) {
                         /*
-                         * A cancellation that does not come from this call, such as a timeout inside `notify`, would
-                         * end this child without failing the scope and leave the rest of the queue undelivered.
+                         * A cancellation not from this call, such as a timeout inside `notify`, would end this child
+                         * without failing the scope.
                          */
                         ensureActive()
                         throw IllegalStateException("ClientSessionOperations.notify was cancelled", ce)
@@ -769,10 +747,7 @@ public class Client(
             sessionHolder.completeOpening(session, opened)
             session
         } catch (throwable: Throwable) {
-            /*
-             * The `finally` of `ClientSessionRegistry.withInitializingSession` removes the failed holder at the end of
-             * the last opening.
-             */
+            // `withInitializingSession` removes the failed holder at the end of the last opening.
             sessions.failSessionTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             throw throwable
         }

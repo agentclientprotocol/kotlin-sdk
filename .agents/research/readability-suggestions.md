@@ -126,3 +126,27 @@ Suggestions collected during the comment-trim pass. None of them is applied; the
    - Current: `Held(val activeWork: Boolean, ...)`, `Live(val activeWork: Boolean)`, set from the local `confirmsWork`.
    - Proposed: `confirmsWork` (or `foregroundWorkConfirmed`).
    - Why: the field is set from `confirmsWork` and the comments call it "confirmed foreground work"; one name would drop the translation.
+
+## `acp/src/commonMain/kotlin/com/agentclientprotocol/client/Client.kt`
+
+1. **Failing an opening**
+   - Current: `sessions.failSessionTree(holder, IllegalStateException("Failed to create session $sessionId", throwable))` in four `catch` blocks (`createSession`, `withFactoryInitializingSession`, `withAnsweredSessionId`, `withEarlyInitializingSession`); only the one in `createSession` explains the wrapping.
+   - Proposed: `private suspend fun failOpening(holder: RootSessionHolder, sessionId: SessionId, cause: Throwable)`.
+   - Why: the -32603-versus-cancelled rationale would sit once on the function, and the `catch` blocks would read as "fail the opening, rethrow".
+
+2. **The three opening helpers**
+   - Current: `withFactoryInitializingSession`, `withAnsweredSessionId`, `withEarlyInitializingSession`; two are named after how the operations arrive, one after where the id comes from.
+   - Proposed: `openKnownIdWithFactory`, `openAnsweredIdWithFactory`, `openKnownIdWithOperations`.
+   - Why: each KDoc's first sentence has to say which requests the helper serves; names on the same two axes would say it.
+
+3. **The answered claim in `withAnsweredSessionId`**
+   - Current: `CompletableDeferred<Pair<SessionId, RootSessionHolder>?>`, read with `isCompleted`/`getCompleted()` under `ExperimentalCoroutinesApi`; not completed means the hook didn't run, `null` means the id was refused.
+   - Proposed: a private sealed result (`NotAnswered`, `Refused`, `Claimed(sessionId, holder)`) in an `atomic`.
+   - Why: the three cases would be names instead of "a normal return means the hook has run" and `?: error(...)`, and the experimental opt-in would go.
+
+## `acp/src/commonMain/kotlin/com/agentclientprotocol/client/ClientSubagentSession.kt`
+
+1. **`applyPatch`**
+   - Current: one function applies `title`, `description`, `cwd` and `additionalDirectories` at once, then branches on `parentOpened` for `capabilities` and `state`.
+   - Proposed: split out `private fun applyDescriptiveFields(update)` and `private fun applyOrHoldWorkFields(update, parentOpened)`.
+   - Why: the difference between the fields that apply at once and those held until the parent's `Opened` is the one fact the KDoc still carries; two names would carry it.

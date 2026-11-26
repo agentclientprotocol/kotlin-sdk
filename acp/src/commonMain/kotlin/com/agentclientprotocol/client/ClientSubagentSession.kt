@@ -73,8 +73,6 @@ import kotlinx.atomicfu.atomic
  * flow names is already in the parent's [BaseClientSession.subagents], unless its setup failed.
  *
  * @property operations the operations that [SubagentOperations.createSubagentOperations] returned for this subagent
- * @param holder the holder of this subagent's session, which its parent holder registered when the announcement arrived
- * @param protocol the connection that `session/cancel` is sent on
  */
 @UnstableApi
 public class ClientSubagentSession internal constructor(
@@ -91,9 +89,8 @@ public class ClientSubagentSession internal constructor(
     private val closed = atomic(false)
 
     /*
-     * The `capabilities` and `state` patches that arrived before the parent's answer, not yet applied. Each one holds
-     * the latest patch of its field, `Undefined` if there was none. Only the parent's consumer writes them, in
-     * [applyPatch] and [onParentOpened], so they need no atomics.
+     * The latest `capabilities` and `state` patches held back until the parent's `Opened`, `Undefined` if none. Only
+     * the parent's consumer writes them, so they need no atomics.
      */
     private var heldCapabilities: MaybeUndefined<SubagentSessionCapabilities> = MaybeUndefined.Undefined
     private var heldState: MaybeUndefined<StateUpdate> = MaybeUndefined.Undefined
@@ -174,19 +171,12 @@ public class ClientSubagentSession internal constructor(
     }
 
     /**
-     * Applies a `subagent_update` of this subagent, in the order the parent's stream delivers it.
+     * Applies a `subagent_update` of this subagent, unless it is closed.
      *
-     * `title`, `description`, `cwd` and `additionalDirectories` are applied at once, so values replayed from history
-     * stay visible. `capabilities` and `state` are applied only if [parentOpened], or else held back until
-     * [onParentOpened]. For each field, an omitted value leaves it unchanged, `null` clears it, and a value replaces
-     * it. `cwd` and `additionalDirectories` fall back to the parent's when cleared, each on its own. `capabilities`
-     * is replaced as a whole.
+     * The descriptive fields apply at once, so values replayed from history stay visible. `capabilities` and `state`
+     * are held back until [onParentOpened] unless [parentOpened].
      *
-     * Only the parent's consumer calls it, so there is one writer. A closed session ignores it, so it keeps the
-     * values it had when it was closed.
-     *
-     * @param parentOpened whether the parent's [com.agentclientprotocol.common.SessionEvent.Opened] was already
-     * delivered
+     * @param parentOpened whether the parent's `Opened` was already delivered
      */
     internal fun applyPatch(update: SessionUpdate.SubagentUpdate, parentOpened: Boolean) {
         if (closed.value) return
@@ -206,13 +196,11 @@ public class ClientSubagentSession internal constructor(
     }
 
     /**
-     * Resolves the `capabilities` and `state` that [applyPatch] held back, when the parent's
-     * [com.agentclientprotocol.common.SessionEvent.Opened] is delivered.
+     * Applies or drops the `capabilities` and `state` that [applyPatch] held back, when the parent's `Opened` is
+     * delivered.
      *
-     * A closed session drops the held values too.
-     *
-     * @param promote `true` after a call that replayed no history, so the held values were current and are applied;
-     * `false` after a load, so they were history and are dropped
+     * @param promote `true` when the root's opening replayed no history, so the held values are current; `false` after
+     * a load, so they are history and dropped
      */
     internal fun onParentOpened(promote: Boolean) {
         if (promote && !closed.value) {
@@ -224,8 +212,7 @@ public class ClientSubagentSession internal constructor(
     }
 
     /**
-     * Ends this session, because its holder failed or its root was closed: [canCancel] becomes `false`, [cancel]
-     * throws, and later patches are not applied.
+     * Marks this session closed, when its holder fails or its root is closed.
      */
     internal fun markClosed() {
         closed.value = true
