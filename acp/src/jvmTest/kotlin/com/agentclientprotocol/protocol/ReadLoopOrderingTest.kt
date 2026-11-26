@@ -132,23 +132,24 @@ class ReadLoopOrderingTest {
     }
 
     @Test
-    fun hookDoesNotRunForACancelledCallEvenIfItsResponseArrivesDuringTheGracefulWait() = test(
+    fun hookRunsForACancelledCallWhoseResponseArrivesDuringTheGracefulWait() = test(
         // Long enough that only the response can end the graceful wait before the test's own timeout.
         ProtocolOptions(gracefulRequestCancellationTimeout = 1.minutes)
     ) { protocol, transport ->
-        val hookCalls = atomic(0)
-        val call = async { protocol.sendRequestRaw(method.methodName, null, null) { hookCalls.incrementAndGet() } }
+        val observed = ConcurrentLinkedQueue<JsonElement>()
+        val call = async { protocol.sendRequestRaw(method.methodName, null, null) { observed += it } }
         val request = transport.sent.receive().request()
 
         call.cancel()
         // The cancelled call has sent `$/cancel_request` and is still waiting for a response to its request.
         val cancel = assertIs<JsonRpcNotification>(assertIs<TransportFrame.Single>(transport.sent.receive()).message)
         assertEquals(AcpMethod.MetaMethods.CancelRequest.methodName, cancel.method)
-        transport.receive(success(request.id))
+        transport.receive(success(request.id, JsonPrimitive("late")))
         call.join()
 
+        // The call still ends cancelled, so its caller must undo what the hook did.
         assertTrue(call.isCancelled)
-        assertEquals(0, hookCalls.value)
+        assertEquals(listOf<JsonElement>(JsonPrimitive("late")), observed.toList())
     }
 
     @Test

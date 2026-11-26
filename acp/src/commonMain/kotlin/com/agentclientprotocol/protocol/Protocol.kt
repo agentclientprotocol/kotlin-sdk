@@ -81,9 +81,7 @@ public class Protocol(
     /**
      * Request handlers for incoming requests.
      */
-    @OptIn(UnstableApi::class)
-    private val requestHandlers: AtomicRef<PersistentMap<MethodName, suspend (JsonRpcRequest) -> RequestOutcome<JsonElement?>>> =
-        atomic(persistentMapOf())
+    private val requestHandlers: AtomicRef<PersistentMap<MethodName, RequestHandler>> = atomic(persistentMapOf())
 
     /**
      * Notification handlers for incoming notifications.
@@ -182,9 +180,11 @@ public class Protocol(
      * Sends a request like the public [sendRequestRaw], and calls [onResponse] with the result of its success response.
      *
      * [onResponse] runs in the read loop, before this call returns and before the next incoming message, so it sees
-     * where the response falls among the notifications. It doesn't run for an error, a cancelled call or a closed
-     * protocol, but it may have run for a call that then ends with [CancellationException]. It must not suspend, block
-     * or throw, since every message of the connection waits for it; a hook that throws is only logged.
+     * where the response falls among the notifications. It doesn't run for an error, a closed protocol or a response
+     * that arrives after this call has returned. It may have run for a call that then ends with [CancellationException],
+     * also for a response that arrives while a cancelled call waits for the counterpart's answer, so the caller's failure
+     * path must undo it. It must not suspend, block or throw, since every message of the connection waits for it; a
+     * hook that throws is only logged.
      */
     internal suspend fun sendRequestRaw(
         method: MethodName,
@@ -212,13 +212,6 @@ public class Protocol(
             throw jsonRpcException.toProtocolException()
         } catch (ce: CancellationException) {
             logger.trace(ce) { "Request cancelled on this side. Sending CancelRequest notification." }
-            if (onResponse != null) {
-                // This call no longer returns a response, so one arriving in the graceful wait below skips the hook.
-                pendingOutgoingRequests.update {
-                    if (it[requestId] === outgoingRequest) it.put(requestId, outgoingRequest.copy(onResponse = null))
-                    else it
-                }
-            }
             withContext(NonCancellable) {
                 if (!protocolJob.isActive) return@withContext
 
@@ -227,26 +220,14 @@ public class Protocol(
                 }.isSuccess
                 if (!cancellationSent) return@withContext
 
-                // here we have to try waiting for graceful CANCELLED response from the other side, do it with timeout
+                // Wait a bounded time for the counterpart's answer, which is usually `-32800`; any outcome ends the wait.
                 if (!response.isCancelled) {
-                    try {
-                        withTimeout(options.gracefulRequestCancellationTimeout) {
-                            response.await()
-                        }
-                    } catch (e: TimeoutCancellationException) {
-                        logger.trace(e) { "Timed out waiting for graceful cancellation response for request: $requestId" }
-                    } catch (ce: CancellationException) {
-                        // actually should not happen
-                        logger.trace(ce) { "Graceful cancellation response received for request: $requestId" }
-                    } catch (e: JsonRpcException) {
-                        val convertedException = e.toProtocolException()
-                        if (convertedException is AcpRequestCancelledException) {
-                            logger.trace(convertedException) { "Graceful cancellation response received for request: $requestId" }
-                        } else {
-                            logger.warn(convertedException) { "Unexpected error while waiting for graceful cancellation response for request: $requestId" }
-                        }
-                    } catch (e: Exception) {
-                        logger.warn(e) { "Unexpected error while waiting for graceful cancellation response for request: $requestId" }
+                    val answer = runCatching { withTimeoutOrNull(options.gracefulRequestCancellationTimeout) { response.await() } }
+                    val error = answer.exceptionOrNull()?.let { if (it is JsonRpcException) it.toProtocolException() else it }
+                    if (error == null || error is AcpRequestCancelledException || error is CancellationException) {
+                        logger.trace(error) { "Graceful cancellation of request $requestId ended with $answer" }
+                    } else {
+                        logger.warn(error) { "Unexpected error while waiting for graceful cancellation response for request: $requestId" }
                     }
                     response.cancel()
                 }
@@ -255,8 +236,7 @@ public class Protocol(
             throw ce
         }
         finally {
-            // By the deferred: the cancel path may have replaced the entry with a copy without the hook.
-            pendingOutgoingRequests.update { if (it[requestId]?.response === response) it.remove(requestId) else it }
+            pendingOutgoingRequests.update { it.remove(requestId) }
         }
     }
 
@@ -342,20 +322,7 @@ public class Protocol(
         additionalContext: CoroutineContext,
         handler: suspend (JsonRpcRequest) -> RequestOutcome<JsonElement?>,
     ) {
-        val wrapped: suspend (JsonRpcRequest) -> RequestOutcome<JsonElement?> = { request ->
-            var outcome: RequestOutcome<JsonElement?>? = null
-            try {
-                withContext(additionalContext) {
-                    handler(request).also { outcome = it }
-                }
-            } catch (e: CancellationException) {
-                // withContext can throw cancellation exceptions at the dispatcher boundary, clean up in this case
-                outcome?.onCompletion?.invoke()
-                throw e
-            }
-        }
-
-        requestHandlers.update { it.put(method.methodName, wrapped) }
+        requestHandlers.update { it.put(method.methodName, RequestHandler(additionalContext, handler)) }
     }
 
     override fun setNotificationHandlerRaw(
@@ -497,7 +464,7 @@ public class Protocol(
                 )
                 // Before completing the frame, so every hook runs before any after-response work starts.
                 for (slot in slots) {
-                    val hook = slot.successQueuedHook() ?: continue
+                    val hook = slot.onResponseQueued ?: continue
                     runCatching(hook).onFailure { t -> logger.error(t) { "Response queued hook failed" } }
                 }
                 responseFrameQueued.complete(Unit)
@@ -520,7 +487,7 @@ public class Protocol(
         val requestId = IncomingRequestId(request.id)
         // Register before execution or cancellation can complete this job.
         val handlerJob = handlerScope.launch(start = CoroutineStart.LAZY) { handleRequest(request, slot) }
-        val incoming = IncomingRequest(handlerJob)
+        val incoming = IncomingRequest(handlerJob, slot.response)
 
         val previous = pendingIncomingRequests.getAndUpdate {
             if (requestId in it) it else it.put(requestId, incoming)
@@ -533,10 +500,6 @@ public class Protocol(
             ))
             return
         }
-
-        // Collecting a reply settles the request for the counterpart, so its `$/cancel_request` stops
-        // applying from here on. Registered for every completion path rather than at each `complete` call.
-        slot.response.invokeOnCompletion { incoming.settle() }
 
         handlerJob.invokeOnCompletion { cause ->
             // Also resolves a slot if cancellation prevented the coroutine body from starting.
@@ -559,13 +522,15 @@ public class Protocol(
                 val handler = requestHandlers.value[request.method]
                     ?: jsonRpcMethodNotFound("Method not supported: ${request.method}")
 
-                withContext(JsonRpcRequestContextElement(request)) {
-                    outcome = handler(request)
+                // A cancellation at the boundary of the handler's dispatcher, after it returned, ends in the error reply
+                // below, and its outcome's cleanup in the `finally`.
+                withContext(JsonRpcRequestContextElement(request) + handler.context) {
+                    outcome = handler.handle(request)
                 }
 
                 currentCoroutineContext().ensureActive()
                 // Before the response completes, so the frame's sender sees the hook once it has the response.
-                slot.onSuccessQueued = outcome!!.onResponseQueued
+                slot.onResponseQueued = outcome!!.onResponseQueued
                 slot.response.complete(JsonRpcSuccessResponse(request.id, outcome.response ?: JsonNull))
             } catch (t: Throwable) {
                 slot.response.complete(JsonRpcErrorResponse(request.id, t.toJsonRpcError()))
@@ -683,21 +648,19 @@ internal data class OutgoingRequest(
  * turn. Local cancellation ([Protocol.cancelPendingIncomingRequests], [Protocol.close]) deliberately
  * still reaches the job, because shutdown does have to discard that work.
  */
-internal class IncomingRequest(val handlerJob: Job) {
-    private val cancellableByCounterpart = atomic(true)
-
-    /** Records that a reply was collected, after which [cancelByCounterpart] does nothing. */
-    fun settle() {
-        cancellableByCounterpart.value = false
-    }
-
+internal class IncomingRequest(val handlerJob: Job, private val reply: Deferred<JsonRpcResponse>) {
     /**
      * Cancels this request on the counterpart's behalf, unless a reply has already been collected.
      *
      * @return whether the request was cancelled.
      */
     fun cancelByCounterpart(ce: CancellationException): Boolean {
-        if (!cancellableByCounterpart.compareAndSet(expect = true, update = false)) return false
+        /*
+         * No race with the handler: this runs in the `$/cancel_request` handler, which doesn't suspend, and the request's
+         * handler completes the reply without a suspension after its last cancellation check. Both run on the one
+         * handler thread. A reply completed elsewhere is completed after the job, where cancelling is a no-op.
+         */
+        if (reply.isCompleted) return false
         handlerJob.cancel(ce)
         return true
     }
@@ -724,15 +687,17 @@ internal class ResponseSlot(val responseFrameQueued: CompletableDeferred<Unit>) 
     val response = CompletableDeferred<JsonRpcResponse>()
 
     /**
-     * The request's [RequestOutcome.onResponseQueued], set before [response] completes with a success.
+     * The request's [RequestOutcome.onResponseQueued]. It is set only right before [response] completes with a success,
+     * so the frame's sender runs it only for a success.
      */
-    var onSuccessQueued: (() -> Unit)? = null
-
-    /**
-     * Returns [onSuccessQueued] if [response] is a success. Called once the transport has accepted the frame, when
-     * every response is complete.
-     */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    fun successQueuedHook(): (() -> Unit)? =
-        onSuccessQueued.takeIf { response.getCompleted() is JsonRpcSuccessResponse }
+    var onResponseQueued: (() -> Unit)? = null
 }
+
+/**
+ * A request handler and the context it is entered with.
+ */
+@OptIn(UnstableApi::class)
+private class RequestHandler(
+    val context: CoroutineContext,
+    val handle: suspend (JsonRpcRequest) -> RequestOutcome<JsonElement?>,
+)

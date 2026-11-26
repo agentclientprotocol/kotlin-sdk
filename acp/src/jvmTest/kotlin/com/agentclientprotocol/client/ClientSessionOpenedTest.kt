@@ -207,7 +207,7 @@ class ClientSessionOpenedTest {
             agent.awaitHandled()
 
             open.cancel()
-            // The client asks the agent to cancel only after it has dropped the response hook.
+            // The cancelled call waits for this answer, so its response hook runs and the failure path must undo it.
             agent.receiveNotification(AcpMethod.MetaMethods.CancelRequest.methodName)
             opening.answer(agent, request, sessionId, "$opening")
             open.join()
