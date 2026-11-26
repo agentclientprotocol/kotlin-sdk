@@ -5,7 +5,6 @@ import com.agentclientprotocol.client.internal.ClientSessionHolder
 import com.agentclientprotocol.client.internal.ClientSessionImpl
 import com.agentclientprotocol.client.internal.RootSessionHolder
 import com.agentclientprotocol.client.internal.SubagentSessionHolder
-import com.agentclientprotocol.client.internal.answerPermissionRequest
 import com.agentclientprotocol.client.internal.deliverUpdate
 import com.agentclientprotocol.client.internal.executeWithSession
 import com.agentclientprotocol.common.ClientSessionOperations
@@ -103,6 +102,21 @@ private class RecordingChildOperations : ClientSessionOperations {
 private val ALLOWED = RequestPermissionResponse(RequestPermissionOutcome.Selected(PermissionOptionId("allow")))
 
 private fun toolCall(id: String) = SessionUpdate.ToolCallUpdate(ToolCallId(id))
+
+/*
+ * Answers a permission request as the client's `session/request_permission` handler does with the holder it takes at
+ * arrival.
+ */
+private suspend fun ClientSessionHolder.answerPermissionRequest(
+    toolCall: SessionUpdate.ToolCallUpdate,
+    options: List<PermissionOption>,
+    meta: JsonElement?,
+): RequestPermissionResponse = permissions.answerUnlessCancelled(
+    cancelledAnswer = { RequestPermissionResponse(RequestPermissionOutcome.Cancelled) },
+) {
+    val session = session.await()
+    session.executeWithSession { session.operations.requestPermissions(toolCall, options, meta) }
+}
 
 /**
  * Operations whose permission handler reports each request on [started] and waits for the user's answer on

@@ -95,13 +95,6 @@ internal class ClientSessionRegistry(
     fun isOpen(root: RootSessionHolder): Boolean = _sessions.value.sessions[root.sessionId] === root && !root.isFailed
 
     /**
-     * Returns the holder of the subagent [sessionId], or `null`. It doesn't suspend, so a request handler can take the
-     * holder before its first suspension.
-     */
-    fun subagentHolderOrNull(sessionId: SessionId): SubagentSessionHolder? =
-        _sessions.value.sessions[sessionId] as? SubagentSessionHolder
-
-    /**
      * Removes [root] and every subagent below it after the agent answered its `session/close`, and closes the
      * subagents. A second removal of [root] removes nothing from the map.
      *
@@ -155,21 +148,28 @@ internal class ClientSessionRegistry(
     }
 
     /**
-     * Returns the session [sessionId] for a request of the agent, waiting until its opening finishes. Only a
-     * subagent's holder or a root holder claimed by an opening call is waited for.
+     * Returns the holder that serves a request of the agent for [sessionId]: a subagent's holder or a root holder
+     * claimed by an opening call. It doesn't suspend, so a request handler can take the holder before its first
+     * suspension.
+     *
+     * @throws JsonRpcException with `-32002` if no such holder owns the id
      */
-    suspend fun awaitSession(sessionId: SessionId): BaseClientSession {
-        /*
-         * Don't create a holder or wait for an unclaimed one: that wait would last until the last opening ends, and a
-         * holder made here would block a later subagent with this id. The Rust SDK fails such a request at once too.
-         */
-        val holder = when (val registered = _sessions.value.sessions[sessionId]) {
+    fun holderForRequest(sessionId: SessionId): ClientSessionHolder =
+        when (val registered = _sessions.value.sessions[sessionId]) {
+            /*
+             * Don't create a holder or serve an unclaimed one: a wait for it would last until the last opening
+             * ends, and a holder made here would block a later subagent with this id. The Rust SDK fails such a
+             * request at once too.
+             */
             is RootSessionHolder -> registered.takeIf { it.phase.isAtLeast(Stage.CLAIMED) }
             is SubagentSessionHolder -> registered
             null -> null
         } ?: throw JsonRpcException(JsonRpcErrorCode.RESOURCE_NOT_FOUND.code, "Session $sessionId not found")
-        return holder.session.await()
-    }
+
+    /**
+     * Returns the session [sessionId] for a request of the agent, waiting until its opening finishes.
+     */
+    suspend fun awaitSession(sessionId: SessionId): BaseClientSession = holderForRequest(sessionId).session.await()
 
     /**
      * Returns the session [sessionId] if its opening has succeeded, or `null`. Never suspends.

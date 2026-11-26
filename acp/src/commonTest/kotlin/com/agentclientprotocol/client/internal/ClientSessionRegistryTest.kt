@@ -14,6 +14,7 @@ import com.agentclientprotocol.model.PermissionOption
 import com.agentclientprotocol.model.RequestPermissionResponse
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionUpdate
+import com.agentclientprotocol.protocol.JsonRpcException
 import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.rpc.TransportFrame
 import com.agentclientprotocol.transport.BaseTransport
@@ -43,6 +44,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -161,7 +163,7 @@ class ClientSessionRegistryTest {
              * its failure, a failed subagent of a failed parent freed its id.
              */
             for (holder in listOf(childHolder, grandchildHolder)) {
-                assertSame(holder, registry.subagentHolderOrNull(holder.sessionId), "${holder.sessionId} keeps its id")
+                assertSame(holder, registry.holderForRequest(holder.sessionId), "${holder.sessionId} keeps its id")
                 assertNull(registry.claimAnsweredSessionHolder(holder.sessionId, LoadSessionResponse(), parameters), "${holder.sessionId}: an opening of the id is refused")
             }
 
@@ -497,7 +499,7 @@ class ClientSessionRegistryTest {
                 for (id in listOf(root, child, grandchild)) assertFalse(registry.isSessionCompleted(id), "$id is still in the map")
                 rootHolder
             }
-            assertNull(registry.subagentHolderOrNull(child))
+            assertFailsWith<JsonRpcException> { registry.holderForRequest(child) }
 
             val retried = registry.claimSessionHolder(root, replayRequested = true, parameters)
             assertTrue(retried !== failed)

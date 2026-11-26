@@ -9,7 +9,6 @@ import com.agentclientprotocol.client.internal.ClientSessionImpl
 import com.agentclientprotocol.client.internal.ClientSessionRegistry
 import com.agentclientprotocol.client.internal.ElicitationSessionStore
 import com.agentclientprotocol.client.internal.RootSessionHolder
-import com.agentclientprotocol.client.internal.answerPermissionRequest
 import com.agentclientprotocol.client.internal.executeWithSession
 import com.agentclientprotocol.common.*
 import com.agentclientprotocol.model.*
@@ -115,18 +114,17 @@ public class Client(
         // Set up request handlers for incoming agent requests
         protocol.setRequestHandler(AcpMethod.ClientMethods.V1.SessionRequestPermission) { params: RequestPermissionRequest ->
             /*
-             * Looked up before the first suspension, so a subagent's request joins its cancel race before any later
-             * notification is handled, and a cancel answers it even while it waits for the holder.
+             * Taken before the first suspension, so the request joins its session's cancel race before any later
+             * notification is handled, and a cancel or close answers it even while it waits for the session.
              */
-            val subagent = sessions.subagentHolderOrNull(params.sessionId)
-            if (subagent != null) {
-                return@setRequestHandler subagent.answerPermissionRequest(params.toolCall, params.options, params._meta)
-            }
-
-            val session = sessions.awaitSession(params.sessionId) as? ClientSessionImpl
-                ?: error("Session ${params.sessionId} is not a root session")
-            return@setRequestHandler session.executeWithSession {
-                session.answerPermissionRequest(params.toolCall, params.options, params._meta)
+            val holder = sessions.holderForRequest(params.sessionId)
+            holder.permissions.answerUnlessCancelled(
+                cancelledAnswer = { RequestPermissionResponse(RequestPermissionOutcome.Cancelled) },
+            ) {
+                val session = holder.session.await()
+                session.executeWithSession {
+                    session.operations.requestPermissions(params.toolCall, params.options, params._meta)
+                }
             }
         }
 

@@ -140,6 +140,12 @@ internal sealed class ClientSessionHolder(
     abstract val root: RootSessionHolder
 
     /**
+     * The session's pending permission requests. They belong to the holder, so a request joins the race when it
+     * arrives, before the session exists, and a reopened session's new holder starts with none pending.
+     */
+    abstract val permissions: PendingPermissions
+
+    /**
      * Whether the opening of this holder failed, so a new opening of the session id needs a new holder.
      */
     val isFailed: Boolean

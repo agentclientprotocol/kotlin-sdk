@@ -50,7 +50,6 @@ internal class ClientSessionImpl(
         val updateChannel: Channel<SessionUpdate>
     )
     private val activePrompt = atomic<PromptSession?>(null)
-    private val pendingPermissions = RootPendingPermissions()
 
     // TODO remove together with the deprecated ClientSession.currentMode.
     private val _currentMode by lazy {
@@ -77,7 +76,7 @@ internal class ClientSessionImpl(
     ): Flow<Event> = channelFlow {
         val promptSession = PromptSession(Channel(Channel.UNLIMITED))
         if (!activePrompt.compareAndSet(null, promptSession)) error("There is active prompt execution")
-        pendingPermissions.clearCancellation()
+        holder.permissions.clearCancellation()
         logger.trace { "Starting channel collection for prompt" }
         val channelJob = launch {
             for (update in promptSession.updateChannel) {
@@ -116,7 +115,7 @@ internal class ClientSessionImpl(
         try {
             AcpMethod.AgentMethods.V1.SessionCancel(protocol, CancelNotification(sessionId))
         } finally {
-            pendingPermissions.cancelPending()
+            holder.permissions.cancelPending()
         }
     }
 
@@ -134,7 +133,6 @@ internal class ClientSessionImpl(
          * Answer before waiting for the response: an agent whose close waits for its work to end, a subagent's
          * included, would otherwise wait for the permission answer while the client waits for the close response.
          */
-        pendingPermissions.close()
         holder.startClosing()
 
         val response = try {
@@ -250,16 +248,6 @@ internal class ClientSessionImpl(
         @OptIn(UnstableApi::class)
         if (notification is SessionUpdate.ConfigOptionUpdate && configOptionsSupported) {
             _configOptions.value = notification.configOptions
-        }
-    }
-
-    internal suspend fun answerPermissionRequest(toolCall: SessionUpdate.ToolCallUpdate,
-                                                 permissions: List<PermissionOption>,
-                                                 _meta: JsonElement?,): RequestPermissionResponse {
-        return pendingPermissions.answerUnlessCancelled(
-            cancelledAnswer = { RequestPermissionResponse(RequestPermissionOutcome.Cancelled) },
-        ) {
-            operations.requestPermissions(toolCall, permissions, _meta)
         }
     }
 }

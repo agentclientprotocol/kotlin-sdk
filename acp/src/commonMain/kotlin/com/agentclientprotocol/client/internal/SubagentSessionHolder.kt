@@ -68,11 +68,7 @@ internal class SubagentSessionHolder(
      */
     private val _subagent = atomic<ClientSubagentSession?>(null)
 
-    /**
-     * The subagent's pending permission requests. They belong to the holder, so a reopened root's new holders start
-     * with none pending.
-     */
-    val permissions: SubagentPendingPermissions = SubagentPendingPermissions()
+    override val permissions: SubagentPendingPermissions = SubagentPendingPermissions()
 
     init {
         // After the root's answer, the opened marker is the first item, queued before the holder is reachable.

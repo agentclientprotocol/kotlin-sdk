@@ -98,6 +98,8 @@ internal class RootSessionHolder(
 
     override val root: RootSessionHolder get() = this
 
+    override val permissions: RootPendingPermissions = RootPendingPermissions()
+
     override fun sessionCwd(): String = claimedParameters().cwd
 
     override fun sessionAdditionalDirectories(): List<String> = claimedParameters().additionalDirectories ?: emptyList()
@@ -106,13 +108,14 @@ internal class RootSessionHolder(
         checkNotNull(phase.opening) { "Session $sessionId is not claimed" }.parameters
 
     /**
-     * Moves this root to [Stage.CLOSING], then answers the current and later permission requests of every subagent
-     * below it with `cancelled`. The root stays closing if the close fails.
+     * Moves this root to [Stage.CLOSING], then answers the current and later permission requests of the root and of
+     * every subagent below it with `cancelled`. The root stays closing if the close fails.
      *
      * @throws IllegalStateException if the root isn't answered yet
      */
     fun startClosing() {
         _phase.update { current -> checkNotNull(current.closing()) { "Root session $sessionId is closed before its answer" } }
+        permissions.close()
         // After the stage, so a subagent that this walk misses is closed by [addChild].
         forEachDescendant { it.permissions.close() }
     }

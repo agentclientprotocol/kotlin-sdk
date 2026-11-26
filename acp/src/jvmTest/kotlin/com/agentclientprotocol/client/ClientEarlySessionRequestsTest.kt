@@ -4,14 +4,18 @@ package com.agentclientprotocol.client
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.SessionCreationParameters
+import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.model.AcpMethod
+import com.agentclientprotocol.model.CloseSessionResponse
 import com.agentclientprotocol.model.ContentBlock
 import com.agentclientprotocol.model.CreateTerminalRequest
 import com.agentclientprotocol.model.ForkSessionResponse
 import com.agentclientprotocol.model.LoadSessionResponse
 import com.agentclientprotocol.model.NewSessionResponse
 import com.agentclientprotocol.model.ReadTextFileRequest
+import com.agentclientprotocol.model.RequestPermissionOutcome
 import com.agentclientprotocol.model.RequestPermissionRequest
+import com.agentclientprotocol.model.RequestPermissionResponse
 import com.agentclientprotocol.model.ResumeSessionResponse
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionUpdate
@@ -24,6 +28,7 @@ import com.agentclientprotocol.rpc.JsonRpcRequest
 import com.agentclientprotocol.rpc.JsonRpcResponse
 import com.agentclientprotocol.rpc.JsonRpcSuccessResponse
 import com.agentclientprotocol.rpc.MethodName
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -40,6 +45,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -157,6 +163,73 @@ class ClientEarlySessionRequestsTest {
         }
 
     @Test
+    fun `a request waiting for a load or resume is answered cancelled by a cancel or close during the opening`() =
+        withClient { client, agent ->
+            for (opening in listOf(loadWithFactory, resumeWithFactory)) {
+                for (close in listOf(false, true)) {
+                    val world = SubagentWorld()
+                    val id = SessionId("ended-$opening-$close")
+                    val release = CompletableDeferred<Unit>()
+                    world.configure = { operations ->
+                        operations.onNotify = { event, session ->
+                            if (event is SessionEvent.Opened) {
+                                val root = session as ClientSession
+                                if (close) root.close() else root.cancel()
+                                release.await()
+                            }
+                        }
+                    }
+                    val open = async { opening.open(client, id, parameters, world) }
+                    val request = agent.receiveRequest(opening.method)
+                    val permission = agent.sendRequest(PERMISSION, permissionRequest(id, "early"))
+                    agent.awaitHandled()
+                    assertNull(agent.responseOrNull(permission), "$opening, close = $close: the request waits for the session")
+
+                    opening.answer(agent, request, id)
+                    val closeRequest = if (close) {
+                        agent.receiveRequest(AcpMethod.AgentMethods.V1.SessionClose.methodName)
+                    } else {
+                        agent.receiveNotification(AcpMethod.AgentMethods.V1.SessionCancel.methodName)
+                        null
+                    }
+
+                    // The opening is still held in `notify`, so the request was in the race before the session existed.
+                    assertEquals(CANCELLED, decode(agent.awaitResponse(permission), PERMISSION.responseSerializer), "$opening, close = $close")
+                    assertFalse(open.isCompleted, "$opening, close = $close: answered during the opening")
+
+                    closeRequest?.let { agent.answer(it, AcpMethod.AgentMethods.V1.SessionClose.responseSerializer, CloseSessionResponse()) }
+                    release.complete(Unit)
+                    open.await()
+                    assertEquals(emptyList(), world.awaitOperations(id).permissionRequests.value, "$opening, close = $close: the app never saw it")
+                }
+            }
+        }
+
+    @Test
+    fun `a request waiting for a load gets the error of the failed opening and not cancelled`() =
+        withClient { client, agent ->
+            for (notifyFails in listOf(false, true)) {
+                val world = SubagentWorld()
+                val id = SessionId("failed-$notifyFails")
+                world.configure = { operations ->
+                    operations.onNotify = { event, _ ->
+                        if (notifyFails && event is SessionEvent.Opened) throw IllegalStateException("notify failed")
+                    }
+                }
+                val open = async { runCatching { loadWithFactory.open(client, id, parameters, world) } }
+                val request = agent.receiveRequest(loadWithFactory.method)
+                val permission = agent.sendRequest(PERMISSION, permissionRequest(id, "early"))
+                agent.awaitHandled()
+
+                if (notifyFails) loadWithFactory.answer(agent, request, id) else agent.fail(request)
+
+                assertTrue(open.await().isFailure, "notifyFails = $notifyFails: the opening fails")
+                val error = assertIs<JsonRpcErrorResponse>(agent.awaitResponse(permission), "notifyFails = $notifyFails").error
+                assertEquals("Failed to create session $id", error.message, "notifyFails = $notifyFails")
+            }
+        }
+
+    @Test
     fun `a request for an unknown session with no opening in flight fails with resource not found`() = withClient { _, agent ->
         val id = SessionId("unknown")
         assertNotFound(id, agent.awaitResponse(agent.sendRequest(PERMISSION, permissionRequest(id, "tool"))))
@@ -192,6 +265,8 @@ class ClientEarlySessionRequestsTest {
         val PERMISSION = AcpMethod.ClientMethods.V1.SessionRequestPermission
         val READ = AcpMethod.ClientMethods.V1.FsReadTextFile
         val TERMINAL = AcpMethod.ClientMethods.V1.TerminalCreate
+
+        val CANCELLED = RequestPermissionResponse(RequestPermissionOutcome.Cancelled)
 
         fun text(value: String) = SessionUpdate.AgentMessageChunk(ContentBlock.Text(value))
 

@@ -10,9 +10,6 @@ import com.agentclientprotocol.client.ClientSubagentSession
 import com.agentclientprotocol.client.baseClientSession
 import com.agentclientprotocol.client.clientSession
 import com.agentclientprotocol.common.notify
-import com.agentclientprotocol.model.PermissionOption
-import com.agentclientprotocol.model.RequestPermissionOutcome
-import com.agentclientprotocol.model.RequestPermissionResponse
 import com.agentclientprotocol.model.SessionUpdate
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
@@ -34,24 +31,6 @@ internal suspend fun BaseClientSession.deliverUpdate(update: SessionUpdate, meta
         is ClientSession -> (this as ClientSessionImpl).handleNotification(update, meta)
         is ClientSubagentSession -> operations.notify(update, meta)
     }
-}
-
-/**
- * Answers the agent's permission request for this subagent through its session's operations, unless its work is
- * cancelled or it is closed first.
- *
- * Call it when the request arrives, so the request joins the race before anything suspends, and a cancel answers it
- * even while the holder is incomplete. The receiver is the holder, because the session may not exist yet.
- */
-internal suspend fun SubagentSessionHolder.answerPermissionRequest(
-    toolCall: SessionUpdate.ToolCallUpdate,
-    permissions: List<PermissionOption>,
-    meta: JsonElement?,
-): RequestPermissionResponse = this.permissions.answerUnlessCancelled(
-    cancelledAnswer = { RequestPermissionResponse(RequestPermissionOutcome.Cancelled) },
-) {
-    val subagent = session.await()
-    subagent.executeWithSession { subagent.operations.requestPermissions(toolCall, permissions, meta) }
 }
 
 /**
