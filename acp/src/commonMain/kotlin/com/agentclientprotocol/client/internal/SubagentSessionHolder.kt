@@ -184,13 +184,13 @@ internal class SubagentSessionHolder(
         } catch (ce: CancellationException) {
             // Rethrow the opening's own cancellation: its stopper fails the holder, or the connection has ended.
             currentCoroutineContext().ensureActive()
-            failOpening(
+            failOpeningUnlessStopped(
                 ce,
                 IllegalStateException("ClientSessionOperations.notify was cancelled", ce),
                 "ClientSessionOperations.notify of subagent session $sessionId was cancelled",
             )
         } catch (t: Throwable) {
-            failOpening(
+            failOpeningUnlessStopped(
                 t,
                 IllegalStateException("Failed to deliver the history of subagent session $sessionId", t),
                 "ClientSessionOperations.notify of subagent session $sessionId failed",
@@ -202,7 +202,7 @@ internal class SubagentSessionHolder(
      * Fails this holder with [failure] for what the opening [caught], unless the opening was stopped or cancelled: then
      * [caught] comes from that, even if wrapped, and is only logged.
      */
-    private suspend fun failOpening(caught: Throwable, failure: Throwable, message: String) {
+    private suspend fun failOpeningUnlessStopped(caught: Throwable, failure: Throwable, message: String) {
         if (currentCoroutineContext().isActive && failSubagentTree(this, failure)) {
             logger.error(caught) { message }
         } else {

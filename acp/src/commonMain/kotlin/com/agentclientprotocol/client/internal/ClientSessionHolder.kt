@@ -31,7 +31,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.serialization.json.JsonElement
 
@@ -306,14 +305,12 @@ internal sealed class ClientSessionHolder(
         }
 
         val childOperations = try {
-            factory.createSubagentOperations(childId)
+            callApp("createSubagentOperations") { factory.createSubagentOperations(childId) }
         } catch (ce: CancellationException) {
-            // Only the caller's own cancellation propagates; the factory's counts as a failure.
-            currentCoroutineContext().ensureActive()
-            failSetup(child, IllegalStateException("createSubagentOperations was cancelled", ce))
-            return
+            // Only the caller's own cancellation leaves `callApp`, and it must not count as a failed setup.
+            throw ce
         } catch (t: Throwable) {
-            failSetup(child, t)
+            failSetupUnlessStopped(child, t)
             return
         }
 
@@ -327,7 +324,7 @@ internal sealed class ClientSessionHolder(
         child.startOpening(session)
     }
 
-    private suspend fun failSetup(child: SubagentSessionHolder, cause: Throwable) {
+    private suspend fun failSetupUnlessStopped(child: SubagentSessionHolder, cause: Throwable) {
         /*
          * A cancelled caller's cause comes from the cancellation, even if wrapped. The cascade or the close then fails
          * the child, and the end of the connection fails nothing.

@@ -9,6 +9,7 @@ import com.agentclientprotocol.client.internal.ClientSessionImpl
 import com.agentclientprotocol.client.internal.ClientSessionRegistry
 import com.agentclientprotocol.client.internal.ElicitationSessionStore
 import com.agentclientprotocol.client.internal.RootSessionHolder
+import com.agentclientprotocol.client.internal.callApp
 import com.agentclientprotocol.client.internal.executeWithSession
 import com.agentclientprotocol.common.*
 import com.agentclientprotocol.model.*
@@ -619,13 +620,7 @@ public class Client(
         factory: ClientOperationsFactory,
     ): ClientSession {
         return runCatching {
-            val operations = try {
-                factory.createClientOperations(sessionId, sessionResponse)
-            } catch (ce: CancellationException) {
-                // As for `notify`, a cancellation the factory throws while the caller is active fails the opening.
-                currentCoroutineContext().ensureActive()
-                throw IllegalStateException("createClientOperations was cancelled", ce)
-            }
+            val operations = callApp("createClientOperations") { factory.createClientOperations(sessionId, sessionResponse) }
             val session = createClientSession(sessionHolder, sessionId, sessionParameters, operations, sessionResponse)
             val opened = sessionHolder.drainHistory(session)
             sessionHolder.completeOpening(session, opened)
@@ -721,18 +716,8 @@ public class Client(
 
         try {
             val (session, opened) = coroutineScope {
-                val earlyDelivery = async {
-                    try {
-                        sessionHolder.deliverEarly(operations)
-                    } catch (ce: CancellationException) {
-                        /*
-                         * A cancellation not from this call, such as a timeout inside `notify`, would end this child
-                         * without failing the scope.
-                         */
-                        ensureActive()
-                        throw IllegalStateException("ClientSessionOperations.notify was cancelled", ce)
-                    }
-                }
+                // Without `callApp`, the app's cancellation would end this child without failing the scope.
+                val earlyDelivery = async { callApp("ClientSessionOperations.notify") { sessionHolder.deliverEarly(operations) } }
                 val sessionResponse = request { response -> sessionHolder.markOpened(response) }
                 val opened = checkNotNull(earlyDelivery.await()) { "The queue of session $sessionId closed before its answer" }
                 val session = createClientSession(sessionHolder, sessionId, sessionParameters, operations, sessionResponse)

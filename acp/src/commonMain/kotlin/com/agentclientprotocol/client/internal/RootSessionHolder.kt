@@ -16,7 +16,6 @@ import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.protocol.Protocol
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -234,16 +233,8 @@ internal class RootSessionHolder(
 
     /**
      * Runs [block], a delivery to the app during the opening, with [session] in the context.
-     *
-     * A [CancellationException] from app code while the caller is active becomes an [IllegalStateException], so the
-     * opening fails instead of looking like the caller's own cancellation.
      */
     private suspend fun deliverDuringOpening(session: BaseClientSession, block: suspend () -> Unit) {
-        try {
-            session.executeWithSession(block)
-        } catch (ce: CancellationException) {
-            currentCoroutineContext().ensureActive()
-            throw IllegalStateException("ClientSessionOperations.notify was cancelled", ce)
-        }
+        callApp("ClientSessionOperations.notify") { session.executeWithSession(block) }
     }
 }
