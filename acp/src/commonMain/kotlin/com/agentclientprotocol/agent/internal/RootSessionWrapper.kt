@@ -55,30 +55,24 @@ internal class RootSessionWrapper(
      */
     val subtreeScope: CoroutineScope by lazy { protocol.newConnectionScope("Subagents of session $sessionId") }
 
-    /**
-     * Guards [_isReplaying] and [replayedCollections] together, so a collection is either deferred before the
-     * window closes or started by its caller.
-     */
     private val replayLock = SynchronizedObject()
 
-    private val _isReplaying = atomic(replaying)
+    /**
+     * The collection starts waiting for the replay window to close, or `null` once it is closed.
+     */
+    private var startsAfterReplay: MutableList<() -> Unit>? = if (replaying) mutableListOf() else null
 
     /**
      * Whether the replay window of `session/load` is open: everything sent for this subtree meanwhile precedes the load
      * response, so it is history. It closes once the transport has accepted the response.
      */
-    val isReplaying: Boolean get() = _isReplaying.value
-
-    private var replayedCollections = mutableListOf<() -> Unit>()
+    val isReplaying: Boolean get() = synchronized(replayLock) { startsAfterReplay != null }
 
     /**
      * Runs [start] now, or when the replay window closes if it is still open.
      */
     fun startAfterReplay(start: () -> Unit) {
-        val deferred = synchronized(replayLock) {
-            if (_isReplaying.value) replayedCollections += start
-            _isReplaying.value
-        }
+        val deferred = synchronized(replayLock) { startsAfterReplay?.add(start) != null }
         if (!deferred) start()
     }
 
@@ -86,11 +80,8 @@ internal class RootSessionWrapper(
      * Closes the replay window and starts the collections deferred until then.
      */
     fun endReplay() {
-        val starts = synchronized(replayLock) {
-            _isReplaying.value = false
-            replayedCollections.also { replayedCollections = mutableListOf() }
-        }
-        starts.forEach { it() }
+        val starts = synchronized(replayLock) { startsAfterReplay.also { startsAfterReplay = null } }
+        starts?.forEach { it() }
     }
 
     /**

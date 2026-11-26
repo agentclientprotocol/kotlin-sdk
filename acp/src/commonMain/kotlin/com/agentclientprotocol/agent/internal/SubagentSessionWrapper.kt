@@ -92,12 +92,6 @@ internal class SubagentSessionWrapper(
 
     override val root: RootSessionWrapper = parent.root
 
-    /**
-     * Whether this child was announced in its root's replay window. Unlike [RootSessionWrapper.isReplaying], it stays
-     * `true` after the window closes.
-     */
-    private val isReplayed = root.isReplaying
-
     override val clientOperations: SubagentClientOperations =
         SubagentClientOperations(protocol, sessionId, agent.getClientInfoOrThrow().capabilities, this)
 
@@ -166,7 +160,7 @@ internal class SubagentSessionWrapper(
             )
         }
 
-        if (isReplayed) root.startAfterReplay { startCollection(session) } else startCollection(session)
+        root.startAfterReplay { startCollection(session) }
         return session
     }
 
