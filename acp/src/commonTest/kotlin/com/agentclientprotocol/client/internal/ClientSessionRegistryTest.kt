@@ -440,6 +440,20 @@ class ClientSessionRegistryTest {
     }
 
     @Test
+    fun `only a session whose opening succeeded counts as completed`() = runTest {
+        registry.withInitializingSession {
+            val rootHolder = registry.claimSessionHolder(root, replayRequested = true, parameters)
+            registry.deliverSessionUpdate(root, announce(child), null)
+            assertNull(registry.completedSessionOrNull(root), "an opening root is not completed")
+            assertNull(registry.completedSessionOrNull(child), "an opening subagent is not completed")
+
+            registry.failSessionTree(rootHolder, IllegalStateException("load failed"))
+            assertTrue(registry.isSessionCompleted(child), "the failed subagent stays in the map")
+            assertNull(registry.completedSessionOrNull(child), "a failed subagent is not completed")
+        }
+    }
+
+    @Test
     fun `the subagents of a failed root leave the session map when the root is reaped`() = runTest {
         for (attempt in 1..3) {
             val attemptChild = SessionId("child-$attempt")

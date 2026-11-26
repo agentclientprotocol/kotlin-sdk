@@ -16,7 +16,6 @@ import com.agentclientprotocol.protocol.invoke
 import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
-import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -95,16 +94,22 @@ internal class ClientSessionImpl(
             // and then waiting for draining all the updates that were sent during prompt execution
             // only after that we emit the PromptResponseEvent to the outbound flow
             logger.trace { "Closing prompt channel" }
-            activePrompt.getAndSet(null)?.updateChannel?.close()
+            endTurn(promptSession)
             logger.trace { "Waiting for prompt channel to close" }
             channelJob.join()
 
             send(Event.PromptResponseEvent(promptResponse))
             close()
         } finally {
-            activePrompt.getAndSet(null)?.updateChannel?.close()
+            endTurn(promptSession)
             channelJob.cancel()
         }
+    }
+
+    // Clears only this turn: a later turn may have registered while this one drained its updates.
+    private fun endTurn(promptSession: PromptSession) {
+        activePrompt.compareAndSet(promptSession, null)
+        promptSession.updateChannel.close()
     }
 
     override suspend fun cancel() {
@@ -218,14 +223,11 @@ internal class ClientSessionImpl(
     ) {
         trackState(notification)
 
-        val promptSession = activePrompt.value
-        @OptIn(DelicateCoroutinesApi::class)
-        // check for isClosedForSend because the prompt may exist, but the code is waiting for the updates drain
-        if (promptSession != null && !promptSession.updateChannel.isClosedForSend) {
-            logger.trace { "Sending update to active prompt: $notification" }
-            promptSession.updateChannel.send(notification)
-        }
-        else {
+        // The channel is unlimited, so this fails only once the turn has closed it to drain its updates.
+        val deliveredToTurn = activePrompt.value?.updateChannel?.trySend(notification)?.isSuccess == true
+        if (deliveredToTurn) {
+            logger.trace { "Sent update to active prompt: $notification" }
+        } else {
             logger.trace { "Notifying globally: $notification" }
             operations.notify(notification, _meta)
         }

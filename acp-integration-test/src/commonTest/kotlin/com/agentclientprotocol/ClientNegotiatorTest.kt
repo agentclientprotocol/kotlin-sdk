@@ -28,14 +28,19 @@ import com.agentclientprotocol.model.LATEST_PROTOCOL_VERSION
 import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.protocol.acpFail
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertSame
 
@@ -145,6 +150,25 @@ abstract class ClientNegotiatorTest(protocolDriver: ProtocolDriver) : ProtocolDr
 
         assertSame(first, repeated)
         assertEquals(1, initializeCalls)
+    }
+
+    /** Fails later calls instead of cancelling them when the first call was cancelled. */
+    @Test
+    fun `a cancelled negotiation does not cancel later calls`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val initializeReceived = CompletableDeferred<Unit>()
+        agentProtocol.setRequestHandlerRaw(AcpMethod.AgentMethods.V2.Initialize) {
+            initializeReceived.complete(Unit)
+            awaitCancellation()
+        }
+        val negotiator = ClientNegotiator(clientProtocol, v1Config(), v2Config())
+        val first = async { negotiator.negotiate() }
+        initializeReceived.await()
+        first.cancelAndJoin()
+
+        val repeated = assertFails { negotiator.negotiate() }
+
+        assertFalse(repeated is CancellationException, "a later caller gets a failure, not a cancellation")
+        assertIs<CancellationException>(repeated.cause)
     }
 
     private class V1Support : AgentSupport {

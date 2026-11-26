@@ -170,6 +170,15 @@ internal class ClientSessionRegistry(
         return holder.session.await()
     }
 
+    /**
+     * Returns the session [sessionId] if its opening has succeeded, or `null`. Never suspends.
+     */
+    fun completedSessionOrNull(sessionId: SessionId): BaseClientSession? {
+        val session = _sessions.value.sessions[sessionId]?.session ?: return null
+        @OptIn(ExperimentalCoroutinesApi::class)
+        return if (session.isCompleted && session.getCompletionExceptionOrNull() == null) session.getCompleted() else null
+    }
+
     fun isSessionCompleted(sessionId: SessionId): Boolean {
         val holder = _sessions.value.sessions[sessionId]
         return holder != null && holder.session.isCompleted

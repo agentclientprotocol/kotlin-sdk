@@ -16,6 +16,7 @@ import com.agentclientprotocol.protocol.Protocol
 import com.agentclientprotocol.protocol.acpFail
 import com.agentclientprotocol.protocol.readProtocolVersionOrNull
 import com.agentclientprotocol.rpc.ACPJson
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonElement
@@ -116,7 +117,16 @@ public class ClientNegotiator(
         try {
             negotiateOnce().also { state = State.Resolved(it) }
         } catch (cause: Throwable) {
-            state = State.Failed(cause)
+            /*
+             * A later caller runs in an active coroutine, where a rethrown CancellationException would cancel it
+             * silently. The cancelled attempt has closed the protocol, so it reports a failure instead of retrying.
+             */
+            val failure = if (cause is CancellationException) {
+                IllegalStateException("Negotiation was cancelled", cause)
+            } else {
+                cause
+            }
+            state = State.Failed(failure)
             throw cause
         }
     }

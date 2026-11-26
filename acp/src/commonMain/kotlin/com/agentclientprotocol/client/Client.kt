@@ -184,13 +184,11 @@ public class Client(
         protocol.setNotificationHandler(AcpMethod.ClientMethods.V1.ElicitationComplete) { params: CompleteElicitationNotification ->
             // Unknown or already-completed elicitation IDs are silently ignored per the RFD.
             val sessionId = _elicitationToSession.remove(params.elicitationId)
-            if (sessionId != null && sessions.isSessionCompleted(sessionId)) {
-                // The session may have been closed between the elicitation and the completion.
-                val session = runCatching { sessions.awaitSession(sessionId) }.getOrNull()
-                val ops = session?.operations as? ElicitationOperations
-                if (session != null && ops != null) {
-                    session.executeWithSession { ops.completeElicitation(params) }
-                }
+            // The session may have been closed between the elicitation and the completion.
+            val session = sessionId?.let { sessions.completedSessionOrNull(it) }
+            val ops = session?.operations as? ElicitationOperations
+            if (session != null && ops != null) {
+                session.executeWithSession { ops.completeElicitation(params) }
             }
         }
     }
