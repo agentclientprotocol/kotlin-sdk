@@ -489,6 +489,12 @@ NO-DECISION LIST DONE (D1, S1, S1b, S1c, S2–S6). Remaining: #7/#13/#17 + lock 
   or #18; Elicitation: lock; SubagentPendingPermissions: lock if #19 window stays; PromptSession: Mutex; replay
   window: CAS or `@Volatile`, form B nested a lock). Waiting: adopt as AGENTS.md "Concurrency primitives" and
   plan lock slices (agent SessionTable first, then a client-registry assessment)?
+- User 2026-11-26: replay window back to CAS (one value, pure update, read inside the child's lock).
+  S1d — `09a4841` — `atomic<PersistentList<() -> Unit>?>` with `updateAndGet`/`getAndSet(null)`; `replayLock` gone;
+  `check` green 1st run.
+- Discussed: client `_sessions` contention. Per-message traffic only reads (volatile load); writes are per lifecycle
+  event, and the notification-driven ones are serialized on the read loop. Any registry lock must keep lock-free
+  snapshot reads. Question 0 (invariant across `_sessions`, `children`, `_phase`), not contention, decides it.
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
