@@ -425,7 +425,13 @@ COMMENT-TRIM GOAL (user 2026-11-26, current). Rules (final):
 Plan: P0 pilot = `client/internal/ClientSessionRegistry.kt` + the AGENTS.md rule text, left UNCOMMITTED for the user
 to calibrate density → then slices: client internals → agent+protocol → model/common/rest → Runtime-rules trim →
 reviewer over the milestone.
-- P0 pilot: running.
+- P0 pilot COMMITTED `91bdb5e` (user approved the density 2026-11-26: "looks good"; the same calibration applies to
+  every slice). Registry 263→125 comment lines; AGENTS.md "### Public versus internal documentation" added.
+- Slices from here are committed one each by the programmer (opus, single mode):
+  C1 client internals (`client/internal/*` except the registry) → C2 public client + `common` → A1 agent+protocol →
+  M1 model + rest → R1 Runtime-rules trim → reviewer over the milestone.
+- C1: running. Follow-up included: KDocs in ClientSessionHolder.addChild / SubagentSessionHolder that point at the
+  registry's trimmed text.
 
 KDoc pass goal (user 2026-11-25): (1) bring every comment/KDoc this PR adds or changes in line with AGENTS.md
 "Comments and KDoc" (structure rules, property/param placement, no single-line KDoc, no consecutive `//`);
