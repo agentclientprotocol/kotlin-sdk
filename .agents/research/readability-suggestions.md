@@ -150,3 +150,43 @@ Suggestions collected during the comment-trim pass. None of them is applied; the
    - Current: one function applies `title`, `description`, `cwd` and `additionalDirectories` at once, then branches on `parentOpened` for `capabilities` and `state`.
    - Proposed: split out `private fun applyDescriptiveFields(update)` and `private fun applyOrHoldWorkFields(update, parentOpened)`.
    - Why: the difference between the fields that apply at once and those held until the parent's `Opened` is the one fact the KDoc still carries; two names would carry it.
+
+## `acp/src/commonMain/kotlin/com/agentclientprotocol/agent/internal/SubagentSessionWrapper.kt`
+
+1. **The factory-run fields**
+   - Current: three `var`s guarded by `lock`, `factoryRunning`, `factoryState` and `isCancelLatched`, each with its own "Guarded by [lock]" KDoc, reset together when the factory ends.
+   - Proposed: `private class FactoryRun(var state: StateUpdate?, var cancelLatched: Boolean)` held as `private var factoryRun: FactoryRun?`, `null` when the factory isn't running.
+   - Why: "running" would be the non-null check, the reset would be one assignment, and the three KDocs would become one.
+
+2. **`sendOwnUpdate` / `sendPlainUpdate`**
+   - Current: named after what the update is; each KDoc has to say which stream it goes on.
+   - Proposed: `sendOnParentStream` / `sendOnOwnStream` (and `sendOnParentStreamLocked`).
+   - Why: the stream is the routing rule's only output, so the names would carry the rule.
+
+## `acp/src/commonMain/kotlin/com/agentclientprotocol/agent/Agent.kt`
+
+1. **Replacing a root in `createSession`**
+   - Current: `_sessions.update { ... }` that writes the captured `var replaced` and `var removed`, next to `SessionTable.subagentsOf` and `withoutSubagents`.
+   - Proposed: a `SessionTable.replacingRoot(root): Pair<SessionTable, Replaced?>` (and `removingRoot` for `removeRoot`) beside the existing table helpers.
+   - Why: "a root leaves or is replaced together with its subagents" would be a named table operation, and the captured `var`s would go.
+
+## `acp/src/commonMain/kotlin/com/agentclientprotocol/agent/internal/RootSessionWrapper.kt`
+
+1. **`replayedCollections`**
+   - Current: `private var replayedCollections = mutableListOf<() -> Unit>()`, filled by `startAfterReplay(start)`.
+   - Proposed: `startsAfterReplay`.
+   - Why: the list holds deferred starts, not collections; the name would match the function that fills it.
+
+## `acp/src/commonMain/kotlin/com/agentclientprotocol/protocol/Protocol.kt`
+
+1. **`ResponseSlot.onSuccessQueued`**
+   - Current: the slot calls the request's `RequestOutcome.onResponseQueued` `onSuccessQueued`, and its getter `successQueuedHook()`.
+   - Proposed: `onResponseQueued` and `responseQueuedHookOrNull()`.
+   - Why: one name for one hook, so the slot's KDoc doesn't have to say which outcome field it is.
+
+## `acp/src/commonMain/kotlin/com/agentclientprotocol/agent/internal/RemoteClientSessionOperations.kt`
+
+1. **`checkCanSend` and the subagent's `notify`**
+   - Current: every operation but `notify` calls `checkCanSend()`; the root's `notify` checks the subagents rules inline, and the subagent's checks through `sendPlainUpdate`/`sendOwnUpdate`.
+   - Proposed: an `open fun checkUpdate(notification)` that the root's `notify` calls and the subclass overrides.
+   - Why: the KDoc of `checkCanSend` has to explain why `notify` is the exception; a second hook would make both checks visible.

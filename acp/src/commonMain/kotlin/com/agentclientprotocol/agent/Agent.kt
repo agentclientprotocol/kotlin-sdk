@@ -48,12 +48,9 @@ public class Agent(
     private val _clientInfo = CompletableDeferred<ClientInfo>()
 
     /**
-     * The root sessions and subagents registered on this connection, at every depth, by their own session id.
+     * The root sessions and subagents of this connection, at every depth, by session id.
      *
-     * Both maps are one snapshot, so each rule that spans them is checked and applied in one compare-and-set: a
-     * subagent is added only while its root is registered, a root leaves or is replaced together with its subagents,
-     * and an id is never a root's and a subagent's at once. So no subagent can stay registered under a root that is
-     * gone.
+     * One snapshot, so each rule that spans roots and subagents is checked and applied in one update.
      */
     private val _sessions = atomic(SessionTable(persistentMapOf(), persistentMapOf()))
 
@@ -252,9 +249,9 @@ public class Agent(
 
         protocol.setRequestHandler(AcpMethod.AgentMethods.V1.SessionClose) { params: CloseSessionRequest ->
             /*
-             * Closing is idempotent: an unknown id, or one already closed, gets the empty result without calling the
-             * app (https://agentclientprotocol.com/protocol/v1/session-setup#closing-active-sessions). A subagent's id
-             * is still rejected, because the client may only cancel a subagent.
+             * Closing is idempotent: an unknown or closed id gets the empty result without calling the app
+             * (https://agentclientprotocol.com/protocol/v1/session-setup#closing-active-sessions). A subagent's id is
+             * still rejected.
              */
             val session = _sessions.value.roots[params.sessionId] ?: run {
                 checkNotSubagent(params.sessionId)
@@ -263,12 +260,7 @@ public class Agent(
             val response = session.executeWithSession {
                 session.agentSession.close(params._meta)
             }
-            /*
-             * Clean the subtree up before answering, so no update for the children reaches the client after the
-             * response. Requests the children have in flight, and their $/cancel_request, may still follow it.
-             * If close() threw, the session and its children stay registered. A root that replaced this one while
-             * close() ran stays registered.
-             */
+            // Before the response, so no update of a child follows it.
             removeRoot(session)
             return@setRequestHandler response
         }
@@ -421,10 +413,9 @@ public class Agent(
         )
 
         /*
-         * A root that is already open with this id is replaced, as `session/load` and `session/resume` may re-open
-         * it. Its subtree is cleaned up before the replay, so the replay can announce the same ids again, and no
-         * update for an old subagent follows the response. The old root's own turn and AgentSession are left as they
-         * are. If this load fails later, the old root isn't restored.
+         * Re-opening an open id, as `session/load` and `session/resume` may, replaces its root. The old subtree is
+         * cleaned up before the replay, which may announce the same ids again; the old root's turn and AgentSession
+         * are left alone.
          */
         var replaced: RootSessionWrapper? = null
         var removed = emptyList<SubagentSessionWrapper>()
@@ -455,10 +446,9 @@ public class Agent(
                 if (sessionWrapper.isReplaying) discardFailedLoad(sessionWrapper)
             },
             /*
-             * The client treats what follows the load response on the wire as live, so the replay window closes as
-             * soon as the transport has accepted the response, not a dispatch later when afterResponse starts. This
-             * also starts the replayed subagents' collections before postInitialize(): a slow one would otherwise
-             * keep every child's state unconfirmed and its cancel disabled on the client.
+             * The client treats what follows the load response as live, so the window closes once the transport has
+             * the response, not when afterResponse starts, and the replayed subagents' collections start before a
+             * slow postInitialize() could hold them back.
              */
             onResponseQueued = if (replayHistory != null) {
                 { sessionWrapper.endReplay() }
@@ -469,8 +459,7 @@ public class Agent(
     }
 
     /**
-     * Drops the root session of a failed `session/load` with every subagent registered under it during the attempt:
-     * no response confirmed them.
+     * Drops the root of a failed `session/load` with every subagent registered during it.
      */
     private fun discardFailedLoad(sessionWrapper: RootSessionWrapper) {
         removeRoot(sessionWrapper)
@@ -483,8 +472,7 @@ public class Agent(
     }
 
     /**
-     * Rejects a session method on a subagent's id. The client may only cancel a subagent: every other method is
-     * reserved for root sessions.
+     * Rejects a session method on a subagent's id: the client may only cancel a subagent.
      */
     private fun checkNotSubagent(sessionId: SessionId) {
         if (sessionId in _sessions.value.subagents) acpFail("Session $sessionId is a subagent")
@@ -493,10 +481,7 @@ public class Agent(
     internal fun subagentOrNull(sessionId: SessionId): SubagentSessionWrapper? = _sessions.value.subagents[sessionId]
 
     /**
-     * Registers [child] under its own id.
-     *
-     * The check of [child]'s root and the addition are one update of the table, as is every removal of a root with
-     * its subagents, so a root's cleanup either removes [child] or makes this fail.
+     * Registers [child] under its own id while its root is registered.
      *
      * @throws IllegalArgumentException if the id is already registered on this connection, as a root session or a
      * subagent
@@ -525,8 +510,7 @@ public class Agent(
     }
 
     /**
-     * Removes [root], if it is still the root registered under its id, together with every subagent below it, and
-     * cleans its subtree up. A root that replaced [root] stays: its own subagents aren't [root]'s.
+     * Removes [root] with every subagent below it, and cleans its subtree up. A root that replaced [root] stays.
      */
     private fun removeRoot(root: RootSessionWrapper) {
         var removed = emptyList<SubagentSessionWrapper>()
@@ -539,9 +523,8 @@ public class Agent(
     }
 
     /**
-     * Subtree cleanup for [root], once [removed], its subagents at every depth, have left the table, together with
-     * [root] or when a re-opening replaced it: cancels their collections and makes their operations fail. No app
-     * code is called for them.
+     * Cancels the collections of [root]'s subagents, [removed] from the table already, and makes their operations
+     * fail, without calling app code.
      */
     private fun cleanUpSubtree(root: RootSessionWrapper, removed: List<SubagentSessionWrapper>) {
         root.cancelSubtreeScope()

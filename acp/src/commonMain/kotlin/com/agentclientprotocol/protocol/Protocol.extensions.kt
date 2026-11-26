@@ -6,13 +6,11 @@ import com.agentclientprotocol.model.AcpResponse
 import com.agentclientprotocol.model.AcpWithSessionId
 
 /**
- * Sends a typed request like [RpcMethodsOperations.sendRequest], and calls [onResponse] with the decoded response
- * when it arrives.
+ * Sends a typed request like [RpcMethodsOperations.sendRequest], and calls [onResponse] with the decoded response,
+ * the value this call returns.
  *
- * The response is decoded once, in the read loop: [onResponse] gets the value this call returns. It runs with the
- * timing and the contract of the `onResponse` hook of [Protocol.sendRequestRaw], so it must not suspend, block, or
- * throw. A response that does not decode skips [onResponse], and this call fails with the same error as
- * [RpcMethodsOperations.sendRequest].
+ * [onResponse] is the response hook of [Protocol.sendRequestRaw], with its timing and contract. A response that
+ * doesn't decode skips it, and this call fails as [RpcMethodsOperations.sendRequest] would.
  */
 internal suspend fun <TRequest : AcpRequest, TResponse : AcpResponse> Protocol.sendRequest(
     method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,

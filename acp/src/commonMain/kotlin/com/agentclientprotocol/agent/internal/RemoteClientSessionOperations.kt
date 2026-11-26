@@ -10,10 +10,8 @@ import com.agentclientprotocol.protocol.invoke
 import kotlinx.serialization.json.JsonElement
 
 /**
- * The client operations of one session, sent to the client for [sessionId].
- *
- * This class serves root sessions as is. A subagent's operations subclass it to gate every operation until the
- * subagent's announcement and to apply the subagents routing rule to [notify].
+ * The client operations of one session, sent to the client for [sessionId]. Root sessions use it as is, and
+ * [SubagentClientOperations] adds a subagent's gating and routing.
  */
 internal open class RemoteClientSessionOperations(
     protected val rpc: RpcMethodsOperations,
@@ -21,8 +19,7 @@ internal open class RemoteClientSessionOperations(
     private val clientCapabilities: ClientCapabilities,
 ) : ClientSessionOperations {
     /**
-     * Throws if nothing may be sent for this session yet. Called before every operation except [notify], which
-     * subclasses check themselves.
+     * Throws if nothing may be sent for this session yet. Every operation but [notify] calls it.
      */
     protected open fun checkCanSend() {}
 
@@ -36,15 +33,10 @@ internal open class RemoteClientSessionOperations(
     }
 
     /**
-     * Sends the update of [event] for this root session.
-     *
-     * Every root path sends through here (`client.notify`, the prompt flow and replay), so the subagents rules for a
-     * root are checked once, here:
-     * - a [SessionUpdate.SubagentUpdate] is always rejected, because the SDK must see every announcement and grant;
-     * - without the `subagents` client capability, `session_message`, `session_message_chunk` and `session` tool call
-     *   content are rejected. An agent MUST NOT send the messages without it (`docs/protocol/v1/subagents.mdx`,
-     *   "Checking support"; `docs/protocol/v1/initialization.mdx`, "Subagents"), and sends `session` content only to
-     *   a client that advertised it (`docs/protocol/v1/tool-calls.mdx`, "Sessions").
+     * Sends the update of [event] for this root session. Every root path sends through here, the prompt flow and the
+     * replay too, so a root's subagents rules are checked once:
+     * - a [SessionUpdate.SubagentUpdate] is rejected, so the SDK sees every announcement and grant;
+     * - without the `subagents` client capability, the updates that need it are rejected.
      *
      * @throws IllegalArgumentException for a [SessionUpdate.SubagentUpdate]
      * @throws IllegalStateException for an update that needs the missing `subagents` capability, or for
@@ -192,9 +184,8 @@ internal open class RemoteClientSessionOperations(
 }
 
 /**
- * The client operations of [subagent]: requests for the child's session, allowed only while the child is announced and
- * registered, and the subagents routing rule for updates. The child's send state stays in [subagent], which does the
- * sending.
+ * The client operations of [subagent], allowed only while it is announced and registered, with updates routed by the
+ * subagents rule. [subagent] does the sending.
  */
 @OptIn(UnstableApi::class)
 internal class SubagentClientOperations(

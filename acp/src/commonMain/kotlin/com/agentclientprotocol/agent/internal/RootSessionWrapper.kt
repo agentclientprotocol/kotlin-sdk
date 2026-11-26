@@ -50,10 +50,8 @@ internal class RootSessionWrapper(
     override val subagents: AgentSubagents? = if (subagentsSupported) AgentSubagents(this) else null
 
     /**
-     * The supervisor scope of this root's subtree: the collections of its subagents' events run here.
-     *
-     * Created on first use, so a session that never has subagents keeps no job attached to the connection. It is a
-     * connection scope, so the connection's end cancels it.
+     * The scope where the events of this root's subagents are collected. Lazy, so a session without subagents keeps no
+     * job on the connection.
      */
     val subtreeScope: CoroutineScope by lazy { protocol.newConnectionScope("Subagents of session $sessionId") }
 
@@ -66,10 +64,8 @@ internal class RootSessionWrapper(
     private val _isReplaying = atomic(replaying)
 
     /**
-     * Whether the replay window of `session/load` is open: everything sent for this subtree meanwhile goes out
-     * before the load response, so it is history. A subagent announced meanwhile is a replayed one. The window
-     * closes once the transport has accepted the load response, which is where the client's view of history
-     * ends too.
+     * Whether the replay window of `session/load` is open: everything sent for this subtree meanwhile precedes the load
+     * response, so it is history. It closes once the transport has accepted the response.
      */
     val isReplaying: Boolean get() = _isReplaying.value
 
@@ -87,8 +83,7 @@ internal class RootSessionWrapper(
     }
 
     /**
-     * Closes the replay window and starts the collections deferred until then. Called once the transport has
-     * accepted the load response.
+     * Closes the replay window and starts the collections deferred until then.
      */
     fun endReplay() {
         val starts = synchronized(replayLock) {
@@ -99,8 +94,7 @@ internal class RootSessionWrapper(
     }
 
     /**
-     * Cancels the collections of this root's subtree, once the session was closed, its `session/load` failed, or a
-     * re-opening of its id replaced it. The caller removes the subagents themselves.
+     * Cancels the collections of this root's subtree. The caller removes the subagents themselves.
      */
     fun cancelSubtreeScope() {
         subtreeScope.cancel()
@@ -188,10 +182,7 @@ internal class RootSessionWrapper(
 
             if (promptToCancel != null) {
                 logger.trace { "Cancelling prompt" }
-                /*
-                 * Cancelling the turn's job cancels every outgoing request it has in flight, such as a pending
-                 * `fs/read_text_file` or `session/request_permission`, and each of them sends `$/cancel_request`.
-                 */
+                // This cancels the turn's requests in flight too, and each of them sends `$/cancel_request`.
                 promptToCancel.promptJob.cancel()
             }
         } finally {

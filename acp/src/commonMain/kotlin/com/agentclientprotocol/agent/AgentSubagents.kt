@@ -121,7 +121,7 @@ public fun interface AgentSubagentFactory<out S : AgentSubagentSession> {
      * A cancel grant sent from here takes effect at once unless the root replays: a `session/cancel` for the child that
      * arrives before this returns is held for the returned session, see [AgentSubagentSession.cancel].
      *
-     * To replay a recorded child, [AgentSession.replayHistory] passes a factory of its own, see [AgentSubagents].
+     * A replay of a recorded child passes a factory of its own, see [AgentSession.replayHistory].
      */
     public suspend fun createSubagent(context: AgentSubagentContext): S
 }
@@ -216,10 +216,7 @@ public class AgentSubagents internal constructor(private val bound: SessionWrapp
     }
 
     private fun resolveParent(parent: SessionId?): SessionWrapper {
-        /*
-         * A child that isn't announced yet must not announce grandchildren: their announcements would put traffic on
-         * a stream the client doesn't know.
-         */
+        // An unannounced child's children would put traffic on a stream the client doesn't know.
         if (bound is SubagentSessionWrapper) bound.checkAnnounced()
         if (parent == null || parent == bound.sessionId) return bound
 

@@ -118,11 +118,9 @@ public class Protocol(
             checkNotNull(_negotiatedProtocolVersion.value)
 
     /**
-     * Creates a scope for work that belongs to this connection but outlives any single request.
-     * It is cancelled when the protocol closes.
-     *
-     * The scope runs on the dispatcher of the scope passed to this protocol, not on the handler dispatcher, so long
-     * or CPU-bound work in it does not delay handlers.
+     * Creates a scope for work that belongs to this connection but outlives a request; it ends with the protocol. It
+     * uses the dispatcher of the scope passed to this protocol, not the handlers', so slow work in it doesn't delay
+     * handlers.
      */
     internal fun newConnectionScope(name: String): CoroutineScope =
         CoroutineScope(scope.coroutineContext + SupervisorJob(protocolJob) + CoroutineName(name))
@@ -136,10 +134,7 @@ public class Protocol(
             val incomingRequestId = IncomingRequestId(request.requestId)
             val incoming = pendingIncomingRequests.value[incomingRequestId]
             if (incoming == null) {
-                /*
-                 * Not a warning: once the entry is gone this is indistinguishable from the already-answered
-                 * case below. The counterpart cancels while our answer is on its way or already sent.
-                 */
+                // Not a warning: the counterpart may cancel while our answer is on its way or already sent.
                 logger.debug { "Ignoring CancelRequest for unknown request: ${request.requestId}" }
                 return@setNotificationHandler
             }
@@ -184,18 +179,12 @@ public class Protocol(
     ): JsonElement = sendRequestRaw(method, params, sessionId, onResponse = null)
 
     /**
-     * Sends a request like the public [sendRequestRaw], and calls [onResponse] with the result of its successful
-     * response.
+     * Sends a request like the public [sendRequestRaw], and calls [onResponse] with the result of its success response.
      *
-     * [onResponse] is registered before the request is sent. It runs synchronously in the read loop when the
-     * success response arrives: before this call returns, and before the protocol handles the next incoming
-     * message, so it observes where the response falls among the incoming notifications. It is not called for an
-     * error response, after this call is cancelled, or after the protocol closes. If cancellation races with the
-     * arrival of the response, it may still run while this call ends with a [CancellationException].
-     *
-     * [onResponse] must not suspend, block, or throw. Every incoming message of the connection waits while it runs,
-     * so a hook that waits for this connection deadlocks it. A hook that throws is logged, and this call still
-     * returns the response.
+     * [onResponse] runs in the read loop, before this call returns and before the next incoming message, so it sees
+     * where the response falls among the notifications. It doesn't run for an error, a cancelled call or a closed
+     * protocol, but it may have run for a call that then ends with [CancellationException]. It must not suspend, block
+     * or throw, since every message of the connection waits for it; a hook that throws is only logged.
      */
     internal suspend fun sendRequestRaw(
         method: MethodName,
@@ -224,10 +213,7 @@ public class Protocol(
         } catch (ce: CancellationException) {
             logger.trace(ce) { "Request cancelled on this side. Sending CancelRequest notification." }
             if (onResponse != null) {
-                /*
-                 * This call no longer returns a response, so its hook must not observe one that arrives during
-                 * the graceful wait below.
-                 */
+                // This call no longer returns a response, so one arriving in the graceful wait below skips the hook.
                 pendingOutgoingRequests.update {
                     if (it[requestId] === outgoingRequest) it.put(requestId, outgoingRequest.copy(onResponse = null))
                     else it
@@ -269,9 +255,7 @@ public class Protocol(
             throw ce
         }
         finally {
-            /*
-             * Match by the deferred: the cancel path above may have replaced the entry with a copy that drops the hook.
-             */
+            // By the deferred: the cancel path may have replaced the entry with a copy without the hook.
             pendingOutgoingRequests.update { if (it[requestId]?.response === response) it.remove(requestId) else it }
         }
     }
@@ -662,10 +646,7 @@ public class Protocol(
                 )
             }
         } else {
-            /*
-             * Not a warning: a call cancelled on this side drops its pending entry, either after the graceful
-             * wait times out or at once for a batch, and the counterpart's answer may still arrive later.
-             */
+            // Not a warning: a call cancelled here drops its entry, and the counterpart's answer may still arrive.
             logger.debug { "Ignoring response for unknown request ID: ${response.id}" }
         }
     }
@@ -685,8 +666,7 @@ internal value class OutgoingRequestId(val id: RequestId)
 /**
  * A request this side sent and still awaits a response for.
  *
- * @property onResponse called in the read loop with the result of a success response, before [response]
- * completes; see the `onResponse` overload of [Protocol.sendRequestRaw]
+ * @property onResponse the response hook of [Protocol.sendRequestRaw], run before [response] completes
  */
 internal data class OutgoingRequest(
     val response: CompletableDeferred<JsonElement>,
@@ -749,8 +729,8 @@ internal class ResponseSlot(val responseFrameQueued: CompletableDeferred<Unit>) 
     var onSuccessQueued: (() -> Unit)? = null
 
     /**
-     * Called once the transport has accepted the frame, when every slot's [response] is complete: returns
-     * [onSuccessQueued] if [response] is a success, `null` otherwise.
+     * Returns [onSuccessQueued] if [response] is a success. Called once the transport has accepted the frame, when
+     * every response is complete.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     fun successQueuedHook(): (() -> Unit)? =

@@ -32,18 +32,8 @@ import kotlinx.serialization.json.JsonElement
 private val logger = KotlinLogging.logger {}
 
 /**
- * A subagent registered on the connection: its client operations, its own [AgentSubagents], and what the SDK tracks
- * about it.
- *
- * The child is pending until its factory has sent its announcement, the first [SessionUpdate.SubagentUpdate] for it.
- * Until then every other operation fails. If the factory throws or returns before the announcement has been sent,
- * the child is dropped: unregistered, and every operation fails for good. Once announced, it stays registered until
- * subtree cleanup removes it, and then every operation fails for good too. Subtree cleanup drops a child that is still
- * pending too.
- *
- * The events are collected only once the factory has returned an announced child. A child announced while its root's
- * replay window is open is a replayed one: its collection starts once the transport has accepted the load response,
- * and the SDK doesn't track the grants and states sent in the window, because they are history.
+ * A subagent registered on the connection: its client operations, its own [AgentSubagents], and its announcement
+ * phase, cancel grant and work state as the SDK tracks them.
  *
  * @property parent the session whose stream carries this child's [SessionUpdate.SubagentUpdate]s
  */
@@ -59,22 +49,20 @@ internal class SubagentSessionWrapper(
     private enum class Phase { PENDING, ANNOUNCED, DROPPED, REMOVED }
 
     /**
-     * Makes each own [SessionUpdate.SubagentUpdate] send atomic with the phase change and the tracking it implies,
-     * and orders every update sent for the child against dropping or removing it. Held only around non-suspending
-     * sends.
+     * Makes each own [SessionUpdate.SubagentUpdate] send atomic with its tracking, and orders every send against
+     * dropping or removing the child. Held only around non-suspending sends.
      */
     private val lock = SynchronizedObject()
 
     /**
-     * Written under [lock]. Becomes [Phase.ANNOUNCED] only after the announcement's send returned, so an operation
-     * that observes it can't overtake the announcement.
+     * Written under [lock], and [Phase.ANNOUNCED] only once the announcement was sent, so an operation that sees it
+     * can't overtake the announcement.
      */
     private val _phase = atomic(Phase.PENDING)
 
     /**
-     * Whether cancel is currently granted, from the live [SessionUpdate.SubagentUpdate]s sent for this child on any
-     * path. Written under [lock], before the update is sent, so a `session/cancel` that the client sends right after
-     * receiving the grant is routed.
+     * Whether cancel is granted, from the live [SessionUpdate.SubagentUpdate]s sent for this child on any path.
+     * Written under [lock] before the update is sent, so a `session/cancel` right after the grant is routed.
      */
     private val _cancelGranted = atomic(false)
 
@@ -84,20 +72,19 @@ internal class SubagentSessionWrapper(
     private var factoryRunning = false
 
     /**
-     * The last `state` the child's operations sent while the factory ran, used only when the factory throws after the
+     * The last `state` the child's operations sent while the factory ran, for a factory that throws after the
      * announcement. Guarded by [lock].
      */
     private var factoryState: StateUpdate? = null
 
     /**
-     * Whether a `session/cancel` arrived while the factory ran with cancel granted. It is delivered once the factory
-     * returns the session. Guarded by [lock].
+     * Whether a `session/cancel` arrived while the factory ran with cancel granted, to deliver once it returns.
+     * Guarded by [lock].
      */
     private var isCancelLatched = false
 
     /**
-     * The last `state` sent through the session's events, for the rule on a feed that ends while the child is
-     * active. Only the collection writes it: state sent through the client operations is not seen here.
+     * The last `state` sent through the session's events. State sent through the client operations isn't seen here.
      */
     private var eventsState: StateUpdate? = null
 
@@ -106,10 +93,8 @@ internal class SubagentSessionWrapper(
     override val root: RootSessionWrapper = parent.root
 
     /**
-     * Whether this child was announced in its root's replay window.
-     *
-     * It is read once when the child is created and never changes: unlike [RootSessionWrapper.isReplaying], it stays
-     * `true` after the replay window closes.
+     * Whether this child was announced in its root's replay window. Unlike [RootSessionWrapper.isReplaying], it stays
+     * `true` after the window closes.
      */
     private val isReplayed = root.isReplaying
 
@@ -157,17 +142,14 @@ internal class SubagentSessionWrapper(
     }
 
     /**
-     * Runs the `announce` steps after registration: the factory, which must send the announcement, then the
-     * collection. A replayed child's collection waits until the transport has accepted the root's load response.
+     * Runs the factory, which must send the announcement, then starts the collection. A replayed child's collection
+     * waits until the transport has accepted the root's load response.
      */
     suspend fun <S : AgentSubagentSession> announce(factory: AgentSubagentFactory<S>): S {
         val session = try {
             runFactory(factory)
         } catch (e: Throwable) {
-            /*
-             * Only the caller's own cancellation passes as is. A CancellationException from the app while the
-             * caller is active would tear down the caller's scope, usually the parent's prompt flow.
-             */
+            // Only the caller's own cancellation passes as is: the app's would tear down the caller's scope.
             val isAppCancellation = e is CancellationException && currentCoroutineContext().isActive
             if (dropUnlessAnnounced()) {
                 if (e is CancellationException && !isAppCancellation) throw e
@@ -189,8 +171,7 @@ internal class SubagentSessionWrapper(
     }
 
     /**
-     * Runs the factory, then makes the session it returned the target of `session/cancel` and delivers a cancel
-     * latched while it ran.
+     * Runs the factory, then makes its session the target of `session/cancel` and delivers a cancel latched meanwhile.
      */
     private suspend fun <S : AgentSubagentSession> runFactory(factory: AgentSubagentFactory<S>): S {
         synchronized(lock) { factoryRunning = true }
@@ -216,8 +197,7 @@ internal class SubagentSessionWrapper(
     }
 
     /**
-     * Unregisters this child unless its announcement has been sent, and makes its operations fail. Returns whether
-     * the child is dropped.
+     * Unregisters this child unless it was announced, so its operations fail, and returns whether it is dropped.
      */
     private fun dropUnlessAnnounced(): Boolean {
         val dropped = synchronized(lock) {
@@ -235,9 +215,8 @@ internal class SubagentSessionWrapper(
     }
 
     /**
-     * Subtree cleanup for this child, after the caller removed it from the session table: every operation fails from
-     * now on. A child whose factory is still running before its announcement is dropped, so its factory can't send
-     * the announcement any more and its `announce` fails.
+     * Makes every operation fail from now on, once the child has left the session table. A pending child can no longer
+     * be announced, so its `announce` fails.
      */
     fun remove() {
         synchronized(lock) {
@@ -250,15 +229,12 @@ internal class SubagentSessionWrapper(
     }
 
     /**
-     * The factory threw after the announcement: the child exists on the wire, but there is no session to cancel or
-     * collect. Revoke the grant, since the client can't learn otherwise that its cancel is ignored, and report
-     * `unknown` if the factory left the child active.
-     *
-     * The send doesn't suspend, so a cancelled caller doesn't prevent it. Nothing is sent once the root's subtree is
-     * being torn down, and a failed send is only logged. In the replay window there is nothing to correct: history
-     * grants are never in effect, and the client treats the child's state as unconfirmed after the load anyway.
+     * The factory threw after the announcement, so there is no session to cancel or collect: revokes the grant, since
+     * the client couldn't learn otherwise that its cancel is ignored, and reports `unknown` if the factory left the
+     * child active. It doesn't suspend, so it runs for a cancelled caller too.
      */
     private fun reportFactoryFailure() {
+        // Grants and states sent in the replay window are history, so there is nothing to correct.
         if (root.isReplaying || !root.subtreeScope.isActive) return
         runCatching { sendFactoryFailureCorrection() }
             .onFailure { logger.debug(it) { "Could not correct subagent $sessionId after its factory failed" } }
@@ -273,10 +249,7 @@ internal class SubagentSessionWrapper(
                 }
                 null
             } catch (e: CancellationException) {
-                /*
-                 * A cancellation thrown by the app's flow while this job is still active is a feed failure. Only the
-                 * cancellation of this job ends the collection as cancelled.
-                 */
+                // A cancellation from the app's flow while this job is active is a feed failure.
                 if (currentCoroutineContext().isActive) e else throw e
             } catch (e: Throwable) {
                 e
@@ -286,10 +259,8 @@ internal class SubagentSessionWrapper(
     }
 
     /**
-     * The events completed, or failed with [failure].
-     *
-     * A feed that ends while the last state it sent is active owes `unknown`: the client can no longer observe the
-     * child, and the SDK doesn't invent an outcome. The child stays registered.
+     * Reports `unknown` if the events, which completed or failed with [failure], ended while the last state they sent
+     * is active, since the client can no longer observe the child. The child stays registered.
      */
     private suspend fun onFeedEnd(failure: Throwable?) {
         if (failure != null) {
@@ -298,17 +269,15 @@ internal class SubagentSessionWrapper(
             logger.debug { "Events of subagent $sessionId completed" }
         }
 
-        // A collection the SDK cancelled is torn down with its parent or the connection, and owes nothing.
+        // A collection that the SDK cancelled owes nothing.
         if (!currentCoroutineContext().isActive || !eventsState.isActiveState()) return
         runCatching { sendUnknownState() }
             .onFailure { logger.debug(it) { "Could not report subagent $sessionId unknown after its events ended" } }
     }
 
     /**
-     * Serves `session/cancel` for this child: calls the session's [AgentSubagentSession.cancel] while the cancel
-     * grant is in effect, and otherwise ignores it, because a notification can't get an error. While the factory
-     * runs with cancel granted, the cancel is latched instead, and delivered once the factory returns. The SDK
-     * neither stops the collection nor reports an outcome: the app reports it through the events.
+     * Serves `session/cancel` for this child: calls [AgentSubagentSession.cancel] while the grant is in effect,
+     * latches it while the factory runs, and otherwise ignores it, because a notification can't get an error.
      */
     suspend fun cancel() {
         val session = _session.value ?: latchCancel() ?: return
@@ -320,8 +289,8 @@ internal class SubagentSessionWrapper(
     }
 
     /**
-     * Handles a `session/cancel` that found no session: latches it if the factory is running with cancel granted,
-     * and ignores it otherwise. Returns the session if the factory has returned it meanwhile.
+     * Latches a `session/cancel` that found no session if the factory runs with cancel granted. Returns the session if
+     * the factory returned it meanwhile.
      */
     private fun latchCancel(): AgentSubagentSession? {
         val latched = synchronized(lock) {
@@ -360,10 +329,10 @@ internal class SubagentSessionWrapper(
     }
 
     /**
-     * Sends a non-subagent update of this child on its own stream, for [SubagentClientOperations.notify].
+     * Sends an update other than this child's own [SessionUpdate.SubagentUpdate] on the child's stream.
      */
     fun sendPlainUpdate(notification: SessionUpdate, _meta: JsonElement?) {
-        // Under the lock, so nothing is sent for the child once subtree cleanup has removed it.
+        // Under the lock, so nothing is sent once the child was removed.
         synchronized(lock) {
             checkAnnounced()
             AcpMethod.ClientMethods.V1.SessionUpdate(protocol, SessionNotification(sessionId, notification, _meta))
@@ -371,8 +340,7 @@ internal class SubagentSessionWrapper(
     }
 
     /**
-     * Sends this child's own [SessionUpdate.SubagentUpdate] on the parent's stream, for
-     * [SubagentClientOperations.notify].
+     * Sends this child's own [SessionUpdate.SubagentUpdate] on the parent's stream.
      */
     fun sendOwnUpdate(update: SessionUpdate.SubagentUpdate, _meta: JsonElement?) {
         synchronized(lock) { sendOwnUpdateLocked(update, _meta) }
@@ -399,10 +367,8 @@ internal class SubagentSessionWrapper(
     }
 
     /**
-     * Sends a [SessionUpdate.SubagentUpdate] for this child on the parent's stream. The caller holds [lock].
-     *
-     * What it sends in the root's replay window is history: it neither grants cancel nor counts as the
-     * factory's last state.
+     * Sends a [SessionUpdate.SubagentUpdate] for this child on the parent's stream, with [lock] held. In the root's
+     * replay window it is history: it neither grants cancel nor counts as the factory's last state.
      */
     private fun sendOwnUpdateLocked(update: SessionUpdate.SubagentUpdate, _meta: JsonElement?) {
         checkRegistered()
@@ -429,8 +395,7 @@ internal class SubagentSessionWrapper(
 }
 
 /**
- * Whether this last known state shows the child working, so a feed that can no longer report on it owes `unknown`.
- * An unrecognized state counts as active.
+ * Whether this last known state shows the child working. An unrecognized state counts as active.
  */
 private fun StateUpdate?.isActiveState(): Boolean = when (this) {
     is StateUpdate.Running, is StateUpdate.RequiresAction, is StateUpdate.Other -> true
