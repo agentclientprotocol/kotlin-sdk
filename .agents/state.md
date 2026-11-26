@@ -476,8 +476,19 @@ Outside this PR: #5, #20.
   `IncomingRequest` flag → `reply.isCompleted`; one `withContext` via private `RequestHandler`; graceful-wait ladder
   → one `runCatching` (warn kept); `onSuccessQueued` → `onResponseQueued`; Protocol 738→703; `check` green 1st run.
   Follow-ups: batch identity guard (:319) awaits #7/batch decision; `setNotificationHandlerRaw` keeps its wrapper.
-Next slice: S6 #21 readability (Reg 3, 5, 8, Holder 1, Root 1, 2, Subagent 2, 3, CS1, SW2, M1–M4, B1; NOT Reg 4,
-Reg 14, Subagent 1, Subagent 4, PP 1, SW1). After S6 the no-decision list is done except #7/#13/#17 (rule pending).
+- S6 #21 — `8ab487f` (client internals: Reg 3, 5, 8, Holder 1, Root 1, 2, Subagent 2, 3), `9892f3a` (CS1),
+  `719be24` (SW2: `sendOnOwnStream`/`sendOnParentStream`/`…Locked`), `878f3ad` (M1–M4), `9a999ff` (B1); all applied;
+  no `.api` change; `check` green (2nd run, JS flake). Left for the user: Reg 4, Reg 14, Subagent 1, Subagent 4,
+  PP 1 (if #19 rejected), SW1 (premise wrong). Design spec still uses old names (S3/S6 follow-up; ask the user).
+NO-DECISION LIST DONE (D1, S1, S1b, S1c, S2–S6). Remaining: #7/#13/#17 + lock changes (rule pending, see below);
+#2/#3, #12, #18, #19 (user decisions); #5, #20 outside PR.
+- CAS-vs-locks: the user summarised the criteria (side effects; rerun cost; contention). Orchestrator added the
+  order: 0 forced by side effect/multi-variable invariant → 1 cost × P(conflict) (window = lambda duration) →
+  2 contention (writers per atomic) → 3 where it runs (nesting, read loop, suspension) → 4 readability; and a
+  per-site table (Protocol, phases: CAS; agent SessionTable: tie → lock + snapshot; client registry: lock (forced)
+  or #18; Elicitation: lock; SubagentPendingPermissions: lock if #19 window stays; PromptSession: Mutex; replay
+  window: CAS or `@Volatile`, form B nested a lock). Waiting: adopt as AGENTS.md "Concurrency primitives" and
+  plan lock slices (agent SessionTable first, then a client-registry assessment)?
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
