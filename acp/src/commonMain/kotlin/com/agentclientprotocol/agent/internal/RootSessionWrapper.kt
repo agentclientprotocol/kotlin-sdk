@@ -11,8 +11,9 @@ import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.atomicfu.atomic
-import kotlinx.atomicfu.locks.SynchronizedObject
-import kotlinx.atomicfu.locks.synchronized
+import kotlinx.atomicfu.updateAndGet
+import kotlinx.collections.immutable.PersistentList
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -55,24 +56,23 @@ internal class RootSessionWrapper(
      */
     val subtreeScope: CoroutineScope by lazy { protocol.newConnectionScope("Subagents of session $sessionId") }
 
-    private val replayLock = SynchronizedObject()
-
     /**
      * The collection starts waiting for the replay window to close, or `null` once it is closed.
      */
-    private var startsAfterReplay: MutableList<() -> Unit>? = if (replaying) mutableListOf() else null
+    private val startsAfterReplay = atomic<PersistentList<() -> Unit>?>(if (replaying) persistentListOf() else null)
 
     /**
      * Whether the replay window of `session/load` is open: everything sent for this subtree meanwhile precedes the load
      * response, so it is history. It closes once the transport has accepted the response.
      */
-    val isReplaying: Boolean get() = synchronized(replayLock) { startsAfterReplay != null }
+    val isReplaying: Boolean get() = startsAfterReplay.value != null
 
     /**
      * Runs [start] now, or when the replay window closes if it is still open.
      */
     fun startAfterReplay(start: () -> Unit) {
-        val deferred = synchronized(replayLock) { startsAfterReplay?.add(start) != null }
+        // A closed window stays null, so `start` runs now; an open one keeps it for endReplay.
+        val deferred = startsAfterReplay.updateAndGet { it?.add(start) } != null
         if (!deferred) start()
     }
 
@@ -80,8 +80,7 @@ internal class RootSessionWrapper(
      * Closes the replay window and starts the collections deferred until then.
      */
     fun endReplay() {
-        val starts = synchronized(replayLock) { startsAfterReplay.also { startsAfterReplay = null } }
-        starts?.forEach { it() }
+        startsAfterReplay.getAndSet(null)?.forEach { it() }
     }
 
     /**
