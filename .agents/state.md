@@ -457,7 +457,10 @@ Outside this PR: #5, #20.
   `replayLock` inside the child's lock (new nesting; nothing is taken under `replayLock`, so no deadlock).
 - User asked (2026-11-26) why not complete a deferred under `synchronized`: answered (inline completion handlers,
   inline resumption on non-dispatching dispatchers, reentrancy; decide under the lock, complete after).
-Next slice: S2 #8, then S3 #9, S4 #14, S5 #15+#16, S6 #21.
+- S2 #8 — `46a28bf` — `client/internal/CallApp.kt` `callApp(what) {}`; 4 client sites converted; agent sites and
+  `SubagentSessionHolder.completeOpening` left (don't fit without a behaviour change); Holder 5 renames
+  (`failSetupUnlessStopped`, `failOpeningUnlessStopped`); −9 LOC; `check` green 1st run.
+Next slice: S3 #9, then S4 #14, S5 #15+#16, S6 #21.
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
