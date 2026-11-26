@@ -398,118 +398,22 @@ internal object SessionUpdateSerializer : KSerializer<SessionUpdate> {
     override fun serialize(encoder: Encoder, value: SessionUpdate) {
         val jsonEncoder = encoder as JsonEncoder
         val jsonObject = when (value) {
-            is SessionUpdate.UserMessageChunk -> {
-                val base = ACPJson.encodeToJsonElement(SessionUpdate.UserMessageChunk.serializer(), value).jsonObject
-                buildJsonObject {
-                    put(SESSION_UPDATE_DISCRIMINATOR, "user_message_chunk")
-                    base.forEach { (k, v) -> put(k, v) }
-                }
-            }
-            is SessionUpdate.AgentMessageChunk -> {
-                val base = ACPJson.encodeToJsonElement(SessionUpdate.AgentMessageChunk.serializer(), value).jsonObject
-                buildJsonObject {
-                    put(SESSION_UPDATE_DISCRIMINATOR, "agent_message_chunk")
-                    base.forEach { (k, v) -> put(k, v) }
-                }
-            }
-            is SessionUpdate.AgentThoughtChunk -> {
-                val base = ACPJson.encodeToJsonElement(SessionUpdate.AgentThoughtChunk.serializer(), value).jsonObject
-                buildJsonObject {
-                    put(SESSION_UPDATE_DISCRIMINATOR, "agent_thought_chunk")
-                    base.forEach { (k, v) -> put(k, v) }
-                }
-            }
-            is SessionUpdate.ToolCall -> {
-                val base = ACPJson.encodeToJsonElement(SessionUpdate.ToolCall.serializer(), value).jsonObject
-                buildJsonObject {
-                    put(SESSION_UPDATE_DISCRIMINATOR, "tool_call")
-                    base.forEach { (k, v) -> put(k, v) }
-                }
-            }
-            is SessionUpdate.ToolCallUpdate -> {
-                val base = ACPJson.encodeToJsonElement(SessionUpdate.ToolCallUpdate.serializer(), value).jsonObject
-                buildJsonObject {
-                    put(SESSION_UPDATE_DISCRIMINATOR, "tool_call_update")
-                    base.forEach { (k, v) -> put(k, v) }
-                }
-            }
-            is SessionUpdate.PlanUpdate -> {
-                val base = ACPJson.encodeToJsonElement(SessionUpdate.PlanUpdate.serializer(), value).jsonObject
-                buildJsonObject {
-                    put(SESSION_UPDATE_DISCRIMINATOR, "plan")
-                    base.forEach { (k, v) -> put(k, v) }
-                }
-            }
-            is SessionUpdate.PlanUpdateV2 -> {
-                val base = ACPJson.encodeToJsonElement(SessionUpdate.PlanUpdateV2.serializer(), value).jsonObject
-                buildJsonObject {
-                    put(SESSION_UPDATE_DISCRIMINATOR, "plan_update")
-                    base.forEach { (k, v) -> put(k, v) }
-                }
-            }
-            is SessionUpdate.PlanRemoved -> {
-                val base = ACPJson.encodeToJsonElement(SessionUpdate.PlanRemoved.serializer(), value).jsonObject
-                buildJsonObject {
-                    put(SESSION_UPDATE_DISCRIMINATOR, "plan_removed")
-                    base.forEach { (k, v) -> put(k, v) }
-                }
-            }
-            is SessionUpdate.AvailableCommandsUpdate -> {
-                val base = ACPJson.encodeToJsonElement(SessionUpdate.AvailableCommandsUpdate.serializer(), value).jsonObject
-                buildJsonObject {
-                    put(SESSION_UPDATE_DISCRIMINATOR, "available_commands_update")
-                    base.forEach { (k, v) -> put(k, v) }
-                }
-            }
-            is SessionUpdate.CurrentModeUpdate -> {
-                val base = ACPJson.encodeToJsonElement(SessionUpdate.CurrentModeUpdate.serializer(), value).jsonObject
-                buildJsonObject {
-                    put(SESSION_UPDATE_DISCRIMINATOR, "current_mode_update")
-                    base.forEach { (k, v) -> put(k, v) }
-                }
-            }
-            is SessionUpdate.ConfigOptionUpdate -> {
-                val base = ACPJson.encodeToJsonElement(SessionUpdate.ConfigOptionUpdate.serializer(), value).jsonObject
-                buildJsonObject {
-                    put(SESSION_UPDATE_DISCRIMINATOR, "config_option_update")
-                    base.forEach { (k, v) -> put(k, v) }
-                }
-            }
-            is SessionUpdate.SessionInfoUpdate -> {
-                val base = ACPJson.encodeToJsonElement(SessionUpdate.SessionInfoUpdate.serializer(), value).jsonObject
-                buildJsonObject {
-                    put(SESSION_UPDATE_DISCRIMINATOR, "session_info_update")
-                    base.forEach { (k, v) -> put(k, v) }
-                }
-            }
-            is SessionUpdate.UsageUpdate -> {
-                val base = ACPJson.encodeToJsonElement(SessionUpdate.UsageUpdate.serializer(), value).jsonObject
-                buildJsonObject {
-                    put(SESSION_UPDATE_DISCRIMINATOR, "usage_update")
-                    base.forEach { (k, v) -> put(k, v) }
-                }
-            }
-            is SessionUpdate.SubagentUpdate -> {
-                val base = ACPJson.encodeToJsonElement(SessionUpdate.SubagentUpdate.serializer(), value).jsonObject
-                buildJsonObject {
-                    put(SESSION_UPDATE_DISCRIMINATOR, "subagent_update")
-                    base.forEach { (k, v) -> put(k, v) }
-                }
-            }
-            is SessionUpdate.SessionMessage -> {
-                val base = ACPJson.encodeToJsonElement(SessionUpdate.SessionMessage.serializer(), value).jsonObject
-                buildJsonObject {
-                    put(SESSION_UPDATE_DISCRIMINATOR, "session_message")
-                    base.forEach { (k, v) -> put(k, v) }
-                }
-            }
-            is SessionUpdate.SessionMessageChunk -> {
-                val base = ACPJson.encodeToJsonElement(SessionUpdate.SessionMessageChunk.serializer(), value).jsonObject
-                buildJsonObject {
-                    put(SESSION_UPDATE_DISCRIMINATOR, "session_message_chunk")
-                    base.forEach { (k, v) -> put(k, v) }
-                }
-            }
+            is SessionUpdate.UserMessageChunk -> tagged("user_message_chunk", SessionUpdate.UserMessageChunk.serializer(), value)
+            is SessionUpdate.AgentMessageChunk -> tagged("agent_message_chunk", SessionUpdate.AgentMessageChunk.serializer(), value)
+            is SessionUpdate.AgentThoughtChunk -> tagged("agent_thought_chunk", SessionUpdate.AgentThoughtChunk.serializer(), value)
+            is SessionUpdate.ToolCall -> tagged("tool_call", SessionUpdate.ToolCall.serializer(), value)
+            is SessionUpdate.ToolCallUpdate -> tagged("tool_call_update", SessionUpdate.ToolCallUpdate.serializer(), value)
+            is SessionUpdate.PlanUpdate -> tagged("plan", SessionUpdate.PlanUpdate.serializer(), value)
+            is SessionUpdate.PlanUpdateV2 -> tagged("plan_update", SessionUpdate.PlanUpdateV2.serializer(), value)
+            is SessionUpdate.PlanRemoved -> tagged("plan_removed", SessionUpdate.PlanRemoved.serializer(), value)
+            is SessionUpdate.AvailableCommandsUpdate -> tagged("available_commands_update", SessionUpdate.AvailableCommandsUpdate.serializer(), value)
+            is SessionUpdate.CurrentModeUpdate -> tagged("current_mode_update", SessionUpdate.CurrentModeUpdate.serializer(), value)
+            is SessionUpdate.ConfigOptionUpdate -> tagged("config_option_update", SessionUpdate.ConfigOptionUpdate.serializer(), value)
+            is SessionUpdate.SessionInfoUpdate -> tagged("session_info_update", SessionUpdate.SessionInfoUpdate.serializer(), value)
+            is SessionUpdate.UsageUpdate -> tagged("usage_update", SessionUpdate.UsageUpdate.serializer(), value)
+            is SessionUpdate.SubagentUpdate -> tagged("subagent_update", SessionUpdate.SubagentUpdate.serializer(), value)
+            is SessionUpdate.SessionMessage -> tagged("session_message", SessionUpdate.SessionMessage.serializer(), value)
+            is SessionUpdate.SessionMessageChunk -> tagged("session_message_chunk", SessionUpdate.SessionMessageChunk.serializer(), value)
             is SessionUpdate.UnknownSessionUpdate -> {
                 // For unknown, use the stored type and raw JSON
                 buildJsonObject {
@@ -521,6 +425,17 @@ internal object SessionUpdateSerializer : KSerializer<SessionUpdate> {
             }
         }
         jsonEncoder.encodeJsonElement(jsonObject)
+    }
+
+    /**
+     * Encodes a known variant with [serializer] and puts the discriminator [type] first.
+     */
+    private fun <T> tagged(type: String, serializer: KSerializer<T>, value: T): JsonObject {
+        val base = ACPJson.encodeToJsonElement(serializer, value).jsonObject
+        return buildJsonObject {
+            put(SESSION_UPDATE_DISCRIMINATOR, type)
+            base.forEach { (k, v) -> put(k, v) }
+        }
     }
 
     override fun deserialize(decoder: Decoder): SessionUpdate {

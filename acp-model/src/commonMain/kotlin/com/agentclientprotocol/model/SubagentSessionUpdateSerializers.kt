@@ -17,7 +17,7 @@ import kotlinx.serialization.json.buildJsonObject
 /*
  * Serializers of the subagent session updates. Field semantics follow the Rust schema's serde attributes:
  * `DefaultOnError` fields decode a malformed value as absent, and `cwd` and `additionalDirectories` are
- * strict. A required field that is missing or malformed fails the update.
+ * strict, decoded by the `decodeStrict*` helpers. A required field that is missing or malformed fails the update.
  */
 
 internal object SubagentUpdateSerializer : JsonObjectSerializer<SessionUpdate.SubagentUpdate>(
@@ -25,13 +25,13 @@ internal object SubagentUpdateSerializer : JsonObjectSerializer<SessionUpdate.Su
 ) {
     override fun decode(json: Json, obj: JsonObject): SessionUpdate.SubagentUpdate = SessionUpdate.SubagentUpdate(
         sessionId = SessionId(obj.requiredString("sessionId")),
-        title = obj.lenientMaybeString("title") { it },
-        description = obj.lenientMaybeString("description") { it },
+        title = obj.decodeMaybeUndefinedString("title") { it },
+        description = obj.decodeMaybeUndefinedString("description") { it },
         capabilities = obj.decodeMaybeUndefined(json, "capabilities", SubagentSessionCapabilities.serializer()),
         state = obj.decodeMaybeUndefined(json, "state", StateUpdate.serializer()),
-        cwd = obj.strictMaybeString("cwd"),
-        additionalDirectories = obj.strictMaybeStringList("additionalDirectories"),
-        _meta = obj.lenientMaybeMeta(),
+        cwd = obj.decodeStrictMaybeUndefinedString("cwd"),
+        additionalDirectories = obj.decodeStrictMaybeUndefinedStringList("additionalDirectories"),
+        _meta = obj.decodeMaybeUndefinedMeta(),
     )
 
     override fun encode(json: Json, value: SessionUpdate.SubagentUpdate): JsonObject = buildJsonObject {
@@ -56,12 +56,12 @@ internal object SessionMessageSerializer : JsonObjectSerializer<SessionUpdate.Se
 ) {
     override fun decode(json: Json, obj: JsonObject): SessionUpdate.SessionMessage = SessionUpdate.SessionMessage(
         messageId = MessageId(obj.requiredString("messageId")),
-        senderSessionId = obj.lenientMaybeString("senderSessionId", ::SessionId),
-        recipientSessionId = obj.lenientMaybeString("recipientSessionId", ::SessionId),
-        senderMessageId = obj.lenientMaybeString("senderMessageId", ::MessageId),
-        recipientMessageId = obj.lenientMaybeString("recipientMessageId", ::MessageId),
+        senderSessionId = obj.decodeMaybeUndefinedString("senderSessionId", ::SessionId),
+        recipientSessionId = obj.decodeMaybeUndefinedString("recipientSessionId", ::SessionId),
+        senderMessageId = obj.decodeMaybeUndefinedString("senderMessageId", ::MessageId),
+        recipientMessageId = obj.decodeMaybeUndefinedString("recipientMessageId", ::MessageId),
         content = obj.decodeMaybeUndefinedList(json, "content", ContentBlock.serializer()),
-        _meta = obj.lenientMaybeMeta(),
+        _meta = obj.decodeMaybeUndefinedMeta(),
     )
 
     override fun encode(json: Json, value: SessionUpdate.SessionMessage): JsonObject = buildJsonObject {
@@ -103,7 +103,7 @@ private fun JsonObject.requiredString(key: String): String =
  *
  * The check is explicit because `ACPJson` is lenient and would read `false` or `42` as text.
  */
-private fun <T> JsonObject.lenientMaybeString(key: String, wrap: (String) -> T): MaybeUndefined<T> =
+private fun <T> JsonObject.decodeMaybeUndefinedString(key: String, wrap: (String) -> T): MaybeUndefined<T> =
     when (val element = this[key]) {
         null -> MaybeUndefined.Undefined
         is JsonNull -> MaybeUndefined.Null
@@ -113,7 +113,7 @@ private fun <T> JsonObject.lenientMaybeString(key: String, wrap: (String) -> T):
 /**
  * Decodes a tri-state string field where a value that is not a JSON string fails the update.
  */
-private fun JsonObject.strictMaybeString(key: String): MaybeUndefined<String> =
+private fun JsonObject.decodeStrictMaybeUndefinedString(key: String): MaybeUndefined<String> =
     when (val element = this[key]) {
         null -> MaybeUndefined.Undefined
         is JsonNull -> MaybeUndefined.Null
@@ -124,7 +124,7 @@ private fun JsonObject.strictMaybeString(key: String): MaybeUndefined<String> =
  * Decodes a tri-state string list field where a non-array value, or any item that is not a JSON string,
  * fails the update.
  */
-private fun JsonObject.strictMaybeStringList(key: String): MaybeUndefined<List<String>> =
+private fun JsonObject.decodeStrictMaybeUndefinedStringList(key: String): MaybeUndefined<List<String>> =
     when (val element = this[key]) {
         null -> MaybeUndefined.Undefined
         is JsonNull -> MaybeUndefined.Null
@@ -137,7 +137,7 @@ private fun JsonObject.strictMaybeStringList(key: String): MaybeUndefined<List<S
 /**
  * Decodes a tri-state `_meta` where a value that is not a JSON object decodes as absent.
  */
-private fun JsonObject.lenientMaybeMeta(): MaybeUndefined<JsonElement> =
+private fun JsonObject.decodeMaybeUndefinedMeta(): MaybeUndefined<JsonElement> =
     when (val element = this["_meta"]) {
         null -> MaybeUndefined.Undefined
         is JsonNull -> MaybeUndefined.Null

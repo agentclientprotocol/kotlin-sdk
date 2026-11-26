@@ -110,10 +110,6 @@ internal object LenientSubagentCapabilitiesSerializer : KSerializer<SubagentCapa
         val jsonDecoder = decoder as JsonDecoder
         val element = jsonDecoder.decodeJsonElement()
         if (element is JsonNull) return null
-        return try {
-            jsonDecoder.json.decodeFromJsonElement(delegate, element)
-        } catch (_: Exception) {
-            null
-        }
+        return jsonDecoder.json.decodeLenientlyOrNull(delegate, element)
     }
 }

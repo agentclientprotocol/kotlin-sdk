@@ -89,26 +89,22 @@ public fun <T> MaybeUndefined<T>.update(previous: T?): T? = when (this) {
  * `ACPJson` is lenient and decodes a JSON number or boolean as a string, so a string field that must
  * reject them checks the element itself.
  */
-internal fun <T> JsonObject.decodeMaybeUndefined(
+internal fun <T : Any> JsonObject.decodeMaybeUndefined(
     json: Json,
     key: String,
     deserializer: DeserializationStrategy<T>,
 ): MaybeUndefined<T> {
     val element = this[key] ?: return MaybeUndefined.Undefined
     if (element is JsonNull) return MaybeUndefined.Null
-    return try {
-        MaybeUndefined.Value(json.decodeFromJsonElement(deserializer, element))
-    } catch (_: Exception) {
-        // Broad: tree decoding reports malformed shapes through several exception types.
-        MaybeUndefined.Undefined
-    }
+    val value = json.decodeLenientlyOrNull(deserializer, element) ?: return MaybeUndefined.Undefined
+    return MaybeUndefined.Value(value)
 }
 
 /**
  * Decodes a tri-state list field, skipping items that fail to decode, as Rust's `VecSkipError` does.
  * A value that is not an array decodes as [MaybeUndefined.Undefined].
  */
-internal fun <T> JsonObject.decodeMaybeUndefinedList(
+internal fun <T : Any> JsonObject.decodeMaybeUndefinedList(
     json: Json,
     key: String,
     itemDeserializer: DeserializationStrategy<T>,
@@ -122,17 +118,10 @@ internal fun <T> JsonObject.decodeMaybeUndefinedList(
 /**
  * Decodes the items of this array, skipping those that fail to decode, as Rust's `VecSkipError` does.
  */
-internal fun <T> JsonArray.decodeSkippingInvalid(
+internal fun <T : Any> JsonArray.decodeSkippingInvalid(
     json: Json,
     itemDeserializer: DeserializationStrategy<T>,
-): List<T> = mapNotNull { item ->
-    try {
-        json.decodeFromJsonElement(itemDeserializer, item)
-    } catch (_: Exception) {
-        // Broad: tree decoding reports malformed shapes through several exception types.
-        null
-    }
-}
+): List<T> = mapNotNull { item -> json.decodeLenientlyOrNull(itemDeserializer, item) }
 
 /**
  * Encodes a tri-state field: [MaybeUndefined.Undefined] writes nothing and [MaybeUndefined.Null]

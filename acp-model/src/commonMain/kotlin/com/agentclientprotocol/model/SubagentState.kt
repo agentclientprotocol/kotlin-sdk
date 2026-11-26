@@ -154,6 +154,20 @@ private const val USAGE_KEY = "usage"
 private const val META_KEY = "_meta"
 private const val ERROR_KEY = "error"
 
+/*
+ * The wire names of the known states and stop reasons, shared by both directions so that they round-trip.
+ */
+private const val STATE_RUNNING = "running"
+private const val STATE_IDLE = "idle"
+private const val STATE_REQUIRES_ACTION = "requires_action"
+private const val STATE_UNKNOWN = "unknown"
+private const val STOP_END_TURN = "end_turn"
+private const val STOP_MAX_TOKENS = "max_tokens"
+private const val STOP_MAX_TURN_REQUESTS = "max_turn_requests"
+private const val STOP_REFUSAL = "refusal"
+private const val STOP_CANCELLED = "cancelled"
+private const val STOP_ERROR = "error"
+
 /**
  * Fields of an idle snapshot that [IdleStopReason.Other] never holds.
  */
@@ -168,26 +182,26 @@ internal object StateUpdateSerializer : JsonObjectSerializer<StateUpdate>(
             ?: throw SerializationException("'$STATE_KEY' discriminator must be a string in StateUpdate")
 
         return when (state) {
-            "running" -> StateUpdate.Running(obj.lenientMeta())
-            "idle" -> StateUpdate.Idle(
+            STATE_RUNNING -> StateUpdate.Running(obj.lenientMeta())
+            STATE_IDLE -> StateUpdate.Idle(
                 stopReason = decodeIdleStopReason(json, obj),
                 usage = obj.decodeOrNull(json, USAGE_KEY, Usage.serializer()),
                 _meta = obj.lenientMeta(),
             )
 
-            "requires_action" -> StateUpdate.RequiresAction(obj.lenientMeta())
-            "unknown" -> StateUpdate.Unknown(obj.lenientMeta())
+            STATE_REQUIRES_ACTION -> StateUpdate.RequiresAction(obj.lenientMeta())
+            STATE_UNKNOWN -> StateUpdate.Unknown(obj.lenientMeta())
             else -> StateUpdate.Other(state, JsonObject(obj - STATE_KEY))
         }
     }
 
     override fun encode(json: Json, value: StateUpdate): JsonObject = buildJsonObject {
         when (value) {
-            is StateUpdate.Running -> putState("running", value._meta)
-            is StateUpdate.RequiresAction -> putState("requires_action", value._meta)
-            is StateUpdate.Unknown -> putState("unknown", value._meta)
+            is StateUpdate.Running -> putState(STATE_RUNNING, value._meta)
+            is StateUpdate.RequiresAction -> putState(STATE_REQUIRES_ACTION, value._meta)
+            is StateUpdate.Unknown -> putState(STATE_UNKNOWN, value._meta)
             is StateUpdate.Idle -> {
-                put(STATE_KEY, JsonPrimitive("idle"))
+                put(STATE_KEY, JsonPrimitive(STATE_IDLE))
                 value.stopReason?.let { encodeIdleStopReason(json, it) }
                 value.usage?.let { put(USAGE_KEY, json.encodeToJsonElement(Usage.serializer(), it)) }
                 value._meta?.let { put(META_KEY, it) }
@@ -213,24 +227,24 @@ internal object StateUpdateSerializer : JsonObjectSerializer<StateUpdate>(
         val stopReason = obj[STOP_REASON_KEY].stringOrNull() ?: return null
 
         return when (stopReason) {
-            "end_turn" -> IdleStopReason.EndTurn
-            "max_tokens" -> IdleStopReason.MaxTokens
-            "max_turn_requests" -> IdleStopReason.MaxTurnRequests
-            "refusal" -> IdleStopReason.Refusal
-            "cancelled" -> IdleStopReason.Cancelled
-            "error" -> IdleStopReason.Error(obj.decodeOrNull(json, ERROR_KEY, JsonRpcError.serializer()))
+            STOP_END_TURN -> IdleStopReason.EndTurn
+            STOP_MAX_TOKENS -> IdleStopReason.MaxTokens
+            STOP_MAX_TURN_REQUESTS -> IdleStopReason.MaxTurnRequests
+            STOP_REFUSAL -> IdleStopReason.Refusal
+            STOP_CANCELLED -> IdleStopReason.Cancelled
+            STOP_ERROR -> IdleStopReason.Error(obj.decodeOrNull(json, ERROR_KEY, JsonRpcError.serializer()))
             else -> IdleStopReason.Other(stopReason, JsonObject(obj - IDLE_SNAPSHOT_KEYS))
         }
     }
 
     private fun JsonObjectBuilder.encodeIdleStopReason(json: Json, stopReason: IdleStopReason) {
         val discriminator = when (stopReason) {
-            IdleStopReason.EndTurn -> "end_turn"
-            IdleStopReason.MaxTokens -> "max_tokens"
-            IdleStopReason.MaxTurnRequests -> "max_turn_requests"
-            IdleStopReason.Refusal -> "refusal"
-            IdleStopReason.Cancelled -> "cancelled"
-            is IdleStopReason.Error -> "error"
+            IdleStopReason.EndTurn -> STOP_END_TURN
+            IdleStopReason.MaxTokens -> STOP_MAX_TOKENS
+            IdleStopReason.MaxTurnRequests -> STOP_MAX_TURN_REQUESTS
+            IdleStopReason.Refusal -> STOP_REFUSAL
+            IdleStopReason.Cancelled -> STOP_CANCELLED
+            is IdleStopReason.Error -> STOP_ERROR
             is IdleStopReason.Other -> stopReason.stopReason
         }
         put(STOP_REASON_KEY, JsonPrimitive(discriminator))

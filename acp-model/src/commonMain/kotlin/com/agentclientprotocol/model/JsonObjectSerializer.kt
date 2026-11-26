@@ -65,13 +65,19 @@ internal fun <T : Any> JsonObject.decodeOrNull(
 ): T? {
     val element = this[key] ?: return null
     if (element is JsonNull) return null
-    return try {
-        json.decodeFromJsonElement(deserializer, element)
+    return json.decodeLenientlyOrNull(deserializer, element)
+}
+
+/**
+ * Decodes [element] with [deserializer], or returns `null` when it fails to decode, for the lenient decoders.
+ */
+internal fun <T : Any> Json.decodeLenientlyOrNull(deserializer: DeserializationStrategy<T>, element: JsonElement): T? =
+    try {
+        decodeFromJsonElement(deserializer, element)
     } catch (_: Exception) {
         // Broad: tree decoding reports malformed shapes through several exception types.
         null
     }
-}
 
 /**
  * The string value of this element, or `null` when it is not a JSON string.
