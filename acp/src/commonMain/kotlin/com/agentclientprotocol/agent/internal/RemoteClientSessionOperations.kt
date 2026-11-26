@@ -204,9 +204,9 @@ internal class SubagentClientOperations(
                 "SubagentUpdate for ${notification.sessionId} cannot be sent through the client operations of " +
                     "subagent $sessionId: announce nested subagents through subagents.announce"
             }
-            subagent.sendOwnUpdate(notification, _meta)
+            subagent.sendOnParentStream(notification, _meta)
         } else {
-            subagent.sendPlainUpdate(notification, _meta)
+            subagent.sendOnOwnStream(notification, _meta)
         }
     }
 }

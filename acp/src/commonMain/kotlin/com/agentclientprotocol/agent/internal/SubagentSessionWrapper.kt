@@ -326,7 +326,7 @@ internal class SubagentSessionWrapper(
     /**
      * Sends an update other than this child's own [SessionUpdate.SubagentUpdate] on the child's stream.
      */
-    fun sendPlainUpdate(notification: SessionUpdate, _meta: JsonElement?) {
+    fun sendOnOwnStream(notification: SessionUpdate, _meta: JsonElement?) {
         // Under the lock, so nothing is sent once the child was removed.
         synchronized(lock) {
             checkAnnounced()
@@ -337,8 +337,8 @@ internal class SubagentSessionWrapper(
     /**
      * Sends this child's own [SessionUpdate.SubagentUpdate] on the parent's stream.
      */
-    fun sendOwnUpdate(update: SessionUpdate.SubagentUpdate, _meta: JsonElement?) {
-        synchronized(lock) { sendOwnUpdateLocked(update, _meta) }
+    fun sendOnParentStream(update: SessionUpdate.SubagentUpdate, _meta: JsonElement?) {
+        synchronized(lock) { sendOnParentStreamLocked(update, _meta) }
     }
 
     private fun sendFactoryFailureCorrection() {
@@ -352,20 +352,20 @@ internal class SubagentSessionWrapper(
                 capabilities = if (revokeGrant) MaybeUndefined.Null else MaybeUndefined.Undefined,
                 state = if (reportUnknown) MaybeUndefined.Value(StateUpdate.Unknown()) else MaybeUndefined.Undefined,
             )
-            sendOwnUpdateLocked(correction, null)
+            sendOnParentStreamLocked(correction, null)
         }
     }
 
     private fun sendUnknownState() {
         val update = SessionUpdate.SubagentUpdate(sessionId, state = MaybeUndefined.Value(StateUpdate.Unknown()))
-        synchronized(lock) { sendOwnUpdateLocked(update, null) }
+        synchronized(lock) { sendOnParentStreamLocked(update, null) }
     }
 
     /**
      * Sends a [SessionUpdate.SubagentUpdate] for this child on the parent's stream, with [lock] held. In the root's
      * replay window it is history: it neither grants cancel nor counts as the factory's last state.
      */
-    private fun sendOwnUpdateLocked(update: SessionUpdate.SubagentUpdate, _meta: JsonElement?) {
+    private fun sendOnParentStreamLocked(update: SessionUpdate.SubagentUpdate, _meta: JsonElement?) {
         checkRegistered()
 
         val isLive = !root.isReplaying
