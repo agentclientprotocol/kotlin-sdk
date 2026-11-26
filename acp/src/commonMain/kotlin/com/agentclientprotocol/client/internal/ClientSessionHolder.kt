@@ -89,14 +89,14 @@ internal sealed class QueuedItem {
  *
  * @property protocol the connection, for the subagents' `session/cancel`
  * @property openingScope the connection's scope for the subagents' openings, so they don't run on the handler thread
- * @property failSessionTree fails a subagent's holder and every holder below it, unless its opening was already
+ * @property failSubagentTree fails a subagent's holder and every holder below it, unless its opening was already
  * stopped
  */
 internal sealed class ClientSessionHolder(
     val sessionId: SessionId,
     val protocol: Protocol,
     val openingScope: CoroutineScope,
-    val failSessionTree: suspend (ClientSessionHolder, Throwable) -> Boolean,
+    val failSubagentTree: suspend (SubagentSessionHolder, Throwable) -> Boolean,
 ) {
     /**
      * The subagents of a holder in one atomic state, so [sealChildren] seals both collections at once.
@@ -145,13 +145,6 @@ internal sealed class ClientSessionHolder(
     val isFailed: Boolean
         @OptIn(ExperimentalCoroutinesApi::class)
         get() = _session.isCompleted && _session.getCompletionExceptionOrNull() != null
-
-    /**
-     * Whether this holder still owns its session id. A failed root gives it up. A failed subagent keeps it while its
-     * parent lives, so an update on the id stays unconnected and an opening or another announcement of the id is
-     * refused.
-     */
-    abstract val blocksId: Boolean
 
     /**
      * The effective working directory of this holder's session, which its subagents inherit.
@@ -302,7 +295,7 @@ internal sealed class ClientSessionHolder(
                     "so its subagent session $childId can't be set up"
             )
             logger.error { cause.message }
-            failSessionTree(child, cause)
+            failSubagentTree(child, cause)
             return
         }
 
@@ -334,7 +327,7 @@ internal sealed class ClientSessionHolder(
          * the child, and the end of the connection fails nothing.
          */
         val failed = currentCoroutineContext().isActive &&
-            failSessionTree(child, IllegalStateException("Failed to set up subagent session ${child.sessionId}", cause))
+            failSubagentTree(child, IllegalStateException("Failed to set up subagent session ${child.sessionId}", cause))
         if (failed) {
             logger.error(cause) { "Failed to create the operations of subagent session ${child.sessionId}" }
         } else {

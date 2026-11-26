@@ -64,7 +64,7 @@ private class SilentTransport : BaseTransport() {
 
 /**
  * The registration of subagents in [ClientSessionRegistry], driven directly without a wire: the tree of holders, the
- * markers of the root's answer, the blocking rule and the failure cascade.
+ * markers of the root's answer, the ownership of ids and the failure cascade.
  */
 @OptIn(UnstableApi::class, ExperimentalCoroutinesApi::class)
 class ClientSessionRegistryTest {
@@ -141,7 +141,7 @@ class ClientSessionRegistryTest {
     }
 
     @Test
-    fun `a failed subagent keeps its id while its parent lives and its subtree fails with it`() = runTest {
+    fun `a failed subagent keeps its id while its root lives and its subtree fails with it`() = runTest {
         registry.withInitializingSession {
             val rootHolder = registry.claimSessionHolder(root, replayRequested = true, parameters)
             registry.deliverSessionUpdate(root, announce(child), null)
@@ -150,14 +150,20 @@ class ClientSessionRegistryTest {
             val grandchildHolder = assertNotNull(childHolder.childOrNull(grandchild))
             registry.deliverSessionUpdate(grandchild, text("grandchild-queued"), null)
 
-            registry.failSessionTree(childHolder, IllegalStateException("setup failed"))
+            assertTrue(registry.failSubagentTree(childHolder, IllegalStateException("setup failed")))
             assertTrue(childHolder.isFailed)
             assertTrue(grandchildHolder.isFailed, "the cascade fails the subtree")
             assertFalse(rootHolder.isFailed)
             assertEquals(listOf<Pair<SessionId, SessionUpdate>>(child to announce(grandchild), grandchild to text("grandchild-queued")), unconnected, "parent first")
 
-            assertTrue(childHolder.blocksId, "a failed subagent of a live parent blocks its id")
-            assertFalse(grandchildHolder.blocksId, "a failed subagent of a failed parent does not")
+            /*
+             * The grandchild keeps its id under its failed parent too; before the failed root's tree left the map at
+             * its failure, a failed subagent of a failed parent freed its id.
+             */
+            for (holder in listOf(childHolder, grandchildHolder)) {
+                assertSame(holder, registry.subagentHolderOrNull(holder.sessionId), "${holder.sessionId} keeps its id")
+                assertNull(registry.claimAnsweredSessionHolder(holder.sessionId, LoadSessionResponse(), parameters), "${holder.sessionId}: an opening of the id is refused")
+            }
 
             // A later patch of the failed subagent stays a patch, and nothing registers under it.
             registry.deliverSessionUpdate(root, announce(child), null)
@@ -193,7 +199,7 @@ class ClientSessionRegistryTest {
             registry.deliverSessionUpdate(root, announce(child), null)
             val childHolder = assertNotNull(rootHolder.childOrNull(child))
 
-            registry.failSessionTree(rootHolder, IllegalStateException("load failed"))
+            registry.failRootTree(rootHolder, IllegalStateException("load failed"))
             val session = ClientSubagentSession(childHolder, Recorder(), protocol)
             childHolder.startOpening(session)
             assertTrue(openingScope.coroutineContext.job.children.none(), "a setup that returns after the failure starts no opening")
@@ -280,7 +286,7 @@ class ClientSessionRegistryTest {
 
             // The stop's caller settles the holder, so neither a later removal nor a later failure takes it over.
             assertEquals(setOf(root, child), registry.removeSessionTree(rootHolder))
-            assertFalse(registry.failSessionTree(childHolder, IllegalStateException("late failure")))
+            assertFalse(registry.failSubagentTree(childHolder, IllegalStateException("late failure")))
             assertFalse(childHolder.session.isCompleted)
             request.cancel()
         }
@@ -387,7 +393,7 @@ class ClientSessionRegistryTest {
              * The cascade cancels the child's opening and waits in the drain of the child's queue, before it reaches
              * the grandchild. The opening then runs into the failure of the grandchild's setup.
              */
-            val failing = launch { drainingRegistry.failSessionTree(rootHolder, IllegalStateException("load failed")) }
+            val failing = launch { drainingRegistry.failRootTree(rootHolder, IllegalStateException("load failed")) }
             runCurrent()
             assertTrue(drainEntered.isCompleted)
             openingScheduler.runCurrent()
@@ -447,14 +453,14 @@ class ClientSessionRegistryTest {
             assertNull(registry.completedSessionOrNull(root), "an opening root is not completed")
             assertNull(registry.completedSessionOrNull(child), "an opening subagent is not completed")
 
-            registry.failSessionTree(rootHolder, IllegalStateException("load failed"))
+            assertTrue(registry.failSubagentTree(assertNotNull(rootHolder.childOrNull(child)), IllegalStateException("setup failed")))
             assertTrue(registry.isSessionCompleted(child), "the failed subagent stays in the map")
             assertNull(registry.completedSessionOrNull(child), "a failed subagent is not completed")
         }
     }
 
     @Test
-    fun `the subagents of a failed root leave the session map when the root is reaped`() = runTest {
+    fun `a failed root's tree leaves the session map with it and a later load registers the same ids again`() = runTest {
         for (attempt in 1..3) {
             val attemptChild = SessionId("child-$attempt")
             val attemptGrandchild = SessionId("grandchild-$attempt")
@@ -463,7 +469,7 @@ class ClientSessionRegistryTest {
                 registry.deliverSessionUpdate(root, announce(attemptChild), null)
                 registry.deliverSessionUpdate(attemptChild, announce(attemptGrandchild), null)
                 assertNotNull(rootHolder.childOrNull(attemptChild)?.childOrNull(attemptGrandchild))
-                registry.failSessionTree(rootHolder, IllegalStateException("load failed"))
+                registry.failRootTree(rootHolder, IllegalStateException("load failed"))
             }
             for (id in listOf(root, attemptChild, attemptGrandchild)) {
                 assertFalse(registry.isSessionCompleted(id), "$id is still in the map after attempt $attempt")
@@ -480,25 +486,59 @@ class ClientSessionRegistryTest {
     }
 
     @Test
-    fun `the subagents of a failed root leave the session map when a new opening replaces the root`() = runTest {
+    fun `a failed root's tree is out of the session map when its failure returns even while another opening runs`() = runTest {
+        // The outer opening keeps the end of the last opening from removing anything.
         registry.withInitializingSession {
-            // The outer opening keeps the failed root from being reaped.
             val failed = registry.withInitializingSession {
                 val rootHolder = registry.claimSessionHolder(root, replayRequested = true, parameters)
                 registry.deliverSessionUpdate(root, announce(child), null)
                 registry.deliverSessionUpdate(child, announce(grandchild), null)
-                registry.failSessionTree(rootHolder, IllegalStateException("load failed"))
+                registry.failRootTree(rootHolder, IllegalStateException("load failed"))
+                for (id in listOf(root, child, grandchild)) assertFalse(registry.isSessionCompleted(id), "$id is still in the map")
                 rootHolder
             }
-            assertTrue(registry.isSessionCompleted(child), "the failed subagent stays while its root isn't replaced")
+            assertNull(registry.subagentHolderOrNull(child))
 
             val retried = registry.claimSessionHolder(root, replayRequested = true, parameters)
             assertTrue(retried !== failed)
-            for (id in listOf(child, grandchild)) assertFalse(registry.isSessionCompleted(id), "$id is still in the map")
 
             registry.deliverSessionUpdate(root, announce(child), null)
             registry.deliverSessionUpdate(child, announce(grandchild), null)
             assertNotNull(retried.childOrNull(child)?.childOrNull(grandchild), "the retry registers the same ids again")
+        }
+    }
+
+    @Test
+    fun `a failing root keeps its id until its cascade ends and an opening of the id meanwhile is refused`() = runTest {
+        val handedOn = mutableListOf<Pair<SessionId, SessionUpdate>>()
+        val drainEntered = CompletableDeferred<Unit>()
+        val releaseDrain = CompletableDeferred<Unit>()
+        val drainingRegistry = ClientSessionRegistry({ id, update, _ ->
+            handedOn += id to update
+            if (update == text("child-queued")) {
+                drainEntered.complete(Unit)
+                releaseDrain.await()
+            }
+        }, protocol, openingScope)
+
+        drainingRegistry.withInitializingSession {
+            val rootHolder = drainingRegistry.claimSessionHolder(root, replayRequested = true, parameters)
+            drainingRegistry.deliverSessionUpdate(root, announce(child), null)
+            drainingRegistry.deliverSessionUpdate(child, text("child-queued"), null)
+
+            // The cascade has failed the root and waits in the drain of the child's queue.
+            val failing = launch { drainingRegistry.failRootTree(rootHolder, IllegalStateException("load failed")) }
+            drainEntered.await()
+            assertTrue(rootHolder.isFailed)
+
+            val refused = runCatching { drainingRegistry.claimSessionHolder(root, replayRequested = true, parameters) }
+            assertEquals("Session $root is already open or being opened", refused.exceptionOrNull()?.message)
+            drainingRegistry.deliverSessionUpdate(root, text("during"), null)
+            assertEquals<Pair<SessionId, SessionUpdate>>(root to text("during"), handedOn.last(), "an update meanwhile is unconnected")
+
+            releaseDrain.complete(Unit)
+            failing.join()
+            assertTrue(drainingRegistry.claimSessionHolder(root, replayRequested = true, parameters) !== rootHolder)
         }
     }
 
@@ -541,7 +581,7 @@ class ClientSessionRegistryTest {
             assertNotNull(rootHolder.deliverEarly(rootOperations))
             val opening = notifyEntered.await()
 
-            val failing = launch { drainingRegistry.failSessionTree(rootHolder, IllegalStateException("load failed")) }
+            val failing = launch { drainingRegistry.failRootTree(rootHolder, IllegalStateException("load failed")) }
             // The cascade has cancelled the opening, and hands the queue on while the opening is still in notify.
             drainEntered.await()
             releaseNotify.complete(Unit)

@@ -28,8 +28,8 @@ internal class RootSessionHolder(
     sessionId: SessionId,
     protocol: Protocol,
     openingScope: CoroutineScope,
-    failSessionTree: suspend (ClientSessionHolder, Throwable) -> Boolean,
-) : ClientSessionHolder(sessionId, protocol, openingScope, failSessionTree) {
+    failSubagentTree: suspend (SubagentSessionHolder, Throwable) -> Boolean,
+) : ClientSessionHolder(sessionId, protocol, openingScope, failSubagentTree) {
     /**
      * The opening call that claimed a root's holder.
      *
@@ -97,8 +97,6 @@ internal class RootSessionHolder(
     val phase: RootPhase get() = _phase.value
 
     override val root: RootSessionHolder get() = this
-
-    override val blocksId: Boolean get() = !isFailed
 
     override fun sessionCwd(): String = claimedParameters().cwd
 

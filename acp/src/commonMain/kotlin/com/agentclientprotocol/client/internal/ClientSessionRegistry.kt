@@ -57,24 +57,24 @@ internal class ClientSessionRegistry(
      */
     private fun getOrCreateSessionHolderOrNull(sessionId: SessionId): ClientSessionHolder? {
         // Fast path for the common case of an already registered session.
-        _sessions.value.sessions[sessionId]?.takeIf { it.blocksId }?.let { return it }
+        _sessions.value.sessions[sessionId]?.let { return it }
         var clientSessionHolder: ClientSessionHolder? = null
         /*
          * Look the id up again on every attempt: an opening that registers it and ends in between would otherwise
          * make it look missing.
          */
         _sessions.update { currentStorage ->
-            val existingHolder = currentStorage.sessions[sessionId]?.takeIf { it.blocksId }
+            val existingHolder = currentStorage.sessions[sessionId]
             when {
                 existingHolder != null -> {
                     clientSessionHolder = existingHolder
                     currentStorage
                 }
                 currentStorage.initializingSessionsCount > 0 -> {
-                    // No holder owns the id: create a speculative one. A failed holder it replaces handed its queue on.
-                    val newHolder = RootSessionHolder(sessionId, protocol, subagentScope, ::failSessionTree)
+                    // No holder owns the id: create a speculative one.
+                    val newHolder = RootSessionHolder(sessionId, protocol, subagentScope, ::failSubagentTree)
                     clientSessionHolder = newHolder
-                    currentStorage.copy(sessions = currentStorage.sessions.replacing(sessionId, newHolder))
+                    currentStorage.copy(sessions = currentStorage.sessions.put(sessionId, newHolder))
                 }
                 else -> {
                     clientSessionHolder = null
@@ -89,16 +89,17 @@ internal class ClientSessionRegistry(
         getOrCreateSessionHolderOrNull(sessionId) ?: acpFail("Session $sessionId not found")
 
     /**
-     * Whether [root] still owns its id, so a `session/close` for that id reaches the session that [root] serves.
+     * Whether [root] still owns its id, so a `session/close` for that id reaches the session that [root] serves. A
+     * failed root owns nothing, though it stays in the map until its cascade ends.
      */
-    fun isOpen(root: RootSessionHolder): Boolean = _sessions.value.sessions[root.sessionId] === root && root.blocksId
+    fun isOpen(root: RootSessionHolder): Boolean = _sessions.value.sessions[root.sessionId] === root && !root.isFailed
 
     /**
      * Returns the holder of the subagent [sessionId], or `null`. It doesn't suspend, so a request handler can take the
      * holder before its first suspension.
      */
     fun subagentHolderOrNull(sessionId: SessionId): SubagentSessionHolder? =
-        (_sessions.value.sessions[sessionId] as? SubagentSessionHolder)?.takeIf { it.blocksId }
+        _sessions.value.sessions[sessionId] as? SubagentSessionHolder
 
     /**
      * Removes [root] and every subagent below it after the agent answered its `session/close`, and closes the
@@ -162,7 +163,7 @@ internal class ClientSessionRegistry(
          * Don't create a holder or wait for an unclaimed one: that wait would last until the last opening ends, and a
          * holder made here would block a later subagent with this id. The Rust SDK fails such a request at once too.
          */
-        val holder = when (val registered = _sessions.value.sessions[sessionId]?.takeIf { it.blocksId }) {
+        val holder = when (val registered = _sessions.value.sessions[sessionId]) {
             is RootSessionHolder -> registered.takeIf { it.phase.isAtLeast(Stage.CLAIMED) }
             is SubagentSessionHolder -> registered
             null -> null
@@ -250,8 +251,8 @@ internal class ClientSessionRegistry(
              * the root gone.
              */
             rootEnded = storage.sessions[root.sessionId] !== root
-            blocked = !rootEnded && storage.sessions[childId]?.blocksId == true
-            if (rootEnded || blocked) storage else storage.copy(sessions = storage.sessions.replacing(childId, child))
+            blocked = !rootEnded && childId in storage.sessions
+            if (rootEnded || blocked) storage else storage.copy(sessions = storage.sessions.put(childId, child))
         }
 
         // The removal or cascade that ended the root fails the child.
@@ -311,26 +312,48 @@ internal class ClientSessionRegistry(
     }
 
     /**
-     * Fails [holder] and every subagent below it, parent first, and hands their queues to [globalSessionUpdateHandler].
-     *
-     * @return `false` if [holder] is a subagent whose opening had already finished or been stopped, so this failed
-     * nothing
+     * Fails [root] and every subagent below it, then removes them from the session map, so a failed root owns no id
+     * once this returns.
      */
-    suspend fun failSessionTree(holder: ClientSessionHolder, cause: Throwable): Boolean = withContext(NonCancellable) {
-        // Only the stop that settles a subagent's opening may fail its holder, so two failures never drain one queue.
-        if (holder is SubagentSessionHolder && !stopOpening(holder)) return@withContext false
+    suspend fun failRootTree(root: RootSessionHolder, cause: Throwable): Unit = withContext(NonCancellable) {
+        failTree(root, cause)
 
-        suspend fun failTree(failing: ClientSessionHolder, reason: Throwable) {
-            val children = failing.sealChildren()
-            failHolder(failing, reason)
-            for (child in children) {
-                // Skipped with its subtree: its opening finished, or an earlier stop settles it.
-                if (!stopOpening(child)) continue
-                failTree(child, IllegalStateException("Session ${failing.sessionId}, the parent of subagent session ${child.sessionId}, failed", reason))
-            }
+        /*
+         * Removed after the drains, so an update that arrives during them still follows the queued ones. The cascade
+         * sealed every holder, so the subtree is final.
+         */
+        _sessions.update { storage ->
+            storage.copy(sessions = storage.sessions.mutate { map ->
+                if (map[root.sessionId] === root) map.remove(root.sessionId)
+                root.forEachDescendant { if (map[it.sessionId] === it) map.remove(it.sessionId) }
+            })
         }
-        failTree(holder, cause)
+    }
+
+    /**
+     * Fails the subagent [child] and every subagent below it. They keep their ids until their root's tree is removed.
+     *
+     * @return `false` if the opening of [child] had already finished or been stopped, so this failed nothing
+     */
+    suspend fun failSubagentTree(child: SubagentSessionHolder, cause: Throwable): Boolean = withContext(NonCancellable) {
+        // Only the stop that settles a subagent's opening may fail its holder, so two failures never drain one queue.
+        if (!stopOpening(child)) return@withContext false
+        failTree(child, cause)
         true
+    }
+
+    /**
+     * Fails [failing] and every subagent below it, parent first, and hands their queues to [globalSessionUpdateHandler].
+     * The caller must run this under [NonCancellable].
+     */
+    private suspend fun failTree(failing: ClientSessionHolder, reason: Throwable) {
+        val children = failing.sealChildren()
+        failHolder(failing, reason)
+        for (child in children) {
+            // Skipped with its subtree: its opening finished, or an earlier stop settles it.
+            if (!stopOpening(child)) continue
+            failTree(child, IllegalStateException("Session ${failing.sessionId}, the parent of subagent session ${child.sessionId}, failed", reason))
+        }
     }
 
     /**
@@ -369,9 +392,9 @@ internal class ClientSessionRegistry(
         try {
             return block()
         } finally {
-            var hangingSessions: Map<SessionId, ClientSessionHolder>? = null
+            var hangingSessions: List<RootSessionHolder> = emptyList()
             _sessions.update { currentStorage ->
-                hangingSessions = null
+                hangingSessions = emptyList()
                 if (currentStorage.initializingSessionsCount == 0) {
                     logger.error { "Assertion failed: initializingSessionsCount should be positive, got ${currentStorage.initializingSessionsCount}" }
                     return@update currentStorage
@@ -379,55 +402,25 @@ internal class ClientSessionRegistry(
                 val newCount = currentStorage.initializingSessionsCount - 1
                 return@update if (newCount == 0) {
                     /*
-                     * No opening runs any more, so an incomplete or failed root holder belongs to no session. Subagent
-                     * holders are exempt: they end with their own setup or with their parent.
+                     * No opening runs any more, so an incomplete root holder belongs to no session. Subagent holders
+                     * are exempt: they end with their own setup or with their parent.
                      */
-                    hangingSessions = currentStorage.sessions.filterValues {
-                        it is RootSessionHolder && (!it.session.isCompleted || it.isFailed)
-                    }
-                    var aliveSessions: PersistentMap<SessionId, ClientSessionHolder> = currentStorage.sessions
-                    for ((id, _) in hangingSessions) {
-                        aliveSessions = aliveSessions.remove(id)
-                    }
-                    currentStorage.copy(initializingSessionsCount = newCount, sessions = aliveSessions)
+                    val hanging = currentStorage.sessions.values.filterIsInstance<RootSessionHolder>().filter { !it.session.isCompleted }
+                    hangingSessions = hanging
+                    currentStorage.copy(
+                        initializingSessionsCount = newCount,
+                        sessions = currentStorage.sessions.mutate { map -> hanging.forEach { map.remove(it.sessionId) } },
+                    )
                 } else {
                     currentStorage.copy(initializingSessionsCount = newCount)
                 }
             }
-            val reaped = hangingSessions
-            if (reaped != null) {
-                for ((id, holder) in reaped) {
-                    logger.trace { "Removing hanging session $id" }
-                    // No opening claimed it, so its buffered updates are unconnected after all.
-                    failSessionTree(holder, AcpExpectedError("Session $id not found"))
-                }
-                /*
-                 * The cascade sealed every holder, so these subtrees are final. Their failed subagents no longer block
-                 * their ids, so they leave the map too.
-                 */
-                if (reaped.isNotEmpty()) {
-                    _sessions.update { storage ->
-                        storage.copy(sessions = storage.sessions.mutate { map -> reaped.values.forEach { map.removeDescendantsOf(it) } })
-                    }
-                }
+            for (holder in hangingSessions) {
+                logger.trace { "Removing hanging session ${holder.sessionId}" }
+                // No opening claimed it, so its buffered updates are unconnected after all.
+                failRootTree(holder, AcpExpectedError("Session ${holder.sessionId} not found"))
             }
         }
     }
 
-}
-
-/**
- * Puts [holder] under [sessionId]. A replaced holder must no longer block the id; its subagents, which failed with it,
- * leave the map too.
- */
-private fun PersistentMap<SessionId, ClientSessionHolder>.replacing(
-    sessionId: SessionId,
-    holder: ClientSessionHolder,
-): PersistentMap<SessionId, ClientSessionHolder> = mutate { map ->
-    map[sessionId]?.let { oldHolder -> map.removeDescendantsOf(oldHolder) }
-    map[sessionId] = holder
-}
-
-private fun MutableMap<SessionId, ClientSessionHolder>.removeDescendantsOf(holder: ClientSessionHolder) {
-    holder.forEachDescendant { if (this[it.sessionId] === it) remove(it.sessionId) }
 }

@@ -637,8 +637,7 @@ public class Client(
              * Wrapped, so an agent request waiting for the session gets an internal error (-32603) rather than
              * cancelled (-32800) for a bare `CancellationException`. The caller gets the original failure.
              */
-            sessions.failSessionTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
-            // `withInitializingSession` removes the failed holder at the end of the last opening.
+            sessions.failRootTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             throw throwable
         }
     }
@@ -662,7 +661,7 @@ public class Client(
             request { response -> sessionHolder.markOpened(response) }
         } catch (throwable: Throwable) {
             // The hook may have queued the opened marker before a cancellation won; failing the holder drops it.
-            sessions.failSessionTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
+            sessions.failRootTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             throw throwable
         }
         createSession(sessionHolder, sessionId, sessionParameters, sessionResponse, factory)
@@ -697,7 +696,7 @@ public class Client(
             val claimedHolder = if (claimed.isCompleted) claimed.getCompleted() else null
             if (claimedHolder != null) {
                 val (sessionId, holder) = claimedHolder
-                sessions.failSessionTree(holder, IllegalStateException("Failed to create session $sessionId", throwable))
+                sessions.failRootTree(holder, IllegalStateException("Failed to create session $sessionId", throwable))
             }
             throw throwable
         }
@@ -745,8 +744,7 @@ public class Client(
             sessionHolder.completeOpening(session, opened)
             session
         } catch (throwable: Throwable) {
-            // `withInitializingSession` removes the failed holder at the end of the last opening.
-            sessions.failSessionTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
+            sessions.failRootTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             throw throwable
         }
     }

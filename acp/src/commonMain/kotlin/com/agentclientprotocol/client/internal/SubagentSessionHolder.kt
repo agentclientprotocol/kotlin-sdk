@@ -31,7 +31,7 @@ private val logger = KotlinLogging.logger {}
 internal class SubagentSessionHolder(
     sessionId: SessionId,
     val parent: ClientSessionHolder,
-) : ClientSessionHolder(sessionId, parent.protocol, parent.openingScope, parent.failSessionTree) {
+) : ClientSessionHolder(sessionId, parent.protocol, parent.openingScope, parent.failSubagentTree) {
     /**
      * The state of this subagent's opening, which consumes its queue. The state that the first stop replaces decides
      * who settles the holder.
@@ -81,8 +81,6 @@ internal class SubagentSessionHolder(
     }
 
     override val root: RootSessionHolder get() = parent.root
-
-    override val blocksId: Boolean get() = !isFailed || !parent.isFailed
 
     override fun sessionCwd(): String = requireSubagent().cwd
 
@@ -209,7 +207,7 @@ internal class SubagentSessionHolder(
      * [caught] comes from that, even if wrapped, and is only logged.
      */
     private suspend fun failOpening(caught: Throwable, failure: Throwable, message: String) {
-        if (currentCoroutineContext().isActive && failSessionTree(this, failure)) {
+        if (currentCoroutineContext().isActive && failSubagentTree(this, failure)) {
             logger.error(caught) { message }
         } else {
             logger.debug(caught) { "$message after its opening was stopped" }
