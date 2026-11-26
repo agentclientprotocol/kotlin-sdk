@@ -472,7 +472,12 @@ Outside this PR: #5, #20.
 - CAS-vs-locks: explained internals/costs; proposed rule (CAS for single swaps and pure one-line updates; lock +
   published snapshot for updates that check rules/return results/span variables; Mutex only to suspend; nothing
   foreign under a lock). Waiting for the user to accept/adjust the rule.
-Next slice: S5 #15+#16, then S6 #21.
+- S5 #15+#16 — `9e17613` — hook strip on cancel gone (callers undo; `ReadLoopOrderingTest` inverted);
+  `IncomingRequest` flag → `reply.isCompleted`; one `withContext` via private `RequestHandler`; graceful-wait ladder
+  → one `runCatching` (warn kept); `onSuccessQueued` → `onResponseQueued`; Protocol 738→703; `check` green 1st run.
+  Follow-ups: batch identity guard (:319) awaits #7/batch decision; `setNotificationHandlerRaw` keeps its wrapper.
+Next slice: S6 #21 readability (Reg 3, 5, 8, Holder 1, Root 1, 2, Subagent 2, 3, CS1, SW2, M1–M4, B1; NOT Reg 4,
+Reg 14, Subagent 1, Subagent 4, PP 1, SW1). After S6 the no-decision list is done except #7/#13/#17 (rule pending).
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
