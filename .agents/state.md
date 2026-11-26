@@ -424,7 +424,12 @@ SIMPLIFICATION REVIEW GOAL (user 2026-11-26, current). Analysis only: no product
 - Part 2 DONE: rest 15 (7 holds, 3 merged, 4 superseded, 1 obsolete); client internals 26 (12 holds, 8 merged,
   6 superseded). Both found defects in the client-sessions item 19 sketch (double `markOpened`; load/resume claim
   outside `withInitializingSession`); registry §3 vs client-sessions item 29 disagree on the live fast path.
-Status: Part 3 running.
+- Part 3 DONE: `.agents/research/simplify-final-report.md` (21 suggestions: 5 defect fixes, 13 simplifications,
+  2 CAS/lock, 1 readability bundle of 20; ~195–225 LOC without user decisions, +113–138 with; no CAS must become a
+  lock). Decisions for the user: #3 sequential live `notify` (fair Mutex) vs document the overlap; #12 S2 held
+  cancel once vs each; #18 R17 D1 (defer recommended); #19 post-cancel window; #20 batches (outside PR);
+  confirm #10, #11; readability Reg 4, Reg 14, Subagent 1, Subagent 4.
+Status: GOAL DONE (analysis). Next: the user reads the report and decides which suggestions become slices.
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
