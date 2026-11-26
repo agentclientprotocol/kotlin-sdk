@@ -445,9 +445,14 @@ Outside this PR: #5, #20.
 - User 2026-11-26: #10 APPROVED (slice after S1; constraints: a failed root opening must not close its permissions;
   speculative holders get permissions too). M4 answer 1 is recorded in this file from an earlier session; the user
   doesn't remember it — don't cite it as theirs without saying it's from the record.
-- #11 discussed: include it; form (CAS `AtomicRef<PersistentList?>` vs lock + nullable list) settled in the
-  CAS-vs-locks discussion.
-Next slice: S1b #10, then S2 #8, S3 #9, S4 #14, S5 #15+#16, S6 #21.
+- #11 APPROVED, form B (user 2026-11-26): `SynchronizedObject` + nullable `MutableList` of deferred starts
+  (`null` = window closed), no atomic; `isReplaying` reads under the lock; `SubagentSessionWrapper.isReplayed` goes.
+- S1b #10 — `162c785` — holders own `permissions`; `holderForRequest`; one handler path; `startClosing` closes root +
+  descendants; product −30 LOC; +2 tests (cancel/close during opening answers `cancelled`; failed opening → error);
+  `check` green (2nd run, JS flake). Notes: subagent unit tests use a test-side copy of the handler lambda;
+  `removeSessionTree` still closes subagent permissions already closed by `startClosing` (harmless).
+- CAS-vs-locks discussion in progress, one concern at a time (user). Pending: #7, #13, #17, registry-lock assessment.
+Next slice: S1c #11 (form B), then S2 #8, S3 #9, S4 #14, S5 #15+#16, S6 #21.
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
