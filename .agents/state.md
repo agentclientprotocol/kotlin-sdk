@@ -1,4 +1,4 @@
-# State: comment-trim pass over the PR (current goal, 2026-11-26); before it: KDoc improvements pass (2026-11-25); earlier goal: implement v1 subagents per docs/superpowers/specs/2026-11-07-v1-subagents-architecture.md
+# State: concurrency-simplification review of the v1 runtimes (current goal, 2026-11-26); before it: comment-trim pass over the PR (2026-11-26); before that: KDoc improvements pass (2026-11-25); earlier goal: implement v1 subagents per docs/superpowers/specs/2026-11-07-v1-subagents-architecture.md
 
 ## Settings
 mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per finished milestone)
@@ -406,7 +406,20 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   local function; `failStoppedTree` removed; each opening stopped once, `markClosed` once per holder.
 
 ## Next
-COMMENT-TRIM GOAL (user 2026-11-26, current). Rules (final):
+SIMPLIFICATION REVIEW GOAL (user 2026-11-26, current). Analysis only: no product change; reports in
+`.agents/research/simplify-*.md`. Questions: (1) per race/edge case: real problem? spec-required or our invention
+(why, pros/cons, worth keeping)? if both yes but complex, can it be simplified? (2) CAS (`update`/`getAndUpdate`/
+`compareAndSet`, lambdas may rerun) vs locks: which to replace.
+- Part 1: four `reviewer` agents, model fable, effort medium, in parallel: A agent (`simplify-agent.md`), B client
+  registry+holders (`simplify-client-registry.md`), C client sessions/delivery/permissions (`simplify-client-sessions.md`),
+  D Protocol.kt (`simplify-protocol.md`; user chose a full fourth reviewer).
+- Part 2: two opus agents check `.agents/research/readability-suggestions.md` against Part 1: client internals
+  (`simplify-vs-readability-client.md`), the rest (`simplify-vs-readability-rest.md`).
+- Part 3: one fable medium verifier consolidates → `simplify-final-report.md` (overview with counts and LOC/scenarios
+  dropped; one heading per suggestion: short summary, then detail with code examples and file:line refs).
+Status: Part 1 running.
+
+COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
   KDocs should be fine, reverify them.
 - Internal and private members (incl. everything in `internal` packages): a few short, straightforward sentences
