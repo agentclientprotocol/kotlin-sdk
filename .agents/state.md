@@ -421,7 +421,10 @@ SIMPLIFICATION REVIEW GOAL (user 2026-11-26, current). Analysis only: no product
   lever, a user decision outside this PR; client registry −80..110; client sessions −100..190 with 3 live-delivery
   defects found by reading). Several proposals revisit user decisions (S2 detail, R17 D1, the post-cancel window,
   D1 hold-back, sequential `notify`): Part 3 marks them, the user decides.
-Status: Part 2 running.
+- Part 2 DONE: rest 15 (7 holds, 3 merged, 4 superseded, 1 obsolete); client internals 26 (12 holds, 8 merged,
+  6 superseded). Both found defects in the client-sessions item 19 sketch (double `markOpened`; load/resume claim
+  outside `withInitializingSession`); registry §3 vs client-sessions item 29 disagree on the live fast path.
+Status: Part 3 running.
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
