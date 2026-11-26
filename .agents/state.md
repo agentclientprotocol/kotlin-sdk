@@ -1,4 +1,4 @@
-# State: KDoc improvements pass over the PR (current goal, 2026-11-25); earlier goal: implement v1 subagents per docs/superpowers/specs/2026-11-07-v1-subagents-architecture.md
+# State: comment-trim pass over the PR (current goal, 2026-11-26); before it: KDoc improvements pass (2026-11-25); earlier goal: implement v1 subagents per docs/superpowers/specs/2026-11-07-v1-subagents-architecture.md
 
 ## Settings
 mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per finished milestone)
@@ -406,6 +406,27 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   local function; `failStoppedTree` removed; each opening stopped once, `markClosed` once per holder.
 
 ## Next
+COMMENT-TRIM GOAL (user 2026-11-26, current). Rules (final):
+- Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
+  KDocs should be fine, reverify them.
+- Internal and private members (incl. everything in `internal` packages): a few short, straightforward sentences
+  stating the main idea only: why the symbol exists and what it does. The rest is left to the code.
+- Non-obvious implementation details: short, straightforward inline comments in the body, at the line they explain,
+  NOT the whole contract in the KDoc. Block comments stay allowed as the multiline format, but trim them too.
+- The rule is written into AGENTS.md "Comments and KDoc".
+- Comments only: no code change (no renames, no refactors). Programmers note readability suggestions (names,
+  extractions, clearer conditions) as they go into `.agents/research/readability-suggestions.md`; keep them, the
+  user will discuss them later.
+- AGENTS.md "Runtime and Lifecycle Rules" are in scope: trim significantly where a bullet just recites what the
+  code (its names and remaining comments) already documents; keep cross-cutting invariants that no single file shows.
+  Do this after the code comments in the area are trimmed, so no fact loses its last copy.
+- Scope: comments this PR added or changed (vs `master`) in main sources + AGENTS.md. Not tests. Not v2 (as in the
+  previous pass) unless the user says otherwise. Programmers run on `opus` (user).
+Plan: P0 pilot = `client/internal/ClientSessionRegistry.kt` + the AGENTS.md rule text, left UNCOMMITTED for the user
+to calibrate density → then slices: client internals → agent+protocol → model/common/rest → Runtime-rules trim →
+reviewer over the milestone.
+- P0 pilot: running.
+
 KDoc pass goal (user 2026-11-25): (1) bring every comment/KDoc this PR adds or changes in line with AGENTS.md
 "Comments and KDoc" (structure rules, property/param placement, no single-line KDoc, no consecutive `//`);
 (2) honestly assess whether the long ones (e.g. `AgentSubagents` class KDoc and `announce`) should shrink without
