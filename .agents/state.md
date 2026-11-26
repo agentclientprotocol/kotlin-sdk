@@ -452,7 +452,12 @@ Outside this PR: #5, #20.
   `check` green (2nd run, JS flake). Notes: subagent unit tests use a test-side copy of the handler lambda;
   `removeSessionTree` still closes subagent permissions already closed by `startClosing` (harmless).
 - CAS-vs-locks discussion in progress, one concern at a time (user). Pending: #7, #13, #17, registry-lock assessment.
-Next slice: S1c #11 (form B), then S2 #8, S3 #9, S4 #14, S5 #15+#16, S6 #21.
+- S1c #11 — `c20e2d7` — `startsAfterReplay: MutableList?` under `replayLock`; `_isReplaying`,
+  `replayedCollections`, `isReplayed` gone; −15 LOC; `check` green 1st run. Note: `sendOwnUpdateLocked` now takes
+  `replayLock` inside the child's lock (new nesting; nothing is taken under `replayLock`, so no deadlock).
+- User asked (2026-11-26) why not complete a deferred under `synchronized`: answered (inline completion handlers,
+  inline resumption on non-dispatching dispatchers, reentrancy; decide under the lock, complete after).
+Next slice: S2 #8, then S3 #9, S4 #14, S5 #15+#16, S6 #21.
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
