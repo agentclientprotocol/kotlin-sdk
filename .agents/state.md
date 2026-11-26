@@ -460,7 +460,14 @@ Outside this PR: #5, #20.
 - S2 #8 — `46a28bf` — `client/internal/CallApp.kt` `callApp(what) {}`; 4 client sites converted; agent sites and
   `SubagentSessionHolder.completeOpening` left (don't fit without a behaviour change); Holder 5 renames
   (`failSetupUnlessStopped`, `failOpeningUnlessStopped`); −9 LOC; `check` green 1st run.
-Next slice: S3 #9, then S4 #14, S5 #15+#16, S6 #21.
+- S3 #9 — `d09bf88` — one `openSession<R>(…)` in `withOpeningCall`; 4 opening functions and 4 fail sites → 1;
+  renames `claimBeforeRequest`, `claimOnAnswer` (no `markOpened`), `withOpeningCall`, `openingCallsCount`;
+  `Client.kt` −33, registry −7; no behaviour change; `check` green (2nd run, JS flake). Follow-up: the design spec
+  (~1102–1294) still names the old functions (historical; ask the user). Reg 3 not done.
+- User (2026-11-26): don't report slice progress in chat until the discussion is finished; record it here only.
+  Agreed: never complete deferreds (or call app code) under `synchronized`. Now discussing: why CAS at all vs locks,
+  internals and performance; then the code-base-wide rule; then SessionTable lock vs pure CAS.
+Next slice: S4 #14, then S5 #15+#16, S6 #21.
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
