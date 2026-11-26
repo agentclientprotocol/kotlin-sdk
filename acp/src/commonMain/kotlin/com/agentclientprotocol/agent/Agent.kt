@@ -433,7 +433,7 @@ public class Agent(
             try {
                 sessionWrapper.executeWithSession { replayHistory(session) }
             } catch (t: Throwable) {
-                discardFailedLoad(sessionWrapper)
+                removeRoot(sessionWrapper)
                 throw t
             }
         }
@@ -443,7 +443,7 @@ public class Agent(
             afterResponse = { sessionWrapper.executeWithSession { session.postInitialize() } },
             onCompletion = {
                 // Still replaying here means the load response never reached the transport: the load failed.
-                if (sessionWrapper.isReplaying) discardFailedLoad(sessionWrapper)
+                if (sessionWrapper.isReplaying) removeRoot(sessionWrapper)
             },
             /*
              * The client treats what follows the load response as live, so the window closes once the transport has
@@ -456,13 +456,6 @@ public class Agent(
                 null
             },
         )
-    }
-
-    /**
-     * Drops the root of a failed `session/load` with every subagent registered during it.
-     */
-    private fun discardFailedLoad(sessionWrapper: RootSessionWrapper) {
-        removeRoot(sessionWrapper)
     }
 
     private fun getSessionOrThrow(sessionId: SessionId): RootSessionWrapper {

@@ -144,14 +144,15 @@ internal class SubagentSessionWrapper(
             runFactory(factory)
         } catch (e: Throwable) {
             // Only the caller's own cancellation passes as is: the app's would tear down the caller's scope.
-            val isAppCancellation = e is CancellationException && currentCoroutineContext().isActive
-            if (dropUnlessAnnounced()) {
-                if (e is CancellationException && !isAppCancellation) throw e
-                throw IllegalStateException("Subagent $sessionId is not announced: its factory failed", e)
+            val callerCancelled = e is CancellationException && !currentCoroutineContext().isActive
+            val announced = !dropUnlessAnnounced()
+            if (announced) reportFactoryFailure()
+            throw when {
+                callerCancelled -> e
+                announced && e !is CancellationException -> e
+                announced -> IllegalStateException("Subagent $sessionId is announced, but its factory failed", e)
+                else -> IllegalStateException("Subagent $sessionId is not announced: its factory failed", e)
             }
-            reportFactoryFailure()
-            if (isAppCancellation) throw IllegalStateException("Subagent $sessionId is announced, but its factory failed", e)
-            throw e
         }
 
         if (dropUnlessAnnounced()) {
@@ -229,7 +230,7 @@ internal class SubagentSessionWrapper(
      */
     private fun reportFactoryFailure() {
         // Grants and states sent in the replay window are history, so there is nothing to correct.
-        if (root.isReplaying || !root.subtreeScope.isActive) return
+        if (root.isReplaying) return
         runCatching { sendFactoryFailureCorrection() }
             .onFailure { logger.debug(it) { "Could not correct subagent $sessionId after its factory failed" } }
     }
