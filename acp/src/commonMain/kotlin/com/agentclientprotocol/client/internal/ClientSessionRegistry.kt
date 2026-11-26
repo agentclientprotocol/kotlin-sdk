@@ -84,9 +84,6 @@ internal class ClientSessionRegistry(
         return clientSessionHolder
     }
 
-    private fun getOrCreateSessionHolder(sessionId: SessionId): ClientSessionHolder =
-        getOrCreateSessionHolderOrNull(sessionId) ?: acpFail("Session $sessionId not found")
-
     /**
      * Whether [root] still owns its id, so a `session/close` for that id reaches the session that [root] serves. A
      * failed root owns nothing, though it stays in the map until its cascade ends.
@@ -127,9 +124,10 @@ internal class ClientSessionRegistry(
                 sessionsStorage.copy(sessions = sessions)
             }
 
-            for ((holder, settles) in settlesHolder.entries.reversed()) {
+            val subagentsBottomUp = settlesHolder.entries.reversed()
+            for ((holder, settles) in subagentsBottomUp) {
                 holder.permissions.close()
-                // Fail it only if this stop settled it; otherwise its opening finished or an earlier stop settles it.
+                // Fail it only if this stop settled it; otherwise its opening or an earlier stop settles it.
                 if (settles) failHolder(holder, AcpExpectedError("Session ${holder.sessionId} closed")) else holder.markClosed()
             }
             subtree.filter { previousSessions.sessions[it.sessionId] === it }.mapTo(mutableSetOf()) { it.sessionId }
@@ -213,19 +211,19 @@ internal class ClientSessionRegistry(
 
         val registered = parent.childOrNull(update.sessionId)
         if (registered != null) {
-            followSubagentState(parent, registered, update)
+            feedSubagentPermissions(parent, registered, update)
             return QueuedItem.Patch(update, meta, registered)
         }
 
         val child = registerChild(parent, update.sessionId) ?: return QueuedItem.Update(update, meta)
-        followSubagentState(parent, child, update)
+        feedSubagentPermissions(parent, child, update)
         return QueuedItem.Announcement(update, meta, child)
     }
 
     /**
      * Feeds a subagent's `state` to its permission requests in wire order, which the parent's consumer can lag behind.
      */
-    private fun followSubagentState(parent: ClientSessionHolder, child: SubagentSessionHolder, update: SessionUpdate.SubagentUpdate) {
+    private fun feedSubagentPermissions(parent: ClientSessionHolder, child: SubagentSessionHolder, update: SessionUpdate.SubagentUpdate) {
         if (update.state != MaybeUndefined.Undefined) {
             child.permissions.onState(update.state.valueOrNull(), live = parent.root.phase.isAtLeast(Stage.ANSWERED))
         }
@@ -277,7 +275,7 @@ internal class ClientSessionRegistry(
         replayRequested: Boolean,
         parameters: SessionCreationParameters,
     ): RootSessionHolder {
-        val sessionHolder = getOrCreateSessionHolder(sessionId)
+        val sessionHolder = getOrCreateSessionHolderOrNull(sessionId) ?: acpFail("Session $sessionId not found")
         check(sessionHolder is RootSessionHolder && sessionHolder.claimForOpening(replayRequested, parameters)) {
             "Session $sessionId is already open or being opened"
         }
@@ -326,7 +324,7 @@ internal class ClientSessionRegistry(
     /**
      * Fails the subagent [child] and every subagent below it. They keep their ids until their root's tree is removed.
      *
-     * @return `false` if the opening of [child] had already finished or been stopped, so this failed nothing
+     * @return `false` if the opening of [child] was already completing or stopped, so this failed nothing
      */
     suspend fun failSubagentTree(child: SubagentSessionHolder, cause: Throwable): Boolean = withContext(NonCancellable) {
         // Only the stop that settles a subagent's opening may fail its holder, so two failures never drain one queue.
@@ -343,7 +341,7 @@ internal class ClientSessionRegistry(
         val children = failing.sealChildren()
         failHolder(failing, reason)
         for (child in children) {
-            // Skipped with its subtree: its opening finished, or an earlier stop settles it.
+            // Skipped with its subtree: its opening completes it, or an earlier stop settles it.
             if (!stopOpening(child)) continue
             failTree(child, IllegalStateException("Session ${failing.sessionId}, the parent of subagent session ${child.sessionId}, failed", reason))
         }
@@ -360,7 +358,7 @@ internal class ClientSessionRegistry(
                 true
             }
             OpeningState.NotStarted -> true
-            OpeningState.Finished, OpeningState.Stopped -> false
+            OpeningState.Completing, OpeningState.Stopped -> false
         }
 
     /**

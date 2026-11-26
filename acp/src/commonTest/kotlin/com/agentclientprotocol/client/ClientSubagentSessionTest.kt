@@ -229,19 +229,19 @@ class ClientSubagentSessionTest {
     fun `title and description keep omitted clear on null and replace on a value`() {
         val child = child()
 
-        child.applyPatch(patch(title = MaybeUndefined.Value("title"), description = MaybeUndefined.Value("description")), parentOpened = true)
+        child.applyPatch(patch(title = MaybeUndefined.Value("title"), description = MaybeUndefined.Value("description")), streamOpened = true)
         assertEquals("title", child.title)
         assertEquals("description", child.description)
 
-        child.applyPatch(patch(), parentOpened = true)
+        child.applyPatch(patch(), streamOpened = true)
         assertEquals("title", child.title, "an omitted title is unchanged")
         assertEquals("description", child.description, "an omitted description is unchanged")
 
-        child.applyPatch(patch(title = MaybeUndefined.Null), parentOpened = true)
+        child.applyPatch(patch(title = MaybeUndefined.Null), streamOpened = true)
         assertNull(child.title, "a null title is cleared")
         assertEquals("description", child.description, "the description is patched on its own")
 
-        child.applyPatch(patch(title = MaybeUndefined.Value("other"), description = MaybeUndefined.Null), parentOpened = true)
+        child.applyPatch(patch(title = MaybeUndefined.Value("other"), description = MaybeUndefined.Null), streamOpened = true)
         assertEquals("other", child.title)
         assertNull(child.description)
     }
@@ -250,7 +250,7 @@ class ClientSubagentSessionTest {
     fun `title and description are applied before the parent's answer`() {
         val child = child()
 
-        child.applyPatch(patch(title = MaybeUndefined.Value("title"), description = MaybeUndefined.Value("description")), parentOpened = false)
+        child.applyPatch(patch(title = MaybeUndefined.Value("title"), description = MaybeUndefined.Value("description")), streamOpened = false)
 
         assertEquals("title", child.title)
         assertEquals("description", child.description)
@@ -260,22 +260,22 @@ class ClientSubagentSessionTest {
     fun `own directories replace the inherited ones and clear back to them each on its own`() {
         val child = child()
 
-        child.applyPatch(patch(cwd = MaybeUndefined.Value("/child")), parentOpened = true)
+        child.applyPatch(patch(cwd = MaybeUndefined.Value("/child")), streamOpened = true)
         assertEquals("/child", child.cwd)
         assertEquals(rootDirectories, child.additionalDirectories, "a cwd patch leaves the directories inherited")
 
-        child.applyPatch(patch(additionalDirectories = MaybeUndefined.Value(listOf("/child/extra"))), parentOpened = true)
+        child.applyPatch(patch(additionalDirectories = MaybeUndefined.Value(listOf("/child/extra"))), streamOpened = true)
         assertEquals("/child", child.cwd, "an omitted cwd is unchanged")
         assertEquals(listOf("/child/extra"), child.additionalDirectories)
 
-        child.applyPatch(patch(additionalDirectories = MaybeUndefined.Value(emptyList())), parentOpened = true)
+        child.applyPatch(patch(additionalDirectories = MaybeUndefined.Value(emptyList())), streamOpened = true)
         assertEquals(emptyList(), child.additionalDirectories, "an empty list is a value, not a clear")
 
-        child.applyPatch(patch(cwd = MaybeUndefined.Null), parentOpened = true)
+        child.applyPatch(patch(cwd = MaybeUndefined.Null), streamOpened = true)
         assertEquals(rootCwd, child.cwd, "a null cwd inherits again")
         assertEquals(emptyList(), child.additionalDirectories, "the directories stay as they were")
 
-        child.applyPatch(patch(additionalDirectories = MaybeUndefined.Null), parentOpened = true)
+        child.applyPatch(patch(additionalDirectories = MaybeUndefined.Null), streamOpened = true)
         assertEquals(rootDirectories, child.additionalDirectories, "null directories inherit again")
     }
 
@@ -285,7 +285,7 @@ class ClientSubagentSessionTest {
 
         child.applyPatch(
             patch(cwd = MaybeUndefined.Value("/child"), additionalDirectories = MaybeUndefined.Value(listOf("/d"))),
-            parentOpened = false,
+            streamOpened = false,
         )
 
         assertEquals("/child", child.cwd)
@@ -300,20 +300,20 @@ class ClientSubagentSessionTest {
         assertEquals(rootCwd, leaf.cwd)
         assertEquals(rootDirectories, leaf.additionalDirectories)
 
-        middle.applyPatch(patch(cwd = MaybeUndefined.Value("/middle")), parentOpened = true)
+        middle.applyPatch(patch(cwd = MaybeUndefined.Value("/middle")), streamOpened = true)
         assertEquals("/middle", leaf.cwd, "a grandchild follows a later patch of its parent")
         assertEquals(rootDirectories, leaf.additionalDirectories, "the directories are inherited independently")
 
-        leaf.applyPatch(patch(additionalDirectories = MaybeUndefined.Value(listOf("/leaf/extra"))), parentOpened = true)
+        leaf.applyPatch(patch(additionalDirectories = MaybeUndefined.Value(listOf("/leaf/extra"))), streamOpened = true)
         assertEquals("/middle", leaf.cwd)
         assertEquals(listOf("/leaf/extra"), leaf.additionalDirectories)
         assertEquals(rootDirectories, middle.additionalDirectories, "a child's value does not reach its parent")
 
-        middle.applyPatch(patch(cwd = MaybeUndefined.Null), parentOpened = true)
+        middle.applyPatch(patch(cwd = MaybeUndefined.Null), streamOpened = true)
         assertEquals(rootCwd, leaf.cwd, "clearing the parent's cwd changes what the grandchild inherits")
 
-        leaf.applyPatch(patch(cwd = MaybeUndefined.Value("/leaf")), parentOpened = true)
-        middle.applyPatch(patch(cwd = MaybeUndefined.Value("/middle again")), parentOpened = true)
+        leaf.applyPatch(patch(cwd = MaybeUndefined.Value("/leaf")), streamOpened = true)
+        middle.applyPatch(patch(cwd = MaybeUndefined.Value("/middle again")), streamOpened = true)
         assertEquals("/leaf", leaf.cwd, "an own value wins over the parent's")
     }
 
@@ -321,7 +321,7 @@ class ClientSubagentSessionTest {
     fun `capabilities and state are held back before the parent's answer`() {
         val child = child()
 
-        child.applyPatch(patch(capabilities = cancelGrant, state = MaybeUndefined.Value(StateUpdate.Running())), parentOpened = false)
+        child.applyPatch(patch(capabilities = cancelGrant, state = MaybeUndefined.Value(StateUpdate.Running())), streamOpened = false)
 
         assertFalse(child.canCancel, "a grant before the answer is not in effect")
         assertNull(child.state, "a state before the answer is not shown")
@@ -330,9 +330,9 @@ class ClientSubagentSessionTest {
     @Test
     fun `held back capabilities and state are applied when the parent's answer follows a call without replay`() {
         val child = child()
-        child.applyPatch(patch(capabilities = cancelGrant, state = MaybeUndefined.Value(StateUpdate.Running())), parentOpened = false)
+        child.applyPatch(patch(capabilities = cancelGrant, state = MaybeUndefined.Value(StateUpdate.Running())), streamOpened = false)
 
-        child.onParentOpened(promote = true)
+        child.onParentOpened(applyHeld = true)
 
         assertTrue(child.canCancel)
         assertEquals(StateUpdate.Running(), child.state)
@@ -341,18 +341,18 @@ class ClientSubagentSessionTest {
     @Test
     fun `held back capabilities and state are dropped when the parent's answer follows a load`() {
         val child = child()
-        child.applyPatch(patch(capabilities = cancelGrant, state = MaybeUndefined.Value(StateUpdate.Running())), parentOpened = false)
+        child.applyPatch(patch(capabilities = cancelGrant, state = MaybeUndefined.Value(StateUpdate.Running())), streamOpened = false)
 
-        child.onParentOpened(promote = false)
+        child.onParentOpened(applyHeld = false)
 
         assertFalse(child.canCancel, "a grant from the history never takes effect")
         assertNull(child.state, "a state from the history is never shown as current")
 
         // Nothing is left to be promoted later, and live patches apply.
-        child.onParentOpened(promote = true)
+        child.onParentOpened(applyHeld = true)
         assertFalse(child.canCancel)
         assertNull(child.state)
-        child.applyPatch(patch(state = MaybeUndefined.Value(StateUpdate.Idle())), parentOpened = true)
+        child.applyPatch(patch(state = MaybeUndefined.Value(StateUpdate.Idle())), streamOpened = true)
         assertEquals(StateUpdate.Idle(), child.state)
     }
 
@@ -360,9 +360,9 @@ class ClientSubagentSessionTest {
     fun `the latest held back patch of each field wins and an omitted one does not hide an earlier one`() {
         val child = child()
 
-        child.applyPatch(patch(capabilities = cancelGrant, state = MaybeUndefined.Value(StateUpdate.Running())), parentOpened = false)
-        child.applyPatch(patch(state = MaybeUndefined.Value(StateUpdate.RequiresAction())), parentOpened = false)
-        child.onParentOpened(promote = true)
+        child.applyPatch(patch(capabilities = cancelGrant, state = MaybeUndefined.Value(StateUpdate.Running())), streamOpened = false)
+        child.applyPatch(patch(state = MaybeUndefined.Value(StateUpdate.RequiresAction())), streamOpened = false)
+        child.onParentOpened(applyHeld = true)
 
         assertTrue(child.canCancel, "the second patch omitted the capabilities")
         assertEquals(StateUpdate.RequiresAction(), child.state)
@@ -371,11 +371,11 @@ class ClientSubagentSessionTest {
     @Test
     fun `a held back null state is applied as unconfirmed`() {
         val child = child()
-        child.applyPatch(patch(state = MaybeUndefined.Value(StateUpdate.Running())), parentOpened = true)
+        child.applyPatch(patch(state = MaybeUndefined.Value(StateUpdate.Running())), streamOpened = true)
 
-        child.applyPatch(patch(state = MaybeUndefined.Null), parentOpened = false)
+        child.applyPatch(patch(state = MaybeUndefined.Null), streamOpened = false)
         assertEquals(StateUpdate.Running(), child.state, "nothing is applied before the answer")
-        child.onParentOpened(promote = true)
+        child.onParentOpened(applyHeld = true)
 
         assertNull(child.state)
     }
@@ -384,16 +384,16 @@ class ClientSubagentSessionTest {
     fun `a live state keeps omitted clears on null and replaces on a value`() {
         val child = child()
 
-        child.applyPatch(patch(state = MaybeUndefined.Value(StateUpdate.Running())), parentOpened = true)
+        child.applyPatch(patch(state = MaybeUndefined.Value(StateUpdate.Running())), streamOpened = true)
         assertEquals(StateUpdate.Running(), child.state)
 
-        child.applyPatch(patch(title = MaybeUndefined.Value("title")), parentOpened = true)
+        child.applyPatch(patch(title = MaybeUndefined.Value("title")), streamOpened = true)
         assertEquals(StateUpdate.Running(), child.state, "an omitted state is unchanged")
 
-        child.applyPatch(patch(state = MaybeUndefined.Null), parentOpened = true)
+        child.applyPatch(patch(state = MaybeUndefined.Null), streamOpened = true)
         assertNull(child.state, "null means unconfirmed")
 
-        child.applyPatch(patch(state = MaybeUndefined.Value(StateUpdate.Unknown())), parentOpened = true)
+        child.applyPatch(patch(state = MaybeUndefined.Value(StateUpdate.Unknown())), streamOpened = true)
         assertEquals(StateUpdate.Unknown(), child.state, "unknown is a confirmed state")
     }
 
@@ -406,41 +406,41 @@ class ClientSubagentSessionTest {
         )
         for ((json, granted) in cases) {
             val child = child()
-            child.applyPatch(patch(capabilities = capabilities(json)), parentOpened = true)
+            child.applyPatch(patch(capabilities = capabilities(json)), streamOpened = true)
             assertEquals(granted, child.canCancel, json)
         }
 
         val never = child()
-        never.applyPatch(patch(title = MaybeUndefined.Value("title")), parentOpened = true)
+        never.applyPatch(patch(title = MaybeUndefined.Value("title")), streamOpened = true)
         assertFalse(never.canCancel, "no capabilities were sent")
 
         val cleared = child()
-        cleared.applyPatch(patch(capabilities = cancelGrant), parentOpened = true)
-        cleared.applyPatch(patch(capabilities = MaybeUndefined.Null), parentOpened = true)
+        cleared.applyPatch(patch(capabilities = cancelGrant), streamOpened = true)
+        cleared.applyPatch(patch(capabilities = MaybeUndefined.Null), streamOpened = true)
         assertFalse(cleared.canCancel, "null capabilities clear the grant")
     }
 
     @Test
     fun `capabilities are replaced as a whole and an omitted patch keeps the grant`() {
         val child = child()
-        child.applyPatch(patch(capabilities = cancelGrant), parentOpened = true)
+        child.applyPatch(patch(capabilities = cancelGrant), streamOpened = true)
 
-        child.applyPatch(patch(title = MaybeUndefined.Value("title")), parentOpened = true)
+        child.applyPatch(patch(title = MaybeUndefined.Value("title")), streamOpened = true)
         assertTrue(child.canCancel, "omitted capabilities are unchanged")
 
-        child.applyPatch(patch(capabilities = capabilities("{}")), parentOpened = true)
+        child.applyPatch(patch(capabilities = capabilities("{}")), streamOpened = true)
         assertFalse(child.canCancel, "capabilities without cancel replace the ones with it")
 
-        child.applyPatch(patch(capabilities = capabilities("""{"cancel":{}}""")), parentOpened = true)
+        child.applyPatch(patch(capabilities = capabilities("""{"cancel":{}}""")), streamOpened = true)
         assertTrue(child.canCancel)
     }
 
     @Test
     fun `an unknown state does not revoke the grant`() {
         val child = child()
-        child.applyPatch(patch(capabilities = cancelGrant), parentOpened = true)
+        child.applyPatch(patch(capabilities = cancelGrant), streamOpened = true)
 
-        child.applyPatch(patch(state = MaybeUndefined.Value(StateUpdate.Unknown())), parentOpened = true)
+        child.applyPatch(patch(state = MaybeUndefined.Value(StateUpdate.Unknown())), streamOpened = true)
 
         assertTrue(child.canCancel)
         assertEquals(StateUpdate.Unknown(), child.state)
@@ -449,7 +449,7 @@ class ClientSubagentSessionTest {
     @Test
     fun `canCancel is false once the subagent is closed`() {
         val child = child()
-        child.applyPatch(patch(capabilities = cancelGrant), parentOpened = true)
+        child.applyPatch(patch(capabilities = cancelGrant), streamOpened = true)
         assertTrue(child.canCancel)
 
         child.markClosed()
@@ -462,7 +462,7 @@ class ClientSubagentSessionTest {
         val child = child()
 
         for (capabilities in listOf(null, capabilities("{}"))) {
-            if (capabilities != null) child.applyPatch(patch(capabilities = capabilities), parentOpened = true)
+            if (capabilities != null) child.applyPatch(patch(capabilities = capabilities), streamOpened = true)
             assertFailsWith<IllegalStateException> { child.cancel() }
         }
 
@@ -472,7 +472,7 @@ class ClientSubagentSessionTest {
     @Test
     fun `cancel with a held back grant throws before the parent's answer`() = runTest {
         val child = child()
-        child.applyPatch(patch(capabilities = cancelGrant), parentOpened = false)
+        child.applyPatch(patch(capabilities = cancelGrant), streamOpened = false)
 
         assertFailsWith<IllegalStateException> { child.cancel() }
 
@@ -482,7 +482,7 @@ class ClientSubagentSessionTest {
     @Test
     fun `cancel after the subagent is closed throws and sends nothing even with a grant`() = runTest {
         val child = child()
-        child.applyPatch(patch(capabilities = cancelGrant), parentOpened = true)
+        child.applyPatch(patch(capabilities = cancelGrant), streamOpened = true)
         child.markClosed()
 
         assertFailsWith<IllegalStateException> { child.cancel() }
@@ -493,7 +493,7 @@ class ClientSubagentSessionTest {
     @Test
     fun `cancel with a grant sends session cancel for the subagent's own id`() = runTest {
         val child = child()
-        child.applyPatch(patch(capabilities = cancelGrant), parentOpened = true)
+        child.applyPatch(patch(capabilities = cancelGrant), streamOpened = true)
 
         child.cancel()
 
@@ -508,7 +508,7 @@ class ClientSubagentSessionTest {
     fun `cancel answers the pending permission requests and blocks later ones while work is confirmed`() = runTest {
         val operations = WaitingChildOperations()
         val (holder, child) = openChild(operations)
-        child.applyPatch(patch(capabilities = cancelGrant), parentOpened = true)
+        child.applyPatch(patch(capabilities = cancelGrant), streamOpened = true)
         holder.permissions.onState(StateUpdate.Running(), live = true)
         val pending = backgroundScope.async { holder.answerPermissionRequest(toolCall("pending"), emptyList(), null) }
         operations.started.receive()
@@ -525,7 +525,7 @@ class ClientSubagentSessionTest {
     fun `cancel answers the pending permission requests even if sending session cancel fails`() = runTest {
         val operations = WaitingChildOperations()
         val (holder, child) = openChild(operations)
-        child.applyPatch(patch(capabilities = cancelGrant), parentOpened = true)
+        child.applyPatch(patch(capabilities = cancelGrant), streamOpened = true)
         val pending = backgroundScope.async { holder.answerPermissionRequest(toolCall("pending"), emptyList(), null) }
         operations.started.receive()
         transport.sendFailure = IllegalStateException("writer closed")
@@ -543,7 +543,7 @@ class ClientSubagentSessionTest {
             val (holder, child) = openChild(operations)
             holder.permissions.onState(StateUpdate.Running(), live = true)
             if (closed) {
-                child.applyPatch(patch(capabilities = cancelGrant), parentOpened = true)
+                child.applyPatch(patch(capabilities = cancelGrant), streamOpened = true)
                 child.markClosed()
             }
             val pending = backgroundScope.async { holder.answerPermissionRequest(toolCall("pending"), emptyList(), null) }
@@ -707,7 +707,7 @@ class ClientSubagentSessionTest {
         val rootSession = rootSession(root, rootParameters)
         assertTrue(root.markOpened(NewSessionResponse(SessionId("root"))))
         root.completeOpening(rootSession, root.drainHistory(rootSession))
-        child.holder.markOpened(promote = true)
+        child.holder.markOpened(applyHeld = true)
         child.holder.session.await()
         return child
     }

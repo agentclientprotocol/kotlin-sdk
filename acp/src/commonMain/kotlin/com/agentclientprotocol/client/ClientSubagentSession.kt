@@ -174,11 +174,11 @@ public class ClientSubagentSession internal constructor(
      * Applies a `subagent_update` of this subagent, unless it is closed.
      *
      * The descriptive fields apply at once, so values replayed from history stay visible. `capabilities` and `state`
-     * are held back until [onParentOpened] unless [parentOpened].
+     * are held back until [onParentOpened] unless [streamOpened].
      *
-     * @param parentOpened whether the parent's `Opened` was already delivered
+     * @param streamOpened whether the parent's `Opened` was already delivered
      */
-    internal fun applyPatch(update: SessionUpdate.SubagentUpdate, parentOpened: Boolean) {
+    internal fun applyPatch(update: SessionUpdate.SubagentUpdate, streamOpened: Boolean) {
         if (closed.value) return
 
         _title.value = update.title.update(_title.value)
@@ -186,7 +186,7 @@ public class ClientSubagentSession internal constructor(
         ownCwd.value = update.cwd.update(ownCwd.value)
         ownAdditionalDirectories.value = update.additionalDirectories.update(ownAdditionalDirectories.value)
 
-        if (parentOpened) {
+        if (streamOpened) {
             applyCapabilities(update.capabilities)
             applyState(update.state)
         } else {
@@ -199,11 +199,11 @@ public class ClientSubagentSession internal constructor(
      * Applies or drops the `capabilities` and `state` that [applyPatch] held back, when the parent's `Opened` is
      * delivered.
      *
-     * @param promote `true` when the root's opening replayed no history, so the held values are current; `false` after
-     * a load, so they are history and dropped
+     * @param applyHeld `true` when the root's opening replayed no history, so the held values are current; `false`
+     * after a load, so they are history and dropped
      */
-    internal fun onParentOpened(promote: Boolean) {
-        if (promote && !closed.value) {
+    internal fun onParentOpened(applyHeld: Boolean) {
+        if (applyHeld && !closed.value) {
             applyCapabilities(heldCapabilities)
             applyState(heldState)
         }

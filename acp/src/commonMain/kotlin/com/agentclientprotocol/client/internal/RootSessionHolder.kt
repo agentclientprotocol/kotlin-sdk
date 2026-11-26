@@ -55,22 +55,28 @@ internal class RootSessionHolder(
         /**
          * The phase after the claim by [opening], or `null` if a call has already claimed the root.
          */
-        fun claimedBy(opening: Opening): RootPhase? =
+        fun claimedByOrNull(opening: Opening): RootPhase? =
             if (stage == Stage.UNCLAIMED) RootPhase(Stage.CLAIMED, opening) else null
 
         /**
          * The phase after the answer, or `null` unless the root is claimed and not answered yet.
          */
-        fun answered(): RootPhase? = if (stage == Stage.CLAIMED) RootPhase(Stage.ANSWERED, opening) else null
+        fun answeredOrNull(): RootPhase? = if (stage == Stage.CLAIMED) RootPhase(Stage.ANSWERED, opening) else null
 
         /**
          * The phase once the close has started, or `null` if the root isn't answered yet. A closing root stays closing.
          */
-        fun closing(): RootPhase? = when (stage) {
+        fun closingOrNull(): RootPhase? = when (stage) {
             Stage.UNCLAIMED, Stage.CLAIMED -> null
             Stage.ANSWERED -> RootPhase(Stage.CLOSING, opening)
             Stage.CLOSING -> this
         }
+
+        /**
+         * Whether the subagent values held back until the opened marker take effect at the marker. After a call that
+         * replayed the history they are history too, and are dropped.
+         */
+        val appliesHeldState: Boolean get() = opening?.replayRequested != true
 
         companion object {
             val UNCLAIMED: RootPhase = RootPhase(Stage.UNCLAIMED, opening = null)
@@ -113,7 +119,7 @@ internal class RootSessionHolder(
      * @throws IllegalStateException if the root isn't answered yet
      */
     fun startClosing() {
-        _phase.update { current -> checkNotNull(current.closing()) { "Root session $sessionId is closed before its answer" } }
+        _phase.update { current -> checkNotNull(current.closingOrNull()) { "Root session $sessionId is closed before its answer" } }
         permissions.close()
         // After the stage, so a subagent that this walk misses is closed by [addChild].
         forEachDescendant { it.permissions.close() }
@@ -128,7 +134,7 @@ internal class RootSessionHolder(
         // A completed holder's queue is closed, so it couldn't take the opened marker.
         if (_session.isCompleted) return false
         val unclaimed = phase
-        val claimed = unclaimed.claimedBy(Opening(replayRequested, parameters)) ?: return false
+        val claimed = unclaimed.claimedByOrNull(Opening(replayRequested, parameters)) ?: return false
         return _phase.compareAndSet(unclaimed, claimed)
     }
 
@@ -144,13 +150,13 @@ internal class RootSessionHolder(
      */
     fun markOpened(response: AcpCreatedSessionResponse): Boolean {
         val claimed = phase
-        val answered = checkNotNull(claimed.answered()) { "Root session $sessionId is answered without a claim, or twice" }
+        val answered = checkNotNull(claimed.answeredOrNull()) { "Root session $sessionId is answered without a claim, or twice" }
         if (queue.trySend(QueuedItem.Opened(response)).isFailure) return false
         check(_phase.compareAndSet(claimed, answered)) { "The phase of root session $sessionId changed during its answer" }
 
         // A subagent's opening closes its queue only after this marker; a failed one's is closed and skipped.
-        val promote = answered.opening?.replayRequested != true
-        forEachDescendant { it.markOpened(promote) }
+        val applyHeld = answered.appliesHeldState
+        forEachDescendant { it.markOpened(applyHeld) }
         return true
     }
 
@@ -164,7 +170,7 @@ internal class RootSessionHolder(
         while (true) {
             when (val item = queue.receive()) {
                 is QueuedItem.Opened -> return item
-                else -> deliverDuringOpening(session) { deliverItem(item, session, opened = false) }
+                else -> deliverDuringOpening(session) { deliverItem(item, session, streamOpened = false) }
             }
         }
     }
@@ -181,7 +187,7 @@ internal class RootSessionHolder(
         while (true) {
             when (val item = queue.receiveCatching().getOrNull() ?: return null) {
                 is QueuedItem.Opened -> return item
-                else -> deliverItem(item, operations, opened = false) { update, meta ->
+                else -> deliverItem(item, operations, streamOpened = false) { update, meta ->
                     @OptIn(UnstableApi::class)
                     when (update) {
                         // TODO remove together with the deprecated ClientSession.currentMode.
@@ -223,7 +229,7 @@ internal class RootSessionHolder(
         }
         queue.close()
         for (item in queue) {
-            deliverDuringOpening(session) { deliverItem(item, session, opened = true) }
+            deliverDuringOpening(session) { deliverItem(item, session, streamOpened = true) }
         }
 
         // A cancellation after the last delivery still fails the opening.

@@ -52,7 +52,7 @@ internal class SubagentSessionHolder(
          * The opening has delivered its queue and completes the holder next. A stop that finds it leaves the holder to
          * the opening.
          */
-        object Finished : OpeningState()
+        object Completing : OpeningState()
 
         /**
          * A stop has run, so no opening starts any more. A later stop that finds it settles nothing.
@@ -73,7 +73,7 @@ internal class SubagentSessionHolder(
     init {
         // After the root's answer, the opened marker is the first item, queued before the holder is reachable.
         val phase = root.phase
-        if (phase.isAtLeast(Stage.ANSWERED)) markOpened(promote = phase.opening?.replayRequested != true)
+        if (phase.isAtLeast(Stage.ANSWERED)) markOpened(applyHeld = phase.appliesHeldState)
     }
 
     override val root: RootSessionHolder get() = parent.root
@@ -88,17 +88,17 @@ internal class SubagentSessionHolder(
     /**
      * Puts the opened marker into the queue, and resolves the held-back permission state.
      *
-     * @param promote whether the root's opening call replayed no history, so held-back values take effect
+     * @param applyHeld whether the root's opening call replayed no history, so held-back values take effect
      */
-    fun markOpened(promote: Boolean) {
-        if (queue.trySend(QueuedItem.Opened(null)).isSuccess) permissions.onOpened(promote)
+    fun markOpened(applyHeld: Boolean) {
+        if (queue.trySend(QueuedItem.Opened(null)).isSuccess) permissions.onOpened(applyHeld)
     }
 
     /**
      * Applies a later `subagent_update` to the subagent's session, if it is set up.
      */
-    fun applyPatch(update: SessionUpdate.SubagentUpdate, parentOpened: Boolean) {
-        _subagent.value?.applyPatch(update, parentOpened)
+    fun applyPatch(update: SessionUpdate.SubagentUpdate, streamOpened: Boolean) {
+        _subagent.value?.applyPatch(update, streamOpened)
     }
 
     /**
@@ -151,7 +151,7 @@ internal class SubagentSessionHolder(
                     currentCoroutineContext().ensureActive()
                     when (val item = queue.receiveCatching().getOrNull() ?: return@executeWithSession false) {
                         is QueuedItem.Opened -> break
-                        else -> deliverItem(item, session, opened = false)
+                        else -> deliverItem(item, session, streamOpened = false)
                     }
                 }
                 resolveHeldSubagentState()
@@ -177,10 +177,7 @@ internal class SubagentSessionHolder(
                     deliverLive(item, session)
                 }
             }
-            // Claims the completion unless a stop came first.
-            val running = opening.value as? OpeningState.Running ?: return
-            if (!opening.compareAndSet(running, OpeningState.Finished)) return
-            _session.complete(session)
+            if (claimCompletion()) _session.complete(session)
         } catch (ce: CancellationException) {
             // Rethrow the opening's own cancellation: its stopper fails the holder, or the connection has ended.
             currentCoroutineContext().ensureActive()
@@ -196,6 +193,16 @@ internal class SubagentSessionHolder(
                 "ClientSessionOperations.notify of subagent session $sessionId failed",
             )
         }
+    }
+
+    /**
+     * Moves the running opening to [OpeningState.Completing], unless a stop came first.
+     *
+     * @return `false` if a stop came first, so the stopper settles the holder
+     */
+    private fun claimCompletion(): Boolean {
+        val running = opening.value as? OpeningState.Running ?: return false
+        return opening.compareAndSet(running, OpeningState.Completing)
     }
 
     /**
@@ -215,7 +222,7 @@ internal class SubagentSessionHolder(
      */
     private suspend fun deliverLive(item: QueuedItem, session: ClientSubagentSession) {
         try {
-            deliverItem(item, session, opened = true)
+            deliverItem(item, session, streamOpened = true)
         } catch (ce: CancellationException) {
             // Rethrow only the opening's own cancellation, not one from the app's `notify`, such as its `withTimeout`.
             currentCoroutineContext().ensureActive()

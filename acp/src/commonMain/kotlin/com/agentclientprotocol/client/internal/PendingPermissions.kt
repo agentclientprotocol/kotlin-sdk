@@ -142,13 +142,13 @@ internal class SubagentPendingPermissions : PendingPermissions() {
      * Resolves what [onState] held back, when the root's answer arrives, and makes later states live. Requests may
      * already be pending, because a request joins the race when it arrives.
      *
-     * @param promote `true` after a call that replayed no history, so the held states were current and take effect;
+     * @param applyHeld `true` after a call that replayed no history, so the held states were current and take effect;
      * `false` after a load, so they were history and nothing applies
      */
-    fun onOpened(promote: Boolean) {
+    fun onOpened(applyHeld: Boolean) {
         val held = workState.value as? WorkState.Held ?: return
-        workState.value = WorkState.Live(promote && held.activeWork)
-        if (promote) held.setAside?.complete(Unit)
+        workState.value = WorkState.Live(applyHeld && held.activeWork)
+        if (applyHeld) held.setAside?.complete(Unit)
     }
 
     /**

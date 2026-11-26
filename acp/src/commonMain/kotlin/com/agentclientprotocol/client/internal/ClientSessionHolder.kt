@@ -242,18 +242,19 @@ internal sealed class ClientSessionHolder(
      * otherwise.
      */
     protected fun resolveHeldSubagentState() {
-        val promote = root.phase.opening?.replayRequested != true
-        for (child in subagents) child.onParentOpened(promote)
+        val applyHeld = root.phase.appliesHeldState
+        for (child in subagents) child.onParentOpened(applyHeld)
     }
 
     /**
      * Hands one queued [item] to [session]. An announcement sets its subagent up first, and a patch is applied first,
      * so the application never sees an update before its effect.
      *
-     * @param opened whether this stream's opened marker was delivered, so subagent patches are no longer held back
+     * @param streamOpened whether this stream's opened marker was delivered, so subagent patches are no longer held
+     * back
      */
-    protected suspend fun deliverItem(item: QueuedItem, session: BaseClientSession, opened: Boolean) {
-        deliverItem(item, session.operations, opened) { update, meta -> session.deliverUpdate(update, meta) }
+    protected suspend fun deliverItem(item: QueuedItem, session: BaseClientSession, streamOpened: Boolean) {
+        deliverItem(item, session.operations, streamOpened) { update, meta -> session.deliverUpdate(update, meta) }
     }
 
     /**
@@ -262,17 +263,17 @@ internal sealed class ClientSessionHolder(
     protected suspend fun deliverItem(
         item: QueuedItem,
         operations: ClientSessionOperations,
-        opened: Boolean,
+        streamOpened: Boolean,
         deliver: suspend (SessionUpdate, JsonElement?) -> Unit,
     ) {
         when (item) {
             is QueuedItem.Update -> deliver(item.update, item.meta)
             is QueuedItem.Announcement -> {
-                setUpSubagent(item, operations, opened)
+                setUpSubagent(item, operations, streamOpened)
                 deliver(item.update, item.meta)
             }
             is QueuedItem.Patch -> {
-                item.child.applyPatch(item.update, opened)
+                item.child.applyPatch(item.update, streamOpened)
                 deliver(item.update, item.meta)
             }
             // The consumers take the opened marker themselves.
@@ -289,7 +290,7 @@ internal sealed class ClientSessionHolder(
     private suspend fun setUpSubagent(
         announcement: QueuedItem.Announcement,
         operations: ClientSessionOperations,
-        parentOpened: Boolean,
+        streamOpened: Boolean,
     ) {
         val child = announcement.child
         val childId = child.sessionId
@@ -315,7 +316,7 @@ internal sealed class ClientSessionHolder(
         }
 
         val session = ClientSubagentSession(child, childOperations, protocol)
-        session.applyPatch(announcement.update, parentOpened)
+        session.applyPatch(announcement.update, streamOpened)
         // This holder failed or was closed while the factory ran, which ends the subagent's holder too.
         if (!listSubagent(session)) {
             session.markClosed()
@@ -378,7 +379,7 @@ internal sealed class ClientSessionHolder(
         @OptIn(ExperimentalCoroutinesApi::class)
         val session = _session.getCompleted()
         session.executeWithSession {
-            deliverItem(item, session, opened = true)
+            deliverItem(item, session, streamOpened = true)
         }
         return true
     }
