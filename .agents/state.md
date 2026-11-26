@@ -445,7 +445,9 @@ reviewer over the milestone.
   Out of scope: pre-existing single-line KDoc on `Agent.recordNegotiated`.
 - Claim suggestions 12–14 (naming by timing, claim+markOpened, reused-id behaviour note) added to the registry
   section of readability-suggestions.md (user request).
-- M1: running (acp-model non-v2). Samples out of scope (tutorial comments for readers).
+- M1 COMMITTED `ddfc35b` (acp-model non-v2 + build-logic comments; small public trims in MaybeUndefined, StateUpdate,
+  SubagentUpdate, ToolCallContent.Session; +5 suggestions). Samples out of scope (tutorial comments for readers).
+- R1: running (AGENTS.md Runtime and Lifecycle Rules trim).
 
 KDoc pass goal (user 2026-11-25): (1) bring every comment/KDoc this PR adds or changes in line with AGENTS.md
 "Comments and KDoc" (structure rules, property/param placement, no single-line KDoc, no consecutive `//`);
