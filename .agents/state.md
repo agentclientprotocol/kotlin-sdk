@@ -102,6 +102,13 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
   `samples/README.md` table of contents; shared concurrency style in the subagents sample: single-writer properties
   are `@Volatile var … private set` holding immutable values, a stdlib atomic only where two writers exist (with a
   comment), no `CopyOnWriteArrayList`-typed properties; each subagent session class owns its own behaviour.
+- Client close without join (user, 2026-11-26, from a question-only side session): v1 `ClientSession.close()`
+  cancels the openings of unfinished subagents fire-and-forget and doesn't wait for them; the self-close detection
+  (`runsIn`, `isSelfOrAncestorOf`, `ownOpenings`, `SubagentOpening`) is gone. Supersedes the D3 `runsIn` decision.
+  An opening completes its holder only after claiming `OpeningState.Finished`; the first stop of a subagent's
+  opening settles its holder (`stopOpening` returns whether its caller must fail it). Failure-cascade refactors
+  beyond `a4d18cc` (stop the whole subtree first, shared `StoppedSubtree`) were assessed and rejected: not worth
+  their risk now. Review report: `.agents/research/close-no-join-review.md`.
 
 ## Done
 - M0 research — report `.agents/research/subagents-wire-shapes.md` (upstream `13b76582`): no wire-shape change since
@@ -386,6 +393,17 @@ mode: single · branch: eugenethedev/subagents · reviews: on (one reviewer per 
 - E8 relayed worker — `ca9c764` (user commit) — `NativeRelayedSubagentSession(id, title)` translates one worker
   (`relayOutput`, `relayFinished`, `awaitSent`; private channel/drain/record writes); `relayNativeAgent` builds the
   tree with `parent` and routes by worker name.
+- Close without join — `de68045` — `removeSessionTree` cancels openings without joining; `OpeningState.Finished`
+  claim; KDoc of `ClientSession.close`, AGENTS.md and the spec updated; new cross-close deadlock test. Reviewed:
+  0 blockers, 3 nits.
+- Review nits — `0fde14d` — the first stop settles a holder (`failSessionTree` returns `Boolean`; a cancelled
+  opening or setup leaves the holder to its stopper); `removeSessionTree` KDoc step 2; cross-close test receives
+  both closes first. Two deterministic regression tests.
+- Stop decision in one place — `9c09d43` (user-reviewed) — `stopOpening` returns whether its caller fails the
+  holder; `removeSessionTree` uses it; `OpeningState` subtypes carry the per-state KDoc; `failSetup`/`failOpening`
+  comments say why they check `isActive`.
+- One holder at a time — `a4d18cc` (user-reviewed) — `failHolder` primitive; `failSessionTree` keeps its cascade as a
+  local function; `failStoppedTree` removed; each opening stopped once, `markClosed` once per holder.
 
 ## Next
 KDoc pass goal (user 2026-11-25): (1) bring every comment/KDoc this PR adds or changes in line with AGENTS.md
@@ -867,8 +885,21 @@ Earlier: the goal is done. PR #158 targets `master`. Remaining for the user: del
 deadlock; the dropped pre-marker update; regression test for agent nit N3; stale Kotlin file:line cites in the spec.
 
 Notes:
+- Deferred by the user (2026-11-26), close follow-ups; don't start without asking:
+  - Review of `0fde14d`, `9c09d43` and `a4d18cc` (`de68045` was reviewed).
+  - Cancelled close skips the cleanup: a caller cancelled while awaiting the `session/close` response skips
+    `onClosed()`, leaving the half-closed root registered and its id taken. Proposal: run the request and the cleanup
+    in the connection scope; the caller awaits cancellably.
+  - Late update reaches a closed subagent: the read loop may deliver an update that follows the close response
+    before the caller runs `onClosed()`. Proposal: do the non-suspending removal (seal, stop, map CAS, permissions,
+    mark closed) in the `session/close` response hook, the suspending failures after it; `-32002` keeps the current
+    path. Same slice as the previous item.
+  - `failSessionTree`: move the `stopOpening` check into `failTree` so it has one call site.
+  - `stopOpening` KDoc wording (user's text): "settles the opening in the holder", "terminal state", bullet
+    punctuation.
+  - Spec line ~2501: "Closing descendants bottom-up … was rejected" contradicts step 4 and the code; reword.
 - Flaky build: `./gradlew check` fails now and then with a Kotlin/JS "Internal compiler error" in
-  `:acp:compileTestDevelopmentExecutableKotlinJs` (six occurrences); it passes on rerun; cause unknown.
+  `:acp:compileTestDevelopmentExecutableKotlinJs` (eight occurrences); it passes on rerun; cause unknown.
 - `commonTest` test names must not contain commas (native targets reject them).
 - Not covered end to end: a terminal call from a child. No regression test for agent nit N3 (unreachable).
 - Follow-ups outside this goal (do not fix unless the user asks): `Agent.kt` registers `session/resume` twice;
