@@ -437,6 +437,17 @@ Outside this PR: #5, #20.
 - D1 — `a136aed` — `trySend` + identity-safe `endTurn`; `completedSessionOrNull` replaces `runCatching { awaitSession }`;
   a cancelled negotiation caches `IllegalStateException` (no retry: `negotiateOnce` closes the protocol); 3 regression
   tests + 1 unit test; `check` green (2nd run, JS flake). Follow-up: `isSessionCompleted` kept only for tests.
+- S1 #6 — `12682c5` — failed root's tree leaves the map when its cascade ends (`failRootTree`/`failSubagentTree`
+  split); `blocksId`, `replacing`, `removeDescendantsOf`, the reap's 2nd update gone; product −20 LOC (est. −30);
+  behaviour: failed grandchild keeps its id; failing root keeps its id for its whole cascade (agent request then gets
+  the opening's failure, not -32002); `getSession` on a failed root says "not found"; AGENTS.md +1 bullet; `check`
+  green (3rd run: comma in a test name, then JS flake). #7 can now take `registerChild`/lookup + Reg 7/Reg 10 renames.
+- User 2026-11-26: #10 APPROVED (slice after S1; constraints: a failed root opening must not close its permissions;
+  speculative holders get permissions too). M4 answer 1 is recorded in this file from an earlier session; the user
+  doesn't remember it — don't cite it as theirs without saying it's from the record.
+- #11 discussed: include it; form (CAS `AtomicRef<PersistentList?>` vs lock + nullable list) settled in the
+  CAS-vs-locks discussion.
+Next slice: S1b #10, then S2 #8, S3 #9, S4 #14, S5 #15+#16, S6 #21.
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
