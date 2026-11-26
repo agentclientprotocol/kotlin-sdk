@@ -182,14 +182,9 @@ internal class ClientSessionRegistry(
                 sessionsStorage.copy(sessions = sessions)
             }
 
-            // Bottom-up, so each holder fails with its own error rather than with its parent's.
-            for (holder in subtree.asReversed()) {
-                if (holder !is SubagentSessionHolder) continue
+            for ((holder, settles) in settlesHolder.entries.reversed()) {
                 holder.permissions.close()
-                holder.markClosed()
-                if (settlesHolder.getValue(holder)) {
-                    failStoppedTree(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
-                }
+                if (settles) failHolder(holder, AcpExpectedError("Session ${holder.sessionId} closed")) else holder.markClosed()
             }
             subtree.filter { previousSessions.sessions[it.sessionId] === it }.mapTo(mutableSetOf()) { it.sessionId }
         }
@@ -432,7 +427,16 @@ internal class ClientSessionRegistry(
      */
     suspend fun failSessionTree(holder: ClientSessionHolder, cause: Throwable): Boolean = withContext(NonCancellable) {
         if (holder is SubagentSessionHolder && !stopOpening(holder)) return@withContext false
-        failStoppedTree(holder, cause)
+
+        suspend fun failTree(failing: ClientSessionHolder, reason: Throwable) {
+            val children = failing.sealChildren()
+            failHolder(failing, reason)
+            for (child in children) {
+                if (!stopOpening(child)) continue
+                failTree(child, IllegalStateException("Session ${failing.sessionId}, the parent of subagent session ${child.sessionId}, failed", reason))
+            }
+        }
+        failTree(holder, cause)
         true
     }
 
@@ -454,20 +458,16 @@ internal class ClientSessionRegistry(
         }
 
     /**
-     * Fails [failing], whose opening the caller has stopped if it is a subagent, and the subagents below it whose
-     * openings this stops, see [failSessionTree]. Must run under [NonCancellable].
+     * Fails [holder] alone with [reason] and drains its queue, closing its session object if it is a subagent.
+     *
+     * The caller must have stopped a subagent's opening first, so a setup that stores the subagent later starts no
+     * opening and closes it itself. Must run under [NonCancellable].
      */
-    private suspend fun failStoppedTree(failing: ClientSessionHolder, reason: Throwable) {
-        val children = failing.sealChildren()
-        // After the stop, so a setup that stores the subagent later starts no opening and closes it itself.
-        if (failing is SubagentSessionHolder) failing.markClosed()
-        failing.failAndDrainQueue(reason) { update, meta ->
-            runCatching { handleUnconnectedSessionUpdate(failing.sessionId, update, meta) }
-                .onFailure { logger.error(it) { "Unconnected session update handler failed for ${failing.sessionId}" } }
-        }
-        for (child in children) {
-            if (!stopOpening(child)) continue
-            failStoppedTree(child, IllegalStateException("Session ${failing.sessionId}, the parent of subagent session ${child.sessionId}, failed", reason))
+    private suspend fun failHolder(holder: ClientSessionHolder, reason: Throwable) {
+        if (holder is SubagentSessionHolder) holder.markClosed()
+        holder.failAndDrainQueue(reason) { update, meta ->
+            runCatching { handleUnconnectedSessionUpdate(holder.sessionId, update, meta) }
+                .onFailure { logger.error(it) { "Unconnected session update handler failed for ${holder.sessionId}" } }
         }
     }
 

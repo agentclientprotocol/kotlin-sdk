@@ -1501,12 +1501,10 @@ suspend fun removeSessionTree(root: RootSessionHolder): Set<SessionId> {
             })
         }
 
-        for (holder in subtree.asReversed()) {  // bottom-up
-            if (holder !is SubagentSessionHolder) continue
+        for ((holder, settles) in settlesHolder.entries.reversed()) {  // bottom-up
             holder.permissions.close()
-            holder.markClosed()
-            // fails the holder this removal settles, and the subagents below it that no one stopped before
-            if (settlesHolder.getValue(holder)) failStoppedTree(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
+            // one holder each: the stops above already settled every subagent, so nothing cascades
+            if (settles) failHolder(holder, AcpExpectedError("Session ${holder.sessionId} closed")) else holder.markClosed()
         }
         removedIds
     }
