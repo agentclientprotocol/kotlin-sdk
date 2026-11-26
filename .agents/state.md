@@ -449,8 +449,12 @@ reviewer over the milestone.
   SubagentUpdate, ToolCallContent.Session; +5 suggestions). Samples out of scope (tutorial comments for readers).
 - R1 COMMITTED `f9bfc6f` (Runtime and Lifecycle Rules 3,811→1,775 words; three ### subsections: read-loop ordering,
   v1 agent, v1 client; every must-keep fact kept as a short bullet; no .kt change).
-- Milestone done (product commits 91bdb5e a1e67b1 0bc29e3 54d4d45 ddfc35b f9bfc6f). Running: `./gradlew check` +
-  reviewer → `.agents/research/review-comment-trim.md`.
+- Milestone done (product commits 91bdb5e a1e67b1 0bc29e3 54d4d45 ddfc35b f9bfc6f). `./gradlew check` GREEN (220 tasks).
+  Review DONE `.agents/research/review-comment-trim.md`: 0 blockers; S1 `blocksId` reason lost (failed subagent keeps
+  its id so the parent's later patches stay patches and an opening of the id is refused); nits N1 wording
+  "may not suspend", N2 registry speculative-holder comment, N3 pilot rewrapped `claimSessionHolder` signature
+  (non-comment change), N4 AGENTS.md "marked closed" bullet, N5 restore spec citation for the `subagents` gate.
+  Waiting: user decision on the fix slice.
 
 KDoc pass goal (user 2026-11-25): (1) bring every comment/KDoc this PR adds or changes in line with AGENTS.md
 "Comments and KDoc" (structure rules, property/param placement, no single-line KDoc, no consecutive `//`);
