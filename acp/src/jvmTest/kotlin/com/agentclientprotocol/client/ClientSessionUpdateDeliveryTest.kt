@@ -47,7 +47,7 @@ import kotlin.time.Duration.Companion.seconds
  *
  * Getting this wrong used to be observable as `AcpExpectedError: Session <id> not found` logged by the
  * protocol, plus a silently dropped update, whenever the notification was handled while the concurrent
- * `newSession` was registering its holder and dropping `initializingSessionsCount` back to zero.
+ * `newSession` was registering its holder and dropping `openingCallsCount` back to zero.
  */
 class ClientSessionUpdateDeliveryTest {
     @Test

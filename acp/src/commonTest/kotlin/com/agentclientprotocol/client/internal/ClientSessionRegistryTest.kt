@@ -95,8 +95,8 @@ class ClientSessionRegistryTest {
 
     @Test
     fun `a subagent registered before the answer gets its marker at the answer and one registered after gets it first`() = runTest {
-        registry.withInitializingSession {
-            val rootHolder = registry.claimSessionHolder(root, replayRequested = false, parameters)
+        registry.withOpeningCall {
+            val rootHolder = registry.claimBeforeRequest(root, replayRequested = false, parameters)
             registry.deliverSessionUpdate(root, announce(child), null)
             val childHolder = assertNotNull(rootHolder.childOrNull(child))
             registry.deliverSessionUpdate(child, text("child-history"), null)
@@ -123,8 +123,8 @@ class ClientSessionRegistryTest {
 
     @Test
     fun `a subagent registered after the close started has its permission requests answered cancelled`() = runTest {
-        registry.withInitializingSession {
-            val rootHolder = registry.claimSessionHolder(root, replayRequested = false, parameters)
+        registry.withOpeningCall {
+            val rootHolder = registry.claimBeforeRequest(root, replayRequested = false, parameters)
             assertTrue(rootHolder.markOpened(LoadSessionResponse()))
             registry.deliverSessionUpdate(root, announce(child), null)
             val childHolder = assertNotNull(rootHolder.childOrNull(child))
@@ -144,8 +144,8 @@ class ClientSessionRegistryTest {
 
     @Test
     fun `a failed subagent keeps its id while its root lives and its subtree fails with it`() = runTest {
-        registry.withInitializingSession {
-            val rootHolder = registry.claimSessionHolder(root, replayRequested = true, parameters)
+        registry.withOpeningCall {
+            val rootHolder = registry.claimBeforeRequest(root, replayRequested = true, parameters)
             registry.deliverSessionUpdate(root, announce(child), null)
             val childHolder = assertNotNull(rootHolder.childOrNull(child))
             registry.deliverSessionUpdate(child, announce(grandchild), null)
@@ -164,7 +164,7 @@ class ClientSessionRegistryTest {
              */
             for (holder in listOf(childHolder, grandchildHolder)) {
                 assertSame(holder, registry.holderForRequest(holder.sessionId), "${holder.sessionId} keeps its id")
-                assertNull(registry.claimAnsweredSessionHolder(holder.sessionId, LoadSessionResponse(), parameters), "${holder.sessionId}: an opening of the id is refused")
+                assertNull(registry.claimOnAnswer(holder.sessionId, parameters), "${holder.sessionId}: an opening of the id is refused")
             }
 
             // A later patch of the failed subagent stays a patch, and nothing registers under it.
@@ -184,20 +184,20 @@ class ClientSessionRegistryTest {
 
     @Test
     fun `an opening of a subagent's id is refused`() = runTest {
-        registry.withInitializingSession {
-            registry.claimSessionHolder(root, replayRequested = true, parameters)
+        registry.withOpeningCall {
+            registry.claimBeforeRequest(root, replayRequested = true, parameters)
             registry.deliverSessionUpdate(root, announce(child), null)
 
-            val refused = runCatching { registry.claimSessionHolder(child, replayRequested = true, parameters) }
+            val refused = runCatching { registry.claimBeforeRequest(child, replayRequested = true, parameters) }
             assertEquals("Session $child is already open or being opened", refused.exceptionOrNull()?.message)
-            assertNull(registry.claimAnsweredSessionHolder(child, LoadSessionResponse(), parameters))
+            assertNull(registry.claimOnAnswer(child, parameters))
         }
     }
 
     @Test
     fun `a failing root stops its subagents' openings so that none starts afterwards`() = runTest {
-        registry.withInitializingSession {
-            val rootHolder = registry.claimSessionHolder(root, replayRequested = true, parameters)
+        registry.withOpeningCall {
+            val rootHolder = registry.claimBeforeRequest(root, replayRequested = true, parameters)
             registry.deliverSessionUpdate(root, announce(child), null)
             val childHolder = assertNotNull(rootHolder.childOrNull(child))
 
@@ -214,8 +214,8 @@ class ClientSessionRegistryTest {
 
     @Test
     fun `removing a tree frees its ids and fails its unopened subagents and starts no opening afterwards`() = runTest {
-        registry.withInitializingSession {
-            val rootHolder = registry.claimSessionHolder(root, replayRequested = false, parameters)
+        registry.withOpeningCall {
+            val rootHolder = registry.claimBeforeRequest(root, replayRequested = false, parameters)
             registry.deliverSessionUpdate(root, announce(child), null)
             val childHolder = assertNotNull(rootHolder.childOrNull(child))
             registry.deliverSessionUpdate(child, announce(grandchild), null)
@@ -269,7 +269,7 @@ class ClientSessionRegistryTest {
             }
         }
 
-        registry.withInitializingSession {
+        registry.withOpeningCall {
             val (rootHolder, childHolder) = openRootWithChild(childOperations, liveUpdate = text("live"))
             val request = async { runCatching { registry.awaitSession(child) } }
             runCurrent()
@@ -322,7 +322,7 @@ class ClientSessionRegistryTest {
             }
         }
 
-        drainingRegistry.withInitializingSession {
+        drainingRegistry.withOpeningCall {
             val (rootHolder, _) = openRootWithChild(
                 childOperations,
                 history = listOf(text("first"), text("second"), text("third")),
@@ -379,8 +379,8 @@ class ClientSessionRegistryTest {
             override suspend fun createSubagentOperations(sessionId: SessionId): ClientSessionOperations = childOperations
         }
 
-        drainingRegistry.withInitializingSession {
-            val rootHolder = drainingRegistry.claimSessionHolder(root, replayRequested = true, parameters)
+        drainingRegistry.withOpeningCall {
+            val rootHolder = drainingRegistry.claimBeforeRequest(root, replayRequested = true, parameters)
             drainingRegistry.deliverSessionUpdate(root, announce(child), null)
             val childHolder = assertNotNull(rootHolder.childOrNull(child))
             drainingRegistry.deliverSessionUpdate(child, announce(grandchild), null)
@@ -411,7 +411,7 @@ class ClientSessionRegistryTest {
 
     @Test
     fun `a subagent whose opening finished counts as opened and closed after the removal`() = runTest {
-        registry.withInitializingSession {
+        registry.withOpeningCall {
             val (rootHolder, childHolder) = openRootWithChild(Recorder())
             openingScheduler.runCurrent()
             val session = assertIs<ClientSubagentSession>(childHolder.session.await())
@@ -426,9 +426,9 @@ class ClientSessionRegistryTest {
     @Test
     fun `an announcement whose id another holder owns is a plain update and registers nothing`() = runTest {
         val speculative = SessionId("speculative")
-        registry.withInitializingSession {
-            val rootHolder = registry.claimSessionHolder(root, replayRequested = true, parameters)
-            registry.claimSessionHolder(SessionId("other"), replayRequested = true, parameters)
+        registry.withOpeningCall {
+            val rootHolder = registry.claimBeforeRequest(root, replayRequested = true, parameters)
+            registry.claimBeforeRequest(SessionId("other"), replayRequested = true, parameters)
             registry.deliverSessionUpdate(speculative, text("speculative"), null)
 
             for (id in listOf(root, SessionId("other"), speculative)) {
@@ -449,8 +449,8 @@ class ClientSessionRegistryTest {
 
     @Test
     fun `only a session whose opening succeeded counts as completed`() = runTest {
-        registry.withInitializingSession {
-            val rootHolder = registry.claimSessionHolder(root, replayRequested = true, parameters)
+        registry.withOpeningCall {
+            val rootHolder = registry.claimBeforeRequest(root, replayRequested = true, parameters)
             registry.deliverSessionUpdate(root, announce(child), null)
             assertNull(registry.completedSessionOrNull(root), "an opening root is not completed")
             assertNull(registry.completedSessionOrNull(child), "an opening subagent is not completed")
@@ -466,8 +466,8 @@ class ClientSessionRegistryTest {
         for (attempt in 1..3) {
             val attemptChild = SessionId("child-$attempt")
             val attemptGrandchild = SessionId("grandchild-$attempt")
-            registry.withInitializingSession {
-                val rootHolder = registry.claimSessionHolder(root, replayRequested = true, parameters)
+            registry.withOpeningCall {
+                val rootHolder = registry.claimBeforeRequest(root, replayRequested = true, parameters)
                 registry.deliverSessionUpdate(root, announce(attemptChild), null)
                 registry.deliverSessionUpdate(attemptChild, announce(attemptGrandchild), null)
                 assertNotNull(rootHolder.childOrNull(attemptChild)?.childOrNull(attemptGrandchild))
@@ -478,8 +478,8 @@ class ClientSessionRegistryTest {
             }
         }
 
-        registry.withInitializingSession {
-            val rootHolder = registry.claimSessionHolder(root, replayRequested = true, parameters)
+        registry.withOpeningCall {
+            val rootHolder = registry.claimBeforeRequest(root, replayRequested = true, parameters)
             for (attempt in 1..3) {
                 registry.deliverSessionUpdate(root, announce(SessionId("child-$attempt")), null)
                 assertNotNull(rootHolder.childOrNull(SessionId("child-$attempt")), "a later load registers child-$attempt again")
@@ -490,9 +490,9 @@ class ClientSessionRegistryTest {
     @Test
     fun `a failed root's tree is out of the session map when its failure returns even while another opening runs`() = runTest {
         // The outer opening keeps the end of the last opening from removing anything.
-        registry.withInitializingSession {
-            val failed = registry.withInitializingSession {
-                val rootHolder = registry.claimSessionHolder(root, replayRequested = true, parameters)
+        registry.withOpeningCall {
+            val failed = registry.withOpeningCall {
+                val rootHolder = registry.claimBeforeRequest(root, replayRequested = true, parameters)
                 registry.deliverSessionUpdate(root, announce(child), null)
                 registry.deliverSessionUpdate(child, announce(grandchild), null)
                 registry.failRootTree(rootHolder, IllegalStateException("load failed"))
@@ -501,7 +501,7 @@ class ClientSessionRegistryTest {
             }
             assertFailsWith<JsonRpcException> { registry.holderForRequest(child) }
 
-            val retried = registry.claimSessionHolder(root, replayRequested = true, parameters)
+            val retried = registry.claimBeforeRequest(root, replayRequested = true, parameters)
             assertTrue(retried !== failed)
 
             registry.deliverSessionUpdate(root, announce(child), null)
@@ -523,8 +523,8 @@ class ClientSessionRegistryTest {
             }
         }, protocol, openingScope)
 
-        drainingRegistry.withInitializingSession {
-            val rootHolder = drainingRegistry.claimSessionHolder(root, replayRequested = true, parameters)
+        drainingRegistry.withOpeningCall {
+            val rootHolder = drainingRegistry.claimBeforeRequest(root, replayRequested = true, parameters)
             drainingRegistry.deliverSessionUpdate(root, announce(child), null)
             drainingRegistry.deliverSessionUpdate(child, text("child-queued"), null)
 
@@ -533,14 +533,14 @@ class ClientSessionRegistryTest {
             drainEntered.await()
             assertTrue(rootHolder.isFailed)
 
-            val refused = runCatching { drainingRegistry.claimSessionHolder(root, replayRequested = true, parameters) }
+            val refused = runCatching { drainingRegistry.claimBeforeRequest(root, replayRequested = true, parameters) }
             assertEquals("Session $root is already open or being opened", refused.exceptionOrNull()?.message)
             drainingRegistry.deliverSessionUpdate(root, text("during"), null)
             assertEquals<Pair<SessionId, SessionUpdate>>(root to text("during"), handedOn.last(), "an update meanwhile is unconnected")
 
             releaseDrain.complete(Unit)
             failing.join()
-            assertTrue(drainingRegistry.claimSessionHolder(root, replayRequested = true, parameters) !== rootHolder)
+            assertTrue(drainingRegistry.claimBeforeRequest(root, replayRequested = true, parameters) !== rootHolder)
         }
     }
 
@@ -575,8 +575,8 @@ class ClientSessionRegistryTest {
             override suspend fun createSubagentOperations(sessionId: SessionId): ClientSessionOperations = childOperations
         }
 
-        drainingRegistry.withInitializingSession {
-            val rootHolder = drainingRegistry.claimSessionHolder(root, replayRequested = true, parameters)
+        drainingRegistry.withOpeningCall {
+            val rootHolder = drainingRegistry.claimBeforeRequest(root, replayRequested = true, parameters)
             drainingRegistry.deliverSessionUpdate(root, announce(child), null)
             for (name in listOf("first", "second", "third")) drainingRegistry.deliverSessionUpdate(child, text(name), null)
             assertTrue(rootHolder.markOpened(LoadSessionResponse()))
@@ -610,7 +610,7 @@ class ClientSessionRegistryTest {
         val rootOperations = object : ClientSessionOperations by Recorder(), SubagentOperations {
             override suspend fun createSubagentOperations(sessionId: SessionId): ClientSessionOperations = childOperations
         }
-        val rootHolder = registry.claimSessionHolder(root, replayRequested = false, parameters)
+        val rootHolder = registry.claimBeforeRequest(root, replayRequested = false, parameters)
         registry.deliverSessionUpdate(root, announce(child), null)
         val childHolder = assertNotNull(rootHolder.childOrNull(child))
         for (update in history) registry.deliverSessionUpdate(child, update, null)

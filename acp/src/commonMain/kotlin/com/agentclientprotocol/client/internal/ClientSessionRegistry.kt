@@ -10,7 +10,6 @@ import com.agentclientprotocol.client.GlobalSessionUpdateHandler
 import com.agentclientprotocol.client.internal.RootSessionHolder.Stage
 import com.agentclientprotocol.client.internal.SubagentSessionHolder.OpeningState
 import com.agentclientprotocol.common.SessionCreationParameters
-import com.agentclientprotocol.model.AcpCreatedSessionResponse
 import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionUpdate
@@ -47,7 +46,7 @@ internal class ClientSessionRegistry(
     private val protocol: Protocol,
     private val subagentScope: CoroutineScope,
 ) {
-    private data class SessionsStorage(val initializingSessionsCount: Int = 0, val sessions: PersistentMap<SessionId, ClientSessionHolder> = persistentMapOf())
+    private data class SessionsStorage(val openingCallsCount: Int = 0, val sessions: PersistentMap<SessionId, ClientSessionHolder> = persistentMapOf())
 
     private val _sessions = atomic(SessionsStorage())
 
@@ -70,7 +69,7 @@ internal class ClientSessionRegistry(
                     clientSessionHolder = existingHolder
                     currentStorage
                 }
-                currentStorage.initializingSessionsCount > 0 -> {
+                currentStorage.openingCallsCount > 0 -> {
                     // No holder owns the id: create a speculative one.
                     val newHolder = RootSessionHolder(sessionId, protocol, subagentScope, ::failSubagentTree)
                     clientSessionHolder = newHolder
@@ -271,9 +270,9 @@ internal class ClientSessionRegistry(
 
     /**
      * Claims the holder of [sessionId] for `session/load` or `session/resume`, before the request goes out. Must run
-     * under [withInitializingSession], so that the holder exists.
+     * under [withOpeningCall], so that the holder exists.
      */
-    fun claimSessionHolder(
+    fun claimBeforeRequest(
         sessionId: SessionId,
         replayRequested: Boolean,
         parameters: SessionCreationParameters,
@@ -286,20 +285,14 @@ internal class ClientSessionRegistry(
     }
 
     /**
-     * Claims the holder of [sessionId] for `session/new` or `session/fork`, whose answer first names the id, and marks
-     * it opened. Returns `null` if the id is taken.
+     * Claims the holder of [sessionId] for `session/new` or `session/fork`, whose answer first names the id. Returns
+     * `null` if the id is taken.
      *
-     * It runs in the call's response hook, so it must not block, and under [withInitializingSession].
+     * It runs in the call's response hook, so it must not block, and under [withOpeningCall].
      */
-    fun claimAnsweredSessionHolder(
-        sessionId: SessionId,
-        response: AcpCreatedSessionResponse,
-        parameters: SessionCreationParameters,
-    ): RootSessionHolder? {
+    fun claimOnAnswer(sessionId: SessionId, parameters: SessionCreationParameters): RootSessionHolder? {
         val sessionHolder = getOrCreateSessionHolderOrNull(sessionId) as? RootSessionHolder ?: return null
-        if (!sessionHolder.claimForOpening(replayRequested = false, parameters)) return null
-        sessionHolder.markOpened(response)
-        return sessionHolder
+        return sessionHolder.takeIf { it.claimForOpening(replayRequested = false, parameters) }
     }
 
     private suspend fun handleUnconnectedSessionUpdate(sessionId: SessionId, update: SessionUpdate, _meta: JsonElement?) {
@@ -384,22 +377,22 @@ internal class ClientSessionRegistry(
     }
 
     /**
-     * Runs the opening call [block] as an initializing session, so early updates for unknown ids get speculative
-     * holders. When the last one ends, the root holders that no opening completed are removed and failed.
+     * Runs the opening call [block], so that while it runs, early updates for unknown ids get speculative holders.
+     * When the last one ends, the root holders that no opening completed are removed and failed.
      */
-    suspend fun <T> withInitializingSession(block: suspend () -> T): T {
-        _sessions.update { it.copy(initializingSessionsCount = it.initializingSessionsCount + 1) }
+    suspend fun <T> withOpeningCall(block: suspend () -> T): T {
+        _sessions.update { it.copy(openingCallsCount = it.openingCallsCount + 1) }
         try {
             return block()
         } finally {
             var hangingSessions: List<RootSessionHolder> = emptyList()
             _sessions.update { currentStorage ->
                 hangingSessions = emptyList()
-                if (currentStorage.initializingSessionsCount == 0) {
-                    logger.error { "Assertion failed: initializingSessionsCount should be positive, got ${currentStorage.initializingSessionsCount}" }
+                if (currentStorage.openingCallsCount == 0) {
+                    logger.error { "Assertion failed: openingCallsCount should be positive, got ${currentStorage.openingCallsCount}" }
                     return@update currentStorage
                 }
-                val newCount = currentStorage.initializingSessionsCount - 1
+                val newCount = currentStorage.openingCallsCount - 1
                 return@update if (newCount == 0) {
                     /*
                      * No opening runs any more, so an incomplete root holder belongs to no session. Subagent holders
@@ -408,11 +401,11 @@ internal class ClientSessionRegistry(
                     val hanging = currentStorage.sessions.values.filterIsInstance<RootSessionHolder>().filter { !it.session.isCompleted }
                     hangingSessions = hanging
                     currentStorage.copy(
-                        initializingSessionsCount = newCount,
+                        openingCallsCount = newCount,
                         sessions = currentStorage.sessions.mutate { map -> hanging.forEach { map.remove(it.sessionId) } },
                     )
                 } else {
-                    currentStorage.copy(initializingSessionsCount = newCount)
+                    currentStorage.copy(openingCallsCount = newCount)
                 }
             }
             for (holder in hangingSessions) {

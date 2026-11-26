@@ -364,7 +364,7 @@ public class Client(
      *   this client
      */
     public suspend fun newSession(sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
-        return withAnsweredSessionId(sessionParameters, operationsFactory, NewSessionResponse::sessionId) { onResponse ->
+        return openSession(sessionParameters, knownId = null, sessionIdOf = NewSessionResponse::sessionId, factory = operationsFactory) { onResponse ->
             protocol.sendRequest(
                 AcpMethod.AgentMethods.V1.SessionNew,
                 NewSessionRequest(
@@ -394,7 +394,8 @@ public class Client(
      *   load an open session again, close it first.
      */
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
-        return withFactoryInitializingSession(sessionId, sessionParameters, operationsFactory, replayRequested = true) { onResponse ->
+        val knownId = KnownSessionId(sessionId, replayRequested = true)
+        return openSession(sessionParameters, knownId, sessionIdOf = { sessionId }, factory = operationsFactory) { onResponse ->
             protocol.sendRequest(AcpMethod.AgentMethods.V1.SessionLoad, loadSessionRequest(sessionId, sessionParameters), onResponse)
         }
     }
@@ -429,7 +430,8 @@ public class Client(
      *   load an open session again, close it first.
      */
     public suspend fun loadSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operations: ClientSessionOperations): ClientSession {
-        return withEarlyInitializingSession(sessionId, sessionParameters, operations, replayRequested = true) { onResponse ->
+        val knownId = KnownSessionId(sessionId, replayRequested = true)
+        return openSession(sessionParameters, knownId, sessionIdOf = { sessionId }, earlyOperations = operations) { onResponse ->
             protocol.sendRequest(AcpMethod.AgentMethods.V1.SessionLoad, loadSessionRequest(sessionId, sessionParameters), onResponse)
         }
     }
@@ -496,7 +498,7 @@ public class Client(
      */
     @UnstableApi
     public suspend fun forkSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
-        return withAnsweredSessionId(sessionParameters, operationsFactory, ForkSessionResponse::sessionId) { onResponse ->
+        return openSession(sessionParameters, knownId = null, sessionIdOf = ForkSessionResponse::sessionId, factory = operationsFactory) { onResponse ->
             protocol.sendRequest(
                 AcpMethod.AgentMethods.V1.SessionFork,
                 ForkSessionRequest(
@@ -533,7 +535,8 @@ public class Client(
      */
     @UnstableApi
     public suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operationsFactory: ClientOperationsFactory): ClientSession {
-        return withFactoryInitializingSession(sessionId, sessionParameters, operationsFactory, replayRequested = false) { onResponse ->
+        val knownId = KnownSessionId(sessionId, replayRequested = false)
+        return openSession(sessionParameters, knownId, sessionIdOf = { sessionId }, factory = operationsFactory) { onResponse ->
             protocol.sendRequest(AcpMethod.AgentMethods.V1.SessionResume, resumeSessionRequest(sessionId, sessionParameters), onResponse)
         }
     }
@@ -559,7 +562,8 @@ public class Client(
      */
     @UnstableApi
     public suspend fun resumeSession(sessionId: SessionId, sessionParameters: SessionCreationParameters, operations: ClientSessionOperations): ClientSession {
-        return withEarlyInitializingSession(sessionId, sessionParameters, operations, replayRequested = false) { onResponse ->
+        val knownId = KnownSessionId(sessionId, replayRequested = false)
+        return openSession(sessionParameters, knownId, sessionIdOf = { sessionId }, earlyOperations = operations) { onResponse ->
             protocol.sendRequest(AcpMethod.AgentMethods.V1.SessionResume, resumeSessionRequest(sessionId, sessionParameters), onResponse)
         }
     }
@@ -609,125 +613,67 @@ public class Client(
     }
 
     /**
-     * Creates the operations with [factory] after the answer, and delivers the buffered updates and the opened marker
-     * to the new session. Any failure fails the holder, even after the marker was delivered.
+     * Opens a root session: claims its holder, sends [request], and delivers the queued updates and the opened marker
+     * to the operations. [request] must pass `onResponse` to the call's response hook, which queues the marker.
+     *
+     * With [knownId], for `session/load` and `session/resume`, the holder is claimed before the request, so another
+     * opening of the id fails before it sends its own. Otherwise the hook claims the id that [sessionIdOf] reads from
+     * the answer. Exactly one of [earlyOperations] and [factory] is set: [earlyOperations], which need [knownId], get
+     * the updates as they arrive; [factory] creates the operations after the answer, and the updates wait for them.
      */
-    private suspend fun createSession(
-        sessionHolder: RootSessionHolder,
-        sessionId: SessionId,
+    private suspend fun <R : AcpCreatedSessionResponse> openSession(
         sessionParameters: SessionCreationParameters,
-        sessionResponse: AcpCreatedSessionResponse,
-        factory: ClientOperationsFactory,
-    ): ClientSession {
-        return runCatching {
-            val operations = callApp("createClientOperations") { factory.createClientOperations(sessionId, sessionResponse) }
-            val session = createClientSession(sessionHolder, sessionId, sessionParameters, operations, sessionResponse)
-            val opened = sessionHolder.drainHistory(session)
-            sessionHolder.completeOpening(session, opened)
-            session
-        }.getOrElse { throwable ->
+        knownId: KnownSessionId?,
+        sessionIdOf: (R) -> SessionId,
+        earlyOperations: ClientSessionOperations? = null,
+        factory: ClientOperationsFactory? = null,
+        request: suspend (onResponse: (R) -> Unit) -> R,
+    ): ClientSession = sessions.withOpeningCall {
+        // Inside the opening call, so that a load or resume of an id this client doesn't hold yet finds a holder.
+        val claimed = ClaimedHolder(knownId?.let { sessions.claimBeforeRequest(it.sessionId, it.replayRequested, sessionParameters) })
+        try {
+            coroutineScope {
+                val earlyDelivery = earlyOperations?.let { operations ->
+                    val sessionHolder = checkNotNull(claimed.value)
+                    // Without `callApp`, the app's cancellation would end this child without failing the scope.
+                    async { callApp("ClientSessionOperations.notify") { sessionHolder.deliverEarly(operations) } }
+                }
+
+                val sessionResponse = request { response ->
+                    val sessionHolder = claimed.value
+                        ?: sessions.claimOnAnswer(sessionIdOf(response), sessionParameters).also { claimed.value = it }
+                    sessionHolder?.markOpened(response)
+                }
+                val sessionId = sessionIdOf(sessionResponse)
+                // A normal return means the hook has run.
+                val sessionHolder = claimed.value ?: error("Session $sessionId is already open or being opened")
+
+                val operations = earlyOperations ?: callApp("createClientOperations") {
+                    checkNotNull(factory).createClientOperations(sessionId, sessionResponse)
+                }
+                val session = createClientSession(sessionHolder, sessionId, sessionParameters, operations, sessionResponse)
+                val opened = if (earlyDelivery != null) {
+                    val opened = checkNotNull(earlyDelivery.await()) { "The queue of session $sessionId closed before its answer" }
+                    sessionHolder.applyEarlyState(session)
+                    opened
+                } else {
+                    sessionHolder.drainHistory(session)
+                }
+                sessionHolder.completeOpening(session, opened)
+                session
+            }
+        } catch (throwable: Throwable) {
             /*
+             * The only place an opening fails its holder. The hook may have claimed one, and queued its marker, before a
+             * cancellation won; failing the holder drops the marker. A hook that runs after this read, as while the
+             * connection closes, leaves its holder to the reaping at the end of the last opening call.
+             *
              * Wrapped, so an agent request waiting for the session gets an internal error (-32603) rather than
              * cancelled (-32800) for a bare `CancellationException`. The caller gets the original failure.
              */
-            sessions.failRootTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
-            throw throwable
-        }
-    }
-
-    /**
-     * Opens a session whose id is known before the request, `session/load` or `session/resume`, and buffers its
-     * updates until [factory] creates the operations after the answer.
-     *
-     * The holder is claimed before the request, so another opening of the id fails before it sends its own.
-     * [request] must pass `onResponse` to the call's response hook, which queues the opened marker.
-     */
-    private suspend fun withFactoryInitializingSession(
-        sessionId: SessionId,
-        sessionParameters: SessionCreationParameters,
-        factory: ClientOperationsFactory,
-        replayRequested: Boolean,
-        request: suspend (onResponse: (AcpCreatedSessionResponse) -> Unit) -> AcpCreatedSessionResponse,
-    ): ClientSession = sessions.withInitializingSession {
-        val sessionHolder = sessions.claimSessionHolder(sessionId, replayRequested, sessionParameters)
-        val sessionResponse = try {
-            request { response -> sessionHolder.markOpened(response) }
-        } catch (throwable: Throwable) {
-            // The hook may have queued the opened marker before a cancellation won; failing the holder drops it.
-            sessions.failRootTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
-            throw throwable
-        }
-        createSession(sessionHolder, sessionId, sessionParameters, sessionResponse, factory)
-    }
-
-    /**
-     * Opens a session whose id first appears in the answer, `session/new` or `session/fork`, and buffers its updates
-     * until [factory] creates the operations.
-     *
-     * [request] must pass `onResponse` to the call's response hook, which claims the answered id's holder and queues
-     * the opened marker in one step, so the marker keeps its place among the id's updates.
-     */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private suspend fun <R : AcpCreatedSessionResponse> withAnsweredSessionId(
-        sessionParameters: SessionCreationParameters,
-        factory: ClientOperationsFactory,
-        sessionIdOf: (R) -> SessionId,
-        request: suspend (onResponse: (R) -> Unit) -> R,
-    ): ClientSession = sessions.withInitializingSession {
-        val claimed = CompletableDeferred<Pair<SessionId, RootSessionHolder>?>()
-        val sessionResponse = try {
-            request { response ->
-                val sessionId = sessionIdOf(response)
-                claimed.complete(sessions.claimAnsweredSessionHolder(sessionId, response, sessionParameters)?.let { sessionId to it })
+            claimed.value?.let { holder ->
+                sessions.failRootTree(holder, IllegalStateException("Failed to create session ${holder.sessionId}", throwable))
             }
-        } catch (throwable: Throwable) {
-            /*
-             * The hook may have claimed a holder before a cancellation won: fail it, which drops its marker. A hook
-             * that runs after this check, as while the connection closes, leaves the holder to the reaping at the end
-             * of the last opening.
-             */
-            val claimedHolder = if (claimed.isCompleted) claimed.getCompleted() else null
-            if (claimedHolder != null) {
-                val (sessionId, holder) = claimedHolder
-                sessions.failRootTree(holder, IllegalStateException("Failed to create session $sessionId", throwable))
-            }
-            throw throwable
-        }
-        val sessionId = sessionIdOf(sessionResponse)
-        // A normal return means the hook has run.
-        val (_, sessionHolder) = claimed.getCompleted() ?: error("Session $sessionId is already open or being opened")
-        createSession(sessionHolder, sessionId, sessionParameters, sessionResponse, factory)
-    }
-
-    /**
-     * Opens a session whose id is known before the request, and delivers its updates to [operations] as they arrive.
-     *
-     * [request] must pass `onResponse` to the call's response hook, which queues the opened marker. The early delivery
-     * stops at the marker, and the marker is delivered only after [request] returns, so a failed call delivers none.
-     */
-    private suspend fun withEarlyInitializingSession(
-        sessionId: SessionId,
-        sessionParameters: SessionCreationParameters,
-        operations: ClientSessionOperations,
-        replayRequested: Boolean,
-        request: suspend (onResponse: (AcpCreatedSessionResponse) -> Unit) -> AcpCreatedSessionResponse,
-    ): ClientSession = sessions.withInitializingSession {
-        val sessionHolder = sessions.claimSessionHolder(sessionId, replayRequested, sessionParameters)
-
-        try {
-            val (session, opened) = coroutineScope {
-                // Without `callApp`, the app's cancellation would end this child without failing the scope.
-                val earlyDelivery = async { callApp("ClientSessionOperations.notify") { sessionHolder.deliverEarly(operations) } }
-                val sessionResponse = request { response -> sessionHolder.markOpened(response) }
-                val opened = checkNotNull(earlyDelivery.await()) { "The queue of session $sessionId closed before its answer" }
-                val session = createClientSession(sessionHolder, sessionId, sessionParameters, operations, sessionResponse)
-                sessionHolder.applyEarlyState(session)
-                session to opened
-            }
-            sessionHolder.completeOpening(session, opened)
-            session
-        } catch (throwable: Throwable) {
-            sessions.failRootTree(sessionHolder, IllegalStateException("Failed to create session $sessionId", throwable))
             throw throwable
         }
     }
@@ -767,6 +713,27 @@ public class Client(
         }
     }
 
+}
+
+/**
+ * The id that `session/load` or `session/resume` opens, known before the request.
+ *
+ * @property replayRequested whether the call asks for a replay of the history, which only `session/load` does
+ */
+private class KnownSessionId(val sessionId: SessionId, val replayRequested: Boolean)
+
+/**
+ * The holder that an opening call has claimed, if any. The response hook may set it on the read loop while the
+ * caller's failure path reads it.
+ */
+private class ClaimedHolder(initial: RootSessionHolder?) {
+    private val holder = atomic(initial)
+
+    var value: RootSessionHolder?
+        get() = holder.value
+        set(value) {
+            holder.value = value
+        }
 }
 
 private inline fun <reified TInterface> sessionMethodNotFound(method: AcpMethod): Nothing {

@@ -75,7 +75,7 @@ class ClientHangingSessionUpdateDeliveryTest {
                     }
                 }
 
-                // Wait until `session/new` is actually on the wire: `initializingSessionsCount` is now positive.
+                // Wait until `session/new` is actually on the wire: `openingCallsCount` is now positive.
                 assertNotNull(
                     withTimeoutOrNull(5.seconds) { transport.sessionNewSent.await() },
                     "session/new was never sent",
@@ -84,7 +84,7 @@ class ClientHangingSessionUpdateDeliveryTest {
                 // An update for a totally unrelated session arrives while our own session/new is still in flight.
                 transport.emitSessionUpdate(unrelatedSessionId, unrelatedUpdate)
 
-                // Completing session/new drops `initializingSessionsCount` back to zero, reaping the buffered
+                // Completing session/new drops `openingCallsCount` back to zero, reaping the buffered
                 // holder for the unrelated session.
                 transport.completePendingSessionNew()
                 newSessionResult.await()
