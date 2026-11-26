@@ -417,7 +417,11 @@ SIMPLIFICATION REVIEW GOAL (user 2026-11-26, current). Analysis only: no product
   (`simplify-vs-readability-client.md`), the rest (`simplify-vs-readability-rest.md`).
 - Part 3: one fable medium verifier consolidates → `simplify-final-report.md` (overview with counts and LOC/scenarios
   dropped; one heading per suggestion: short summary, then detail with code examples and file:line refs).
-Status: Part 1 running.
+- Part 1 DONE: the four reports are written (agent −60..80 LOC; protocol −45..50, batch support ~150 is the big
+  lever, a user decision outside this PR; client registry −80..110; client sessions −100..190 with 3 live-delivery
+  defects found by reading). Several proposals revisit user decisions (S2 detail, R17 D1, the post-cancel window,
+  D1 hold-back, sequential `notify`): Part 3 marks them, the user decides.
+Status: Part 2 running.
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
