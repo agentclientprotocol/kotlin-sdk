@@ -20,16 +20,13 @@ import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 
 /*
- * The behaviours of the runtime that differ between the kinds of [BaseClientSession]. [BaseClientSession] has to be an
- * interface, because [ClientSession], an existing public interface, extends it: an interface can only extend
- * interfaces, and making [ClientSession] a class would break every compiled caller and implementer. An interface
- * can't have internal members. So each behaviour is an extension function that switches exhaustively over the
- * sealed type.
+ * The runtime behaviours that differ between the kinds of [BaseClientSession]. That type is an interface, because the
+ * public [ClientSession] interface extends it, and an interface can't have internal members. So each behaviour is an
+ * extension that switches over the sealed type.
  */
 
 /**
- * Delivers [update] to this session: a root routes it to its active prompt or to its operations' `notify`, and a
- * subagent has no prompt, so it always goes to `notify`.
+ * Delivers [update] to this session: a root routes it to its active prompt or to `notify`, and a subagent to `notify`.
  */
 internal suspend fun BaseClientSession.deliverUpdate(update: SessionUpdate, meta: JsonElement?) {
     when (this) {
@@ -40,13 +37,11 @@ internal suspend fun BaseClientSession.deliverUpdate(update: SessionUpdate, meta
 }
 
 /**
- * Answers the agent's permission request for the subagent of this holder through the operations of its session, unless
- * the subagent's work is cancelled or it is closed first.
+ * Answers the agent's permission request for this subagent through its session's operations, unless its work is
+ * cancelled or it is closed first.
  *
- * The request joins the race when this is called, before anything suspends, so call it when the request arrives:
- * a cancel that comes while the holder is still incomplete answers it too. The application sees the request only once
- * the holder's session has completed. The receiver is the holder, because the subagent's session may not exist yet
- * when the request arrives.
+ * Call it when the request arrives, so the request joins the race before anything suspends, and a cancel answers it
+ * even while the holder is incomplete. The receiver is the holder, because the session may not exist yet.
  */
 internal suspend fun SubagentSessionHolder.answerPermissionRequest(
     toolCall: SessionUpdate.ToolCallUpdate,

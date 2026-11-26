@@ -33,22 +33,19 @@ internal class RootSessionHolder(
     /**
      * The opening call that claimed a root's holder.
      *
-     * @property replayRequested whether the call asked the agent to replay the history: `true` for `session/load`,
-     * `false` for the other opening calls
-     * @property parameters the parameters of the call, which the effective working directories of the root's
-     * subagents come from; known from the claim on, so subagents can read them before the root's [ClientSession]
-     * exists
+     * @property replayRequested whether the call asked for a replay of the history, which only `session/load` does
+     * @property parameters the call's parameters, which give the subagents their working directories before the root's
+     * [ClientSession] exists
      */
     class Opening(val replayRequested: Boolean, val parameters: SessionCreationParameters)
 
     /**
-     * The stages of a root's lifecycle, in order: [claimForOpening] leads to [CLAIMED], [markOpened] to [ANSWERED],
-     * and [startClosing] to [CLOSING].
+     * The stages of a root's lifecycle, in order.
      */
     enum class Stage { UNCLAIMED, CLAIMED, ANSWERED, CLOSING }
 
     /**
-     * One snapshot of a root's lifecycle. [opening] is `null` only before the claim.
+     * One snapshot of a root's lifecycle; [opening] is `null` only before the claim.
      */
     class RootPhase private constructor(private val stage: Stage, val opening: Opening?) {
         /**
@@ -68,8 +65,7 @@ internal class RootSessionHolder(
         fun answered(): RootPhase? = if (stage == Stage.CLAIMED) RootPhase(Stage.ANSWERED, opening) else null
 
         /**
-         * The phase once the close has started, or `null` if the root isn't answered yet. A closing root stays as it
-         * is, for a close that follows a failed one or runs beside another.
+         * The phase once the close has started, or `null` if the root isn't answered yet. A closing root stays closing.
          */
         fun closing(): RootPhase? = when (stage) {
             Stage.UNCLAIMED, Stage.CLAIMED -> null
@@ -78,9 +74,6 @@ internal class RootSessionHolder(
         }
 
         companion object {
-            /**
-             * The phase of a new holder.
-             */
             val UNCLAIMED: RootPhase = RootPhase(Stage.UNCLAIMED, opening = null)
         }
     }
@@ -88,10 +81,8 @@ internal class RootSessionHolder(
     private val _phase = atomic(RootPhase.UNCLAIMED)
 
     /*
-     * The last session state that the updates of an early delivery carried. Only the consumer in [deliverEarly]
-     * writes them, and [applyEarlyState] reads them after that consumer has finished. Unlike the other fields,
-     * they need no atomic: the join of the consumer orders its writes before the read, and nothing reads them
-     * concurrently.
+     * The last session state that the early updates carried. Only [deliverEarly] writes them, and [applyEarlyState]
+     * reads them after it returned, so they need no atomic.
      */
     // TODO remove together with the deprecated ClientSession.currentMode.
     private var earlyMode: SessionUpdate.CurrentModeUpdate? = null
@@ -117,32 +108,24 @@ internal class RootSessionHolder(
         checkNotNull(phase.opening) { "Session $sessionId is not claimed" }.parameters
 
     /**
-     * Starts the close of this root: moves it to [Stage.CLOSING], and then answers the pending and the later permission
-     * requests of every subagent below it with `cancelled`. Each close only completes a signal, so the order of the
-     * walk doesn't matter.
-     *
-     * The stage comes first, so a subagent that this walk misses has its permissions closed by its own registration,
-     * see [addChild]. The root stays closing if the close fails, as the closed permissions do, and a later close leaves
-     * it so.
-     *
-     * Only the close of this root's own [ClientSession] calls this, and that session exists only after the answer.
+     * Moves this root to [Stage.CLOSING], then answers the current and later permission requests of every subagent
+     * below it with `cancelled`. The root stays closing if the close fails.
      *
      * @throws IllegalStateException if the root isn't answered yet
      */
     fun startClosing() {
         _phase.update { current -> checkNotNull(current.closing()) { "Root session $sessionId is closed before its answer" } }
+        // After the stage, so a subagent that this walk misses is closed by [addChild].
         forEachDescendant { it.permissions.close() }
     }
 
     /**
      * Makes the opening call that asked for [replayRequested] with [parameters] the owner of this holder.
      *
-     * Only a root's holder that has no owner and hasn't completed can be claimed: the response hook can put the
-     * opened marker only into an open queue, and two openings of one id would race for it.
-     *
-     * @return `false` if the holder already has an owner or has completed. The holder is then unchanged.
+     * @return `false` if the holder already has an owner or has completed
      */
     fun claimForOpening(replayRequested: Boolean, parameters: SessionCreationParameters): Boolean {
+        // A completed holder's queue is closed, so it couldn't take the opened marker.
         if (_session.isCompleted) return false
         val unclaimed = phase
         val claimed = unclaimed.claimedBy(Opening(replayRequested, parameters)) ?: return false
@@ -150,21 +133,13 @@ internal class RootSessionHolder(
     }
 
     /**
-     * Puts the [QueuedItem.Opened] marker with [response] into the queue, after every update that has reached the
-     * holder, records that the opening call was answered, and puts an opened marker without a response into the queue
-     * of every subagent below, which resolves their held-back permission state too.
+     * Puts the opened marker with [response] after every update queued so far, marks the root answered, and puts an
+     * opened marker into the queue of every subagent below it.
      *
-     * The response hook of the opening call calls this in the read loop, so it must not suspend or block.
+     * It runs in the opening call's response hook, so it must not suspend or block. A subagent registered later takes
+     * its marker when its holder is created.
      *
-     * Each subagent gets its opened marker exactly once:
-     * - a subagent registered before the answer is in the tree, and gets it from the walk here;
-     * - a subagent registered after the answer gets it in its holder's `init`.
-     *
-     * Both run in read-loop order, this in the response hook and the registration in the `session/update` handler
-     * before it suspends, so they never interleave.
-     *
-     * @return `false` if the queue is closed because the holder failed. The opened marker is then dropped, and the
-     * holder stays claimed.
+     * @return `false` if the holder failed, so its queue is closed and the marker dropped
      * @throws IllegalStateException if no call has claimed the holder, or it was already answered
      */
     fun markOpened(response: AcpCreatedSessionResponse): Boolean {
@@ -173,23 +148,17 @@ internal class RootSessionHolder(
         if (queue.trySend(QueuedItem.Opened(response)).isFailure) return false
         check(_phase.compareAndSet(claimed, answered)) { "The phase of root session $sessionId changed during its answer" }
 
-        /*
-         * Every subagent's queue is still open here: a subagent's opening closes it only after it has delivered
-         * this opened marker, and a failed one's is closed, so it is skipped.
-         */
+        // A subagent's opening closes its queue only after this marker; a failed one's is closed and skipped.
         val promote = answered.opening?.replayRequested != true
         forEachDescendant { it.markOpened(promote) }
         return true
     }
 
     /**
-     * Hands the updates queued before the opened marker to [session], in queue order, and returns the marker without
-     * delivering it. Pass the marker to [completeOpening].
+     * Hands the updates queued before the opened marker to [session] and returns the marker undelivered, for
+     * [completeOpening]. It runs after the answer, which queued the marker.
      *
-     * Must run after the opening call was answered, so the opened marker is in the queue. A failure of the session's
-     * operations fails this call, and the remaining items stay in the queue for [failAndDrainQueue]. As in
-     * [completeOpening], a cancellation that the operations throw while the caller is active becomes an
-     * [IllegalStateException].
+     * If the operations fail, the remaining items stay queued for [failAndDrainQueue].
      */
     suspend fun drainHistory(session: ClientSessionImpl): QueuedItem.Opened {
         while (true) {
@@ -201,12 +170,10 @@ internal class RootSessionHolder(
     }
 
     /**
-     * Hands each queued update and each arriving update to [operations], one at a time and in arrival order, until
-     * it takes the opened marker, and returns that marker without delivering it: only the opening call knows whether
-     * it succeeded. Pass the marker to [completeOpening] once it has.
+     * Hands the queued and arriving updates to [operations] until the opened marker, and returns the marker
+     * undelivered, because only the opening call knows whether it succeeded.
      *
-     * The holder must be claimed. If [operations] throws, the remaining items stay in the queue for
-     * [failAndDrainQueue].
+     * If [operations] throws, the remaining items stay queued for [failAndDrainQueue].
      *
      * @return `null` if the queue was closed before the opened marker
      */
@@ -231,8 +198,7 @@ internal class RootSessionHolder(
 
     // TODO remove together with the deprecated ClientSession.currentMode and configOptions.
     /**
-     * Applies the session state that the updates of [deliverEarly] carried to [session]. Must run after
-     * [deliverEarly] has returned.
+     * Applies the session state that the updates of [deliverEarly] carried to [session], after it returned.
      */
     fun applyEarlyState(session: ClientSessionImpl) {
         // TODO remove together with the deprecated ClientSession.currentMode.
@@ -242,21 +208,11 @@ internal class RootSessionHolder(
     }
 
     /**
-     * Delivers [opened] and the updates queued after it to [session], then makes [session] the receiver of all
-     * later updates. The subagents' held-back state is resolved just before [opened] is delivered.
+     * Delivers [opened] and the updates queued after it to [session], then makes [session] the receiver of later
+     * updates. It runs after the opening call's request and the queue's consumer have returned.
      *
-     * Must run after:
-     * - the request of the opening call has returned;
-     * - the consumer of the queue, [deliverEarly] or [drainHistory], has returned [opened].
-     *
-     * The operations run in the caller's coroutine, so this can be cancelled. This throws, and the opening fails,
-     * when:
-     * - the caller is cancelled;
-     * - the operations throw. A cancellation that they throw while the caller is active becomes an
-     *   [IllegalStateException], so the caller sees a failed opening rather than a cancellation of its own.
-     *
-     * The operations may already have the opened marker then. The caller must fail the holder with
-     * [ClientSessionRegistry.failSessionTree], which hands the rest of the queue on.
+     * It runs app code in the caller's coroutine, so the caller's cancellation or a failure of the operations makes it
+     * throw. The caller must then fail the holder, which hands the rest of the queue on.
      */
     suspend fun completeOpening(session: ClientSessionImpl, opened: QueuedItem.Opened) {
         val response = checkNotNull(opened.response) { "The opened marker of root session ${session.sessionId} has no answer" }
@@ -270,18 +226,16 @@ internal class RootSessionHolder(
             deliverDuringOpening(session) { deliverItem(item, session, opened = true) }
         }
 
-        // A cancellation that came after the last delivery still fails the opening, before the session is published.
+        // A cancellation after the last delivery still fails the opening.
         currentCoroutineContext().ensureActive()
         check(_session.complete(session)) { "Session ${session.sessionId} is already complete" }
     }
 
     /**
-     * Runs [block], a delivery to the application during the opening, with [session] in the context.
+     * Runs [block], a delivery to the app during the opening, with [session] in the context.
      *
-     * Only the opening uses it, in [drainHistory] and [completeOpening]. A [CancellationException] that app code throws
-     * while the caller is still active becomes an [IllegalStateException], so the opening fails rather than looks like
-     * the caller's own cancellation. Live deliveries log such failures instead: a subagent's in
-     * [SubagentSessionHolder.deliverLive], a root's in the protocol's notification handler.
+     * A [CancellationException] from app code while the caller is active becomes an [IllegalStateException], so the
+     * opening fails instead of looking like the caller's own cancellation.
      */
     private suspend fun deliverDuringOpening(session: BaseClientSession, block: suspend () -> Unit) {
         try {

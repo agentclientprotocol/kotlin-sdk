@@ -30,9 +30,8 @@ private val logger = KotlinLogging.logger {}
 /**
  * The root session of the client.
  *
- * @param isOpen whether [holder] is still the registered holder of the id and blocks it, read once by [close]
+ * @param isOpen whether [holder] still owns its id
  * @param onClosed removes the closed root's tree after a successful close
- * @param holder this root's holder, which keeps its subagents and its closing stage
  */
 internal class ClientSessionImpl(
     // Kept only to implement the deprecated getter.
@@ -118,10 +117,8 @@ internal class ClientSessionImpl(
 
     override suspend fun close(_meta: JsonElement?): CloseSessionResponse {
         /*
-         * Only the registered, live holder of the id may close it: the request carries only the id, so the close of a
-         * session that is gone would close whatever the id is open as now. A root's holder leaves the map while it
-         * blocks its id only through a successful close, because the reaping and a replacement take only holders that
-         * haven't completed or have failed. So a holder that is gone and hasn't failed was closed.
+         * The request carries only the id, so only the holder that still owns it may send it. A live root's holder
+         * leaves the map only through a successful close, so a holder that is gone and hasn't failed was closed.
          */
         if (!isOpen()) {
             check(!holder.isFailed) { "Session $sessionId failed to open and can't be closed" }
@@ -139,8 +136,8 @@ internal class ClientSessionImpl(
             AcpMethod.AgentMethods.V1.SessionClose(protocol, CloseSessionRequest(sessionId, _meta))
         } catch (e: JsonRpcException) {
             /*
-             * An agent that doesn't know the session any more has closed it. ACP asks the client to treat `-32002` as a
-             * successful close: https://agentclientprotocol.com/protocol/v1/session-setup#closing-active-sessions
+             * ACP asks the client to treat `-32002` as a successful close:
+             * https://agentclientprotocol.com/protocol/v1/session-setup#closing-active-sessions
              */
             if (e.code != JsonRpcErrorCode.RESOURCE_NOT_FOUND.code) throw e
             CloseSessionResponse()

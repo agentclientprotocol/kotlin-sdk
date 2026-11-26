@@ -58,3 +58,71 @@ Suggestions collected during the comment-trim pass. None of them is applied; the
     - Current: an inline `when` over the registered holder that yields `null` for an unclaimed root.
     - Proposed: extract `private fun waitableHolderOrNull(sessionId): ClientSessionHolder?`.
     - Why: the rule "only a subagent or a claimed root is waited for" would be a name, and the rationale comment could sit on that function.
+
+## `acp/src/commonMain/kotlin/com/agentclientprotocol/client/internal/ClientSessionHolder.kt`
+
+1. **`opened` / `parentOpened` parameters**
+   - Current: `deliverItem(item, session, opened)`, `setUpSubagent(announcement, operations, parentOpened)`, `applyPatch(update, parentOpened)`; all carry the same value.
+   - Proposed: one name everywhere, e.g. `streamOpened`.
+   - Why: two names for one fact make the reader check they are the same, and each needed its own `@param`.
+
+2. **`Children.byId` / `Children.listed`**
+   - Current: `byId: PersistentMap<SessionId, SubagentSessionHolder>`, `listed: PersistentList<ClientSubagentSession>`.
+   - Proposed: `holders` and `sessions` (or `registered` and `setUp`).
+   - Why: `byId` names the key, not what is stored; the difference that matters is holders registered at arrival versus sessions set up by the consumer, which the `@property` tags now carry.
+
+3. **`failSessionTree` constructor property**
+   - Current: `failSessionTree: suspend (ClientSessionHolder, Throwable) -> Boolean`, called only with a subagent's holder (`setUpSubagent`, `failSetup`, `SubagentSessionHolder.failOpening`).
+   - Proposed: `failSubagentTree: suspend (SubagentSessionHolder, Throwable) -> Boolean`.
+   - Why: the name and type would say it only fails subagents, and that `false` means the opening was already stopped, without the `@property` text.
+
+4. **`handleOrQueue` fast-path condition**
+   - Current: `if (item !is QueuedItem.Announcement && _session.isCompleted && lateDeliveries.value.isCompleted)`.
+   - Proposed: `val noLateUpdateWaits = _session.isCompleted && lateDeliveries.value.isCompleted` and `if (item !is QueuedItem.Announcement && noLateUpdateWaits)`.
+   - Why: the block comment above it explains the two halves separately; a named local would carry the first half.
+
+5. **`failSetup`**
+   - Current: `failSetup(child, cause)`, which fails nothing when the caller is cancelled or the opening was stopped.
+   - Proposed: `failSetupUnlessStopped` (and `failOpeningUnlessStopped` for `SubagentSessionHolder.failOpening`).
+   - Why: the name promises a failure that often doesn't happen; the block comment inside exists to say so.
+
+## `acp/src/commonMain/kotlin/com/agentclientprotocol/client/internal/RootSessionHolder.kt`
+
+1. **`RootPhase.claimedBy` / `answered` / `closing`**
+   - Current: return `RootPhase?`, `null` when the transition isn't allowed.
+   - Proposed: `claimedByOrNull`, `answeredOrNull`, `closingOrNull`.
+   - Why: Kotlin's `OrNull` convention would show at the call sites (`checkNotNull(current.closing())`) that `null` means a refused transition.
+
+2. **`promote` and `opening?.replayRequested != true`**
+   - Current: `promote = phase.opening?.replayRequested != true` is computed in `markOpened`, `resolveHeldSubagentState` and `SubagentSessionHolder`'s `init`, and passed on as `promote` to `markOpened`, `onOpened` and `onParentOpened`.
+   - Proposed: a property `Opening.appliesHeldState` (or `RootPhase.appliesHeldState`), and the parameter renamed `applyHeld`.
+   - Why: "promote" needs a `@param` at every function to say what it promotes; one named property would replace three copies of a double negative.
+
+## `acp/src/commonMain/kotlin/com/agentclientprotocol/client/internal/SubagentSessionHolder.kt`
+
+1. **`completeOpening`**
+   - Current: `private suspend fun completeOpening()`, the body of the subagent's opening; `RootSessionHolder.completeOpening(session, opened)` is a different step with the same name.
+   - Proposed: `runOpening()`.
+   - Why: the subagent's function is the whole opening, not its last step, and the shared name suggests the two correspond.
+
+2. **`OpeningState.Finished`**
+   - Current: `Finished`, set before the holder is completed.
+   - Proposed: `Completing` (or `CompletionClaimed`).
+   - Why: the KDoc has to explain that "finished" means "will complete next"; the name could say it.
+
+3. **Completion claim in `completeOpening`**
+   - Current: `val running = opening.value as? OpeningState.Running ?: return` followed by `if (!opening.compareAndSet(running, OpeningState.Finished)) return`.
+   - Proposed: `private fun claimCompletion(): Boolean` and `if (claimCompletion()) _session.complete(session)`.
+   - Why: the inline comment "Claims the completion unless a stop came first" would become the function name.
+
+4. **`_subagent`**
+   - Current: `private val _subagent = atomic<ClientSubagentSession?>(null)` beside the inherited `_session` deferred.
+   - Proposed: `setUpSession`.
+   - Why: both hold "the session"; the difference is that this one exists from the setup, before `_session` completes, which the block comment has to explain.
+
+## `acp/src/commonMain/kotlin/com/agentclientprotocol/client/internal/PendingPermissions.kt`
+
+1. **`WorkState.activeWork`**
+   - Current: `Held(val activeWork: Boolean, ...)`, `Live(val activeWork: Boolean)`, set from the local `confirmsWork`.
+   - Proposed: `confirmsWork` (or `foregroundWorkConfirmed`).
+   - Why: the field is set from `confirmsWork` and the comments call it "confirmed foreground work"; one name would drop the translation.
