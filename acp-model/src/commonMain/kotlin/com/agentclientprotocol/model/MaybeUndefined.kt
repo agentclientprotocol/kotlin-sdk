@@ -18,12 +18,9 @@ import kotlinx.serialization.json.JsonObjectBuilder
  * value unchanged, `null` explicitly clears it, and a concrete value replaces it. Kotlin's
  * `T?` collapses the first two states, so such fields are modeled with this type instead.
  *
- * This type intentionally has no [kotlinx.serialization.KSerializer]: whether a key is
- * present on the wire is decided by the containing object, not the field value, and
- * `ACPJson`'s `explicitNulls = false` would strip an explicit `JsonNull` emitted by a field
- * serializer. Structs with [MaybeUndefined] fields use hand-written serializers that decode
- * by key presence (absent → [Undefined], `null` → [Null]) and encode by skipping [Undefined]
- * and emitting `JsonNull` for [Null].
+ * This type has no [kotlinx.serialization.KSerializer], because whether a key is present is
+ * decided by the containing object. A model with [MaybeUndefined] fields needs a hand-written
+ * serializer that omits [Undefined] and writes an explicit JSON `null` for [Null].
  */
 public sealed class MaybeUndefined<out T> {
     /**
@@ -61,10 +58,9 @@ public sealed class MaybeUndefined<out T> {
     /**
      * This state unless it is [Undefined], in which case [other].
      *
-     * An explicit [Null] is a present state and wins over [other], so folding a patch onto a
-     * stored state is `newer.orElse(older)`: the patch's [Null] survives as [Null] and callers
-     * can decide how to render an explicitly cleared value (mirrors Rust's `apply_update` field
-     * handling). Use [update] instead to collapse the fold to a plain nullable.
+     * An explicit [Null] wins over [other], so `newer.orElse(older)` folds a patch onto a stored
+     * state and keeps an explicit clear visible, as Rust's `apply_update` does. Use [update] to
+     * fold onto a plain nullable instead.
      */
     public fun orElse(other: MaybeUndefined<@UnsafeVariance T>): MaybeUndefined<T> =
         if (this is Undefined) other else this
@@ -81,21 +77,17 @@ public fun <T> MaybeUndefined<T>.update(previous: T?): T? = when (this) {
 }
 
 /*
- * Shared building blocks for the hand-written serializers of structs with [MaybeUndefined]
- * fields. Field semantics mirror the Rust schema's serde attributes:
- * `#[serde(default, skip_serializing_if = "MaybeUndefined::is_undefined")]` plus
- * `DefaultOnError` (and `VecSkipError` for collections).
+ * Helpers for the hand-written serializers of models with [MaybeUndefined] fields. They follow the Rust
+ * schema's `#[serde(default, skip_serializing_if = "MaybeUndefined::is_undefined")]` with `DefaultOnError`,
+ * and `VecSkipError` for lists.
  */
 
 /**
- * Decodes a tri-state field: absent key → [MaybeUndefined.Undefined], JSON `null` →
- * [MaybeUndefined.Null], otherwise the decoded value.
+ * Decodes a tri-state field. A malformed value decodes as [MaybeUndefined.Undefined], as with Rust's
+ * `DefaultOnError`.
  *
- * A present-but-malformed value degrades to [MaybeUndefined.Undefined] instead of failing,
- * mirroring Rust's `DefaultOnError` on the `MaybeUndefined` fields of the schema. `ACPJson` is
- * lenient, so a JSON number or boolean still decodes as a string: a string field that must reject
- * them checks the element itself, as the v1 `SubagentUpdate.title` does. Fields that must fail on
- * a malformed value, such as `SubagentUpdate.cwd` and `additionalDirectories`, don't use this helper.
+ * `ACPJson` is lenient and decodes a JSON number or boolean as a string, so a string field that must
+ * reject them checks the element itself.
  */
 internal fun <T> JsonObject.decodeMaybeUndefined(
     json: Json,
@@ -107,16 +99,14 @@ internal fun <T> JsonObject.decodeMaybeUndefined(
     return try {
         MaybeUndefined.Value(json.decodeFromJsonElement(deserializer, element))
     } catch (_: Exception) {
-        // DefaultOnError parity: kotlinx tree decoding reports malformed shapes through a
-        // variety of RuntimeExceptions, not just SerializationException.
+        // Broad: tree decoding reports malformed shapes through several exception types.
         MaybeUndefined.Undefined
     }
 }
 
 /**
- * Decodes a tri-state collection field like [decodeMaybeUndefined], with Rust's `VecSkipError`
- * semantics on top: items that fail to decode are skipped instead of failing the field, and a
- * present-but-non-array value degrades to [MaybeUndefined.Undefined].
+ * Decodes a tri-state list field, skipping items that fail to decode, as Rust's `VecSkipError` does.
+ * A value that is not an array decodes as [MaybeUndefined.Undefined].
  */
 internal fun <T> JsonObject.decodeMaybeUndefinedList(
     json: Json,
@@ -130,8 +120,7 @@ internal fun <T> JsonObject.decodeMaybeUndefinedList(
 }
 
 /**
- * Decodes the items of this array with Rust's `VecSkipError` semantics: an item that fails to decode
- * is skipped instead of failing the whole list.
+ * Decodes the items of this array, skipping those that fail to decode, as Rust's `VecSkipError` does.
  */
 internal fun <T> JsonArray.decodeSkippingInvalid(
     json: Json,
@@ -140,15 +129,14 @@ internal fun <T> JsonArray.decodeSkippingInvalid(
     try {
         json.decodeFromJsonElement(itemDeserializer, item)
     } catch (_: Exception) {
-        // See decodeMaybeUndefined for why the catch is broad.
+        // Broad: tree decoding reports malformed shapes through several exception types.
         null
     }
 }
 
 /**
- * Encodes a tri-state field: [MaybeUndefined.Undefined] emits nothing, [MaybeUndefined.Null]
- * emits an explicit JSON `null` (building the [JsonObject] directly bypasses `ACPJson`'s
- * `explicitNulls = false`), and [MaybeUndefined.Value] emits the encoded value.
+ * Encodes a tri-state field: [MaybeUndefined.Undefined] writes nothing and [MaybeUndefined.Null]
+ * writes an explicit JSON `null`.
  */
 internal fun <T> JsonObjectBuilder.putMaybeUndefined(
     json: Json,
@@ -158,6 +146,7 @@ internal fun <T> JsonObjectBuilder.putMaybeUndefined(
 ) {
     when (value) {
         MaybeUndefined.Undefined -> {}
+        // Put into the object directly, so `ACPJson`'s `explicitNulls = false` can't drop it.
         MaybeUndefined.Null -> put(key, JsonNull)
         is MaybeUndefined.Value -> put(key, json.encodeToJsonElement(serializer, value.value))
     }

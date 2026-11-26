@@ -108,7 +108,6 @@ public sealed class ToolCallContent {
      * referenced session must already be known to the client, through session setup or an announcement.
      * The reference grants no controls and says nothing about the referenced session's work.
      *
-     * @property sessionId the referenced session, which the client must already know
      * @property _meta item metadata; omitted, `null` and values that are not a JSON object all decode as `null`
      */
     @Serializable

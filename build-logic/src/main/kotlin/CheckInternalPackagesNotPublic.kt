@@ -63,9 +63,8 @@ data class InternalPackageViolation(val lineNumber: Int, val line: String)
 /**
  * Finds the class entries of an API dump whose package has an `internal` segment.
  *
- * A class entry starts at column 0 (`public final class a/b/C : Super {`); members are indented and belong to the
- * entry above, so only the entry's own name decides. Types in member signatures and supertypes are ignored on
- * purpose, because they legitimately mention internal packages of other libraries, such as `kotlin/jvm/internal`.
+ * Only the entry's own name counts: member signatures and supertypes may legitimately mention internal packages of
+ * other libraries, such as `kotlin/jvm/internal`.
  */
 fun findPublicDeclarationsInInternalPackages(lines: List<String>): List<InternalPackageViolation> =
     lines.mapIndexedNotNull { index, line ->
@@ -73,6 +72,7 @@ fun findPublicDeclarationsInInternalPackages(lines: List<String>): List<Internal
     }
 
 private fun String.isClassEntryInInternalPackage(): Boolean {
+    // A class entry starts at column 0 (`public final class a/b/C : Super {`); its members are indented.
     if (isBlank() || first().isWhitespace() || first() == '}') return false
     val name = substringBefore(" : ").substringBefore(" {").substringAfterLast(' ')
     return "/$name".contains("/internal/")

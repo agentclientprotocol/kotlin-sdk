@@ -205,3 +205,38 @@ Suggestions collected during the comment-trim pass. None of them is applied; the
    - Current: every operation but `notify` calls `checkCanSend()`; the root's `notify` checks the subagents rules inline, and the subagent's checks through `sendPlainUpdate`/`sendOwnUpdate`.
    - Proposed: an `open fun checkUpdate(notification)` that the root's `notify` calls and the subclass overrides.
    - Why: the KDoc of `checkCanSend` has to explain why `notify` is the exception; a second hook would make both checks visible.
+
+## `acp-model/src/commonMain/kotlin/com/agentclientprotocol/model/MaybeUndefined.kt` and `JsonObjectSerializer.kt`
+
+1. **The lenient decode-or-give-up step**
+   - Current: four copies of `try { json.decodeFromJsonElement(deserializer, element) } catch (_: Exception) { null }` (`decodeOrNull`, `decodeMaybeUndefined`, `decodeSkippingInvalid`, `LenientSubagentCapabilitiesSerializer.deserialize`), three with the same "Broad: ..." inline comment.
+   - Proposed: `internal fun <T> Json.decodeLenientlyOrNull(deserializer: DeserializationStrategy<T>, element: JsonElement): T?` in `JsonObjectSerializer.kt`, called by all four.
+   - Why: the reason for the broad catch would sit once, on the helper, and each caller would read as "absent, `null`, or the lenient decode".
+
+## `acp-model/src/commonMain/kotlin/com/agentclientprotocol/model/SubagentSessionUpdates.kt`
+
+1. **Tri-state decoder names**
+   - Current: `decodeMaybeUndefined` / `decodeMaybeUndefinedList` beside the private `lenientMaybeString`, `strictMaybeString`, `strictMaybeStringList`, `lenientMaybeMeta`.
+   - Proposed: one scheme, e.g. `decodeMaybeUndefined`, `decodeMaybeString(strict = ...)` or `lenientMaybe*` / `strictMaybe*` for all of them.
+   - Why: the strict-versus-lenient split is what the file's top comment explains; with one naming scheme the call sites in `SubagentUpdateSerializer.decode` would show which fields are strict without it.
+
+## `acp-model/src/commonMain/kotlin/com/agentclientprotocol/model/SessionUpdate.kt`
+
+1. **Encoding a known variant in `SessionUpdateSerializer.serialize`**
+   - Current: each `is SessionUpdate.X ->` branch, including the three added for subagents, repeats `val base = ACPJson.encodeToJsonElement(X.serializer(), value).jsonObject` and a `buildJsonObject` that puts the discriminator and copies `base`.
+   - Proposed: `private fun <T> tagged(type: String, serializer: KSerializer<T>, value: T): JsonObject`, so each branch is `is SessionUpdate.SubagentUpdate -> tagged("subagent_update", SessionUpdate.SubagentUpdate.serializer(), value)`.
+   - Why: the branch would show only the wire name, which is the one thing that differs, and a new variant would add one line instead of seven.
+
+## `acp-model/src/commonMain/kotlin/com/agentclientprotocol/model/SubagentState.kt`
+
+1. **Discriminator strings**
+   - Current: `"running"`, `"idle"`, `"requires_action"`, `"unknown"` and the six stop reasons are spelled once in `decode`/`decodeIdleStopReason` and again in `encode`/`encodeIdleStopReason`.
+   - Proposed: private constants (`RUNNING`, `IDLE`, ..., like the existing `STATE_KEY`), or a private `wireName` per known variant used by both directions.
+   - Why: decode and encode would visibly share one table, so a typo in one direction couldn't break the round trip that the `Other` KDocs rely on.
+
+## `build-logic/src/main/kotlin/CheckInternalPackagesNotPublic.kt`
+
+1. **`findPublicDeclarationsInInternalPackages`**
+   - Current: returns `InternalPackageViolation` entries, and its KDoc says it finds "class entries".
+   - Proposed: `findClassEntriesInInternalPackages`.
+   - Why: it matches only class entries, never members; the name would say so, as the KDoc and the result type do.

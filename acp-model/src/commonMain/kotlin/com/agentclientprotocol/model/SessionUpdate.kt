@@ -292,7 +292,6 @@ public sealed class SessionUpdate {
      *
      * This type does not implement [AcpWithMeta], because [_meta] is a patch field.
      *
-     * @property sessionId the subagent session this update announces or patches
      * @property title the parent's display label for the subagent session
      * @property description the parent's description of the subagent session's role
      * @property capabilities what the client may send for the subagent session

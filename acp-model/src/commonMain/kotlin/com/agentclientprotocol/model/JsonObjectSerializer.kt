@@ -49,17 +49,14 @@ internal abstract class JsonObjectSerializer<T : Any>(serialName: String) : KSer
 }
 
 /**
- * The `_meta` of this object, or `null` when it is absent, `null` or not a JSON object.
- *
- * Mirrors Rust's `DefaultOnError` on `Meta`, which is a JSON object.
+ * The `_meta` of this object, or `null` when it is absent, `null` or not a JSON object, as Rust's `DefaultOnError`
+ * on `Meta` decodes it.
  */
 internal fun JsonObject.lenientMeta(): JsonObject? = this["_meta"] as? JsonObject
 
 /**
- * Decodes [key] with [deserializer], or returns `null` when it is absent, `null` or fails to decode.
- *
- * Mirrors Rust's `DefaultOnError` on an `Option` field. The catch is broad because kotlinx tree
- * decoding reports malformed shapes through several exception types.
+ * Decodes [key] with [deserializer], or returns `null` when it is absent, `null` or fails to decode, as Rust's
+ * `DefaultOnError` on an `Option` field does.
  */
 internal fun <T : Any> JsonObject.decodeOrNull(
     json: Json,
@@ -71,6 +68,7 @@ internal fun <T : Any> JsonObject.decodeOrNull(
     return try {
         json.decodeFromJsonElement(deserializer, element)
     } catch (_: Exception) {
+        // Broad: tree decoding reports malformed shapes through several exception types.
         null
     }
 }

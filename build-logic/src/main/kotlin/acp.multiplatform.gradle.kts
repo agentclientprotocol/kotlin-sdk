@@ -52,7 +52,7 @@ kotlin {
 }
 
 /*
- * Keep `internal` packages out of the public API, checked against the API dump (see `CheckInternalPackagesNotPublic`).
+ * Keep `internal` packages out of the public API, checked against the API dump.
  */
 pluginManager.withPlugin("org.jetbrains.kotlinx.binary-compatibility-validator") {
     val checkInternalPackagesNotPublic by tasks.registering(CheckInternalPackagesNotPublic::class) {

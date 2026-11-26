@@ -19,9 +19,8 @@ import kotlinx.serialization.json.buildJsonObject
  *
  * This is an open union discriminated by `state`. Each known state keeps only its own fields, and extra
  * fields beside it are dropped. [Unknown] is the real `unknown` state, reported when the agent lost
- * observability of the session's work. [Other] holds a state this SDK does not recognize, so it can be
- * preserved when storing or forwarding. This differs from the v2 `StateUpdate`, whose `Unknown` means
- * unrecognized.
+ * observability of the session's work. [Other] holds a state this SDK does not recognize. This differs
+ * from the v2 `StateUpdate`, whose `Unknown` means unrecognized.
  *
  * Decoding fails for a value that is not a JSON object and for a missing or non-string `state`, and
  * `subagent_update` treats such a state as absent. A known state always decodes as that state: a malformed field
@@ -66,8 +65,6 @@ public sealed class StateUpdate {
 
     /**
      * The agent cannot observe the subagent's work, so its state is not known.
-     *
-     * This is the protocol's `unknown` state, not an unrecognized one (see [Other]).
      *
      * @property _meta extension metadata; a value that is not a JSON object decodes as `null`
      */
