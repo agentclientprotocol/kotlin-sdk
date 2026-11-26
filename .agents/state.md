@@ -495,6 +495,15 @@ NO-DECISION LIST DONE (D1, S1, S1b, S1c, S2–S6). Remaining: #7/#13/#17 + lock 
 - Discussed: client `_sessions` contention. Per-message traffic only reads (volatile load); writes are per lifecycle
   event, and the notification-driven ones are serialized on the read loop. Any registry lock must keep lock-free
   snapshot reads. Question 0 (invariant across `_sessions`, `children`, `_phase`), not contention, decides it.
+- Explained: lock-for-writers + volatile snapshot vs CAS writers (same reads; CAS = optimistic, self-contained,
+  callable anywhere; lock = runs once, several results/variables; ConcurrentHashMap uses both).
+- Registry sync assessment DONE → `.agents/research/client-registry-sync-design.md`: recommends A (writer lock,
+  passed to holders by constructor, published snapshot; 9 sections in 3 files; −25..35 LOC; no behaviour change;
+  needs AGENTS.md:161 amended for a lock in the response hook, reopens "No lock" of M4 answer 2). B (tree in one
+  snapshot, pure CAS) −45..60 but reopens R17 D1, flips `ClientSubagentCloseTest.kt:265`, ~33 test sites. C fails
+  rule step 0; trap: `Registry:319` reads other holders' `children` inside the lambda, load-bearing (don't hoist).
+  Found: unconnected session updates do a no-op CAS per message (`Registry:78-81`); `failRootTree` may run for a
+  root whose `_session` completed if cancelled at the very end of the opening (plausible). 7 open questions.
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
