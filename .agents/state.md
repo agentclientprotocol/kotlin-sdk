@@ -458,11 +458,12 @@ reviewer over the milestone.
   unconnected and refuses openings/announcements of it; patches stay patches via the parent's children, not blocksId;
   N1 N2 N4 N5 applied; `check` green). Was: S1 + N1, N2, N4, N5. N3 NOT reverted: the rewrap was the
   user's own edit (user 2026-11-26); keep it.
-  F2 (user 2026-11-26), running: SHORT AGENTS.md guideline on serializer placement (a type's custom serializer
-  lives in the model's file; a base/helper used by several files gets its own file named after it, same package; an
-  oversized file splits by model concern and serializers move with their types; no separate `serialization`
-  package) + rename `acp-model/.../model/SubagentSessionUpdates.kt` → `SubagentSessionUpdateSerializers.kt`.
-  No file splits now.
+  F2 COMMITTED `07ba47e` (AGENTS.md "Model and Schema Changes": serializer placement guideline; `git mv` to
+  `SubagentSessionUpdateSerializers.kt`; no dump change; `check` green). Optional follow-up (not done): rename test
+  `SubagentSessionUpdatesSerializationTest` to match.
+- COMMENT-TRIM GOAL DONE (2026-11-26). Nothing pushed. Staged deletions of `acp-model/.schema-checksums` and
+  `.schema-revision` in the checkout are not from this pass (left alone). Open for discussion later:
+  `.agents/research/readability-suggestions.md`.
 
 KDoc pass goal (user 2026-11-25): (1) bring every comment/KDoc this PR adds or changes in line with AGENTS.md
 "Comments and KDoc" (structure rules, property/param placement, no single-line KDoc, no consecutive `//`);
