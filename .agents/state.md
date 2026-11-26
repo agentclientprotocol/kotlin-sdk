@@ -430,8 +430,13 @@ reviewer over the milestone.
 - Slices from here are committed one each by the programmer (opus, single mode):
   C1 client internals (`client/internal/*` except the registry) → C2 public client + `common` → A1 agent+protocol →
   M1 model + rest → R1 Runtime-rules trim → reviewer over the milestone.
-- C1: running. Follow-up included: KDocs in ClientSessionHolder.addChild / SubagentSessionHolder that point at the
-  registry's trimmed text.
+- C1 COMMITTED `a1e67b1` (client/internal minus registry; holders 234→134, 145→99, 145→79, permissions 133→80; code
+  identical; client tests green; +12 suggestions). R1 must keep (now the only full copy in AGENTS.md): exactly-once
+  Opened marker (`markOpened` bullet); child listed but closed after its holder fails; set-aside requests stay pending
+  after a load; failed root opening after the operations got the marker; gone-not-failed holder means closed
+  (`ClientSession.close()` bullet). Also only in code now: failed subagent's `blocksId` effects; `confirmsWork`
+  rationale (client never denies a tool use of continuing work).
+- C2: running (public client + `common`).
 
 KDoc pass goal (user 2026-11-25): (1) bring every comment/KDoc this PR adds or changes in line with AGENTS.md
 "Comments and KDoc" (structure rules, property/param placement, no single-line KDoc, no consecutive `//`);
