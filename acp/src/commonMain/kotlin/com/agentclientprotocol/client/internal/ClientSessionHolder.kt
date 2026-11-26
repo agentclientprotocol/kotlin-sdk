@@ -147,8 +147,9 @@ internal sealed class ClientSessionHolder(
         get() = _session.isCompleted && _session.getCompletionExceptionOrNull() != null
 
     /**
-     * Whether this holder still owns its session id. A failed root gives it up, and a failed subagent keeps it while
-     * its parent lives.
+     * Whether this holder still owns its session id. A failed root gives it up. A failed subagent keeps it while its
+     * parent lives, so an update on the id stays unconnected and an opening or another announcement of the id is
+     * refused.
      */
     abstract val blocksId: Boolean
 

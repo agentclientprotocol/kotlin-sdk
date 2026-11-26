@@ -191,7 +191,7 @@ For STDIO, preserve newline-delimited frame behavior. Protocol output belongs on
 - `ClientSession.close()` acts on its own holder, never on whatever its id maps to now, since the request carries only the id. It sends only while its holder still owns the id (`ClientSessionRegistry.isOpen`). Otherwise it sends nothing: a failed holder means the opening failed and the call throws, and any other holder that is gone was closed, so it returns an empty response.
 - The close removes the tree only after a successful response (`-32002` counts as one), and it cancels subagent openings without joining them, so a subagent's `notify` may still run after `close()` returns.
 - The first stop of a subagent's opening (`markOpeningStopped`) settles its holder: the stopper fails it, or the finished opening completes it. Decide from the state that the stop replaced, never from a later read, and fail a subagent's holder from nowhere else, so two failures never drain one queue.
-- A listed subagent is marked closed when its holder fails, after the listing too, or when its root's tree is removed, and it stays in its parent's `subagents`. A setup that finishes after its parent was sealed drops its child.
+- A listed subagent is marked closed when its holder fails, even after it was listed, and when its root's tree is removed, even if it had opened. It stays in its parent's `subagents`. A setup that finishes after its parent was sealed drops its child.
 
 ## Public API and Compatibility
 

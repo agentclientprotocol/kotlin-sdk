@@ -52,8 +52,8 @@ internal class ClientSessionRegistry(
     private val _sessions = atomic(SessionsStorage())
 
     /**
-     * Returns the holder of [sessionId]. While an opening call runs, an unknown id gets a speculative root holder that
-     * buffers its early updates. Returns `null` otherwise.
+     * Returns the holder that owns [sessionId]. While an opening call runs, an unknown id gets a speculative root
+     * holder that buffers its early updates. Returns `null` otherwise.
      */
     private fun getOrCreateSessionHolderOrNull(sessionId: SessionId): ClientSessionHolder? {
         // Fast path for the common case of an already registered session.
@@ -71,7 +71,7 @@ internal class ClientSessionRegistry(
                     currentStorage
                 }
                 currentStorage.initializingSessionsCount > 0 -> {
-                    // Replaces a failed holder, which handed its queue on when it failed.
+                    // No holder owns the id: create a speculative one. A failed holder it replaces handed its queue on.
                     val newHolder = RootSessionHolder(sessionId, protocol, subagentScope, ::failSessionTree)
                     clientSessionHolder = newHolder
                     currentStorage.copy(sessions = currentStorage.sessions.replacing(sessionId, newHolder))

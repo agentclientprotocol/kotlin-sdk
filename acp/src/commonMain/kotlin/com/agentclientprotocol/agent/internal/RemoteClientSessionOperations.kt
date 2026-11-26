@@ -36,7 +36,8 @@ internal open class RemoteClientSessionOperations(
      * Sends the update of [event] for this root session. Every root path sends through here, the prompt flow and the
      * replay too, so a root's subagents rules are checked once:
      * - a [SessionUpdate.SubagentUpdate] is rejected, so the SDK sees every announcement and grant;
-     * - without the `subagents` client capability, the updates that need it are rejected.
+     * - without the `subagents` client capability, the updates that need it are rejected, as ACP requires
+     *   (https://agentclientprotocol.com/protocol/v1/subagents#checking-support).
      *
      * @throws IllegalArgumentException for a [SessionUpdate.SubagentUpdate]
      * @throws IllegalStateException for an update that needs the missing `subagents` capability, or for

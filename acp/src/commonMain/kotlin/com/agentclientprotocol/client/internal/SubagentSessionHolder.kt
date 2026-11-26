@@ -150,8 +150,9 @@ internal class SubagentSessionHolder(
             val opened = session.executeWithSession {
                 while (true) {
                     /*
-                     * `receiveCatching` and `notify` may not suspend, and the cascade and the close cancel this opening
-                     * without joining it. Without this check a cancelled opening would keep taking the drain's items.
+                     * `receiveCatching` and `notify` can return without suspending, and the cascade and the close
+                     * cancel this opening without joining it. Without this check a cancelled opening would keep taking
+                     * the drain's items.
                      */
                     currentCoroutineContext().ensureActive()
                     when (val item = queue.receiveCatching().getOrNull() ?: return@executeWithSession false) {
