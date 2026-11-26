@@ -35,9 +35,8 @@ import kotlinx.serialization.json.JsonElement
 private val logger = KotlinLogging.logger {}
 
 /**
- * The session map of a [Client]: owns the rules about which [ClientSessionHolder] owns a session id, and delivers
- * `session/update` notifications to the holders. It registers the subagent sessions that the agent announces, as a
- * tree of holders under their roots, and removes a root's tree when the root is closed.
+ * The session map of a [Client]: decides which [ClientSessionHolder] owns each session id and routes
+ * `session/update` notifications to the holders. Subagents' holders form a tree under their root's.
  *
  * @param globalSessionUpdateHandler receives the updates for sessions that this client is not connected to
  * @param protocol the connection, for the subagents' `session/cancel`
@@ -53,25 +52,16 @@ internal class ClientSessionRegistry(
     private val _sessions = atomic(SessionsStorage())
 
     /**
-     * Looks up the holder for [sessionId], creating a new entry only if there are some currently initializing
-     * sessions. Returns `null` if the session is neither registered nor being initialized, instead of throwing -
-     * callers that need a session to exist should use [getOrCreateSessionHolder] instead. Requests of the agent
-     * don't come here, see [awaitSession].
-     *
-     * A failed holder counts as missing and is replaced while sessions initialize, so a retry of a failed opening
-     * gets a fresh holder, unless it still blocks its id, see [ClientSessionHolder.blocksId]. Dropping a failed holder
-     * loses nothing, because [failSessionTree] drains it at once, and its subagents leave the map with it, see
-     * [replacing]. A subagent's id never gets a speculative holder: it has its own while its parent lives.
+     * Returns the holder of [sessionId]. While an opening call runs, an unknown id gets a speculative root holder that
+     * buffers its early updates. Returns `null` otherwise.
      */
     private fun getOrCreateSessionHolderOrNull(sessionId: SessionId): ClientSessionHolder? {
         // Fast path for the common case of an already registered session.
         _sessions.value.sessions[sessionId]?.takeIf { it.blocksId }?.let { return it }
         var clientSessionHolder: ClientSessionHolder? = null
         /*
-         * Every branch below has to look the session up in `currentStorage` rather than rely on the read above:
-         * `_sessions` can change between that read and the CAS, and it can change again between two attempts of
-         * the CAS loop. A session that a concurrent newSession/loadSession registers in such a window - together
-         * with decrementing `initializingSessionsCount` back to zero - would otherwise be reported as missing.
+         * Look the id up again on every attempt: an opening that registers it and ends in between would otherwise
+         * make it look missing.
          */
         _sessions.update { currentStorage ->
             val existingHolder = currentStorage.sessions[sessionId]?.takeIf { it.blocksId }
@@ -81,6 +71,7 @@ internal class ClientSessionRegistry(
                     currentStorage
                 }
                 currentStorage.initializingSessionsCount > 0 -> {
+                    // Replaces a failed holder, which handed its queue on when it failed.
                     val newHolder = RootSessionHolder(sessionId, protocol, subagentScope, ::failSessionTree)
                     clientSessionHolder = newHolder
                     currentStorage.copy(sessions = currentStorage.sessions.replacing(sessionId, newHolder))
@@ -94,65 +85,29 @@ internal class ClientSessionRegistry(
         return clientSessionHolder
     }
 
-    /**
-     * Creates a new entry only if there are some currently initializing sessions. Otherwise, throws in the case of
-     * missing session.
-     */
     private fun getOrCreateSessionHolder(sessionId: SessionId): ClientSessionHolder =
         getOrCreateSessionHolderOrNull(sessionId) ?: acpFail("Session $sessionId not found")
 
     /**
-     * Whether [root] is the registered holder of its id and blocks it, so the session that [root] serves is still
-     * open on the agent and its close may be sent. While that holds no other opening of the id can start, see
-     * [RootSessionHolder.claimForOpening], so a close of [root] reaches no other session.
+     * Whether [root] still owns its id, so a `session/close` for that id reaches the session that [root] serves.
      */
     fun isOpen(root: RootSessionHolder): Boolean = _sessions.value.sessions[root.sessionId] === root && root.blocksId
 
     /**
-     * Returns the holder of the subagent [sessionId], or `null` if the id has no subagent holder. Doesn't suspend or
-     * create a holder, so a request handler can join the subagent's race before anything else changes its state, and
-     * then wait for this holder rather than for whatever the id maps to later.
+     * Returns the holder of the subagent [sessionId], or `null`. It doesn't suspend, so a request handler can take the
+     * holder before its first suspension.
      */
     fun subagentHolderOrNull(sessionId: SessionId): SubagentSessionHolder? =
         (_sessions.value.sessions[sessionId] as? SubagentSessionHolder)?.takeIf { it.blocksId }
 
     /**
-     * Removes [root] and every subagent below it, after the agent answered its `session/close`.
-     *
-     * A second removal of [root], after a second close that was sent while the first was in flight, removes nothing
-     * from the map.
-     *
-     * ### Steps
-     *
-     * 1. Each holder is sealed, top-down, so a late announcement registers no subagent that no close would reach.
-     * 2. Every subagent's opening is stopped, see [stopOpening], and a running one is cancelled without being joined:
-     *    - no opening starts afterwards;
-     *    - an opening that hadn't claimed its completion never completes its holder;
-     *    - one that the stop finds [OpeningState.Finished] had claimed it, and completes its holder right after, if it
-     *      hasn't yet.
-     *
-     *    A cancelled opening's `notify`, or a `createSubagentOperations` it runs, may still run after this returns. It
-     *    checks for cancellation before it takes each item, so it hands that `notify` at most the one item it took
-     *    before the cancellation, and it doesn't fail its holder.
-     * 3. The holders leave the session map in one compare-and-set, each only if its id still maps to it. So no
-     *    half-removed tree is visible, and a subagent registered after it stays out of the map.
-     * 4. Bottom-up, for each subagent:
-     *    - its permission requests are answered `cancelled`, which changes nothing if [RootSessionHolder.startClosing]
-     *      ran first;
-     *    - its session object is closed;
-     *    - its holder fails with a "closed" error if the stop in step 2 settles it, because it found the opening
-     *      running or not started, so its waiting requests get the error and its queue goes to
-     *      [globalSessionUpdateHandler]. A finished opening completes the holder instead, and one stopped earlier, by a
-     *      failure or another removal, leaves the holder to whoever stopped it.
-     *
-     * ### Cancellation
-     *
-     * Steps 3 and 4 run under [NonCancellable], so the removal finishes even if the caller is cancelled, because the
-     * agent has already dropped the sessions. Nothing before them suspends.
+     * Removes [root] and every subagent below it after the agent answered its `session/close`, and closes the
+     * subagents. A second removal of [root] removes nothing from the map.
      *
      * @return the ids that were removed from the session map
      */
     suspend fun removeSessionTree(root: RootSessionHolder): Set<SessionId> {
+        // Sealed top-down, so a late announcement can't add a subagent that this walk misses.
         val subtree = buildList {
             fun visit(holder: ClientSessionHolder) {
                 add(holder)
@@ -161,17 +116,14 @@ internal class ClientSessionRegistry(
             visit(root)
         }
 
+        // Running openings are cancelled, not joined, so a subagent's `notify` may still run after this returns.
         val settlesHolder = subtree.filterIsInstance<SubagentSessionHolder>().associateWith(::stopOpening)
 
+        // The agent has already dropped the sessions, so finish even if the caller is cancelled.
         return withContext(NonCancellable) {
             /*
-             * A registration adds its child to the parent before it touches the map, and checks the root's entry inside
-             * its own compare-and-set of the map. So either:
-             * - it added the child before the walk above sealed the parent. The child is in the subtree, and its map
-             *   update lands before this one, which removes it, or after it, and sees the root gone;
-             * - or it tried after the seal, and the add was refused.
-             *
-             * The two compare-and-sets can't miss each other, because every update allocates a new storage.
+             * A registration adds its child to the parent before its own map update, which checks the root's entry.
+             * So a child added before the seal is in the subtree, and is removed here or sees the root gone.
              */
             val previousSessions = _sessions.getAndUpdate { sessionsStorage ->
                 val sessions = sessionsStorage.sessions.mutate { sessions ->
@@ -184,6 +136,7 @@ internal class ClientSessionRegistry(
 
             for ((holder, settles) in settlesHolder.entries.reversed()) {
                 holder.permissions.close()
+                // Fail it only if this stop settled it; otherwise its opening finished or an earlier stop settles it.
                 if (settles) failHolder(holder, AcpExpectedError("Session ${holder.sessionId} closed")) else holder.markClosed()
             }
             subtree.filter { previousSessions.sessions[it.sessionId] === it }.mapTo(mutableSetOf()) { it.sessionId }
@@ -191,9 +144,7 @@ internal class ClientSessionRegistry(
     }
 
     /**
-     * Returns the opened session [sessionId], without creating a holder.
-     *
-     * @throws IllegalStateException if the session is not registered or not initialized yet, or is a subagent session
+     * Returns the opened root session [sessionId], or throws [IllegalStateException].
      */
     fun getRootSession(sessionId: SessionId): ClientSession {
         val sessionHolder = _sessions.value.sessions[sessionId] ?: error("Session $sessionId not found")
@@ -203,28 +154,13 @@ internal class ClientSessionRegistry(
     }
 
     /**
-     * Returns the session [sessionId] for a request of the agent, suspending until its opening finishes. Reads the
-     * session map once and never changes it.
-     *
-     * The registered holder of the id decides:
-     * - a holder whose session is complete: the call returns the session, or throws the holder's failure;
-     * - a root holder claimed by an opening call, by `session/load` or `session/resume` before the request or by
-     *   `session/new` or `session/fork` in the response hook, and a subagent holder: the call waits for the holder,
-     *   and throws its failure if the opening fails or the session is closed before it finished opening;
-     * - no holder, or a root holder that no opening has claimed, which an early update created: the call fails at
-     *   once.
-     *
-     * A root's session completes only after its claim, and a failed root doesn't keep its id, so the first case needs
-     * no check of its own.
-     *
-     * @throws JsonRpcException with [JsonRpcErrorCode.RESOURCE_NOT_FOUND] in the last case
+     * Returns the session [sessionId] for a request of the agent, waiting until its opening finishes. Only a
+     * subagent's holder or a root holder claimed by an opening call is waited for.
      */
     suspend fun awaitSession(sessionId: SessionId): BaseClientSession {
         /*
-         * A request doesn't create a holder, and doesn't wait for an opening that hasn't claimed the id: the Rust SDK
-         * answers such a request at once too. A wait would have no bound, since an unclaimed holder is reaped only when
-         * the last opening on the connection ends, and a holder created for a request would block a later announcement
-         * of a subagent with that id.
+         * Don't create a holder or wait for an unclaimed one: that wait would last until the last opening ends, and a
+         * holder made here would block a later subagent with this id. The Rust SDK fails such a request at once too.
          */
         val holder = when (val registered = _sessions.value.sessions[sessionId]?.takeIf { it.blocksId }) {
             is RootSessionHolder -> registered.takeIf { it.phase.isAtLeast(Stage.CLAIMED) }
@@ -234,9 +170,6 @@ internal class ClientSessionRegistry(
         return holder.session.await()
     }
 
-    /**
-     * Whether the holder of [sessionId] exists and its session is completed, with a session or with a failure.
-     */
     fun isSessionCompleted(sessionId: SessionId): Boolean {
         val holder = _sessions.value.sessions[sessionId]
         return holder != null && holder.session.isCompleted
@@ -244,34 +177,27 @@ internal class ClientSessionRegistry(
 
     /**
      * Delivers a `session/update` to the holder of [sessionId], or to [globalSessionUpdateHandler] if this client is
-     * not connected to the session. A `subagent_update` that announces a subagent registers its holder.
+     * not connected to the session.
      */
     suspend fun deliverSessionUpdate(sessionId: SessionId, update: SessionUpdate, _meta: JsonElement?) {
         /*
-         * The agent may report an update (e.g., a status change on `session/list`) for a session this client
-         * never called `session/new` / `session/load` / `session/resume` for. That's not a protocol violation, so
-         * unlike other session-scoped methods, an unknown/unconnected session here must not fail the call.
-         * A speculative holder can also be reaped by `withInitializingSession` after we found it here.
+         * An update for a session this client isn't connected to, such as a `session/list` status change, is legal, so
+         * it must not fail.
          *
-         * The lookup and the sorting are not `suspend`, and must stay that way: `Protocol` runs a notification handler
-         * only until its first suspension before it handles the next message. So a subagent is registered before the
-         * agent's next message for it is handled, even while the parent's `notify` runs app code. Otherwise that
-         * message would count as unconnected, or, for a request, fail with "session not found".
+         * The lookup and the sorting must not suspend: `Protocol` handles the agent's next message once this handler
+         * first suspends, and a subagent announced here must be registered by then.
          */
         val holder = getOrCreateSessionHolderOrNull(sessionId) ?: return handleUnconnectedSessionUpdate(sessionId, update, _meta)
         val item = queuedItemFor(holder, update, _meta)
+        // The holder may have failed or been reaped since the lookup.
         if (!holder.handleOrQueue(item)) {
             handleUnconnectedSessionUpdate(sessionId, update, _meta)
         }
     }
 
     /**
-     * Tags [update] in the stream of [parent] when it arrives: a `subagent_update` of a subagent registered under
-     * [parent] is a patch, one that announces a new id is an announcement and registers it, and every other update,
-     * and a rejected announcement, is a plain update. The parent's consumer acts on the tag later.
-     *
-     * A subagent's permission requests follow the `state` of its patches here, in wire order, because the parent's
-     * consumer can lag behind them by as long as the application's `notify` takes.
+     * Sorts [update] for the queue of [parent] when it arrives, and registers the subagent that a `subagent_update`
+     * announces.
      */
     private fun queuedItemFor(parent: ClientSessionHolder, update: SessionUpdate, meta: JsonElement?): QueuedItem {
         if (update !is SessionUpdate.SubagentUpdate) return QueuedItem.Update(update, meta)
@@ -287,6 +213,9 @@ internal class ClientSessionRegistry(
         return QueuedItem.Announcement(update, meta, child)
     }
 
+    /**
+     * Feeds a subagent's `state` to its permission requests in wire order, which the parent's consumer can lag behind.
+     */
     private fun followSubagentState(parent: ClientSessionHolder, child: SubagentSessionHolder, update: SessionUpdate.SubagentUpdate) {
         if (update.state != MaybeUndefined.Undefined) {
             child.permissions.onState(update.state.valueOrNull(), live = parent.root.phase.isAtLeast(Stage.ANSWERED))
@@ -295,27 +224,6 @@ internal class ClientSessionRegistry(
 
     /**
      * Registers the holder of the subagent [childId] that the agent announced in the stream of [parent].
-     *
-     * ### Steps
-     *
-     * 1. The child's holder is created. If the root was already answered, it takes its opened marker as its first
-     *    item, before anyone else can reach it.
-     * 2. The child is added to the parent, so a parent that fails at the same moment can't miss it, and a sealed
-     *    parent takes none. If the root's close has started, the add answers the child's permission requests
-     *    `cancelled` from the start, see [ClientSessionHolder.addChild].
-     * 3. The child enters the session map, in one compare-and-set that checks that its root is still the registered
-     *    holder of the root's id and that no other holder blocks the child's id.
-     *
-     * ### Rejection
-     *
-     * If another holder blocks the id, the announcement is malformed: it names the parent itself, an ancestor,
-     * another parent's subagent, or a root that is open or being opened. The child is then removed from the parent
-     * again, and the announcement is delivered to the parent as a plain update. Only a cascade can have seen the
-     * child, and failing a holder that never reached the map does no harm.
-     *
-     * Entering the map first would need an undo just the same, if the parent turned out sealed. And the map's
-     * compare-and-set has to check the id itself in either order, because an opening may create a root holder for
-     * it at any time.
      *
      * @return the child's holder, or `null` if it didn't enter the session map, so the announcement is a plain update
      */
@@ -328,9 +236,8 @@ internal class ClientSessionRegistry(
         var blocked = false
         _sessions.update { storage ->
             /*
-             * The close in [removeSessionTree], the reaping in [withInitializingSession] and [replacing] take the
-             * root's entry out of this map no later than the subagents below it. The child is already among its
-             * parent's subagents, so a registration that commits first is removed with them, and a later one sees
+             * Every removal of a root's tree takes the root's entry out no later than its subagents', and the child is
+             * already in its parent. So a commit before the removal is removed with the tree, and a later one sees
              * the root gone.
              */
             rootEnded = storage.sessions[root.sessionId] !== root
@@ -338,9 +245,10 @@ internal class ClientSessionRegistry(
             if (rootEnded || blocked) storage else storage.copy(sessions = storage.sessions.replacing(childId, child))
         }
 
-        // The removal of the closed root's tree, or the cascade of the reaped or replaced root, fails the child.
+        // The removal or cascade that ended the root fails the child.
         if (rootEnded) return null
         if (blocked) {
+            // A cascade may have seen the child meanwhile, but failing a holder outside the map is harmless.
             parent.removeChild(childId)
             logger.warn {
                 "Rejected the announcement of subagent session $childId in session ${parent.sessionId}: " +
@@ -352,13 +260,14 @@ internal class ClientSessionRegistry(
     }
 
     /**
-     * Returns the holder of [sessionId], claimed by an opening call that knows the id before its request:
-     * `session/load` with [replayRequested], or `session/resume` without it, with its [parameters]. Must run under
-     * [withInitializingSession], which makes sure the holder exists.
-     *
-     * @throws IllegalStateException if the session is open or being opened
+     * Claims the holder of [sessionId] for `session/load` or `session/resume`, before the request goes out. Must run
+     * under [withInitializingSession], so that the holder exists.
      */
-    fun claimSessionHolder(sessionId: SessionId, replayRequested: Boolean, parameters: SessionCreationParameters): RootSessionHolder {
+    fun claimSessionHolder(
+        sessionId: SessionId,
+        replayRequested: Boolean,
+        parameters: SessionCreationParameters,
+    ): RootSessionHolder {
         val sessionHolder = getOrCreateSessionHolder(sessionId)
         check(sessionHolder is RootSessionHolder && sessionHolder.claimForOpening(replayRequested, parameters)) {
             "Session $sessionId is already open or being opened"
@@ -367,14 +276,10 @@ internal class ClientSessionRegistry(
     }
 
     /**
-     * Claims the holder of [sessionId] for the call whose answer [response] names that id, and marks it opened, in
-     * one step, with the [parameters] of the call. This serves `session/new` and `session/fork`, whose session id
-     * first appears in the answer; neither asks for a replay.
+     * Claims the holder of [sessionId] for `session/new` or `session/fork`, whose answer first names the id, and marks
+     * it opened. Returns `null` if the id is taken.
      *
-     * Runs in the response hook of the call, so it must not suspend or block. Must run under
-     * [withInitializingSession], which makes sure the holder exists.
-     *
-     * @return `null` if the session is open or being opened
+     * It runs in the call's response hook, so it must not block, and under [withInitializingSession].
      */
     fun claimAnsweredSessionHolder(
         sessionId: SessionId,
@@ -397,41 +302,20 @@ internal class ClientSessionRegistry(
     }
 
     /**
-     * Fails [holder] with [cause] and hands its queued updates to [globalSessionUpdateHandler] at once, then does the
-     * same for every subagent below it, parent first.
+     * Fails [holder] and every subagent below it, parent first, and hands their queues to [globalSessionUpdateHandler].
      *
-     * Every failure of a holder goes through here, so a failed holder keeps no updates. Each holder is sealed and a
-     * subagent's opening is stopped first, so no opening starts after its holder has failed. A subagent's session
-     * object is closed, and stays in its parent's subagents. A failure of the handler is logged per update, so
-     * it neither stops the drain nor replaces the failure that the caller sees.
-     *
-     * ### Who fails a subagent
-     *
-     * A subagent's holder fails only through the stop of its opening that settles it, see [stopOpening]:
-     * - this call, for [holder] and for each subagent below it whose opening it stops that way;
-     * - [removeSessionTree], for the subagents whose openings it stops that way.
-     *
-     * So a subagent is skipped with its subtree when its opening had finished, which completes the holder, or was
-     * stopped before, by an earlier failure or a close, whose stop settles it. Two failures never drain one queue at
-     * once.
-     *
-     * ### Cancellation
-     *
-     * A running opening is cancelled, not joined: this runs under [NonCancellable] and must not wait for the
-     * application's `notify`. An opening checks for cancellation before it takes each item, so once the `notify` it is
-     * in returns, the rest of the queue goes to [globalSessionUpdateHandler]. Only an opening that passed that check
-     * just before the cancellation can still take one more item and hand it to its `notify`.
-     *
-     * @return `false` if [holder] is a subagent whose opening was already stopped or had finished, so this failed
-     * nothing, `true` otherwise.
+     * @return `false` if [holder] is a subagent whose opening had already finished or been stopped, so this failed
+     * nothing
      */
     suspend fun failSessionTree(holder: ClientSessionHolder, cause: Throwable): Boolean = withContext(NonCancellable) {
+        // Only the stop that settles a subagent's opening may fail its holder, so two failures never drain one queue.
         if (holder is SubagentSessionHolder && !stopOpening(holder)) return@withContext false
 
         suspend fun failTree(failing: ClientSessionHolder, reason: Throwable) {
             val children = failing.sealChildren()
             failHolder(failing, reason)
             for (child in children) {
+                // Skipped with its subtree: its opening finished, or an earlier stop settles it.
                 if (!stopOpening(child)) continue
                 failTree(child, IllegalStateException("Session ${failing.sessionId}, the parent of subagent session ${child.sessionId}, failed", reason))
             }
@@ -441,15 +325,12 @@ internal class ClientSessionRegistry(
     }
 
     /**
-     * Stops the opening of [holder], see [SubagentSessionHolder.markOpeningStopped], and cancels it if it runs.
-     *
-     * @return whether this call settles the opening in the holder, so its caller must fail it:
-     * - `true` if the opening was running or not started, so the holder must be failed
-     * - `false` if the opening is already in the terminal state (finished, stopped), so no action is required.
+     * Stops the opening of [holder], cancelling it if it runs, and returns whether the caller must now fail the holder.
      */
     private fun stopOpening(holder: SubagentSessionHolder): Boolean =
         when (val replaced = holder.markOpeningStopped()) {
             is OpeningState.Running -> {
+                // Not joined: the caller must not wait for the app's `notify`.
                 replaced.job.cancel()
                 true
             }
@@ -458,13 +339,12 @@ internal class ClientSessionRegistry(
         }
 
     /**
-     * Fails [holder] alone with [reason] and drains its queue, closing its session object if it is a subagent.
-     *
-     * The caller must have stopped a subagent's opening first, so a setup that stores the subagent later starts no
-     * opening and closes it itself. Must run under [NonCancellable].
+     * Fails [holder] alone and hands its queue to [globalSessionUpdateHandler]. The caller must have stopped a
+     * subagent's opening first, and must run this under [NonCancellable].
      */
     private suspend fun failHolder(holder: ClientSessionHolder, reason: Throwable) {
         if (holder is SubagentSessionHolder) holder.markClosed()
+        // A failing handler must not stop the drain or replace the caller's failure.
         holder.failAndDrainQueue(reason) { update, meta ->
             runCatching { handleUnconnectedSessionUpdate(holder.sessionId, update, meta) }
                 .onFailure { logger.error(it) { "Unconnected session update handler failed for ${holder.sessionId}" } }
@@ -472,9 +352,8 @@ internal class ClientSessionRegistry(
     }
 
     /**
-     * Runs [block], an opening call, while counting it as an initializing session, so that early updates for unknown
-     * ids get speculative root holders. When the last such call ends, every root holder that is unclaimed, incomplete
-     * or failed is removed and failed, with its subagents.
+     * Runs the opening call [block] as an initializing session, so early updates for unknown ids get speculative
+     * holders. When the last one ends, the root holders that no opening completed are removed and failed.
      */
     suspend fun <T> withInitializingSession(block: suspend () -> T): T {
         _sessions.update { it.copy(initializingSessionsCount = it.initializingSessionsCount + 1) }
@@ -491,12 +370,8 @@ internal class ClientSessionRegistry(
                 val newCount = currentStorage.initializingSessionsCount - 1
                 return@update if (newCount == 0) {
                     /*
-                     * No opening is in progress any more, so an unclaimed root holder, or a failed one, belongs to no
-                     * session: the agent sent updates for an id that no opening claimed. Remove those and fail them
-                     * below.
-                     *
-                     * A subagent's holder is exempt: it may wait for its operations long after any opening, and it ends
-                     * with its own setup or with its parent.
+                     * No opening runs any more, so an incomplete or failed root holder belongs to no session. Subagent
+                     * holders are exempt: they end with their own setup or with their parent.
                      */
                     hangingSessions = currentStorage.sessions.filterValues {
                         it is RootSessionHolder && (!it.session.isCompleted || it.isFailed)
@@ -514,17 +389,12 @@ internal class ClientSessionRegistry(
             if (reaped != null) {
                 for ((id, holder) in reaped) {
                     logger.trace { "Removing hanging session $id" }
-                    /*
-                     * Report it as a non-existent session. Its updates were buffered on the assumption they might
-                     * belong to this (or another concurrent) initialization; since none claimed `id`, it's an
-                     * unconnected session, same as if no initialization had been in progress when they arrived.
-                     */
+                    // No opening claimed it, so its buffered updates are unconnected after all.
                     failSessionTree(holder, AcpExpectedError("Session $id not found"))
                 }
                 /*
-                 * The subagents of the reaped roots have failed with them, and the cascade has sealed every holder,
-                 * so the set below each root is final. A failed subagent keeps its id only while its
-                 * parent lives, so they leave the map too.
+                 * The cascade sealed every holder, so these subtrees are final. Their failed subagents no longer block
+                 * their ids, so they leave the map too.
                  */
                 if (reaped.isNotEmpty()) {
                     _sessions.update { storage ->
@@ -538,9 +408,8 @@ internal class ClientSessionRegistry(
 }
 
 /**
- * Returns these sessions with [holder] under [sessionId], replacing a holder that no longer blocks the id. The
- * subagents below the replaced holder leave the map with it: they failed with it, and they no longer block their
- * ids either.
+ * Puts [holder] under [sessionId]. A replaced holder must no longer block the id; its subagents, which failed with it,
+ * leave the map too.
  */
 private fun PersistentMap<SessionId, ClientSessionHolder>.replacing(
     sessionId: SessionId,
@@ -550,9 +419,6 @@ private fun PersistentMap<SessionId, ClientSessionHolder>.replacing(
     map[sessionId] = holder
 }
 
-/**
- * Removes every subagent below [holder], each only if its id still maps to it.
- */
 private fun MutableMap<SessionId, ClientSessionHolder>.removeDescendantsOf(holder: ClientSessionHolder) {
     holder.forEachDescendant { if (this[it.sessionId] === it) remove(it.sessionId) }
 }

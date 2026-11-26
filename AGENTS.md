@@ -289,6 +289,16 @@ Never use:
 
 Keep KDoc focused on the public contract. Document parameters, results, exceptions, cancellation, ownership, or lifecycle semantics when they are not evident from the signature.
 
+### Public versus internal documentation
+
+How much a KDoc says depends on who reads it:
+
+- A public declaration may have a detailed KDoc when it documents the contract and explains non-obvious behavior.
+- An internal or private declaration, including everything in an `internal` package, gets a few short sentences: why it exists and what it does. Leave the rest to the code: its names and structure.
+- Explain a non-obvious implementation detail inline, at the line it concerns, in as few words as possible. Do not collect such details in the KDoc above.
+
+In every comment, drop what a reader would not get wrong without it: restatements of the code, "see [X]" chains that only point at other documentation, and invariants already stated in another KDoc or in "Runtime and Lifecycle Rules". If a shorter comment leaves the code unclear, prefer a clearer name, condition, or extraction over a longer comment.
+
 ### Where property and parameter documentation goes
 
 The location of a declaration decides where its documentation lives:
