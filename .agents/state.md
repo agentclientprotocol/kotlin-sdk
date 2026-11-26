@@ -467,7 +467,12 @@ Outside this PR: #5, #20.
 - User (2026-11-26): don't report slice progress in chat until the discussion is finished; record it here only.
   Agreed: never complete deferreds (or call app code) under `synchronized`. Now discussing: why CAS at all vs locks,
   internals and performance; then the code-base-wide rule; then SessionTable lock vs pure CAS.
-Next slice: S4 #14, then S5 #15+#16, S6 #21.
+- S4 #14 — `33357ca` — `discardFailedLoad` inlined; `subtreeScope.isActive` check dropped (dead protocol now logs
+  one debug line); `announce` catch flattened (4 cases identical, S1 holds); −6 LOC; `check` green 1st run.
+- CAS-vs-locks: explained internals/costs; proposed rule (CAS for single swaps and pure one-line updates; lock +
+  published snapshot for updates that check rules/return results/span variables; Mutex only to suspend; nothing
+  foreign under a lock). Waiting for the user to accept/adjust the rule.
+Next slice: S5 #15+#16, then S6 #21.
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
