@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 
 class CheckInternalPackagesNotPublicTest {
     private fun violations(vararg lines: String): List<Int> =
-        findPublicDeclarationsInInternalPackages(lines.toList()).map { it.lineNumber }
+        findClassEntriesInInternalPackages(lines.toList()).map { it.lineNumber }
 
     @Test
     fun `class entry in an internal package is flagged`() {

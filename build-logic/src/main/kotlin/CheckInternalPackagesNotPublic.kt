@@ -33,7 +33,7 @@ abstract class CheckInternalPackagesNotPublic : DefaultTask() {
     @TaskAction
     fun check() {
         val offenders = apiDumps.files.sortedBy { it.path }.flatMap { dump ->
-            findPublicDeclarationsInInternalPackages(dump.readLines()).map {
+            findClassEntriesInInternalPackages(dump.readLines()).map {
                 "${dump.parentFile.parentFile.name}/api/${dump.name}:${it.lineNumber}: ${it.line}"
             }
         }
@@ -66,7 +66,7 @@ data class InternalPackageViolation(val lineNumber: Int, val line: String)
  * Only the entry's own name counts: member signatures and supertypes may legitimately mention internal packages of
  * other libraries, such as `kotlin/jvm/internal`.
  */
-fun findPublicDeclarationsInInternalPackages(lines: List<String>): List<InternalPackageViolation> =
+fun findClassEntriesInInternalPackages(lines: List<String>): List<InternalPackageViolation> =
     lines.mapIndexedNotNull { index, line ->
         if (line.isClassEntryInInternalPackage()) InternalPackageViolation(index + 1, line) else null
     }
