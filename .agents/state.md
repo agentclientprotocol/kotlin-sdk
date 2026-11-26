@@ -429,7 +429,14 @@ SIMPLIFICATION REVIEW GOAL (user 2026-11-26, current). Analysis only: no product
   lock). Decisions for the user: #3 sequential live `notify` (fair Mutex) vs document the overlap; #12 S2 held
   cancel once vs each; #18 R17 D1 (defer recommended); #19 post-cancel window; #20 batches (outside PR);
   confirm #10, #11; readability Reg 4, Reg 14, Subagent 1, Subagent 4.
-Status: GOAL DONE (analysis). Next: the user reads the report and decides which suggestions become slices.
+Analysis done. IMPLEMENTATION (user 2026-11-26): opus programmers, single mode, each commits its slice, the
+no-decision suggestions only. Plan: D1 #1+#4 → S1 #6 → S2 #8 → S3 #9 (+Reg 9, 12, 13) → S4 #14 → S5 #15+#16 →
+S6 #21 readability (minus Reg 4, Reg 14, Subagent 1, Subagent 4). Held for the CAS-vs-locks discussion: #7, #13, #17.
+Being discussed one by one with the user: #10 (proposed after S1), #11. Waiting on decisions: #2/#3, #12, #18, #19.
+Outside this PR: #5, #20.
+- D1 — `a136aed` — `trySend` + identity-safe `endTurn`; `completedSessionOrNull` replaces `runCatching { awaitSession }`;
+  a cancelled negotiation caches `IllegalStateException` (no retry: `negotiateOnce` closes the protocol); 3 regression
+  tests + 1 unit test; `check` green (2nd run, JS flake). Follow-up: `isSessionCompleted` kept only for tests.
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
