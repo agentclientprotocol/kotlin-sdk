@@ -1224,8 +1224,9 @@ completed (`withInitializingSession` there), and the holder is typed to `ClientS
 
   **The first stop settles the holder.** Whoever stops a subagent's opening first fails its holder, unless the stop
   found the opening `Finished`, which then completes it. Nothing else fails it:
-  - the cascade skips a subagent whose opening is already stopped, with its subtree, and `failSessionTree` returns
-    `false` for it;
+  - the cascade skips a subagent whose opening is already stopped or finished, with its subtree, and
+    `failSessionTree` returns `false` for it. Both decide through one helper, `stopOpening`, which returns whether
+    its stop settles the holder;
   - the close leaves one that an earlier failure or close stopped;
   - an opening, or a setup in `createSubagentOperations`, that fails after its coroutine was cancelled only logs the
     failure. App code that turns the cancellation into another exception would otherwise fail the holder while the
@@ -1347,7 +1348,7 @@ root can be closed.
   1. it closes each holder's children map, top-down, so a late announcement can't register a grandchild under a
      holder that is going away (such a grandchild would block its id forever, and no close would reach it). This
      also closes the holder's `subagents` list, so a setup that finishes later drops its child;
-  2. it stops the opening of every subagent in the subtree (`markOpeningStopped`), which keeps one that hasn't
+  2. it stops the opening of every subagent in the subtree (`stopOpening`), which keeps one that hasn't
      started from starting and one that runs from completing its holder, then cancels the running ones without
      joining them. So a child's `notify`, or a `createSubagentOperations` it runs, may still run after `close()`
      returns, and the opening hands that `notify` at most the one item it took before the cancellation. A subagent's
@@ -1491,8 +1492,7 @@ suspend fun removeSessionTree(root: RootSessionHolder): Set<SessionId> {
         visit(root)
     }
 
-    val stoppedOpenings = subtree.filterIsInstance<SubagentSessionHolder>().associateWith { it.markOpeningStopped() }
-    for (stopped in stoppedOpenings.values) (stopped as? OpeningState.Running)?.job?.cancel()  // not joined
+    val settlesHolder = subtree.filterIsInstance<SubagentSessionHolder>().associateWith(::stopOpening)
 
     return withContext(NonCancellable) {
         _sessions.update { storage ->  // registerChild checks the root's entry inside its own update
@@ -1505,23 +1505,30 @@ suspend fun removeSessionTree(root: RootSessionHolder): Set<SessionId> {
             if (holder !is SubagentSessionHolder) continue
             holder.permissions.close()
             holder.markClosed()
-            val stoppedHere = when (stoppedOpenings.getValue(holder)) {
-                is OpeningState.Running, OpeningState.NotStarted -> true
-                OpeningState.Finished, OpeningState.Stopped -> false  // the opening or an earlier stopper settles it
-            }
-            // fails the holder this removal stopped, and the subagents below it that no one stopped before
-            if (stoppedHere) failStoppedTree(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
+            // fails the holder this removal settles, and the subagents below it that no one stopped before
+            if (settlesHolder.getValue(holder)) failStoppedTree(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
         }
         removedIds
     }
 }
+
+// The one place that decides who settles a stopped subagent, for the close and the failure cascade alike
+private fun stopOpening(holder: SubagentSessionHolder): Boolean =
+    when (val replaced = holder.markOpeningStopped()) {
+        is OpeningState.Running -> {
+            replaced.job.cancel()  // not joined
+            true
+        }
+        OpeningState.NotStarted -> true
+        OpeningState.Finished, OpeningState.Stopped -> false  // the opening or an earlier stopper settles it
+    }
 
 // ClientSessionHolder, which now knows its own id, with a subclass per kind of session
 internal sealed class ClientSessionHolder(
     val sessionId: SessionId,
     val protocol: Protocol,                   // for the subagents' session/cancel
     val openingScope: CoroutineScope,         // from Protocol.newConnectionScope, for the subagents' openings
-    val failSessionTree: suspend (ClientSessionHolder, Throwable) -> Boolean,  // false: already stopped, failed nothing
+    val failSessionTree: suspend (ClientSessionHolder, Throwable) -> Boolean,  // false: already stopped or finished, failed nothing
 ) {
     private data class Children(
         val byId: PersistentMap<SessionId, SubagentSessionHolder> = persistentMapOf(),

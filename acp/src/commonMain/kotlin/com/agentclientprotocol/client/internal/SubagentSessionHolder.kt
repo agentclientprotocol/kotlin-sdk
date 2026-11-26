@@ -44,22 +44,32 @@ internal class SubagentSessionHolder(
     sealed class OpeningState {
         /**
          * No opening was started: the holder isn't set up yet, or its setup failed.
+         *
+         * A stop that finds it leaves no opening to complete the holder, so the stop's caller fails it.
          */
         object NotStarted : OpeningState()
 
         /**
          * The opening runs in [job] and hasn't completed the holder.
+         *
+         * A stop that finds it means the opening will never complete the holder. The stop doesn't cancel or join
+         * [job]: the stop's caller cancels it and fails the holder.
          */
         class Running(val job: Job) : OpeningState()
 
         /**
          * The opening has delivered its whole queue and claimed the right to complete the holder, which it does next.
+         *
+         * A stop that finds it leaves the holder to the opening, which has completed it or is about to, so the
+         * subagent counts as opened.
          */
         object Finished : OpeningState()
 
         /**
          * [markOpeningStopped] has run, so no opening starts any more, and only one that had claimed its completion
          * ([Finished]) still completes the holder.
+         *
+         * A later stop that finds it settles nothing: the first stop already decided, from the state it replaced.
          */
         object Stopped : OpeningState()
     }
@@ -152,17 +162,11 @@ internal class SubagentSessionHolder(
 
     /**
      * Marks the opening stopped, so from now on [startOpening] starts none and a running one can't complete the
-     * holder, and returns the state it replaced:
-     * - [OpeningState.Running]: the opening will never complete the holder. It isn't cancelled or joined here: the
-     *   caller cancels it and fails the holder;
-     * - [OpeningState.Finished]: the opening has completed the holder, or is about to, so the subagent counts as
-     *   opened;
-     * - [OpeningState.NotStarted]: no opening was started, and the caller fails the holder;
-     * - [OpeningState.Stopped]: an earlier call stopped it, and that call's caller fails the holder, unless it found
-     *   [OpeningState.Finished].
+     * holder. It doesn't cancel a running opening.
      *
-     * So the first stop decides who settles the holder: the opening, if the stop found it finished, and otherwise the
-     * stop's caller. An opening that fails after a stop leaves the holder to that caller.
+     * The first stop decides who settles the holder, from the state it replaced, see [OpeningState].
+     *
+     * @return the state this call replaced
      */
     fun markOpeningStopped(): OpeningState = opening.getAndSet(OpeningState.Stopped)
 
@@ -262,9 +266,9 @@ internal class SubagentSessionHolder(
     }
 
     /**
-     * Fails this holder with [failure], for what the opening [caught], and logs [message], unless the opening was
-     * cancelled or stopped: then the stopper fails the holder, or the connection has ended, and [caught] is only
-     * logged at debug level.
+     * Fails this holder with [failure] for what the opening [caught], and logs [message]. If the opening was stopped or
+     * cancelled, [caught] comes from that, even if `notify` wrapped the cancellation in another exception: then the
+     * stopper fails the holder, or the connection has ended, and [caught] is only logged at debug level.
      */
     private suspend fun failOpening(caught: Throwable, failure: Throwable, message: String) {
         if (currentCoroutineContext().isActive && failSessionTree(this, failure)) {

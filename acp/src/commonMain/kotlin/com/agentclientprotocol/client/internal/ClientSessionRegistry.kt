@@ -125,8 +125,7 @@ internal class ClientSessionRegistry(
      * ### Steps
      *
      * 1. Each holder is sealed, top-down, so a late announcement registers no subagent that no close would reach.
-     * 2. Every subagent's opening is stopped, see [SubagentSessionHolder.markOpeningStopped], and a running one is
-     *    cancelled without being joined:
+     * 2. Every subagent's opening is stopped, see [stopOpening], and a running one is cancelled without being joined:
      *    - no opening starts afterwards;
      *    - an opening that hadn't claimed its completion never completes its holder;
      *    - one that the stop finds [OpeningState.Finished] had claimed it, and completes its holder right after, if it
@@ -141,10 +140,10 @@ internal class ClientSessionRegistry(
      *    - its permission requests are answered `cancelled`, which changes nothing if [RootSessionHolder.startClosing]
      *      ran first;
      *    - its session object is closed;
-     *    - its holder fails with a "closed" error if the stop in step 2 found its opening running or not started, so
-     *      its waiting requests get the error and its queue goes to [globalSessionUpdateHandler]. A finished opening
-     *      completes the holder instead, and one stopped earlier, by a failure or another removal, leaves the holder
-     *      to whoever stopped it.
+     *    - its holder fails with a "closed" error if the stop in step 2 settles it, because it found the opening
+     *      running or not started, so its waiting requests get the error and its queue goes to
+     *      [globalSessionUpdateHandler]. A finished opening completes the holder instead, and one stopped earlier, by a
+     *      failure or another removal, leaves the holder to whoever stopped it.
      *
      * ### Cancellation
      *
@@ -162,8 +161,7 @@ internal class ClientSessionRegistry(
             visit(root)
         }
 
-        val stoppedOpenings = subtree.filterIsInstance<SubagentSessionHolder>().associateWith { it.markOpeningStopped() }
-        for (stopped in stoppedOpenings.values) (stopped as? OpeningState.Running)?.job?.cancel()
+        val settlesHolder = subtree.filterIsInstance<SubagentSessionHolder>().associateWith(::stopOpening)
 
         return withContext(NonCancellable) {
             /*
@@ -189,11 +187,9 @@ internal class ClientSessionRegistry(
                 if (holder !is SubagentSessionHolder) continue
                 holder.permissions.close()
                 holder.markClosed()
-                val stoppedHere = when (stoppedOpenings.getValue(holder)) {
-                    is OpeningState.Running, OpeningState.NotStarted -> true
-                    OpeningState.Finished, OpeningState.Stopped -> false
+                if (settlesHolder.getValue(holder)) {
+                    failStoppedTree(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
                 }
-                if (stoppedHere) failStoppedTree(holder, AcpExpectedError("Session ${holder.sessionId} closed"))
             }
             subtree.filter { previousSessions.sessions[it.sessionId] === it }.mapTo(mutableSetOf()) { it.sessionId }
         }
@@ -416,13 +412,13 @@ internal class ClientSessionRegistry(
      *
      * ### Who fails a subagent
      *
-     * A subagent's holder fails only through whoever stopped its opening, see
-     * [SubagentSessionHolder.markOpeningStopped]:
-     * - this call, for [holder] and for each subagent below it whose opening it stops;
-     * - [removeSessionTree], for the subagents whose openings it stops.
+     * A subagent's holder fails only through the stop of its opening that settles it, see [stopOpening]:
+     * - this call, for [holder] and for each subagent below it whose opening it stops that way;
+     * - [removeSessionTree], for the subagents whose openings it stops that way.
      *
-     * So a subagent whose opening was stopped before, by an earlier failure or a close, is skipped with its subtree:
-     * its stopper fails it, or its finished opening completes it. Two failures never drain one queue at once.
+     * So a subagent is skipped with its subtree when its opening had finished, which completes the holder, or was
+     * stopped before, by an earlier failure or a close, whose stop settles it. Two failures never drain one queue at
+     * once.
      *
      * ### Cancellation
      *
@@ -431,7 +427,8 @@ internal class ClientSessionRegistry(
      * in returns, the rest of the queue goes to [globalSessionUpdateHandler]. Only an opening that passed that check
      * just before the cancellation can still take one more item and hand it to its `notify`.
      *
-     * @return `false` if [holder] is a subagent whose opening was already stopped, so this failed nothing
+     * @return `false` if [holder] is a subagent whose opening was already stopped or had finished, so this failed
+     * nothing, `true` otherwise.
      */
     suspend fun failSessionTree(holder: ClientSessionHolder, cause: Throwable): Boolean = withContext(NonCancellable) {
         if (holder is SubagentSessionHolder && !stopOpening(holder)) return@withContext false
@@ -440,15 +437,21 @@ internal class ClientSessionRegistry(
     }
 
     /**
-     * Stops the opening of [holder], and cancels it if it runs.
+     * Stops the opening of [holder], see [SubagentSessionHolder.markOpeningStopped], and cancels it if it runs.
      *
-     * @return `false` if it was already stopped, so its stopper fails the holder, or its finished opening completes it
+     * @return whether this call settles the opening in the holder, so its caller must fail it:
+     * - `true` if the opening was running or not started, so the holder must be failed
+     * - `false` if the opening is already in the terminal state (finished, stopped), so no action is required.
      */
-    private fun stopOpening(holder: SubagentSessionHolder): Boolean {
-        val stopped = holder.markOpeningStopped()
-        (stopped as? OpeningState.Running)?.job?.cancel()
-        return stopped != OpeningState.Stopped
-    }
+    private fun stopOpening(holder: SubagentSessionHolder): Boolean =
+        when (val replaced = holder.markOpeningStopped()) {
+            is OpeningState.Running -> {
+                replaced.job.cancel()
+                true
+            }
+            OpeningState.NotStarted -> true
+            OpeningState.Finished, OpeningState.Stopped -> false
+        }
 
     /**
      * Fails [failing], whose opening the caller has stopped if it is a subagent, and the subagents below it whose

@@ -429,8 +429,8 @@ internal sealed class ClientSessionHolder(
 
     private suspend fun failSetup(child: SubagentSessionHolder, cause: Throwable) {
         /*
-         * A cancelled caller is the consumer of a holder that is failing or closing, or of a connection that ended.
-         * The cascade or the close fails the child, and the end of the connection fails nothing.
+         * If the caller was cancelled, the cause comes from that, even if the factory wrapped it in another exception.
+         * The cascade or the close then fails the child, and the end of the connection fails nothing.
          */
         val failed = currentCoroutineContext().isActive &&
             failSessionTree(child, IllegalStateException("Failed to set up subagent session ${child.sessionId}", cause))
