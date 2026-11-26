@@ -436,7 +436,10 @@ reviewer over the milestone.
   after a load; failed root opening after the operations got the marker; gone-not-failed holder means closed
   (`ClientSession.close()` bullet). Also only in code now: failed subagent's `blocksId` effects; `confirmsWork`
   rationale (client never denies a tool use of continuing work).
-- C2: running (public client + `common`).
+- C2 COMMITTED `0bc29e3` (Client.kt 324→299, ClientSubagentSession 140→127; other public client/common KDocs
+  reverified, unchanged; +4 suggestions). R1 must keep: permission handler waits for the holder it found, no second
+  lookup. Out of scope: pre-existing single-line KDoc on `Client.completeInitialize`.
+- A1: running (agent + protocol).
 
 KDoc pass goal (user 2026-11-25): (1) bring every comment/KDoc this PR adds or changes in line with AGENTS.md
 "Comments and KDoc" (structure rules, property/param placement, no single-line KDoc, no consecutive `//`);
