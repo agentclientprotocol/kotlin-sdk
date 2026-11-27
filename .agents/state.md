@@ -542,6 +542,13 @@ NO-DECISION LIST DONE (D1, S1, S1b, S1c, S2–S6). Remaining: #7/#13/#17 + lock 
   check (S1 registry seal, S2 list seal, S3 stop vs L list, O startOpening): every order valid, so no ordering
   argument; `Subagents` and `OpeningState` are not folded. Slice B1 runs now, UNCOMMITTED for the user's review;
   it also lands the `### Shared state` AGENTS.md text, the child's-lock bullet shrink and the `Transport.send` KDoc.
+- B1 DONE, UNCOMMITTED (awaiting user review): 10 files, +276/−252; product net +3 (est. was −45..60: KDoc on
+  `SessionsStorage` helpers + `Registration` enum); `SessionsStorage(openingCallsCount, sessions, failed, closing)`,
+  `withoutTree` clears marks; `ClientSessionRegistry.startClosing(root)` via a `ClientSessionImpl` lambda;
+  `RootSessionHolder` takes a `descendantsOf` callback for `markOpened`; `Stage.CLOSING`/`closingOrNull` gone;
+  `check` green (2nd run, JS flake); apiCheck green. Deviations for the user: (1) the reap's lambda still reads
+  `session.isCompleted` (another atomic; argued stable at count zero); (2) patch-vs-announcement sorting asks the
+  map, not the parent's list (differs only for an update racing a tree removal → plain update instead of patch).
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
