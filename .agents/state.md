@@ -560,7 +560,9 @@ NO-DECISION LIST DONE (D1, S1, S1b, S1c, S2–S6). Remaining: #7/#13/#17 + lock 
   (uncommitted): `Registration` enum + `registrationOf` → local `parentLive()`/`accepts()` extensions in
   `registerChild`; comment "This runs on the read loop before the next message, so no permission request of the
   child reaches the app first."; `Stage` KDoc fixed; `check` green 1st run. (4) proposed: rename registry
-  `startClosing` → `markClosing` (reverses the 2026-11-21 item-9 name only), waiting for the user. Was pending: (2) why
+  `startClosing` → `markClosing` (reverses the 2026-11-21 item-9 name only): APPROVED + applied. (5) deviation 2
+  (sorting asks the map) ACCEPTED as is, no comment. B1 COMMITTED `02750a6` and pushed (user asked). NEXT: the
+  CLAIM SLICE (C1), uncommitted for review. Was pending: (2) why
   `Stage.CLOSING` is gone (Root note); (3) `Registration` enum (Registry note 1); (4) `startClosing` vs
   `startOpening` mirror (Registry note 2); (5) deviation 2 (sorting asks the map).
 
