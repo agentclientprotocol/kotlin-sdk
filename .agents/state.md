@@ -533,6 +533,15 @@ NO-DECISION LIST DONE (D1, S1, S1b, S1c, S2–S6). Remaining: #7/#13/#17 + lock 
   AGENTS.md; plus the child's-lock bullet shrink, the `Transport.send` KDoc sentence, and the 8-site list).
   Added after the summary above: "several components" bullet (one deciding CAS, winner runs the effects once) and
   the lock test "no one may see the update without an effect that can't lag it". Now discussing registry B.
+- REGISTRY B DECIDED (user 2026-11-27): R17 D1 reopened. Tree (`byId`, failing/failed `sealed` set) only in the
+  registry snapshot; `CLOSING` folded into it (a `closing` set; M4 answer 2's behaviour kept: no lock, a failed close
+  stays closing); the holder keeps `subagents` with its OWN seal (`Subagents(sessions, sealed)`), sealed by the
+  close and the cascade after the registry step — no behaviour change, public KDoc and `ClientSubagentCloseTest`
+  :228/:265 unchanged. Setup keeps `if (!listSubagent(session)) return`, drops the unobservable `markClosed()`,
+  comment: "The parent was closed or failed while the factory ran, so its list stays as it was." Interleaving
+  check (S1 registry seal, S2 list seal, S3 stop vs L list, O startOpening): every order valid, so no ordering
+  argument; `Subagents` and `OpeningState` are not folded. Slice B1 runs now, UNCOMMITTED for the user's review;
+  it also lands the `### Shared state` AGENTS.md text, the child's-lock bullet shrink and the `Transport.send` KDoc.
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
