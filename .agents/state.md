@@ -529,6 +529,10 @@ NO-DECISION LIST DONE (D1, S1, S1b, S1c, S2–S6). Remaining: #7/#13/#17 + lock 
   around the sends". Add to `Transport.send` KDoc: must not suspend, block, or call listeners.
   Result: code stays CAS-first; locks: the agent child's `SynchronizedObject`; Mutexes: negotiation, #13 (+#3 if chosen).
   Next question: registry B's costs (R17 D1 reopen, listing corner, fold `CLOSING` / M4 answer 2).
+- FINAL TEXT (user 2026-11-27, approved): `.agents/research/shared-state-rule.md` (7 bullets, verbatim for
+  AGENTS.md; plus the child's-lock bullet shrink, the `Transport.send` KDoc sentence, and the 8-site list).
+  Added after the summary above: "several components" bullet (one deciding CAS, winner runs the effects once) and
+  the lock test "no one may see the update without an effect that can't lag it". Now discussing registry B.
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
