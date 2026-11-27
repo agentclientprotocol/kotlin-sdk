@@ -518,6 +518,17 @@ NO-DECISION LIST DONE (D1, S1, S1b, S1c, S2–S6). Remaining: #7/#13/#17 + lock 
   (6) `SubagentSessionHolder` `opening` + `_subagent` ("stored first") → fold session into `OpeningState`;
   (7) v2 agent `SessionWrapper` `_activePrompt` + `_turn` → one `atomic<Job?>` (v2; in or out of PR?);
   (8) Elicitation `counter` + `entries` → #17. Rest are single-value atomics: fine.
+- RULE SETTLED (user 2026-11-27): AGENTS.md "Runtime and Lifecycle Rules" gets `### Shared state` before
+  "Read-loop ordering and hooks", text as proposed in chat (one atomic per rule; one `value` load per decision;
+  plain `var` only for state one coroutine owns; stale reads re-checked by the write; pure CAS, may throw, results
+  from `getAndUpdate`'s snapshot; lock only for an effect that must be in the step, all writers lock, `value =`, never
+  mix with CAS writers; publish last or note the window; `Mutex` only to suspend, never on the read loop/in a hook;
+  no read-write locks). The "nothing foreign" bullet is RELAXED to: CAS lambda pure; under a lock call only code that
+  doesn't suspend, block, take another lock, or call back into this lock; keep it short; app code and completing/
+  cancelling a deferred or job go after the lock. No named exception. The child's-lock bullet shrinks to "hold it
+  around the sends". Add to `Transport.send` KDoc: must not suspend, block, or call listeners.
+  Result: code stays CAS-first; locks: the agent child's `SynchronizedObject`; Mutexes: negotiation, #13 (+#3 if chosen).
+  Next question: registry B's costs (R17 D1 reopen, listing corner, fold `CLOSING` / M4 answer 2).
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
