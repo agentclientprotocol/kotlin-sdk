@@ -549,6 +549,20 @@ NO-DECISION LIST DONE (D1, S1, S1b, S1c, S2–S6). Remaining: #7/#13/#17 + lock 
   `check` green (2nd run, JS flake); apiCheck green. Deviations for the user: (1) the reap's lambda still reads
   `session.isCompleted` (another atomic; argued stable at count zero); (2) patch-vs-announcement sorting asks the
   map, not the parent's list (differs only for an update racing a tree removal → plain update instead of patch).
+- B1 review with the user, one question at a time. (1) Reap `isCompleted` read (`Registry:130`, used in the lambda
+  `:463` and after it `:475`): user → SEPARATE SLICE later: track speculative/unclaimed roots in the snapshot and
+  move the claim (`claimForOpening`, only the registry calls it; it also reads `_session.isCompleted` then `_phase`)
+  into the registry's CAS; verify how much more of the opening logic can consolidate there. (2) `CLOSING` moved
+  into the snapshot (explained); B1 fixes only the `Stage` KDoc ("stages of a root's opening; closing is the
+  registry's mark"). CLAIM SLICE also: replace `RootPhase`/`Stage`/`isAtLeast`/`claimedByOrNull`/`answeredOrNull`
+  with the smallest encoding that fits where the claim ends up (e.g. `atomic<Claim?>` with `answered`, ~−25 LOC);
+  check the answer's place against rule 5 (marker queued, then answered, in the response hook). (3) APPLIED in B1
+  (uncommitted): `Registration` enum + `registrationOf` → local `parentLive()`/`accepts()` extensions in
+  `registerChild`; comment "This runs on the read loop before the next message, so no permission request of the
+  child reaches the app first."; `Stage` KDoc fixed; `check` green 1st run. (4) proposed: rename registry
+  `startClosing` → `markClosing` (reverses the 2026-11-21 item-9 name only), waiting for the user. Was pending: (2) why
+  `Stage.CLOSING` is gone (Root note); (3) `Registration` enum (Registry note 1); (4) `startClosing` vs
+  `startOpening` mirror (Registry note 2); (5) deviation 2 (sorting asks the map).
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
