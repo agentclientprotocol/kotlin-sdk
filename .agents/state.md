@@ -504,6 +504,20 @@ NO-DECISION LIST DONE (D1, S1, S1b, S1c, S2–S6). Remaining: #7/#13/#17 + lock 
   rule step 0; trap: `Registry:319` reads other holders' `children` inside the lambda, load-bearing (don't hoist).
   Found: unconnected session updates do a no-op CAS per message (`Registry:78-81`); `failRootTree` may run for a
   root whose `_session` completed if cancelled at the very end of the opening (plausible). 7 open questions.
+- User 2026-11-27: lock-free partial reads beside a writer lock are bug-prone (reader must know internals; a
+  reverted write shows a value that never was real). Revised rule proposed (pending user OK): (1) one atomic per
+  rule: state a rule connects is one immutable value; (2) readers read the whole value, no plain shared fields;
+  (3) writers pure CAS, a lock only for a side effect that must happen once (then all writers lock, publish with
+  `value =`); (4) publish last, else note the window (only site: `_cancelGranted` rollback, SubWrapper:372-384);
+  (5) Mutex only to suspend; nothing foreign under a lock/lambda. Consequence: registry → B (A has split reads).
+- Audit under that rule (orchestrator, by reading; Ktor modules have no atomics): multi-atomic state read
+  separately: (1) agent child `_phase`/`_cancelGranted`/`_session` + 3 plain fields, lock-written → fold slice;
+  (2) client registry `_sessions` + `children` + root `CLOSING` → B; (3) `PromptSession` counter + flag → #13 Mutex;
+  (4) `ClientSubagentSession` 7 atomics, a patch applied field by field (torn patch for off-stream readers) → fold;
+  (5) `SubagentPendingPermissions` `signal` + `workState` ordering pair → gone with #19, else fold;
+  (6) `SubagentSessionHolder` `opening` + `_subagent` ("stored first") → fold session into `OpeningState`;
+  (7) v2 agent `SessionWrapper` `_activePrompt` + `_turn` → one `atomic<Job?>` (v2; in or out of PR?);
+  (8) Elicitation `counter` + `entries` → #17. Rest are single-value atomics: fine.
 
 COMMENT-TRIM GOAL (user 2026-11-26, done). Rules (final):
 - Public symbols: a detailed KDoc is fine when it documents the contract and non-obvious behaviour; current public
