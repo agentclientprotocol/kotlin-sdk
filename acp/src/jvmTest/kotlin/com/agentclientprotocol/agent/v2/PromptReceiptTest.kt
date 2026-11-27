@@ -5,6 +5,7 @@ package com.agentclientprotocol.agent.v2
 import com.agentclientprotocol.client.v2.ClientInfo
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.Implementation
+import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.MessageId
 import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
 import com.agentclientprotocol.model.SessionConfigId

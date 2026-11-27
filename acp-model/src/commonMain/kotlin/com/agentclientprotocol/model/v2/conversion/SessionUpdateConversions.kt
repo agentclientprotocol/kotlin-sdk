@@ -14,7 +14,7 @@ import com.agentclientprotocol.model.v2.AvailableCommandsUpdate
 import com.agentclientprotocol.model.v2.ConfigOptionUpdate
 import com.agentclientprotocol.model.v2.ContentBlock
 import com.agentclientprotocol.model.v2.ContentChunk
-import com.agentclientprotocol.model.v2.MaybeUndefined
+import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.v2.SessionInfoUpdate
 import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.model.v2.UsageUpdate
@@ -316,6 +316,7 @@ public fun SessionUpdate.toV1(): List<V1SessionUpdate> = when (this) {
  * An unrecognized v1 update crosses unchanged: both versions preserve one as raw JSON.
  *
  * @throws ProtocolConversionException if this is a `current_mode_update`, which v2 removed,
+ * a `subagent_update`, `session_message` or `session_message_chunk`, which v2 does not model yet,
  * or a message chunk with no `messageId`, which v2 requires
  */
 @UnstableApi
@@ -344,6 +345,15 @@ public fun V1SessionUpdate.toV2(): SessionUpdate = when (this) {
 
     is V1SessionUpdate.CurrentModeUpdate ->
         throw removedV1EnumVariant("SessionUpdate", "current_mode_update")
+
+    is V1SessionUpdate.SubagentUpdate ->
+        throw removedV1EnumVariant("SessionUpdate", "subagent_update")
+
+    is V1SessionUpdate.SessionMessage ->
+        throw removedV1EnumVariant("SessionUpdate", "session_message")
+
+    is V1SessionUpdate.SessionMessageChunk ->
+        throw removedV1EnumVariant("SessionUpdate", "session_message_chunk")
 
     // Both versions keep unrecognized updates as raw JSON, so this crosses losslessly.
     is V1SessionUpdate.UnknownSessionUpdate ->

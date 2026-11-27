@@ -5,6 +5,7 @@ package com.agentclientprotocol.client
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.SessionCreationParameters
+import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.ContentBlock
 import com.agentclientprotocol.model.NewSessionResponse
@@ -46,7 +47,7 @@ import kotlin.time.Duration.Companion.seconds
  *
  * Getting this wrong used to be observable as `AcpExpectedError: Session <id> not found` logged by the
  * protocol, plus a silently dropped update, whenever the notification was handled while the concurrent
- * `newSession` was registering its holder and dropping `initializingSessionsCount` back to zero.
+ * `newSession` was registering its holder and dropping `openingCallsCount` back to zero.
  */
 class ClientSessionUpdateDeliveryTest {
     @Test
@@ -108,7 +109,8 @@ private class CompletableUpdate : ClientSessionOperations {
         _meta: JsonElement?,
     ): RequestPermissionResponse = error("not expected in this test")
 
-    override suspend fun notify(notification: SessionUpdate, _meta: JsonElement?) {
+    override suspend fun notify(event: SessionEvent) {
+        if (event !is SessionEvent.Update) return
         notified.complete(Unit)
     }
 

@@ -1,5 +1,6 @@
 package com.agentclientprotocol.protocol
 
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.rpc.JsonRpcNotification
@@ -16,12 +17,19 @@ import kotlin.coroutines.EmptyCoroutineContext
  */
 public interface RpcMethodsOperations {
     /**
-     *
      * Set a handler for a request method, producing a [RequestOutcome] to allow for additional work
      * and cleanup to be scheduled after the initial response.
      * This will override any existing handler for the same method.
      * Prefer typed [setRequestOutcomeHandler] over this method.
+     *
+     * Ordering: request handlers start in arrival order, on the same single thread as the notification handlers, see
+     * [setNotificationHandlerRaw]. A request handler runs until it first suspends, or returns, before the handler of
+     * any later request or notification starts, and so before any message that follows such a notification. The read
+     * loop doesn't wait for the handler otherwise: a response that arrives right after the request may be handled
+     * before the request's handler starts. As for notifications, this holds only if [additionalContext] contains no
+     * dispatcher.
      */
+    @UnstableApi
     public fun setRequestOutcomeHandlerRaw(
         method: AcpMethod.AcpRequestResponseMethod<*, *>,
         additionalContext: CoroutineContext = EmptyCoroutineContext,
@@ -32,7 +40,10 @@ public interface RpcMethodsOperations {
      * Set a simple handler for a request method that only produces [JsonElement] result without any additional work or cleanup.
      * This will override any existing handler for the same method.
      * Prefer typed [setRequestHandler] over this method.
+     *
+     * The handler starts in arrival order as described on [setRequestOutcomeHandlerRaw].
      */
+    @OptIn(UnstableApi::class)
     public fun setRequestHandlerRaw(
         method: AcpMethod.AcpRequestResponseMethod<*, *>,
         additionalContext: CoroutineContext = EmptyCoroutineContext,
@@ -45,6 +56,16 @@ public interface RpcMethodsOperations {
      * Set a handler for a notification method.
      * This will override any existing handler for the same method.
      * Prefer typed [setNotificationHandler] over this method.
+     *
+     * Ordering: each incoming notification's handler runs until it first suspends, or returns, before the next
+     * incoming message is handled. So the parts of notification handlers before their first suspension run one at a
+     * time, in arrival order, and a message that arrives after a notification, such as a response, is handled
+     * after that part. The next message does not wait for the handler to finish: once it suspends, later messages
+     * are handled, and its remainder may interleave with later handlers.
+     *
+     * This holds only if [additionalContext] contains no dispatcher. The handler is entered through
+     * `withContext(additionalContext)`, which dispatches before the handler runs when the dispatcher changes, so
+     * later messages may be handled before the handler starts.
      */
     public fun setNotificationHandlerRaw(
         method: AcpMethod.AcpNotificationMethod<*>,
@@ -117,24 +138,38 @@ public interface RpcMethodsOperations {
 
 /**
  * Separates a handler's reply from work that must follow it, such as streaming updates.
- * This lets the protocol queue the entire response before starting that work, without
- * waiting for streams to finish. The dispatcher takes ownership when the handler returns.
  *
- * @property response The handler's reply payload, mapped to JSON before it is queued.
- * @property afterResponse Optional work started after the response frame (including any batch)
- * is accepted by the transport's ordered queue. Cancelling it is cooperative: it is entered even when
- * its request was already cancelled, and SHOULD observe cancellation as its first suspension point.
- * This lets it close out whatever the reply announced.
- * @property onCompletion Optional non-suspending cleanup, called exactly once when follow-up work
- * finishes, fails, or is discarded—even if cancellation or a send failure prevents it from starting.
+ * This lets the protocol queue the entire response before starting that work, without waiting for streams to
+ * finish. The dispatcher takes ownership when the handler returns. Its parts then run in order: [onResponseQueued]
+ * once the transport has accepted the response frame, then [afterResponse], and [onCompletion] last, whether or not
+ * the others ran.
+ *
+ * @property response the handler's reply payload, mapped to JSON before it is queued
+ * @property afterResponse optional work started after the response frame (including any batch) is accepted by the
+ * transport's ordered queue. Cancelling it is cooperative: it is entered even when its request was already
+ * cancelled, and SHOULD observe cancellation as its first suspension point. This lets it close out whatever the
+ * reply announced
+ * @property onCompletion optional non-suspending cleanup, called exactly once when follow-up work finishes, fails,
+ * or is discarded, even if cancellation or a send failure prevents it from starting
+ * @property onResponseQueued optional hook called synchronously in the coroutine that queues the frame, right after
+ * the transport accepted the frame carrying the success response: before [afterResponse] starts and before any
+ * other work waiting for that frame resumes, so a message sent from it follows the response on the wire. It is not
+ * called for an error reply, or when the frame never reaches the transport; [onCompletion] is where to detect that.
+ * It must not suspend, block, or throw; a hook that throws is logged
  */
-public data class RequestOutcome<out T>(
-    val response: T,
-    val afterResponse: (suspend () -> Unit)? = null,
-    val onCompletion: (() -> Unit)? = null,
+@UnstableApi
+public class RequestOutcome<out T>(
+    public val response: T,
+    public val afterResponse: (suspend () -> Unit)? = null,
+    public val onCompletion: (() -> Unit)? = null,
+    public val onResponseQueued: (() -> Unit)? = null,
 ) {
+    /**
+     * Returns an outcome with [transform] applied to [response] and the same follow-up work. If [transform] throws,
+     * [onCompletion] is called before the exception propagates.
+     */
     public inline fun <R> mapResponse(transform: (T) -> R): RequestOutcome<R> = try {
-        RequestOutcome(transform(response), afterResponse, onCompletion)
+        RequestOutcome(transform(response), afterResponse, onCompletion, onResponseQueued)
     } catch (t: Throwable) {
         onCompletion?.invoke()
         throw t

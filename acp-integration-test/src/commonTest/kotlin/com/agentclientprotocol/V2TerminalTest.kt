@@ -15,7 +15,7 @@ import com.agentclientprotocol.model.PROTOCOL_VERSION_V2
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.ToolCallId
 import com.agentclientprotocol.model.v2.ContentBlock
-import com.agentclientprotocol.model.v2.MaybeUndefined
+import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.model.v2.StateUpdate
 import com.agentclientprotocol.model.v2.StopReason

@@ -133,17 +133,12 @@ public value class SessionConfigGroupId(public val value: String) {
 }
 
 /**
- * **UNSTABLE**
- *
- * This capability is not part of the spec yet, and may be removed or changed at any point.
- *
  * A unique message identifier for [PromptRequest], session update message chunks, and [PromptResponse].
  *
  * If provided by the client, the Agent SHOULD echo this value as `userMessageId` in the
  * [PromptResponse] to confirm it was recorded.
  * Both clients and agents MUST use UUID format for message IDs.
  */
-@UnstableApi
 @JvmInline
 @Serializable
 public value class MessageId(public val value: String) {

@@ -8,7 +8,7 @@ import com.agentclientprotocol.model.SessionUpdate as V1SessionUpdate
 import com.agentclientprotocol.model.ToolCallContent as V1ToolCallContent
 import com.agentclientprotocol.model.ToolCallStatus as V1ToolCallStatus
 import com.agentclientprotocol.model.ToolKind as V1ToolKind
-import com.agentclientprotocol.model.v2.MaybeUndefined
+import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.v2.ToolCallContent
 import com.agentclientprotocol.model.v2.ToolCallStatus
 import com.agentclientprotocol.model.v2.ToolCallUpdate
@@ -117,7 +117,7 @@ private fun ToolCallContent.toV1OrNull(): V1ToolCallContent? = when (this) {
 
 private fun V1ToolCallContent.toV2OrNull(): ToolCallContent? = when (this) {
     is V1ToolCallContent.Content -> ToolCallContent.Content(content = content.toV2())
-    is V1ToolCallContent.Diff, is V1ToolCallContent.Terminal -> null
+    is V1ToolCallContent.Diff, is V1ToolCallContent.Terminal, is V1ToolCallContent.Session -> null
 }
 
 /**

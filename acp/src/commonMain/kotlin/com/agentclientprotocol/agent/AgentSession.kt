@@ -31,9 +31,47 @@ public interface AgentSession {
      * currentCoroutineContext().client
      * ```
      *
-     * If it throws, `session/load` fails with that error and the session is not registered.
+     * If it throws, `session/load` fails with that error and the session is not registered. A session that was open
+     * under the same id is not restored.
      *
      * See protocol docs: [Loading Sessions](https://agentclientprotocol.com/protocol/session-setup#loading-sessions)
+     *
+     * ### Subagents
+     *
+     * Recorded subagents are replayed through the unstable [AgentSubagents] API. The SDK doesn't record history and
+     * doesn't tell a factory that it replays, so the app:
+     * - sends each recorded update in its recorded order through the client of the session that sent it live: the
+     *   root's own client, or the child's [AgentSubagentContext.client], which routes as it did live;
+     * - turns each recorded announcement into an [AgentSubagents.announce] call whose factory sends it and returns;
+     * - keeps the factory's context, the only way to reach the child afterwards, for example in the returned session.
+     *
+     * So no update needs special handling, a patch can't precede its announcement, and only the interleaving of
+     * different streams may differ from the live one. See [AgentSubagents] for the replay window and the events.
+     *
+     * In this example, which assumes that the client advertised the `subagents` capability, `record` is the app's list
+     * of updates in the order they went out, each with the id of the session whose client sent it and, for an
+     * announcement, the id of its parent. `ReplayedSubagent` is the app's [AgentSubagentSession] that keeps the
+     * factory's context and has empty events.
+     *
+     * ```
+     * override suspend fun replayHistory() {
+     *     val root = currentCoroutineContext()
+     *     val children = mutableMapOf<SessionId, AgentSubagentContext>()
+     *     for ((sender, parent, update) in record) {
+     *         val client = if (sender == sessionId) root.client else children[sender]?.client
+     *         if (client != null) {
+     *             client.notify(update)
+     *         } else {
+     *             // A child's first recorded update is its announcement.
+     *             val factory = AgentSubagentFactory { context ->
+     *                 context.client.notify(update)
+     *                 ReplayedSubagent(context)
+     *             }
+     *             children[sender] = root.subagents!!.announce(sender, factory, parent).context
+     *         }
+     *     }
+     * }
+     * ```
      */
     public suspend fun replayHistory() {}
 
@@ -71,19 +109,18 @@ public interface AgentSession {
     public suspend fun cancel() {}
 
     /**
-     * **UNSTABLE**
-     *
-     * This capability is not part of the spec yet, and may be removed or changed at any point.
-     *
      * Closes the session and frees up any resources associated with it.
      * The agent must cancel any ongoing work (as if `cancel` was called)
      * and then free up any resources associated with the session.
      *
-     * Only called if the agent advertises the `session.close` capability.
+     * Stop the work of the session's subagents here too: once this returns, the SDK removes them without calling app
+     * code. If it throws, the session and its subagents stay registered. See [AgentSubagents].
+     *
+     * Only called if the agent advertises the `session.close` capability. A `session/close` for a session id that
+     * is unknown or already closed doesn't call it: the agent answers it with an empty [CloseSessionResponse].
      *
      * Corresponds to the [AcpMethod.AgentMethods.V1.SessionClose]
      */
-    @UnstableApi
     public suspend fun close(_meta: JsonElement?): CloseSessionResponse {
         throw NotImplementedError("close is not implemented. The capability is declared in AgentCapabilities.sessionCapabilities.close")
     }

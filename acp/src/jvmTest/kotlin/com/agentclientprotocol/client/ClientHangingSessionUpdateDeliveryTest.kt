@@ -5,6 +5,7 @@ package com.agentclientprotocol.client
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.SessionCreationParameters
+import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.model.AcpMethod
 import com.agentclientprotocol.model.ContentBlock
 import com.agentclientprotocol.model.NewSessionResponse
@@ -74,7 +75,7 @@ class ClientHangingSessionUpdateDeliveryTest {
                     }
                 }
 
-                // Wait until `session/new` is actually on the wire: `initializingSessionsCount` is now positive.
+                // Wait until `session/new` is actually on the wire: `openingCallsCount` is now positive.
                 assertNotNull(
                     withTimeoutOrNull(5.seconds) { transport.sessionNewSent.await() },
                     "session/new was never sent",
@@ -83,7 +84,7 @@ class ClientHangingSessionUpdateDeliveryTest {
                 // An update for a totally unrelated session arrives while our own session/new is still in flight.
                 transport.emitSessionUpdate(unrelatedSessionId, unrelatedUpdate)
 
-                // Completing session/new drops `initializingSessionsCount` back to zero, reaping the buffered
+                // Completing session/new drops `openingCallsCount` back to zero, reaping the buffered
                 // holder for the unrelated session.
                 transport.completePendingSessionNew()
                 newSessionResult.await()
@@ -107,7 +108,8 @@ private object NoOpSessionOperations : ClientSessionOperations {
         _meta: JsonElement?,
     ): RequestPermissionResponse = error("not expected in this test")
 
-    override suspend fun notify(notification: SessionUpdate, _meta: JsonElement?) {
+    override suspend fun notify(event: SessionEvent) {
+        if (event !is SessionEvent.Update) return
         error("no updates expected for the session being created in this test")
     }
 }

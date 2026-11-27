@@ -5,7 +5,7 @@ package com.agentclientprotocol.e2e.rustagent.v2
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.e2e.rustagent.TestyAgent
 import com.agentclientprotocol.model.v2.ContentBlock
-import com.agentclientprotocol.model.v2.MaybeUndefined
+import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.v2.SessionUpdate
 import com.agentclientprotocol.model.v2.StateUpdate
 import com.agentclientprotocol.model.v2.StopReason

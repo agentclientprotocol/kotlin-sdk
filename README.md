@@ -33,7 +33,7 @@ ACP standardises how AI agents and clients exchange messages, negotiate capabili
 | `:acp-ktor-client`                  | Ktor HTTP/WebSocket client helper                         | `ktor.client`                              |
 | `:acp-ktor-server`                  | Ktor server-side transport utilities                      | `ktor.server`                              |
 | `:acp-integration-test`             | Integration tests over STDIO and WebSocket transports     | tests only, not published                  |
-| `:samples:kotlin-acp-client-sample` | Complete runnable client + agent reference implementation | `samples`                                  |
+| [`:samples:kotlin-acp-client-sample`](samples/README.md) | Complete runnable client + agent reference implementation | `samples`                                  |
 
 ## Requirements
 
@@ -181,6 +181,7 @@ Create a `Client` with your own `ClientSessionOperations` implementation. This s
 import com.agentclientprotocol.client.*
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.Event
+import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.common.SessionParameters
 import com.agentclientprotocol.model.*
 import com.agentclientprotocol.protocol.Protocol
@@ -215,9 +216,13 @@ private class TerminalSession(
         // Grant whichever option was first in the list (swap for real UX).
         RequestPermissionResponse(RequestPermissionOutcome.Selected(permissions.first().optionId))
 
-    override suspend fun notify(notification: SessionUpdate, _meta: JsonElement?) {
-        // Surface streaming updates back to the host application.
-        println("Agent update: $notification")
+    override suspend fun notify(event: SessionEvent) {
+        when (event) {
+            // Surface streaming updates back to the host application.
+            is SessionEvent.Update -> println("Agent update: ${event.update}")
+            // Updates before this marker came before the answer that opened the session; later ones are live.
+            is SessionEvent.Opened -> println("Session opened")
+        }
     }
 
     override suspend fun fsReadTextFile(
@@ -286,51 +291,9 @@ fun main(): Unit = runBlocking {
 }
 ```
 
-### Run the reference sample
+### Samples
 
-Prefer a fully wired example? Launch the repository sample that pairs the agent and client shown above:
-
-```bash
-./gradlew :samples:kotlin-acp-client-sample:run
-
-# Gemini interactive client (requires external Gemini ACP agent)
-./gradlew :samples:kotlin-acp-client-sample:run \
-    -PmainClass=com.agentclientprotocol.samples.GeminiClientAppKt
-
-# Direct v2 client and agent
-./gradlew :samples:kotlin-acp-client-sample:run \
-    -PmainClass=com.agentclientprotocol.samples.V2SimpleAgentAppKt
-
-# Select v1 or v2 with ClientNegotiator, then run the v2 conversation
-./gradlew :samples:kotlin-acp-client-sample:run \
-    -PmainClass=com.agentclientprotocol.samples.V2NegotiationAppKt
-
-# Query the unstable auth/status method over v1 and v2
-./gradlew :samples:kotlin-acp-client-sample:run \
-    -PmainClass=com.agentclientprotocol.samples.AuthStatusAppKt
-```
-
-## Sample projects
-
-| Project | Shows | Command |
-| --- | --- | --- |
-| `samples:kotlin-acp-client-sample` | End-to-end agent + client with STDIO transport | `./gradlew :samples:kotlin-acp-client-sample:run` |
-| `GeminiClientApp.kt` | Interactive CLI client that talks to an external Gemini ACP agent | `./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=...GeminiClientAppKt` |
-| `V2SimpleAgentApp.kt` | Direct v2 client and agent conversation | `./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=...V2SimpleAgentAppKt` |
-| `V2NegotiationApp.kt` | Client negotiation followed by a v2 conversation | `./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=...V2NegotiationAppKt` |
-| `AuthStatusApp.kt` | Unstable `auth/status` query over v1 and v2, without a session | `./gradlew :samples:kotlin-acp-client-sample:run -PmainClass=...AuthStatusAppKt` |
-
-Each sample includes comments that explain the protocol lifecycle and can be used as templates for real applications.
-
-The v2 samples expose a response mode through session config options. The client selects “Uppercase once”
-with `session/set_config_option`; after replying, the agent resets to Echo and sends a `config_option_update`.
-`ClientSession.setConfigOption` returns the complete option list rather than the one option that changed,
-because one choice can affect the others, and later changes arrive on `session.updates` as
-`SessionUpdate.ConfigOptionUpdate` — also carrying the full list.
-
-Agents report those changes with `agent.v2.ClientOperations.notify(SessionUpdate.ConfigOptionUpdate(...))`,
-which works while the session is idle as well as mid-turn. ACP v2 uses config options for mode selection;
-dedicated modes remain available in the SDK's v1 API.
+The repository has runnable samples. See [samples/README.md](samples/README.md) for the list and how to run them.
 
 ### Authentication status (unstable)
 
@@ -343,7 +306,6 @@ After initialization, `Client.authStatus` queries the agent without a session or
 `AgentSupport.authStatus` with `AuthStatusResponse` in V1, or `StatusAuthResponse` in V2.
 The response can include a human-readable `message` and `_meta`. `authenticated` means credentials are configured, not necessarily valid.
 Calls with a missing or `false` capability fail locally. An agent without a status handler returns JSON-RPC method not found (`-32601`).
-`AuthStatusApp.kt` shows the V1 and V2 flows end to end.
 
 ## Capabilities
 
@@ -396,6 +358,8 @@ Contributions are welcome! Please open an issue to discuss significant changes b
 2. Run `./gradlew check` to execute the test suite.
 3. Use the supplied GitHub Actions workflows to verify compatibility.
 4. Optionally check protocol conformance with the [ACP Test Compatibility Kit](https://github.com/agentclientprotocol/acp-tck), see [`e2e/tck/README.md`](e2e/tck/README.md).
+
+Keep throwaway files, such as experiments, captured output, and ad hoc scripts, in `scratch/` at the repository root. It is gitignored.
 
 ## Support
 

@@ -1,6 +1,8 @@
 rootProject.name = "acp-kotlin-sdk"
 
 pluginManagement {
+    includeBuild("build-logic")
+
     repositories {
         mavenCentral()
         gradlePluginPortal()

@@ -35,7 +35,7 @@ Do not manually edit generated `LIB_VERSION` source files. The multiplatform con
 
 ## Publishing Configuration
 
-`buildSrc/src/main/kotlin/acp.publishing.gradle.kts` configures:
+`build-logic/src/main/kotlin/acp.publishing.gradle.kts` configures:
 
 - Maven publications;
 - Maven Central publication with automatic release;

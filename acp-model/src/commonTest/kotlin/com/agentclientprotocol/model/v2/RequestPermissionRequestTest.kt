@@ -4,6 +4,7 @@ package com.agentclientprotocol.model.v2
 
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.model.AcpMethod
+import com.agentclientprotocol.model.MaybeUndefined
 import com.agentclientprotocol.model.PermissionOptionId
 import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.ToolCallId

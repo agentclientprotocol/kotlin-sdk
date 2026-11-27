@@ -24,11 +24,25 @@ public suspend fun <TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOp
     method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
     request: TRequest?
 ): TResponse {
-    val params = request?.let { ACPJson.encodeToJsonElement(method.requestSerializer, request) }
     val sessionId = (request as? AcpWithSessionId)?.sessionId
+    val result = this.sendRequestRaw(method.methodName, method.encodeRequestParams(request), sessionId)
+    return method.decodeResponseResult(result)
+}
+
+/*
+ * The encoding and decoding steps of the typed `sendRequest` overloads, shared so that both read and write the
+ * wire the same way.
+ */
+internal fun <TRequest : AcpRequest> AcpMethod.AcpRequestResponseMethod<TRequest, *>.encodeRequestParams(
+    request: TRequest?,
+): JsonElement? = request?.let { ACPJson.encodeToJsonElement(requestSerializer, request) }
+
+internal fun <TResponse : AcpResponse> AcpMethod.AcpRequestResponseMethod<*, TResponse>.decodeResponseResult(
+    result: JsonElement,
+): TResponse {
     // if we've got null, we can interpret it as {}
-    val responseJson = this.sendRequestRaw(method.methodName, params, sessionId).takeIf { it != JsonNull } ?: buildJsonObject {  }
-    return ACPJson.decodeFromJsonElement(method.responseSerializer, responseJson)
+    val responseJson = result.takeIf { it != JsonNull } ?: buildJsonObject { }
+    return ACPJson.decodeFromJsonElement(responseSerializer, responseJson)
 }
 
 /**
@@ -72,6 +86,8 @@ internal fun <T> decodeParams(deserializer: DeserializationStrategy<T>, params: 
 
 /**
  * Register a handler for incoming requests.
+ *
+ * The handler starts in arrival order as described on [RpcMethodsOperations.setRequestOutcomeHandlerRaw].
  */
 public fun<TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOperations.setRequestHandler(
     method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
@@ -85,6 +101,12 @@ public fun<TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOperations.
     }
 }
 
+/**
+ * Register a handler for incoming requests that returns a [RequestOutcome], to schedule work and cleanup around the
+ * response.
+ *
+ * The handler starts in arrival order as described on [RpcMethodsOperations.setRequestOutcomeHandlerRaw].
+ */
 @UnstableApi
 public fun <TRequest : AcpRequest, TResponse : AcpResponse> RpcMethodsOperations.setRequestOutcomeHandler(
     method: AcpMethod.AcpRequestResponseMethod<TRequest, TResponse>,
@@ -120,6 +142,10 @@ public fun<TRequest : AcpPaginatedRequest, TResponse : AcpPaginatedResponse<TIte
 }
 /**
  * Register a handler for incoming notifications.
+ *
+ * Notifications keep their arrival order as described on [RpcMethodsOperations.setNotificationHandlerRaw]: the
+ * handler, after its params are decoded, runs until it first suspends before the next incoming message is handled.
+ * The guarantee does not hold if [additionalContext] contains a dispatcher.
  */
 public fun<TNotification : AcpNotification> RpcMethodsOperations.setNotificationHandler(
     method: AcpMethod.AcpNotificationMethod<TNotification>,

@@ -1,5 +1,8 @@
+@file:OptIn(UnstableApi::class)
+
 package com.agentclientprotocol.transport
 
+import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.rpc.TransportFrame
 import com.agentclientprotocol.rpc.JsonRpcNotification
 import com.agentclientprotocol.rpc.JsonRpcRequest
