@@ -618,7 +618,9 @@ public final class com/agentclientprotocol/common/Event$PromptResponseEvent : co
 
 public final class com/agentclientprotocol/common/Event$SessionUpdateEvent : com/agentclientprotocol/common/Event {
 	public fun <init> (Lcom/agentclientprotocol/model/SessionUpdate;)V
+	public fun <init> (Lcom/agentclientprotocol/model/SessionUpdate;Lkotlinx/serialization/json/JsonElement;)V
 	public final fun getUpdate ()Lcom/agentclientprotocol/model/SessionUpdate;
+	public final fun get_meta ()Lkotlinx/serialization/json/JsonElement;
 }
 
 public abstract interface class com/agentclientprotocol/common/FileSystemOperations {
