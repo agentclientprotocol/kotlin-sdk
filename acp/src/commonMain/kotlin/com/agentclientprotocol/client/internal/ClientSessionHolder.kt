@@ -7,7 +7,6 @@ import com.agentclientprotocol.client.BaseClientSession
 import com.agentclientprotocol.client.ClientSession
 import com.agentclientprotocol.client.ClientSubagentSession
 import com.agentclientprotocol.client.SubagentOperations
-import com.agentclientprotocol.client.internal.RootSessionHolder.Stage
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.SessionEvent
 import com.agentclientprotocol.common.notify
@@ -20,9 +19,7 @@ import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.getAndUpdate
 import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.PersistentList
-import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentListOf
-import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -98,15 +95,12 @@ internal sealed class ClientSessionHolder(
     val failSubagentTree: suspend (SubagentSessionHolder, Throwable) -> Boolean,
 ) {
     /**
-     * The subagents of a holder in one atomic state, so [sealChildren] seals both collections at once.
+     * The subagent sessions set up under this holder, in announcement order.
      *
-     * @property byId the holders registered when their announcements arrived, failed ones included
-     * @property listed the subagent sessions set up so far, in announcement order
-     * @property sealed set when the holder fails or its root is closed
+     * @property sealed set when the holder fails or its root is closed, so later setups aren't listed
      */
-    private data class Children(
-        val byId: PersistentMap<SessionId, SubagentSessionHolder> = persistentMapOf(),
-        val listed: PersistentList<ClientSubagentSession> = persistentListOf(),
+    private class Subagents(
+        val sessions: PersistentList<ClientSubagentSession> = persistentListOf(),
         val sealed: Boolean = false,
     )
 
@@ -125,13 +119,13 @@ internal sealed class ClientSessionHolder(
 
     // The delivery of the last update that missed the closed queue; the next one waits for it.
     private val lateDeliveries = atomic<Job>(Job().apply { complete() })
-    private val children = atomic(Children())
+    private val _subagents = atomic(Subagents())
 
     /**
      * The [BaseClientSession.subagents] of this holder's session. They live here because a loading root's history sets
      * them up before its [ClientSession] exists.
      */
-    val subagents: List<ClientSubagentSession> get() = children.value.listed
+    val subagents: List<ClientSubagentSession> get() = _subagents.value.sessions
 
     /**
      * The holder of this holder's root session, itself for a root.
@@ -161,60 +155,21 @@ internal sealed class ClientSessionHolder(
      */
     abstract fun sessionAdditionalDirectories(): List<String>
 
-    fun childOrNull(id: SessionId): SubagentSessionHolder? = children.value.byId[id]
-
-    /**
-     * Adds [child] to this holder's subagents, and closes its permissions if the root's close has started.
-     *
-     * @return `false` if this holder is sealed, so [child] was not added
-     */
-    fun addChild(child: SubagentSessionHolder): Boolean {
-        var added = false
-        children.update { current ->
-            added = !current.sealed
-            if (added) current.copy(byId = current.byId.put(child.sessionId, child)) else current
-        }
-        if (!added) return false
-
-        // Read after the add: `startClosing` sets the stage before its walk, so a child the walk misses is closed here.
-        if (root.phase.isAtLeast(Stage.CLOSING)) child.permissions.close()
-        return true
-    }
-
-    /**
-     * Removes the subagent [id] whose registration was rejected.
-     */
-    fun removeChild(id: SessionId) {
-        children.update { it.copy(byId = it.byId.remove(id)) }
-    }
-
     /**
      * Adds the set-up [subagent] to [subagents].
      *
-     * @return `false` if this holder is sealed, so [subagent] was not listed
+     * @return `false` if the list is sealed, so [subagent] was not listed
      */
     fun listSubagent(subagent: ClientSubagentSession): Boolean {
-        var listed = false
-        children.update { current ->
-            listed = !current.sealed
-            if (listed) current.copy(listed = current.listed.add(subagent)) else current
-        }
-        return listed
+        val before = _subagents.getAndUpdate { if (it.sealed) it else Subagents(it.sessions.add(subagent)) }
+        return !before.sealed
     }
 
     /**
-     * Stops taking subagents and returns the holders registered so far.
+     * Keeps [subagents] as they are from now on.
      */
-    fun sealChildren(): Collection<SubagentSessionHolder> = children.getAndUpdate { it.copy(sealed = true) }.byId.values
-
-    /**
-     * Runs [action] on every subagent below this holder, failed ones included, parents first.
-     */
-    fun forEachDescendant(action: (SubagentSessionHolder) -> Unit) {
-        for (child in children.value.byId.values) {
-            action(child)
-            child.forEachDescendant(action)
-        }
+    fun sealSubagents() {
+        _subagents.update { if (it.sealed) it else Subagents(it.sessions, sealed = true) }
     }
 
     /**
@@ -317,11 +272,8 @@ internal sealed class ClientSessionHolder(
 
         val session = ClientSubagentSession(child, childOperations, protocol)
         session.applyPatch(announcement.update, streamOpened)
-        // This holder failed or was closed while the factory ran, which ends the subagent's holder too.
-        if (!listSubagent(session)) {
-            session.markClosed()
-            return
-        }
+        // The parent was closed or failed while the factory ran, so its list stays as it was.
+        if (!listSubagent(session)) return
         child.startOpening(session)
     }
 

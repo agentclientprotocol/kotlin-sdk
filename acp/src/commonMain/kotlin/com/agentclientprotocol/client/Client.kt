@@ -87,6 +87,7 @@ public class Client(
     ): ClientSessionImpl = ClientSessionImpl(
         this, sessionId, sessionParameters, operations, sessionResponse, protocol,
         isOpen = { sessions.isOpen(sessionHolder) },
+        markClosing = { sessions.markClosing(sessionHolder) },
         onClosed = { removeClosedSession(sessionHolder) },
         holder = sessionHolder,
     )

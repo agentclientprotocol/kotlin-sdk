@@ -208,7 +208,6 @@ class ClientSessionHolderTest {
 
         assertTrue(holder.markOpened(response))
         assertTrue(holder.phase.isAtLeast(Stage.ANSWERED))
-        assertFalse(holder.phase.isAtLeast(Stage.CLOSING))
         assertSame(parameters, holder.phase.opening?.parameters, "the answer keeps the claim's opening")
     }
 
@@ -222,25 +221,6 @@ class ClientSessionHolderTest {
         assertTrue(answered.claimForOpening(replayRequested = false, parameters))
         assertTrue(answered.markOpened(response))
         assertFailsWith<IllegalStateException> { answered.markOpened(response) }
-    }
-
-    @Test
-    fun `only an answered holder can start closing and a later close keeps it closing`() {
-        val unclaimed = holder()
-        assertFailsWith<IllegalStateException> { unclaimed.startClosing() }
-        assertFalse(unclaimed.phase.isAtLeast(Stage.CLAIMED), "a rejected close leaves an unclaimed holder so")
-
-        val claimed = holder()
-        assertTrue(claimed.claimForOpening(replayRequested = true, parameters))
-        assertFailsWith<IllegalStateException> { claimed.startClosing() }
-        assertFalse(claimed.phase.isAtLeast(Stage.ANSWERED), "a rejected close leaves an unanswered holder so")
-        assertTrue(claimed.markOpened(response), "the opening that owns it is still answered")
-
-        claimed.startClosing()
-        assertTrue(claimed.phase.isAtLeast(Stage.CLOSING))
-        claimed.startClosing()
-        assertTrue(claimed.phase.isAtLeast(Stage.CLOSING), "a close after a failed close")
-        assertEquals(true, claimed.phase.opening?.replayRequested, "closing keeps the claim's opening")
     }
 
     @Test
@@ -266,7 +246,7 @@ class ClientSessionHolderTest {
         assertNull(failed.phase.opening)
     }
 
-    private fun holder() = RootSessionHolder(SessionId("session"), protocol, scope) { _, _ -> true }
+    private fun holder() = RootSessionHolder(SessionId("session"), protocol, scope, { _, _ -> true }, { emptyList() })
 
     private class RecordingOperations(
         private val beforeEach: suspend (SessionUpdate) -> Unit = {},

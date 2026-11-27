@@ -613,21 +613,17 @@ class ClientSubagentSessionTest {
     }
 
     @Test
-    fun `a sealed holder keeps its subagents and refuses later children and listings`() {
+    fun `a sealed list keeps its subagents and refuses later listings`() {
         val holder = rootHolder()
-        val registered = SubagentSessionHolder(SessionId("first"), holder)
         val first = child(id = "first", parent = holder)
-        assertTrue(holder.addChild(registered))
         assertTrue(holder.listSubagent(first))
 
-        assertEquals(listOf(registered), holder.sealChildren().toList())
+        holder.sealSubagents()
 
-        assertFalse(holder.addChild(SubagentSessionHolder(SessionId("late"), holder)))
         assertFalse(holder.listSubagent(child(id = "late", parent = holder)))
-        assertNull(holder.childOrNull(SessionId("late")))
-        assertSame(registered, holder.childOrNull(SessionId("first")))
         assertEquals(listOf(first), holder.subagents)
-        assertEquals(listOf(registered), holder.sealChildren().toList(), "a second seal returns the same holders")
+        holder.sealSubagents()
+        assertEquals(listOf(first), holder.subagents, "a second seal keeps the list")
     }
 
     @Test
@@ -714,7 +710,7 @@ class ClientSubagentSessionTest {
 
     private data class Child(val holder: SubagentSessionHolder, val session: ClientSubagentSession)
 
-    private fun rootHolder() = RootSessionHolder(SessionId("root"), protocol, scope) { _, _ -> true }
+    private fun rootHolder() = RootSessionHolder(SessionId("root"), protocol, scope, { _, _ -> true }, { emptyList() })
 
     private fun rootSession(holder: RootSessionHolder, parameters: SessionCreationParameters) = ClientSessionImpl(
         client = Client(protocol),
@@ -724,6 +720,7 @@ class ClientSubagentSessionTest {
         createdResponse = NewSessionResponse(SessionId("root")),
         protocol = protocol,
         isOpen = { true },
+        markClosing = {},
         onClosed = {},
         holder = holder,
     )

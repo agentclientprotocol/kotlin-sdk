@@ -4,6 +4,7 @@ import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.Client
 import com.agentclientprotocol.client.ClientSubagentSession
 import com.agentclientprotocol.client.SubagentOperations
+import com.agentclientprotocol.client.internal.RootSessionHolder.Stage
 import com.agentclientprotocol.client.internal.SubagentSessionHolder.OpeningState
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.SessionCreationParameters
@@ -98,15 +99,15 @@ class ClientSessionRegistryTest {
         registry.withOpeningCall {
             val rootHolder = registry.claimBeforeRequest(root, replayRequested = false, parameters)
             registry.deliverSessionUpdate(root, announce(child), null)
-            val childHolder = assertNotNull(rootHolder.childOrNull(child))
+            val childHolder = assertNotNull(registry.childOrNull(rootHolder, child))
             registry.deliverSessionUpdate(child, text("child-history"), null)
             registry.deliverSessionUpdate(child, announce(grandchild), null)
-            val grandchildHolder = assertNotNull(childHolder.childOrNull(grandchild))
+            val grandchildHolder = assertNotNull(registry.childOrNull(childHolder, grandchild))
 
             assertTrue(rootHolder.markOpened(LoadSessionResponse()))
             val late = SessionId("late")
             registry.deliverSessionUpdate(root, announce(late), null)
-            val lateHolder = assertNotNull(rootHolder.childOrNull(late))
+            val lateHolder = assertNotNull(registry.childOrNull(rootHolder, late))
             registry.deliverSessionUpdate(late, text("late-live"), null)
 
             assertEquals(1, consumeUntilOpened(grandchildHolder).openedCount, "a grandchild gets its marker too")
@@ -127,18 +128,42 @@ class ClientSessionRegistryTest {
             val rootHolder = registry.claimBeforeRequest(root, replayRequested = false, parameters)
             assertTrue(rootHolder.markOpened(LoadSessionResponse()))
             registry.deliverSessionUpdate(root, announce(child), null)
-            val childHolder = assertNotNull(rootHolder.childOrNull(child))
+            val childHolder = assertNotNull(registry.childOrNull(rootHolder, child))
             assertEquals("answered", answerOf(childHolder), "before the close, a request reaches the app")
 
-            rootHolder.startClosing()
+            registry.markClosing(rootHolder)
             assertEquals("cancelled", answerOf(childHolder), "the walk closes the subagents it finds")
 
             val late = SessionId("late")
             registry.deliverSessionUpdate(root, announce(late), null)
             registry.deliverSessionUpdate(child, announce(grandchild), null)
-            for (holder in listOf(assertNotNull(rootHolder.childOrNull(late)), assertNotNull(childHolder.childOrNull(grandchild)))) {
+            for (holder in listOf(assertNotNull(registry.childOrNull(rootHolder, late)), assertNotNull(registry.childOrNull(childHolder, grandchild)))) {
                 assertEquals("cancelled", answerOf(holder), "${holder.sessionId}: its registration closes its permissions")
             }
+        }
+    }
+
+    @Test
+    fun `only an answered root is marked closing and a second close keeps the mark`() = runTest {
+        val unclaimed = RootSessionHolder(SessionId("unclaimed"), protocol, scope, { _, _ -> true }, { emptyList() })
+        assertFailsWith<IllegalStateException> { registry.markClosing(unclaimed) }
+        assertFalse(unclaimed.phase.isAtLeast(Stage.CLAIMED), "a rejected close leaves an unclaimed holder so")
+
+        registry.withOpeningCall {
+            val rootHolder = registry.claimBeforeRequest(root, replayRequested = true, parameters)
+            assertFailsWith<IllegalStateException> { registry.markClosing(rootHolder) }
+            assertFalse(rootHolder.phase.isAtLeast(Stage.ANSWERED), "a rejected close leaves an unanswered holder so")
+            assertTrue(rootHolder.markOpened(LoadSessionResponse()), "the opening that owns it is still answered")
+            registry.deliverSessionUpdate(root, announce(child), null)
+            assertEquals("answered", answerOf(assertNotNull(registry.childOrNull(rootHolder, child))), "a rejected close closes nothing")
+
+            // A failed close leaves the root closing, and the next close starts again.
+            registry.markClosing(rootHolder)
+            registry.markClosing(rootHolder)
+            val late = SessionId("late")
+            registry.deliverSessionUpdate(root, announce(late), null)
+            assertEquals("cancelled", answerOf(assertNotNull(registry.childOrNull(rootHolder, late))), "the root is still closing")
+            assertTrue(registry.isOpen(rootHolder), "a closing root still owns its id")
         }
     }
 
@@ -147,13 +172,14 @@ class ClientSessionRegistryTest {
         registry.withOpeningCall {
             val rootHolder = registry.claimBeforeRequest(root, replayRequested = true, parameters)
             registry.deliverSessionUpdate(root, announce(child), null)
-            val childHolder = assertNotNull(rootHolder.childOrNull(child))
+            val childHolder = assertNotNull(registry.childOrNull(rootHolder, child))
             registry.deliverSessionUpdate(child, announce(grandchild), null)
-            val grandchildHolder = assertNotNull(childHolder.childOrNull(grandchild))
+            val grandchildHolder = assertNotNull(registry.childOrNull(childHolder, grandchild))
             registry.deliverSessionUpdate(grandchild, text("grandchild-queued"), null)
 
             assertTrue(registry.failSubagentTree(childHolder, IllegalStateException("setup failed")))
             assertTrue(childHolder.isFailed)
+            assertFalse(childHolder.listSubagent(ClientSubagentSession(grandchildHolder, Recorder(), protocol)), "the failed holder's list is sealed")
             assertTrue(grandchildHolder.isFailed, "the cascade fails the subtree")
             assertFalse(rootHolder.isFailed)
             assertEquals(listOf<Pair<SessionId, SessionUpdate>>(child to announce(grandchild), grandchild to text("grandchild-queued")), unconnected, "parent first")
@@ -169,11 +195,11 @@ class ClientSessionRegistryTest {
 
             // A later patch of the failed subagent stays a patch, and nothing registers under it.
             registry.deliverSessionUpdate(root, announce(child), null)
-            assertSame(childHolder, rootHolder.childOrNull(child))
+            assertSame(childHolder, registry.childOrNull(rootHolder, child))
             registry.deliverSessionUpdate(child, text("after"), null)
             registry.deliverSessionUpdate(child, announce(SessionId("under-failed")), null)
             assertEquals(listOf<Pair<SessionId, SessionUpdate>>(child to text("after"), child to announce(SessionId("under-failed"))), unconnected.takeLast(2))
-            assertNull(childHolder.childOrNull(SessionId("under-failed")))
+            assertNull(registry.childOrNull(childHolder, SessionId("under-failed")))
 
             val delivered = Recorder()
             assertTrue(rootHolder.markOpened(LoadSessionResponse()))
@@ -199,7 +225,7 @@ class ClientSessionRegistryTest {
         registry.withOpeningCall {
             val rootHolder = registry.claimBeforeRequest(root, replayRequested = true, parameters)
             registry.deliverSessionUpdate(root, announce(child), null)
-            val childHolder = assertNotNull(rootHolder.childOrNull(child))
+            val childHolder = assertNotNull(registry.childOrNull(rootHolder, child))
 
             registry.failRootTree(rootHolder, IllegalStateException("load failed"))
             val session = ClientSubagentSession(childHolder, Recorder(), protocol)
@@ -207,8 +233,10 @@ class ClientSessionRegistryTest {
             assertTrue(openingScope.coroutineContext.job.children.none(), "a setup that returns after the failure starts no opening")
             assertClosed(session)
 
-            // A failed parent takes no subagents any more.
-            assertFalse(childHolder.addChild(SubagentSessionHolder(grandchild, childHolder)))
+            // The failed tree left the map, so nothing registers under the failed parent any more.
+            registry.deliverSessionUpdate(child, announce(grandchild), null)
+            assertNull(registry.childOrNull(childHolder, grandchild))
+            assertFalse(childHolder.listSubagent(ClientSubagentSession(childHolder, Recorder(), protocol)), "its list is sealed")
         }
     }
 
@@ -217,9 +245,9 @@ class ClientSessionRegistryTest {
         registry.withOpeningCall {
             val rootHolder = registry.claimBeforeRequest(root, replayRequested = false, parameters)
             registry.deliverSessionUpdate(root, announce(child), null)
-            val childHolder = assertNotNull(rootHolder.childOrNull(child))
+            val childHolder = assertNotNull(registry.childOrNull(rootHolder, child))
             registry.deliverSessionUpdate(child, announce(grandchild), null)
-            val grandchildHolder = assertNotNull(childHolder.childOrNull(grandchild))
+            val grandchildHolder = assertNotNull(registry.childOrNull(childHolder, grandchild))
             registry.deliverSessionUpdate(grandchild, text("grandchild-queued"), null)
 
             assertEquals(setOf(root, child, grandchild), registry.removeSessionTree(rootHolder))
@@ -239,13 +267,18 @@ class ClientSessionRegistryTest {
             grandchildHolder.startOpening(session)
             assertTrue(openingScope.coroutineContext.job.children.none(), "a setup that returns after the removal starts no opening")
             assertClosed(session)
-            assertFalse(rootHolder.addChild(SubagentSessionHolder(SessionId("late"), rootHolder)))
+            val late = SessionId("late")
+            registry.deliverSessionUpdate(root, announce(late), null)
+            assertNull(registry.childOrNull(rootHolder, late), "nothing registers under the removed root")
+            for (holder in listOf(rootHolder, childHolder, grandchildHolder)) {
+                assertFalse(holder.listSubagent(ClientSubagentSession(grandchildHolder, Recorder(), protocol)), "${holder.sessionId}: its list is sealed")
+            }
         }
     }
 
     @Test
     fun `an opening starts once and stopping it returns the running one`() = runTest {
-        val holder = SubagentSessionHolder(child, RootSessionHolder(root, protocol, this) { _, _ -> true })
+        val holder = SubagentSessionHolder(child, RootSessionHolder(root, protocol, this, { _, _ -> true }, { emptyList() }))
         val session = ClientSubagentSession(holder, Recorder(), protocol)
         holder.startOpening(session)
         runCurrent()
@@ -382,9 +415,9 @@ class ClientSessionRegistryTest {
         drainingRegistry.withOpeningCall {
             val rootHolder = drainingRegistry.claimBeforeRequest(root, replayRequested = true, parameters)
             drainingRegistry.deliverSessionUpdate(root, announce(child), null)
-            val childHolder = assertNotNull(rootHolder.childOrNull(child))
+            val childHolder = assertNotNull(drainingRegistry.childOrNull(rootHolder, child))
             drainingRegistry.deliverSessionUpdate(child, announce(grandchild), null)
-            val grandchildHolder = assertNotNull(childHolder.childOrNull(grandchild))
+            val grandchildHolder = assertNotNull(drainingRegistry.childOrNull(childHolder, grandchild))
             drainingRegistry.deliverSessionUpdate(child, text("child-queued"), null)
             assertTrue(rootHolder.markOpened(LoadSessionResponse()))
             assertNotNull(rootHolder.deliverEarly(rootOperations))
@@ -433,7 +466,7 @@ class ClientSessionRegistryTest {
 
             for (id in listOf(root, SessionId("other"), speculative)) {
                 registry.deliverSessionUpdate(root, announce(id), null)
-                assertNull(rootHolder.childOrNull(id), "$id")
+                assertNull(registry.childOrNull(rootHolder, id), "$id")
             }
 
             val delivered = Recorder()
@@ -455,7 +488,7 @@ class ClientSessionRegistryTest {
             assertNull(registry.completedSessionOrNull(root), "an opening root is not completed")
             assertNull(registry.completedSessionOrNull(child), "an opening subagent is not completed")
 
-            assertTrue(registry.failSubagentTree(assertNotNull(rootHolder.childOrNull(child)), IllegalStateException("setup failed")))
+            assertTrue(registry.failSubagentTree(assertNotNull(registry.childOrNull(rootHolder, child)), IllegalStateException("setup failed")))
             assertTrue(registry.isSessionCompleted(child), "the failed subagent stays in the map")
             assertNull(registry.completedSessionOrNull(child), "a failed subagent is not completed")
         }
@@ -470,7 +503,7 @@ class ClientSessionRegistryTest {
                 val rootHolder = registry.claimBeforeRequest(root, replayRequested = true, parameters)
                 registry.deliverSessionUpdate(root, announce(attemptChild), null)
                 registry.deliverSessionUpdate(attemptChild, announce(attemptGrandchild), null)
-                assertNotNull(rootHolder.childOrNull(attemptChild)?.childOrNull(attemptGrandchild))
+                assertNotNull(registry.childOrNull(rootHolder, attemptChild)?.let { registry.childOrNull(it, attemptGrandchild) })
                 registry.failRootTree(rootHolder, IllegalStateException("load failed"))
             }
             for (id in listOf(root, attemptChild, attemptGrandchild)) {
@@ -482,7 +515,7 @@ class ClientSessionRegistryTest {
             val rootHolder = registry.claimBeforeRequest(root, replayRequested = true, parameters)
             for (attempt in 1..3) {
                 registry.deliverSessionUpdate(root, announce(SessionId("child-$attempt")), null)
-                assertNotNull(rootHolder.childOrNull(SessionId("child-$attempt")), "a later load registers child-$attempt again")
+                assertNotNull(registry.childOrNull(rootHolder, SessionId("child-$attempt")), "a later load registers child-$attempt again")
             }
         }
     }
@@ -506,7 +539,7 @@ class ClientSessionRegistryTest {
 
             registry.deliverSessionUpdate(root, announce(child), null)
             registry.deliverSessionUpdate(child, announce(grandchild), null)
-            assertNotNull(retried.childOrNull(child)?.childOrNull(grandchild), "the retry registers the same ids again")
+            assertNotNull(registry.childOrNull(retried, child)?.let { registry.childOrNull(it, grandchild) }, "the retry registers the same ids again")
         }
     }
 
@@ -612,7 +645,7 @@ class ClientSessionRegistryTest {
         }
         val rootHolder = registry.claimBeforeRequest(root, replayRequested = false, parameters)
         registry.deliverSessionUpdate(root, announce(child), null)
-        val childHolder = assertNotNull(rootHolder.childOrNull(child))
+        val childHolder = assertNotNull(registry.childOrNull(rootHolder, child))
         for (update in history) registry.deliverSessionUpdate(child, update, null)
         assertTrue(rootHolder.markOpened(LoadSessionResponse()))
         if (liveUpdate != null) registry.deliverSessionUpdate(child, liveUpdate, null)
@@ -625,6 +658,7 @@ class ClientSessionRegistryTest {
             createdResponse = LoadSessionResponse(),
             protocol = protocol,
             isOpen = { true },
+            markClosing = {},
             onClosed = {},
             holder = rootHolder,
         )

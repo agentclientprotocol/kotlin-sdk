@@ -5,7 +5,6 @@ package com.agentclientprotocol.client.internal
 import com.agentclientprotocol.annotations.UnstableApi
 import com.agentclientprotocol.client.BaseClientSession
 import com.agentclientprotocol.client.ClientSession
-import com.agentclientprotocol.client.internal.ClientSessionImpl
 import com.agentclientprotocol.common.ClientSessionOperations
 import com.agentclientprotocol.common.SessionCreationParameters
 import com.agentclientprotocol.common.SessionEvent
@@ -15,19 +14,21 @@ import com.agentclientprotocol.model.SessionId
 import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.protocol.Protocol
 import kotlinx.atomicfu.atomic
-import kotlinx.atomicfu.update
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
 /**
- * The holder of a root session, which one opening call claims and answers, and whose close marks it closing.
+ * The holder of a root session, which one opening call claims and answers.
+ *
+ * @param descendantsOf returns the subagents registered below a root, parents first, without suspending
  */
 internal class RootSessionHolder(
     sessionId: SessionId,
     protocol: Protocol,
     openingScope: CoroutineScope,
     failSubagentTree: suspend (SubagentSessionHolder, Throwable) -> Boolean,
+    private val descendantsOf: (RootSessionHolder) -> List<SubagentSessionHolder>,
 ) : ClientSessionHolder(sessionId, protocol, openingScope, failSubagentTree) {
     /**
      * The opening call that claimed a root's holder.
@@ -39,16 +40,16 @@ internal class RootSessionHolder(
     class Opening(val replayRequested: Boolean, val parameters: SessionCreationParameters)
 
     /**
-     * The stages of a root's lifecycle, in order.
+     * The stages of a root's opening, in order. A close is the registry's mark, not a stage.
      */
-    enum class Stage { UNCLAIMED, CLAIMED, ANSWERED, CLOSING }
+    enum class Stage { UNCLAIMED, CLAIMED, ANSWERED }
 
     /**
      * One snapshot of a root's lifecycle; [opening] is `null` only before the claim.
      */
     class RootPhase private constructor(private val stage: Stage, val opening: Opening?) {
         /**
-         * Whether the root has reached [stage]: a closing root has also been answered.
+         * Whether the root has reached [stage].
          */
         fun isAtLeast(stage: Stage): Boolean = this.stage >= stage
 
@@ -62,15 +63,6 @@ internal class RootSessionHolder(
          * The phase after the answer, or `null` unless the root is claimed and not answered yet.
          */
         fun answeredOrNull(): RootPhase? = if (stage == Stage.CLAIMED) RootPhase(Stage.ANSWERED, opening) else null
-
-        /**
-         * The phase once the close has started, or `null` if the root isn't answered yet. A closing root stays closing.
-         */
-        fun closingOrNull(): RootPhase? = when (stage) {
-            Stage.UNCLAIMED, Stage.CLAIMED -> null
-            Stage.ANSWERED -> RootPhase(Stage.CLOSING, opening)
-            Stage.CLOSING -> this
-        }
 
         /**
          * Whether the subagent values held back until the opened marker take effect at the marker. After a call that
@@ -113,19 +105,6 @@ internal class RootSessionHolder(
         checkNotNull(phase.opening) { "Session $sessionId is not claimed" }.parameters
 
     /**
-     * Moves this root to [Stage.CLOSING], then answers the current and later permission requests of the root and of
-     * every subagent below it with `cancelled`. The root stays closing if the close fails.
-     *
-     * @throws IllegalStateException if the root isn't answered yet
-     */
-    fun startClosing() {
-        _phase.update { current -> checkNotNull(current.closingOrNull()) { "Root session $sessionId is closed before its answer" } }
-        permissions.close()
-        // After the stage, so a subagent that this walk misses is closed by [addChild].
-        forEachDescendant { it.permissions.close() }
-    }
-
-    /**
      * Makes the opening call that asked for [replayRequested] with [parameters] the owner of this holder.
      *
      * @return `false` if the holder already has an owner or has completed
@@ -156,7 +135,7 @@ internal class RootSessionHolder(
 
         // A subagent's opening closes its queue only after this marker; a failed one's is closed and skipped.
         val applyHeld = answered.appliesHeldState
-        forEachDescendant { it.markOpened(applyHeld) }
+        for (child in descendantsOf(this)) child.markOpened(applyHeld)
         return true
     }
 

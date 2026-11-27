@@ -31,6 +31,7 @@ public interface Transport : AutoCloseable {
      * Throws synchronously if encoding fails or the queue cannot accept the frame,
      * including when the transport is closing or closed.
      * This does not acknowledge a physical flush or peer receipt.
+     * It must not suspend, block, or call listeners.
      *
      * @throws kotlinx.coroutines.channels.ClosedSendChannelException if the writer queue is closed normally.
      * @throws kotlinx.coroutines.CancellationException if the transport was cancelled.

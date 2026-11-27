@@ -30,6 +30,7 @@ private val logger = KotlinLogging.logger {}
  * The root session of the client.
  *
  * @param isOpen whether [holder] still owns its id
+ * @param markClosing marks [holder] closing and answers its tree's permission requests with `cancelled`
  * @param onClosed removes the closed root's tree after a successful close
  */
 internal class ClientSessionImpl(
@@ -42,6 +43,7 @@ internal class ClientSessionImpl(
     private val createdResponse: AcpCreatedSessionResponse,
     private val protocol: Protocol,
     private val isOpen: () -> Boolean,
+    private val markClosing: () -> Unit,
     private val onClosed: suspend () -> Unit,
     private val holder: RootSessionHolder,
 ) : ClientSession {
@@ -133,7 +135,7 @@ internal class ClientSessionImpl(
          * Answer before waiting for the response: an agent whose close waits for its work to end, a subagent's
          * included, would otherwise wait for the permission answer while the client waits for the close response.
          */
-        holder.startClosing()
+        markClosing()
 
         val response = try {
             AcpMethod.AgentMethods.V1.SessionClose(protocol, CloseSessionRequest(sessionId, _meta))
