@@ -21,8 +21,10 @@ import kotlinx.serialization.json.put
 import com.agentclientprotocol.rpc.JsonRpcErrorCode
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.encodeToJsonElement
 import kotlin.test.*
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -77,6 +79,32 @@ abstract class SimpleAgentTest(protocolDriver: ProtocolDriver) : ProtocolDriver 
         // closed protocol is not guaranteed to fail fast.
         val followUp = withTimeoutOrNull(500.milliseconds) { runCatching { client.initialize(clientInfo) } }
         assertTrue(followUp?.isSuccess != true, "a request after close must not succeed")
+    }
+
+    @Test
+    fun `updates during a prompt retain their own notification metadata`() = testWithProtocols { clientProtocol, agentProtocol ->
+        val peerMeta = Json.encodeToJsonElement(mapOf("sender" to "peer"))
+        val replyMeta = Json.encodeToJsonElement(mapOf("sender" to "agent"))
+        val promptMeta = Json.encodeToJsonElement(mapOf("sender" to "caller"))
+        val peerMessage = SessionUpdate.UserMessageChunk(textBlock("A message during the prompt"))
+        val reply = agentTextChunk("A tagged reply")
+        val untagged = agentTextChunk("An untagged reply")
+        val client = Client(clientProtocol)
+        Agent(agentProtocol, TestAgentSupport {
+            object : TestAgentSession() {
+                override suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement?): Flow<Event> = flow {
+                    currentCoroutineContext().client.notify(peerMessage, peerMeta)
+                    emit(Event.SessionUpdateEvent(reply, replyMeta))
+                    emit(Event.SessionUpdateEvent(untagged))
+                }
+            }
+        })
+        client.initialize(ClientInfo(protocolVersion = LATEST_PROTOCOL_VERSION))
+        val session = client.newSession(SessionCreationParameters("/test", emptyList())) { _, _ -> TestClientSessionOperations() }
+
+        val events = session.prompt(textBlocks("Start"), promptMeta).filterIsInstance<Event.SessionUpdateEvent>().toList()
+        assertEquals(listOf(peerMessage, reply, untagged), events.map { it.update })
+        assertEquals(listOf(peerMeta, replyMeta, null), events.map { it._meta })
     }
 
     @Test

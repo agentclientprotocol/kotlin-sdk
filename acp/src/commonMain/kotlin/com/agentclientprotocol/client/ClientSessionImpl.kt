@@ -33,7 +33,7 @@ internal class ClientSessionImpl(
 ) : ClientSession {
 
     private class PromptSession(
-        val updateChannel: Channel<SessionUpdate>
+        val updateChannel: Channel<Event.SessionUpdateEvent>
     )
     private val activePrompt = atomic<PromptSession?>(null)
     private val pendingPermissions = PendingPermissionCancellation()
@@ -64,9 +64,9 @@ internal class ClientSessionImpl(
         pendingPermissions.startTurn()
         logger.trace { "Starting channel collection for prompt" }
         val channelJob = launch {
-            for (update in promptSession.updateChannel) {
-                logger.trace { "Received update for prompt: $update" }
-                send(Event.SessionUpdateEvent(update))
+            for (event in promptSession.updateChannel) {
+                logger.trace { "Received update for prompt: ${event.update}" }
+                send(event)
             }
         }
         try {
@@ -175,7 +175,7 @@ internal class ClientSessionImpl(
         // check for isClosedForSend because the prompt may exist, but the code is waiting for the updates drain
         if (promptSession != null && !promptSession.updateChannel.isClosedForSend) {
             logger.trace { "Sending update to active prompt: $notification" }
-            promptSession.updateChannel.send(notification)
+            promptSession.updateChannel.send(Event.SessionUpdateEvent(notification, _meta))
         }
         else {
             logger.trace { "Notifying globally: $notification" }

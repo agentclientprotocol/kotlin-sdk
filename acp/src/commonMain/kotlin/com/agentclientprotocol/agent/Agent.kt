@@ -131,7 +131,7 @@ public class Agent(
                                 }
 
                                 is Event.SessionUpdateEvent -> {
-                                    clientOperations.notify(event.update, _meta)
+                                    clientOperations.notify(event.update, event._meta)
                                 }
                             }
                         }
